@@ -353,6 +353,10 @@ typedef struct UIWindow {
 	int cursorX, cursorY;
 	int cursorStyle;
 
+	// Set when a textbox is modified. 
+	// Useful for tracking whether changes to the loaded document have been saved.
+	bool textboxModifiedFlag; 
+
 	bool ctrl, shift, alt;
 
 	UIRectangle updateRegion;
@@ -2681,6 +2685,8 @@ void UITextboxReplace(UITextbox *textbox, const char *text, ptrdiff_t bytes, boo
 	if (sendChangedMessage) {
 		UIElementMessage(&textbox->e, UI_MSG_VALUE_CHANGED, 0, 0);
 	}
+
+	textbox->e.window->textboxModifiedFlag = true;
 }
 
 void UITextboxClear(UITextbox *textbox, bool sendChangedMessage) {
