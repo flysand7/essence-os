@@ -1,0 +1,92 @@
+binutils-2.31.1/config.sub
+	replace line 1379 with
+	"	     | midnightbsd* | essence*)"
+
+binutils-2.31.1/bfd/config.bfd
+	replace line 665 with
+	"  x86_64-*-elf* | x86_64-*-rtems* | x86_64-*-fuchsia | x86_64-*-essence)"
+
+binutils-2.31.1/gas/configure.tgt
+	insert after line 215
+	"  i386-*-essence*)			fmt=elf ;;"
+
+binutils-2.31.1/ld/configure.tgt
+	replace line 308 with
+	"x86_64-*-elf* | x86_64-*-rtems* | x86_64-*-fuchsia* | x86_64-*-essence*)"
+	insert after line 780
+	"*-*-essence*)"
+	"  NATIVE_LIB_DIRS='/Programs/POSIX/lib'"
+	"  ;;"
+	""
+
+gcc-8.2.0/config.sub
+	replace line 1419 with
+	"	      | -onefs* | -tirtos* | -phoenix* | -fuchsia* | -redox* | -bme* | -essence*)"
+
+gcc-8.2.0/gcc/config.gcc
+	insert after line 698
+	"*-*-essence*)"
+	"  gas=yes"
+	"  gnu_ld=yes"
+	"  native_system_header_dir=/Programs/POSIX/include"
+	"  ;;"
+	insert after line 1504
+	"x86_64-*-essence*)"
+	"	tmake_file="${tmake_file} i386/t-x86_64-essence""
+	"	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h newlib-stdint.h i386/i386elf.h i386/x86-64.h essence.h""
+	"	;;"
+
+gcc-8.2.0/gcc/config/i386/t-x86_64-essence
+	create new file
+***
+MULTILIB_OPTIONS += mno-red-zone
+MULTILIB_DIRNAMES += no-red-zone
+***
+
+gcc-8.2.0/gcc/config/essence.h
+	create new file
+***
+#undef TARGET_ESSENCE
+#define TARGET_ESSENCE 1
+/* Default arguments to ld */
+#undef LIB_SPEC
+#define LIB_SPEC "-lapi --start-group -lglue -lc --end-group -z max-page-size=0x1000"
+/* Files that are linked before user code. The %s tells GCC to look for these files in the library directory. */
+#undef STARTFILE_SPEC
+#define STARTFILE_SPEC "crti.o%s crtbegin.o%s"
+/* Files that are linked after user code. */
+#undef ENDFILE_SPEC
+#define ENDFILE_SPEC "crtend.o%s crtn.o%s"
+/* Additional predefined macros. */
+#undef TARGET_OS_CPP_BUILTINS
+#define TARGET_OS_CPP_BUILTINS()      \
+  do {                                \
+    builtin_define ("ARCH_64");      \
+    builtin_define ("ARCH_X86_64");      \
+    builtin_define ("ARCH_X86_COMMON");      \
+    builtin_define ("OS_ESSENCE");      \
+  } while(0)
+***
+
+gcc-8.2.0/libgcc/config.host
+	insert after line 617
+	"x86_64-*-essence)"
+	"	extra_parts="$extra_parts crti.o crtbegin.o crtend.o crtn.o""
+	"	tmake_file="$tmake_file i386/t-crtstuff t-crt-stuff-pic -t-libgcc-pic""
+	"	;;"
+
+gcc-8.2.0/fixincludes/mkfixinc.sh
+	insert after line 13
+	"    *-essence* | \"
+
+gcc-8.2.0/libstdc++-v3/configure
+	"  *-essence*)"
+	""
+	"    ;;"
+	and 
+  essence*)
+    lt_cv_dlopen="dlopen"
+    lt_cv_dlopen_libs=
+    ;;
+
+(then build according to https://wiki.osdev.org/Hosted_GCC_Cross-Compiler)

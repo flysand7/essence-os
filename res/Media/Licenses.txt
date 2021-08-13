@@ -1,0 +1,45 @@
+﻿Licensing information for the sample images:
+(If you are the author of any of these images and would like them removed, please contact me)
+I've adjusted all of the images to be in the 1920x1080 resolution (sorry 4K folks!), and possibly made a few more modifications.
+
+Flower.jpg
+https://commons.wikimedia.org/wiki/File:Lotus_flower_(978659).jpg
+Author	Hong Zhang
+This file is licensed under the Creative Commons Zero license. 
+https://creativecommons.org/publicdomain/zero/1.0/deed.en
+
+Aurora.jpg
+https://unsplash.com/photos/Oz2ZQ2j8We8
+Author	Johny Goerend
+This file is licened under the Unsplash License.
+https://unsplash.com/license
+
+Paint.jpg
+https://unsplash.com/photos/arwTpnIUHdM
+Author	Paweł Czerwiński
+This file is licened under the Unsplash License.
+https://unsplash.com/license
+
+Water.jpg
+https://unsplash.com/photos/IXTG1_Tw2dM
+Author	Dave Hoefler
+This file is licened under the Unsplash License.
+https://unsplash.com/license
+
+Blue.jpg
+https://unsplash.com/photos/oGjE-6MlGEc
+Author	Solen Feyissa
+This file is licened under the Unsplash License.
+https://unsplash.com/license
+
+Desert.jpg
+https://unsplash.com/photos/cNagAGEok9k
+Author	Willian Justen de Vasconcellos
+This file is licened under the Unsplash License.
+https://unsplash.com/license
+
+Jellyfish.jpg
+https://unsplash.com/photos/SUwDcVdUGiY
+Author	Patrick Boucher
+This file is licened under the Unsplash License.
+https://unsplash.com/license

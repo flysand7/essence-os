@@ -1,0 +1,2095 @@
+// TODO Replace ES_ERROR_UNKNOWN with proper errors.
+// TODO Clean up the return values for system calls; with FATAL_ERRORs there should need to be less error codes returned.
+// TODO Close handles if OpenHandle fails or SendMessage fails.
+// TODO If a file system call fails with an error indicating the file system is corrupted, or a drive is failing, report the problem to the user.
+
+#ifndef IMPLEMENTATION
+
+KMutex eventForwardMutex;
+
+uintptr_t DoSyscall(EsSyscallType index,
+		uintptr_t argument0, uintptr_t argument1,
+		uintptr_t argument2, uintptr_t argument3,
+		uint64_t flags, bool *fatal, uintptr_t *userStackPointer);
+
+#define DO_SYSCALL_BATCHED (2)
+
+struct MessageQueue {
+	bool SendMessage(void *target, EsMessage *message); // Returns false if the message queue is full.
+	bool SendMessage(_EsMessageWithObject *message); // Returns false if the message queue is full.
+	bool GetMessage(_EsMessageWithObject *message);
+
+#define MESSAGE_QUEUE_MAX_LENGTH (4096)
+	Array<_EsMessageWithObject, K_FIXED> messages;
+
+	uintptr_t mouseMovedMessage, 
+		  windowResizedMessage, 
+		  eyedropResultMessage,
+		  keyRepeatMessage;
+
+	bool pinged;
+
+	KMutex mutex;
+	KEvent notEmpty;
+};
+
+#endif
+
+#ifdef IMPLEMENTATION
+
+bool MessageQueue::SendMessage(void *object, EsMessage *_message) {
+	// TODO Remove unnecessary copy.
+	_EsMessageWithObject message = { object, *_message };
+	return SendMessage(&message);
+}
+
+bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
+	// TODO Don't send messages if the process has been terminated.
+
+	KMutexAcquire(&mutex);
+	EsDefer(KMutexRelease(&mutex));
+
+	if (messages.Length() == MESSAGE_QUEUE_MAX_LENGTH) {
+		KernelLog(LOG_ERROR, "Messages", "message dropped", "Message of type %d and target %x has been dropped because queue %x was full.\n",
+				_message->message.type, _message->object, this);
+		return false;
+	}
+
+#define MERGE_MESSAGES(variable, change) \
+	do { \
+		if (variable && messages[variable - 1].object == _message->object) { \
+			if (change) EsMemoryCopy(&messages[variable - 1], _message, sizeof(_EsMessageWithObject)); \
+		} else if (messages.AddPointer(_message)) { \
+			variable = messages.Length(); \
+		} else { \
+			return false; \
+		} \
+	} while (0)
+
+	// NOTE Don't forget to update GetMessage with the merged messages!
+
+	if (_message->message.type == ES_MSG_MOUSE_MOVED) {
+		MERGE_MESSAGES(mouseMovedMessage, true);
+	} else if (_message->message.type == ES_MSG_WINDOW_RESIZED) {
+		MERGE_MESSAGES(windowResizedMessage, true);
+	} else if (_message->message.type == ES_MSG_EYEDROP_REPORT) {
+		MERGE_MESSAGES(eyedropResultMessage, true);
+	} else if (_message->message.type == ES_MSG_KEY_DOWN && _message->message.keyboard.repeat) {
+		MERGE_MESSAGES(keyRepeatMessage, false);
+	} else {
+		if (!messages.AddPointer(_message)) {
+			return false;
+		}
+
+		if (_message->message.type == ES_MSG_PING) {
+			pinged = true;
+		}
+	}
+
+	KEventSet(&notEmpty, false, true);
+
+	return true;
+}
+
+bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
+	KMutexAcquire(&mutex);
+	EsDefer(KMutexRelease(&mutex));
+
+	if (!messages.Length()) {
+		return false;
+	}
+
+	*_message = messages[0];
+	messages.Delete(0);
+
+	if (mouseMovedMessage)    mouseMovedMessage--;
+	if (windowResizedMessage) windowResizedMessage--;
+	if (eyedropResultMessage) eyedropResultMessage--;
+	if (keyRepeatMessage)     keyRepeatMessage--;
+
+	pinged = false;
+
+	if (!messages.Length()) {
+		KEventReset(&notEmpty);
+	}
+
+	return true;
+}
+
+#define CHECK_OBJECT(x) if (!x.valid) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, !x.softFailure); else x.checked = true
+#define SYSCALL_BUFFER_LIMIT (64 * 1024 * 1024) // To prevent overflow and DOS attacks.
+#define SYSCALL_BUFFER(address, length, index, write) \
+	MMRegion *_region ## index = MMFindAndPinRegion(currentVMM, (address), (length)); \
+	if (!_region ## index) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true); \
+	EsDefer(if (_region ## index) MMUnpinRegion(currentVMM, _region ## index)); \
+	if (write && (_region ## index->flags & MM_REGION_READ_ONLY) && (~_region ## index->flags & MM_REGION_COPY_ON_WRITE)) \
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+#define SYSCALL_HANDLE(handle, type, __object, index) \
+	KObject _object ## index(currentProcess, handle, type); \
+	CHECK_OBJECT(_object ## index); \
+	*((void **) &__object) = (_object ## index).object;
+#define SYSCALL_READ(destination, source, length) \
+	do { if ((length) > 0) { \
+		SYSCALL_BUFFER((uintptr_t) (source), (length), 0, false); \
+		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
+		__sync_synchronize(); \
+	}} while (0)
+#define SYSCALL_READ_HEAP(destination, source, length) \
+	if ((length) > 0) { \
+		void *x = EsHeapAllocate((length), false, K_FIXED); \
+		if (!x) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false); \
+		bool success = false; \
+		EsDefer(if (!success) EsHeapFree(x, 0, K_FIXED);); \
+		SYSCALL_BUFFER((uintptr_t) (source), (length), 0, false); \
+		*((void **) &(destination)) = x; \
+		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
+		success = true; \
+		__sync_synchronize(); \
+	} else destination = nullptr; EsDefer(EsHeapFree(destination, 0, K_FIXED))
+#define SYSCALL_WRITE(destination, source, length) \
+	do { \
+		__sync_synchronize(); \
+		SYSCALL_BUFFER((uintptr_t) (destination), (length), 0, true); \
+		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
+	} while (0)
+#define SYSCALL_ARGUMENTS uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t argument3, \
+		Thread *currentThread, Process *currentProcess, MMSpace *currentVMM, uintptr_t *userStackPointer, bool *fatalError
+#define SYSCALL_IMPLEMENT(_type) uintptr_t Do ## _type ( SYSCALL_ARGUMENTS ) 
+#define SYSCALL_RETURN(value, fatal) do { *fatalError = fatal; return (value); } while (0)
+#define SYSCALL_PERMISSION(x) do { if ((x) != (currentProcess->permissions & (x))) { *fatalError = true; return ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS; } } while (0)
+typedef uintptr_t (*SyscallFunction)(SYSCALL_ARGUMENTS);
+#pragma GCC diagnostic ignored "-Wunused-parameter" push
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_COUNT) {
+	SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PRINT) {
+	char *buffer; 
+	if (argument1 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_READ_HEAP(buffer, argument0, argument1);
+	EsPrint("%s", argument1, buffer);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_ALLOCATE) {
+	EsMemoryProtection protection = (EsMemoryProtection) argument2;
+	uint32_t flags = MM_REGION_USER;
+	if (protection == ES_MEMORY_PROTECTION_READ_ONLY) flags |= MM_REGION_READ_ONLY;
+	if (protection == ES_MEMORY_PROTECTION_EXECUTABLE) flags |= MM_REGION_EXECUTABLE;
+	uintptr_t address = (uintptr_t) MMStandardAllocate(currentVMM, argument0, flags, nullptr, argument1 & ES_MEMORY_RESERVE_COMMIT_ALL);
+	SYSCALL_RETURN(address, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FREE) {
+	if (!MMFree(currentVMM, (void *) argument0, argument1, true /* only allow freeing regions marked with MM_REGION_USER */)) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_MEMORY_REGION, true);
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_COMMIT) {
+	SYSCALL_BUFFER(argument0 << K_PAGE_BITS, argument1 << K_PAGE_BITS, 0, false);
+
+	argument0 -= _region0->baseAddress >> K_PAGE_BITS;
+
+	if (argument0 >= _region0->pageCount 
+			|| argument1 > _region0->pageCount - argument0 
+			|| (~_region0->flags & MM_REGION_NORMAL) 
+			|| (~_region0->flags & MM_REGION_USER) 
+			|| !argument1) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_MEMORY_REGION, true);
+	}
+
+	bool success = false;
+
+	if (argument2 == 0) {
+		KMutexAcquire(&currentVMM->reserveMutex);
+		success = MMCommitRange(currentVMM, _region0, argument0, argument1); 
+		KMutexRelease(&currentVMM->reserveMutex);
+	} else if (argument2 == 1) {
+		KMutexAcquire(&currentVMM->reserveMutex);
+		success = MMDecommitRange(currentVMM, _region0, argument0, argument1); 
+		KMutexRelease(&currentVMM->reserveMutex);
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+	}
+
+	SYSCALL_RETURN(success ? ES_SUCCESS : ES_ERROR_INSUFFICIENT_RESOURCES, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FAULT_RANGE) {
+	uintptr_t start = argument0 & ~(K_PAGE_SIZE - 1);
+	uintptr_t end = (argument0 + argument1 - 1) & ~(K_PAGE_SIZE - 1);
+
+	for (uintptr_t page = start; page <= end; page += K_PAGE_SIZE) {
+		if (!MMArchHandlePageFault(page, ES_FLAGS_DEFAULT)) {
+			SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+		}
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
+	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_CREATE);
+
+	EsProcessCreationArguments arguments;
+	SYSCALL_READ(&arguments, argument0, sizeof(EsProcessCreationArguments));
+
+	if (arguments.permissions == ES_PERMISSION_INHERIT) {
+		arguments.permissions = currentProcess->permissions;
+	}
+
+	if (arguments.permissions & ~currentProcess->permissions) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS, true);
+	}
+
+	KObject executableObject(currentProcess, arguments.executable, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(executableObject);
+
+	if (((KNode *) executableObject.object)->directoryEntry->type != ES_NODE_FILE) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	}
+
+	EsProcessInformation processInformation;
+	EsMemoryZero(&processInformation, sizeof(EsProcessInformation));
+
+	Process *process = scheduler.SpawnProcess();
+
+	if (!process) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	process->creationFlags = arguments.flags;
+	process->creationArguments[CREATION_ARGUMENT_MAIN] = arguments.creationArgument.u;
+	process->permissions = arguments.permissions;
+
+	// TODO Free the process object if something fails here.
+
+	if (arguments.environmentBlockBytes) {
+		if (arguments.environmentBlockBytes > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+		SYSCALL_BUFFER((uintptr_t) arguments.environmentBlock, arguments.environmentBlockBytes, 1, false);
+		process->creationArguments[CREATION_ARGUMENT_ENVIRONMENT] = MakeConstantBuffer(arguments.environmentBlock, arguments.environmentBlockBytes, process);
+	} 
+	
+	if (arguments.initialMountPointCount) {
+		if (arguments.initialMountPointCount > ES_MOUNT_POINT_MAX_COUNT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+
+		EsMountPoint *mountPoints = (EsMountPoint *) EsHeapAllocate(arguments.initialMountPointCount * sizeof(EsMountPoint), false, K_FIXED);
+		EsDefer(EsHeapFree(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), K_FIXED));
+		SYSCALL_READ(mountPoints, (uintptr_t) arguments.initialMountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint));
+
+		for (uintptr_t i = 0; i < arguments.initialMountPointCount; i++) {
+			// Open handles to the mount points for the new process.
+			// TODO Handling errors when opening handles.
+			KObject object(currentProcess, mountPoints[i].base, KERNEL_OBJECT_NODE);
+			CHECK_OBJECT(object);
+			if (!mountPoints[i].write) object.flags &= ~_ES_NODE_DIRECTORY_WRITE;
+			OpenHandleToObject(object.object, object.type, object.flags);
+			mountPoints[i].base = process->handleTable.OpenHandle(object.object, object.flags, object.type);
+		}
+
+		process->creationArguments[CREATION_ARGUMENT_INITIAL_MOUNT_POINTS] 
+			= MakeConstantBuffer(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), process);
+	}
+
+	if (!process->StartWithNode((KNode *) executableObject.object)) {
+		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
+		SYSCALL_RETURN(ES_ERROR_UNKNOWN, false);
+	}
+
+	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
+	processInformation.pid = process->id;
+
+	processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
+	processInformation.mainThread.tid = process->executableMainThread->id;
+
+	SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(object);
+
+	Process *process = (Process *) object.object;
+
+	if (argument1 >= sizeof(process->creationArguments) / sizeof(process->creationArguments[0])) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	}
+
+	SYSCALL_RETURN(process->creationArguments[argument1], false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_FORCE_UPDATE) {
+	if (argument0) {
+		SYSCALL_PERMISSION(ES_PERMISSION_SCREEN_MODIFY);
+	}
+
+	KMutexAcquire(&windowManager.mutex);
+
+	if (argument0) {
+		windowManager.Redraw(ES_POINT(0, 0), graphics.frameBuffer.width, graphics.frameBuffer.height, nullptr);
+	}
+
+	GraphicsUpdateScreen();
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EYEDROP_START) {
+	KObject _avoid(currentProcess, argument1, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_avoid);
+	Window *avoid = (Window *) _avoid.object;
+
+	windowManager.StartEyedrop(argument0, avoid, argument2);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_GET) {
+	_EsMessageWithObject message;
+	EsMemoryZero(&message, sizeof(_EsMessageWithObject));
+
+	if (currentProcess->messageQueue.GetMessage(&message)) {
+		SYSCALL_WRITE(argument0, &message, sizeof(_EsMessageWithObject));
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	} else {
+		SYSCALL_RETURN(ES_ERROR_NO_MESSAGES_AVAILABLE, false);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_WAIT) {
+	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
+	KEventWait(&currentProcess->messageQueue.notEmpty, argument0 /* timeout */);
+	currentThread->terminatableState = THREAD_IN_SYSCALL;
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CREATE) {
+	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
+
+	if (argument0 == ES_WINDOW_NORMAL) {
+		void *_window = windowManager.CreateEmbeddedWindow(currentProcess, (void *) argument2);
+		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(_window, 0, KERNEL_OBJECT_EMBEDDED_WINDOW), false);
+	} else {
+		void *_window = windowManager.CreateWindow(currentProcess, (void *) argument2, (EsWindowStyle) argument0);
+
+		if (!_window) {
+			SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+		} else {
+			SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(_window, 0, KERNEL_OBJECT_WINDOW), false);
+		}
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CLOSE) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
+	CHECK_OBJECT(_window);
+	KMutexAcquire(&windowManager.mutex);
+
+	if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
+		EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
+		window->Close();
+	} else {
+		Window *window = (Window *) _window.object;
+		window->Close();
+	}
+	
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_OBJECT) {
+	EmbeddedWindow *window;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EMBEDDED_WINDOW, window, 1);
+
+	if (window->owner != currentProcess) {
+		// TODO Permissions.
+	}
+
+	void *old = window->apiWindow;
+	window->apiWindow = (void *) argument2;
+	__sync_synchronize();
+
+	KMutexAcquire(&windowManager.mutex);
+
+	if (window->container) {
+		EsMessage message;
+		EsMemoryZero(&message, sizeof(EsMessage));
+		message.type = ES_MSG_WINDOW_RESIZED;
+		int embedWidth = window->container->width - WINDOW_INSET * 2;
+		int embedHeight = window->container->height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT;
+		message.windowResized.content = ES_RECT_4(0, embedWidth, 0, embedHeight);
+		window->owner->messageQueue.SendMessage((void *) argument2, &message);
+	}
+
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN((uintptr_t) old, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
+	uint8_t property = argument3;
+
+	KObject _window(currentProcess, argument0, (property & 0x80) ? KERNEL_OBJECT_EMBEDDED_WINDOW : KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_window);
+	Window *window = (Window *) _window.object;
+	EmbeddedWindow *embed = (EmbeddedWindow *) _window.object;
+
+	if (property == ES_WINDOW_PROPERTY_SOLID) {
+		window->solid = (argument1 & ES_WINDOW_SOLID_TRUE) != 0;
+		window->noClickActivate = (argument1 & ES_WINDOW_SOLID_NO_ACTIVATE) != 0;
+		window->noBringToFront = (argument1 & ES_WINDOW_SOLID_NO_BRING_TO_FRONT) != 0;
+		window->solidInsets = ES_RECT_1I(argument2);
+		KMutexAcquire(&windowManager.mutex);
+		windowManager.MoveCursor(0, 0);
+		KMutexRelease(&windowManager.mutex);
+	} else if (property == ES_WINDOW_PROPERTY_OPAQUE_BOUNDS) {
+		SYSCALL_READ(&window->opaqueBounds, argument1, sizeof(EsRectangle));
+	} else if (property == ES_WINDOW_PROPERTY_BLUR_BOUNDS) {
+		SYSCALL_READ(&window->blurBounds, argument1, sizeof(EsRectangle));
+	} else if (property == ES_WINDOW_PROPERTY_ALPHA) {
+		window->alpha = argument1 & 0xFF;
+	} else if (property == ES_WINDOW_PROPERTY_FOCUSED) {
+		KMutexAcquire(&windowManager.mutex);
+		windowManager.ActivateWindow(window);
+		windowManager.MoveCursor(0, 0);
+		KMutexRelease(&windowManager.mutex);
+	} else if (property == ES_WINDOW_PROPERTY_MATERIAL) {
+		window->material = argument1;
+	} else if (property == ES_WINDOW_PROPERTY_EMBED) {
+		KObject _embed(currentProcess, argument1, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE);
+		CHECK_OBJECT(_embed);
+		EmbeddedWindow *embed = (EmbeddedWindow *) _embed.object;
+		KMutexAcquire(&windowManager.mutex);
+		window->SetEmbed(embed);
+		KMutexRelease(&windowManager.mutex);
+	} else if (property == ES_WINDOW_PROPERTY_OBJECT) {
+		if (embed->owner != currentProcess) {
+			// TODO Permissions.
+		}
+
+		embed->apiWindow = (void *) argument2;
+		__sync_synchronize();
+
+		KMutexAcquire(&windowManager.mutex);
+
+		if (embed->container) {
+			EsMessage message;
+			EsMemoryZero(&message, sizeof(EsMessage));
+			message.type = ES_MSG_WINDOW_RESIZED;
+			int embedWidth = embed->container->width - WINDOW_INSET * 2;
+			int embedHeight = embed->container->height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT;
+			message.windowResized.content = ES_RECT_4(0, embedWidth, 0, embedHeight);
+			embed->owner->messageQueue.SendMessage((void *) argument2, &message);
+		}
+
+		KMutexRelease(&windowManager.mutex);
+	} else if (property == ES_WINDOW_PROPERTY_EMBED_OWNER) {
+		Process *process;
+		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, 2);
+		OpenHandleToObject(embed, KERNEL_OBJECT_EMBEDDED_WINDOW);
+		EsHandle handle = process->handleTable.OpenHandle(embed, 0, KERNEL_OBJECT_EMBEDDED_WINDOW);
+		KMutexAcquire(&windowManager.mutex);
+		embed->SetEmbedOwner(process);
+		KMutexRelease(&windowManager.mutex);
+		SYSCALL_RETURN(handle, false);
+	} else if (property == ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR) {
+		embed->resizeClearColor = argument1;
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_REDRAW) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_window);
+	Window *window = (Window *) _window.object;
+	KMutexAcquire(&windowManager.mutex);
+	window->Update(nullptr, true);
+	GraphicsUpdateScreen();
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
+	CHECK_OBJECT(_window);
+
+	EsRectangle region;
+	SYSCALL_READ(&region, argument1, sizeof(EsRectangle));
+
+	if (!ES_RECT_VALID(region)) {
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	}
+
+	if (region.l < 0 || region.r > (int32_t) graphics.width * 2
+			|| region.t < 0 || region.b > (int32_t) graphics.height * 2
+			|| region.l >= region.r || region.t >= region.b) {
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	}
+
+	bool isEmbed = _window.type == KERNEL_OBJECT_EMBEDDED_WINDOW;
+	Window *window = isEmbed ? ((EmbeddedWindow *) _window.object)->container : ((Window *) _window.object);
+	Surface *surface = &window->surface;
+
+	if (!window || (isEmbed && currentProcess != ((EmbeddedWindow *) _window.object)->owner)) {
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	}
+
+	if (isEmbed) {
+		region = Translate(region, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT);
+	}
+
+	if (argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL || argument3 == WINDOW_SET_BITS_SCROLL_HORIZONTAL) {
+		ptrdiff_t scrollDelta = argument2;
+		bool scrollVertical = argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL;
+
+		if (scrollVertical) {
+			if (scrollDelta < 0) region.b += scrollDelta;
+			else region.t += scrollDelta;
+		} else {
+			if (scrollDelta < 0) region.r += scrollDelta;
+			else region.l += scrollDelta;
+		}
+
+		KMutexAcquire(&windowManager.mutex);
+
+		if (window->closed 
+				|| region.l < 0 || region.r > (int32_t) surface->width
+				|| region.t < 0 || region.b > (int32_t) surface->height
+				|| region.l >= region.r || region.t >= region.b) {
+		} else {
+			surface->Scroll(region, scrollDelta, scrollVertical);
+			window->Update(&region, true);
+			window->queuedScrollUpdate = true;
+			// Don't update the screen until the rest of the window is painted.
+		}
+
+		KMutexRelease(&windowManager.mutex);
+	} else {
+		bool skipUpdate = false;
+		SYSCALL_BUFFER(argument2, Width(region) * Height(region) * 4, 1, false);
+		KMutexAcquire(&windowManager.mutex);
+
+		bool resizeQueued = false;
+
+		if (argument3 == WINDOW_SET_BITS_AFTER_RESIZE && windowManager.resizeWindow == window) {
+			if (isEmbed) windowManager.resizeReceivedBitsFromEmbed = true;
+			else windowManager.resizeReceivedBitsFromContainer = true;
+
+			if (windowManager.resizeReceivedBitsFromContainer && windowManager.resizeReceivedBitsFromEmbed) {
+				// Resize complete.
+				resizeQueued = windowManager.resizeQueued;
+				windowManager.resizeQueued = false;
+				windowManager.resizeWindow = nullptr;
+				windowManager.resizeSlow = KGetTimeInMs() - windowManager.resizeStartTimeStampMs >= RESIZE_SLOW_THRESHOLD
+					|| windowManager.inspectorWindowCount /* HACK anti-flicker logic interfers with the inspector's logging */;
+
+#if 0
+				EsPrint("Resize complete in %dms%z.\n", KGetTimeInMs() - windowManager.resizeStartTimeStampMs, windowManager.resizeSlow ? " (slow)" : "");
+#endif
+			}
+		}
+
+		if (window->closed) {
+			skipUpdate = true;
+		} else {
+			uintptr_t stride = Width(region) * 4;
+			EsRectangle clippedRegion = EsRectangleIntersection(region, ES_RECT_2S(surface->width, surface->height));
+
+			if (argument3 != WINDOW_SET_BITS_AFTER_RESIZE) {
+				skipUpdate = window->UpdateDirect((K_USER_BUFFER uint32_t *) argument2, stride, clippedRegion);
+			}
+
+#define SET_BITS_REGION(...) { \
+	EsRectangle subRegion = EsRectangleIntersection(clippedRegion, ES_RECT_4(__VA_ARGS__)); \
+	if (ES_RECT_VALID(subRegion)) { surface->SetBits((K_USER_BUFFER const uint8_t *) argument2 \
+	+ stride * (subRegion.t - clippedRegion.t) + 4 * (subRegion.l - clippedRegion.l), stride, subRegion); } }
+
+			if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
+				SET_BITS_REGION(0, window->width, 0, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET);
+				SET_BITS_REGION(0, WINDOW_INSET, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET, window->height - WINDOW_INSET);
+				SET_BITS_REGION(window->width - WINDOW_INSET, window->width, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET, window->height - WINDOW_INSET);
+				SET_BITS_REGION(0, window->width, window->height - WINDOW_INSET, window->height);
+			} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
+				SET_BITS_REGION(WINDOW_INSET, window->width - WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, window->height - WINDOW_INSET);
+			} else {
+				SET_BITS_REGION(0, window->width, 0, window->height);
+			}
+		}
+
+		window->Update(&region, !skipUpdate);
+
+		if (!skipUpdate || window->queuedScrollUpdate) {
+			window->queuedScrollUpdate = false;
+			GraphicsUpdateScreen();
+		}
+
+		if (resizeQueued) {
+			window->Move(windowManager.resizeQueuedRectangle, ES_WINDOW_MOVE_DYNAMIC);
+		}
+
+		KMutexRelease(&windowManager.mutex);
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_ADD) {
+	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
+
+	if (argument0 != ES_CLIPBOARD_PRIMARY) {
+		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
+	}
+
+	EsError error = primaryClipboard.Add((uintptr_t) argument1, (const void *) argument2, argument3);
+	SYSCALL_RETURN(error, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_HAS) {
+	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
+
+	if (argument0 != ES_CLIPBOARD_PRIMARY) {
+		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
+	}
+
+	bool result = primaryClipboard.Has((uintptr_t) argument1);
+	SYSCALL_RETURN(result, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_READ) {
+	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
+
+	if (argument0 != ES_CLIPBOARD_PRIMARY) {
+		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
+	}
+
+	EsHandle handle = primaryClipboard.Read((uintptr_t) argument1, (size_t *) argument3, currentProcess);
+	SYSCALL_RETURN(handle, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_CREATE) {
+	KEvent *event = (KEvent *) EsHeapAllocate(sizeof(KEvent), true, K_FIXED);
+	if (!event) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	event->handles = 1;
+	event->autoReset = argument0;
+	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(event, 0, KERNEL_OBJECT_EVENT), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_CLOSE) {
+	if (!currentProcess->handleTable.CloseHandle(argument0)) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_TERMINATE) {
+	bool self = false;
+
+	{
+		KObject _thread(currentProcess, argument0, KERNEL_OBJECT_THREAD);
+		CHECK_OBJECT(_thread);
+		Thread *thread = (Thread *) _thread.object;
+
+		if (thread == currentThread) self = true;
+		else scheduler.TerminateThread(thread);
+	}
+
+	if (self) scheduler.TerminateThread(currentThread);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_TERMINATE) {
+	// TODO Prevent the termination of the kernel/desktop.
+
+	bool self = false;
+
+	{
+		KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
+		CHECK_OBJECT(_process);
+		Process *process = (Process *) _process.object;
+
+		if (process == currentProcess) self = true;
+		else scheduler.TerminateProcess(process, argument1);
+	}
+
+	if (self) scheduler.TerminateProcess(currentProcess, argument1);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_CREATE) {
+	EsThreadInformation thread;
+	EsMemoryZero(&thread, sizeof(EsThreadInformation));
+	Thread *threadObject = scheduler.SpawnThread("Syscall", argument0, argument3, SPAWN_THREAD_USERLAND, currentProcess, argument1);
+
+	if (!threadObject) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	// Register processObject as a handle.
+	thread.handle = currentProcess->handleTable.OpenHandle(threadObject, 0, KERNEL_OBJECT_THREAD); 
+	thread.tid = threadObject->id;
+
+	SYSCALL_WRITE(argument2, &thread, sizeof(EsThreadInformation));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_OPEN) {
+	if (argument0 > ES_SHARED_MEMORY_MAXIMUM_SIZE) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	if (argument1 && !argument2) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	if (argument2 > ES_SHARED_MEMORY_NAME_MAX_LENGTH) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+
+	char *name;
+	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_READ_HEAP(name, argument1, argument2);
+
+	MMSharedRegion *region = MMSharedOpenRegion(name, argument2, argument0, argument3);
+	if (!region) SYSCALL_RETURN(ES_INVALID_HANDLE, false);
+
+	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(region, 0, KERNEL_OBJECT_SHMEM), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+
+	if (object.type == KERNEL_OBJECT_SHMEM) {
+		// TODO Access permissions and modes.
+		MMSharedRegion *region = (MMSharedRegion *) object.object;
+
+		if (argument2 == ES_MAP_OBJECT_ALL) {
+			argument2 = region->sizeBytes;
+		}
+
+		uintptr_t address = (uintptr_t) MMMapShared(currentVMM, region, argument1, argument2, MM_REGION_USER);
+		SYSCALL_RETURN(address, false);
+	} else if (object.type == KERNEL_OBJECT_NODE) {
+		KNode *file = (KNode *) object.object;
+
+		if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+
+		if (argument3 == ES_MAP_OBJECT_READ_WRITE) {
+			if (!(object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE))) {
+				SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+			}
+		} else {
+			if (!(object.flags & (ES_FILE_READ | ES_FILE_READ_SHARED))) {
+				SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+			}
+		}
+
+		if (argument2 == ES_MAP_OBJECT_ALL) {
+			argument2 = file->directoryEntry->totalSize;
+		}
+
+		uintptr_t address = (uintptr_t) MMMapFile(currentVMM, (FSFile *) file, argument1, argument2, argument3, nullptr, 0, MM_REGION_USER);
+		SYSCALL_RETURN(address, false);
+	}
+
+	KernelPanic("ES_SYSCALL_MEMORY_MAP_OBJECT - Unhandled case.\n");
+	SYSCALL_RETURN(0, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_SHARE) {
+	KObject buffer(currentProcess, argument0, KERNEL_OBJECT_CONSTANT_BUFFER);
+	CHECK_OBJECT(buffer);
+	ConstantBuffer *object = (ConstantBuffer *) buffer.object;
+
+	KObject process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(process);
+
+	SYSCALL_RETURN(MakeConstantBuffer(object + 1, object->bytes, (Process *) process.object), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
+	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_BUFFER(argument0, argument2, 1, false);
+
+	KObject process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(process);
+
+	SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, (Process *) process.object), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_SHARE) {
+	// TODO Sort out flags.
+
+	KObject _region(currentProcess, argument0, KERNEL_OBJECT_SHMEM);
+	CHECK_OBJECT(_region);
+	MMSharedRegion *region = (MMSharedRegion *) _region.object;
+
+	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(_process);
+	Process *process = (Process *) _process.object;
+
+	OpenHandleToObject(region, KERNEL_OBJECT_SHMEM);
+
+	SYSCALL_RETURN(process->handleTable.OpenHandle(region, argument2, KERNEL_OBJECT_SHMEM), false);
+}
+
+#define SYSCALL_SHARE_OBJECT(syscallName, objectType) \
+SYSCALL_IMPLEMENT(syscallName) { \
+	KObject share(currentProcess, argument0, objectType); \
+	CHECK_OBJECT(share); \
+	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS); \
+	CHECK_OBJECT(_process); \
+	Process *process = (Process *) _process.object; \
+	OpenHandleToObject(share.object, objectType, share.flags);  \
+	SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, share.flags, objectType), false); \
+}
+
+SYSCALL_SHARE_OBJECT(ES_SYSCALL_PROCESS_SHARE, KERNEL_OBJECT_PROCESS);
+SYSCALL_SHARE_OBJECT(ES_SYSCALL_NODE_SHARE, KERNEL_OBJECT_NODE);
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
+	if (~currentProcess->permissions & ES_PERMISSION_GET_VOLUME_INFORMATION) {
+		SYSCALL_RETURN(0, false);
+	}
+
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *node = (KNode *) object.object;
+	KFileSystem *fileSystem = node->fileSystem;
+
+	EsVolumeInformation information;
+	EsMemoryZero(&information, sizeof(EsVolumeInformation));
+	EsMemoryCopy(information.label, fileSystem->name, sizeof(fileSystem->name));
+	information.labelBytes = fileSystem->nameBytes;
+	information.driveType = fileSystem->block->driveType;
+	information.spaceUsed = fileSystem->spaceUsed;
+	information.spaceTotal = fileSystem->spaceTotal;
+	information.id = fileSystem->id;
+
+	SYSCALL_WRITE(argument1, &information, sizeof(EsVolumeInformation));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
+	size_t pathLength = (size_t) argument1;
+	uint64_t flags = (uint64_t) argument2;
+
+	flags &= ~_ES_NODE_FROM_WRITE_EXCLUSIVE | _ES_NODE_NO_WRITE_BASE;
+
+	bool needWritePermission = flags & (ES_FILE_WRITE_EXCLUSIVE | ES_FILE_WRITE | _ES_NODE_DIRECTORY_WRITE);
+
+	char *path;
+	if (argument1 > K_MAX_PATH) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	SYSCALL_READ_HEAP(path, argument0, argument1);
+
+	_EsNodeInformation information;
+	SYSCALL_READ(&information, argument3, sizeof(_EsNodeInformation));
+
+	KNode *directory = nullptr;
+
+	KObject _directory(currentProcess, information.handle, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(_directory);
+
+	directory = (KNode *) _directory.object;
+
+	if (directory->directoryEntry->type != ES_NODE_DIRECTORY) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	}
+
+	if ((~_directory.flags & _ES_NODE_DIRECTORY_WRITE) && needWritePermission) {
+		SYSCALL_RETURN(ES_ERROR_FILE_PERMISSION_NOT_GRANTED, false);
+	}
+
+	if (~_directory.flags & _ES_NODE_DIRECTORY_WRITE) {
+		flags |= _ES_NODE_NO_WRITE_BASE;
+	}
+
+	KNodeInformation _information = FSNodeOpen(path, pathLength, flags, directory);
+
+	if (!_information.node) {
+		SYSCALL_RETURN(_information.error, false);
+	}
+
+	if (flags & ES_FILE_WRITE_EXCLUSIVE) {
+		// Mark this handle as being the exclusive writer for this file.
+		// This way, when the handle is used, OpenHandleToObject succeeds.
+		// The exclusive writer flag will only be removed from the file where countWrite drops to zero.
+		flags |= _ES_NODE_FROM_WRITE_EXCLUSIVE;
+	}
+
+	EsMemoryZero(&information, sizeof(_EsNodeInformation));
+	information.type = _information.node->directoryEntry->type;
+	information.fileSize = _information.node->directoryEntry->totalSize;
+	information.directoryChildren = _information.node->directoryEntry->directoryChildren;
+	information.handle = currentProcess->handleTable.OpenHandle(_information.node, flags, KERNEL_OBJECT_NODE);
+	SYSCALL_WRITE(argument3, &information, sizeof(_EsNodeInformation));
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *node = (KNode *) object.object;
+
+	if (object.flags & _ES_NODE_NO_WRITE_BASE) {
+		SYSCALL_RETURN(ES_ERROR_FILE_PERMISSION_NOT_GRANTED, false);
+	}
+	
+	if (node->directoryEntry->type == ES_NODE_FILE && (~object.flags & ES_FILE_WRITE_EXCLUSIVE)) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+	}
+
+	if (node->directoryEntry->type == ES_NODE_DIRECTORY || node->directoryEntry->type == ES_NODE_FILE) {
+		SYSCALL_RETURN(FSNodeDelete(node), false);
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_MOVE) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+
+	KObject object2(currentProcess, argument1, KERNEL_OBJECT_NODE | KERNEL_OBJECT_NONE);
+	CHECK_OBJECT(object2);
+	KNode *directory = (KNode *) object2.object;
+
+	char *newPath;
+	if (argument3 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_READ_HEAP(newPath, argument2, argument3);
+	SYSCALL_RETURN(FSNodeMove(file, directory, newPath, (size_t) argument3), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_READ_SYNC) {
+	if (!argument2) SYSCALL_RETURN(0, false);
+
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+
+	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+
+	SYSCALL_BUFFER(argument3, argument2, 1, false);
+
+	size_t result = FSFileReadSync(file, (void *) argument3, argument1, argument2, 
+			(_region1->flags & MM_REGION_FILE) ? FS_FILE_ACCESS_USER_BUFFER_MAPPED : 0);
+	SYSCALL_RETURN(result, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_WRITE_SYNC) {
+	if (!argument2) SYSCALL_RETURN(0, false);
+		
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+
+	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+
+	SYSCALL_BUFFER(argument3, argument2, 1, true /* write */);
+
+	if (object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) {
+		size_t result = FSFileWriteSync(file, (void *) argument3, argument1, argument2, 
+				(_region1->flags & MM_REGION_FILE) ? FS_FILE_ACCESS_USER_BUFFER_MAPPED : 0);
+		SYSCALL_RETURN(result, false);
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_GET_SIZE) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	SYSCALL_RETURN(file->directoryEntry->totalSize, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_RESIZE) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+
+	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+
+	if (object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) {
+		SYSCALL_RETURN(FSFileResize(file, argument1), false);
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+	}
+}
+					     
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SET) {
+	KObject _event(currentProcess, argument0, KERNEL_OBJECT_EVENT);
+	CHECK_OBJECT(_event);
+	KEvent *event = (KEvent *) _event.object;
+	KEventSet(event, false, true);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_RESET) {
+	KObject _event(currentProcess, argument0, KERNEL_OBJECT_EVENT);
+	CHECK_OBJECT(_event);
+	KEvent *event = (KEvent *) _event.object;
+	KEventReset(event);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SLEEP) {
+	KTimer timer = {};
+	KTimerSet(&timer, (argument0 << 32) | argument1);
+	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
+	KEventWait(&timer.event, ES_WAIT_NO_TIMEOUT);
+	currentThread->terminatableState = THREAD_IN_SYSCALL;
+	KTimerRemove(&timer);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
+	if (argument1 >= ES_MAX_WAIT_COUNT - 1 /* leave room for timeout timer */) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	}
+
+	EsHandle handles[ES_MAX_WAIT_COUNT];
+	SYSCALL_READ(handles, argument0, argument1 * sizeof(EsHandle));
+
+	KEvent *events[ES_MAX_WAIT_COUNT];
+	KObject _objects[ES_MAX_WAIT_COUNT] = {};
+
+	for (uintptr_t i = 0; i < argument1; i++) {
+		_objects[i].Initialise(&currentProcess->handleTable, handles[i], 
+				KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_EVENT_SINK);
+		CHECK_OBJECT(_objects[i]);
+
+		void *object = _objects[i].object;
+
+		switch (_objects[i].type) {
+			case KERNEL_OBJECT_PROCESS: {
+				events[i] = &((Process *) object)->killedEvent;
+			} break;
+
+			case KERNEL_OBJECT_THREAD: {
+				events[i] = &((Thread *) object)->killedEvent;
+			} break;
+
+			case KERNEL_OBJECT_EVENT_SINK: {
+				events[i] = &((EventSink *) object)->available;
+			} break;
+
+			case KERNEL_OBJECT_EVENT: {
+				events[i] = (KEvent *) object;
+			} break;
+
+			default: {
+				KernelPanic("DoSyscall - Unexpected wait object type %d.\n", _objects[i].type);
+			} break;
+		}
+	}
+
+	size_t waitObjectCount = argument1;
+	KTimer timer = {};
+
+	if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
+		KTimerSet(&timer, argument2);
+		events[waitObjectCount++] = &timer.event;
+	}
+
+	uintptr_t waitReturnValue;
+	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
+	waitReturnValue = scheduler.WaitEvents(events, waitObjectCount);
+	currentThread->terminatableState = THREAD_IN_SYSCALL;
+
+	if (waitReturnValue == argument1) {
+		waitReturnValue = ES_ERROR_TIMEOUT_REACHED;
+	}
+
+	if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
+		KTimerRemove(&timer);
+	}
+
+	SYSCALL_RETURN(waitReturnValue, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
+	CHECK_OBJECT(_window);
+
+	uint32_t imageWidth = (argument2 >> 16) & 0xFF;
+	uint32_t imageHeight = (argument2 >> 24) & 0xFF;
+
+	SYSCALL_BUFFER(argument1, imageWidth * imageHeight * 4, 1, false);
+
+	KMutexAcquire(&windowManager.mutex);
+	Window *window;
+
+	if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
+		EmbeddedWindow *embeddedWindow = (EmbeddedWindow *) _window.object;
+		window = embeddedWindow->container;
+
+		if (!window || !window->hoveringOverEmbed || embeddedWindow->owner != currentProcess) {
+			KMutexRelease(&windowManager.mutex);
+			SYSCALL_RETURN(ES_SUCCESS, false);
+		}
+	} else {
+		window = (Window *) _window.object;
+
+		if (window->hoveringOverEmbed) {
+			KMutexRelease(&windowManager.mutex);
+			SYSCALL_RETURN(ES_SUCCESS, false);
+		}
+	}
+
+	bool changedCursor = false;
+
+	if (!window->closed && argument1 != windowManager.cursorID && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
+		windowManager.cursorID = argument1;
+		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF);
+		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
+		windowManager.cursorXOR = argument3 >> 31;
+
+		if (windowManager.cursorSurface.Resize(imageWidth, imageHeight)) {
+			windowManager.cursorSwap.Resize(imageWidth, imageHeight);
+			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, 
+					ES_RECT_4(0, windowManager.cursorSurface.width, 0, windowManager.cursorSurface.height));
+		}
+
+		windowManager.changedCursorImage = true;
+		changedCursor = true;
+	}
+
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN(changedCursor, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_MOVE) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_window);
+
+	Window *window = (Window *) _window.object;
+
+	bool success = true;
+
+	EsRectangle rectangle;
+
+	if (argument1) {
+		SYSCALL_READ(&rectangle, argument1, sizeof(EsRectangle));
+	} else {
+		EsMemoryZero(&rectangle, sizeof(EsRectangle));
+	}
+
+	KMutexAcquire(&windowManager.mutex);
+
+	if (argument3 & ES_WINDOW_MOVE_HIDDEN) {
+		windowManager.HideWindow(window);
+	} else {
+		window->Move(rectangle, argument3);
+	}
+
+	if (argument3 & ES_WINDOW_MOVE_UPDATE_SCREEN) {
+		GraphicsUpdateScreen();
+	}
+
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN(success ? ES_SUCCESS : ES_ERROR_INVALID_DIMENSIONS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_GET) {
+	EsPoint point = ES_POINT(windowManager.cursorX, windowManager.cursorY);
+	SYSCALL_WRITE(argument0, &point, sizeof(EsPoint));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_SET) {
+	KMutexAcquire(&windowManager.mutex);
+	windowManager.cursorX = argument0;
+	windowManager.cursorY = argument1;
+	windowManager.cursorXPrecise = argument0 * 10;
+	windowManager.cursorYPrecise = argument1 * 10;
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL) {
+	EsGameControllerState gameControllers[ES_GAME_CONTROLLER_MAX_COUNT];
+	size_t gameControllerCount;
+
+	KMutexAcquire(&windowManager.gameControllersMutex);
+	gameControllerCount = windowManager.gameControllerCount;
+	EsMemoryCopy(gameControllers, windowManager.gameControllers, sizeof(EsGameControllerState) * gameControllerCount);
+	KMutexRelease(&windowManager.gameControllersMutex);
+
+	SYSCALL_WRITE(argument0, gameControllers, sizeof(EsGameControllerState) * gameControllerCount);
+	SYSCALL_RETURN(gameControllerCount, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
+	CHECK_OBJECT(_window);
+
+	EsRectangle rectangle;
+	EsMemoryZero(&rectangle, sizeof(EsRectangle));
+	KMutexAcquire(&windowManager.mutex);
+
+	if (_window.type == KERNEL_OBJECT_WINDOW) {
+		Window *window = (Window *) _window.object;
+		rectangle.l = window->position.x;
+		rectangle.t = window->position.y;
+		rectangle.r = window->position.x + window->width;
+		rectangle.b = window->position.y + window->height;
+	} else if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
+		EmbeddedWindow *embed = (EmbeddedWindow *) _window.object;
+		Window *window = embed->container;
+
+		if (window) {
+			rectangle.l = window->position.x + WINDOW_INSET;
+			rectangle.t = window->position.y + WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT;
+			rectangle.r = window->position.x + window->width - WINDOW_INSET;
+			rectangle.b = window->position.y + window->height - WINDOW_INSET;
+		} else {
+			rectangle.l = 0;
+			rectangle.t = 0;
+			rectangle.r = 0;
+			rectangle.b = 0;
+		}
+	}
+
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_WRITE(argument1, &rectangle, sizeof(EsRectangle));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_PAUSE) {
+	KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(_process);
+	Process *process = (Process *) _process.object;
+
+	scheduler.PauseProcess(process, (bool) argument1);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CRASH) {
+	KernelLog(LOG_ERROR, "Syscall", "process crash request", "Process crash request, reason %d\n", argument0);
+	SYSCALL_RETURN(argument0, true);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_POST) {
+	KObject object(currentProcess, argument2, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(object);
+	void *process = object.object;
+
+	_EsMessageWithObject message;
+	SYSCALL_READ(&message.message, argument0, sizeof(EsMessage));
+	message.object = (void *) argument1;
+
+	if (((Process *) process)->messageQueue.SendMessage(&message)) {
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	} else {
+		SYSCALL_RETURN(ES_ERROR_MESSAGE_QUEUE_FULL, false);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_GET_ID) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(object);
+
+	if (object.type == KERNEL_OBJECT_THREAD) {
+		SYSCALL_RETURN(((Thread *) object.object)->id, false);
+	} else if (object.type == KERNEL_OBJECT_PROCESS) {
+		Process *process = (Process *) object.object;
+
+#ifdef ENABLE_POSIX_SUBSYSTEM
+		if (currentThread->posixData && currentThread->posixData->forkProcess) {
+			SYSCALL_RETURN(currentThread->posixData->forkProcess->id, false);
+		}
+#endif
+
+		SYSCALL_RETURN(process->id, false);
+	}
+
+	KernelPanic("ES_SYSCALL_THREAD_GET_ID - Unhandled case.\n");
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_STACK_SIZE) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_THREAD);
+	CHECK_OBJECT(object);
+	Thread *thread = (Thread *) object.object;
+
+	SYSCALL_WRITE(argument1, &thread->userStackCommit, sizeof(thread->userStackCommit));
+	SYSCALL_WRITE(argument2, &thread->userStackReserve, sizeof(thread->userStackReserve));
+
+	bool success = true;
+
+	if (argument3) {
+		MMRegion *region = MMFindAndPinRegion(currentVMM, thread->userStackBase, thread->userStackReserve);
+		KMutexAcquire(&currentVMM->reserveMutex);
+
+		if (thread->userStackCommit <= argument3 && argument3 <= thread->userStackReserve && !(argument3 & (K_PAGE_BITS - 1)) && region) {
+#ifdef K_STACK_GROWS_DOWN
+			success = MMCommitRange(currentVMM, region, (thread->userStackReserve - argument3) / K_PAGE_SIZE, argument3 / K_PAGE_SIZE); 
+#else
+			success = MMCommitRange(currentVMM, region, 0, argument3 / K_PAGE_SIZE); 
+#endif
+		} else {
+			success = false;
+		}
+
+		if (success) thread->userStackCommit = argument3;
+		KMutexRelease(&currentVMM->reserveMutex);
+		if (region) MMUnpinRegion(currentVMM, region);
+	}
+
+	SYSCALL_RETURN(success ? ES_SUCCESS : ES_ERROR_INSUFFICIENT_RESOURCES, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_DIRECTORY_ENUMERATE) {
+	KObject _node(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(_node);
+	KNode *node = (KNode *) _node.object;
+	
+	if (node->directoryEntry->type != ES_NODE_DIRECTORY) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+
+	if (argument2 > SYSCALL_BUFFER_LIMIT / sizeof(EsDirectoryChild)) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_BUFFER(argument1, argument2 * sizeof(EsDirectoryChild), 1, true /* write */);
+
+	SYSCALL_RETURN(FSDirectoryEnumerateChildren(node, (K_USER_BUFFER EsDirectoryChild *) argument1, argument2), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_CONTROL) {
+	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
+	CHECK_OBJECT(object);
+	KNode *file = (KNode *) object.object;
+
+	if (file->directoryEntry->type != ES_NODE_FILE) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	}
+
+	SYSCALL_RETURN(FSFileControl(file, argument1), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_BATCH) {
+	EsBatchCall *calls;
+	if (argument1 > SYSCALL_BUFFER_LIMIT / sizeof(EsBatchCall)) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_READ_HEAP(calls, argument0, sizeof(EsBatchCall) * argument1);
+
+	size_t count = argument1;
+
+	for (uintptr_t i = 0; i < count; i++) {
+		EsBatchCall call = calls[i];
+		bool fatal = false;
+		uintptr_t _returnValue = calls[i].returnValue = DoSyscall(call.index, call.argument0, call.argument1, call.argument2, call.argument3, 
+				DO_SYSCALL_BATCHED, &fatal, userStackPointer);
+		if (fatal) SYSCALL_RETURN(_returnValue, true);
+		if (calls->stopBatchIfError && ES_CHECK_ERROR(_returnValue)) break;
+		if (currentThread->terminating) break;
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_READ) {
+	KObject _buffer(currentProcess, argument0, KERNEL_OBJECT_CONSTANT_BUFFER);
+	CHECK_OBJECT(_buffer);
+	ConstantBuffer *buffer = (ConstantBuffer *) _buffer.object;
+	if (!argument1) SYSCALL_RETURN(buffer->bytes, false);
+	SYSCALL_WRITE(argument1, buffer + 1, buffer->bytes);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
+	KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
+	CHECK_OBJECT(_process);
+	Process *process = (Process *) _process.object;
+
+	EsProcessState state;
+	EsMemoryZero(&state, sizeof(EsProcessState));
+	state.crashReason = process->crashReason;
+	state.id = process->id;
+	state.executableState = process->executableState;
+	state.flags = (process->allThreadsTerminated ? ES_PROCESS_STATE_ALL_THREADS_TERMINATED : 0)
+		| (process->terminating ? ES_PROCESS_STATE_TERMINATING : 0)
+		| (process->crashed ? ES_PROCESS_STATE_CRASHED : 0)
+		| (process->messageQueue.pinged ? ES_PROCESS_STATE_PINGED : 0);
+
+	SYSCALL_WRITE(argument1, &state, sizeof(EsProcessState));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SHUTDOWN) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SHUTDOWN);
+	KThreadCreate("Shutdown", [] (uintptr_t action) { KernelShutdown(action); }, argument0);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_ID) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
+	CHECK_OBJECT(_window);
+
+	if (_window.type == KERNEL_OBJECT_WINDOW) {
+		SYSCALL_RETURN(((Window *) _window.object)->id, false);
+	} else {
+		SYSCALL_RETURN(((EmbeddedWindow *) _window.object)->id, false);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_YIELD_SCHEDULER) {
+	ProcessorFakeTimerInterrupt();
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
+	SYSCALL_BUFFER(argument0, sizeof(uint64_t) * ES_SYSTEM_CONSTANT_COUNT, 1, true /* write */);
+	uint64_t *systemConstants = (uint64_t *) argument0;
+	systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] = timeStampTicksPerMs / 1000;
+	systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET] = WINDOW_INSET;
+	systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT] = CONTAINER_TAB_BAND_HEIGHT;
+	systemConstants[ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS] = graphics.target ? graphics.target->reducedColors : false;
+	systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] = UI_SCALE;
+	systemConstants[ES_SYSTEM_CONSTANT_BORDER_THICKNESS] = BORDER_THICKNESS;
+	systemConstants[ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT] = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
+	SYSCALL_PERMISSION(ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT);
+
+	int type = argument0;
+	void *buffer = nullptr;
+	size_t bufferSize = 0;
+	EsDefer(EsHeapFree(buffer, 0, K_FIXED));
+
+	switch (type) {
+		case ES_SYSTEM_SNAPSHOT_PROCESSES: {
+			KSpinlockAcquire(&scheduler.lock);
+			size_t count = scheduler.allProcesses.count + 8;
+			bufferSize = sizeof(EsSnapshotProcesses) + sizeof(EsSnapshotProcessesItem) * count;
+			KSpinlockRelease(&scheduler.lock);
+			
+			buffer = EsHeapAllocate(bufferSize, true, K_FIXED);
+			EsMemoryZero(buffer, bufferSize);
+
+			KSpinlockAcquire(&scheduler.lock);
+
+			if (scheduler.allProcesses.count < count) {
+				count = scheduler.allProcesses.count;
+			}
+
+			EsSnapshotProcesses *snapshot = (EsSnapshotProcesses *) buffer;
+
+			LinkedItem<Process> *item = scheduler.allProcesses.firstItem;
+			uintptr_t index = 0;
+
+			while (item && index < count) {
+				Process *process = item->thisItem;
+				if (process->terminating) goto next;
+
+				{
+					snapshot->processes[index].pid = process->id;
+					snapshot->processes[index].memoryUsage = process->vmm->commit * K_PAGE_SIZE; 
+					snapshot->processes[index].cpuTimeSlices = process->cpuTimeSlices;
+					snapshot->processes[index].idleTimeSlices = process->idleTimeSlices;
+					snapshot->processes[index].handleCount = process->handleTable.handleCount;
+					snapshot->processes[index].isKernel = process->type == PROCESS_KERNEL;
+
+					snapshot->processes[index].nameBytes = EsCStringLength(process->cExecutableName);
+					EsMemoryCopy(snapshot->processes[index].name, process->cExecutableName, snapshot->processes[index].nameBytes);
+
+					index++;
+				}
+
+				next:;
+				item = item->nextItem;
+			}
+
+			snapshot->count = index;
+			bufferSize = sizeof(EsSnapshotProcesses) + sizeof(EsSnapshotProcessesItem) * index;
+			KSpinlockRelease(&scheduler.lock);
+		} break;
+
+		default: {
+			SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+		} break;
+	}
+
+	EsHandle constantBuffer = MakeConstantBuffer(buffer, bufferSize, currentProcess);
+	SYSCALL_WRITE(argument1, &bufferSize, sizeof(size_t));
+	SYSCALL_RETURN(constantBuffer, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_OPEN) {
+	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_OPEN);
+
+	Process *process = scheduler.OpenProcess(argument0);
+
+	if (process) {
+		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS), false);
+	} else {
+		SYSCALL_RETURN(ES_INVALID_HANDLE, false);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_SET_TLS) {
+	currentThread->tlsAddress = argument0; // Set this first, otherwise we could get pre-empted and restore without TLS set.
+	ProcessorSetThreadStorage(argument0);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_TLS) {
+	SYSCALL_RETURN(currentThread->tlsAddress, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_BOUNDS_GET) {
+	EsRectangle rectangle;
+	EsMemoryZero(&rectangle, sizeof(EsRectangle));
+
+	rectangle.l = 0;
+	rectangle.t = 0;
+	rectangle.r = graphics.width;
+	rectangle.b = graphics.height;
+
+	SYSCALL_WRITE(argument1, &rectangle, sizeof(EsRectangle));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_WORK_AREA_SET) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SCREEN_MODIFY);
+	EsRectangle rectangle;
+	SYSCALL_READ(&rectangle, argument1, sizeof(EsRectangle));
+	windowManager.workArea = rectangle;
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_WORK_AREA_GET) {
+	EsRectangle rectangle = windowManager.workArea;
+	SYSCALL_WRITE(argument1, &rectangle, sizeof(EsRectangle));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
+	char *buffer;
+	if (argument1 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	SYSCALL_READ_HEAP(buffer, argument0, argument1);
+
+	KObject _window(currentProcess, argument2, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE);
+	CHECK_OBJECT(_window);
+
+	EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
+
+	if (!scheduler.shutdown) {
+		_EsMessageWithObject m = {};
+		m.message.type = ES_MSG_DESKTOP;
+		m.message.desktop.buffer = MakeConstantBufferForDesktop(buffer, argument1);
+		m.message.desktop.bytes = argument1;
+		m.message.desktop.windowID = window ? window->id : 0;
+		desktopProcess->messageQueue.SendMessage(&m);
+	}
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+#ifdef ENABLE_POSIX_SUBSYSTEM
+SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
+	SYSCALL_PERMISSION(ES_PERMISSION_POSIX_SUBSYSTEM);
+
+	_EsPOSIXSyscall syscall;
+	SYSCALL_READ(&syscall, argument0, sizeof(_EsPOSIXSyscall));
+
+	if (syscall.index == 2 /* open */ || syscall.index == 59 /* execve */) {
+		KObject node(currentProcess, syscall.arguments[4], KERNEL_OBJECT_NODE);
+		CHECK_OBJECT(node);
+		syscall.arguments[4] = (long) node.object;
+		if (~node.flags & _ES_NODE_DIRECTORY_WRITE) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
+		long result = POSIX::DoSyscall(syscall, userStackPointer);
+		SYSCALL_RETURN(result, false);
+	} else if (syscall.index == 109 /* setpgid */) {
+		KObject process(currentProcess, syscall.arguments[0], KERNEL_OBJECT_PROCESS);
+		CHECK_OBJECT(process);
+		syscall.arguments[0] = (long) process.object;
+		long result = POSIX::DoSyscall(syscall, userStackPointer);
+		SYSCALL_RETURN(result, false);
+	} else {
+		long result = POSIX::DoSyscall(syscall, userStackPointer);
+		SYSCALL_RETURN(result, false);
+	}
+}
+#else
+SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
+	SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+}
+#endif
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATUS) {
+	Process *process;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, 1);
+	SYSCALL_RETURN(process->exitStatus, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_CREATE) {
+	Pipe *pipe = (Pipe *) EsHeapAllocate(sizeof(Pipe), true, K_PAGED);
+	if (!pipe) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	pipe->writers = pipe->readers = 1;
+	KEventSet(&pipe->canWrite);
+	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(pipe, PIPE_READER | PIPE_WRITER, KERNEL_OBJECT_PIPE), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
+	Pipe *pipe;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
+	SYSCALL_BUFFER(argument1, argument2, 2, false);
+	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, false, true), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {
+	Pipe *pipe;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
+	SYSCALL_BUFFER(argument1, argument2, 2, true /* write */);
+	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, true, true), false);
+}
+
+KMutex systemConfigurationMutex;
+ConstantBuffer *systemConfiguration;
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_CONFIGURATION_WRITE) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SYSTEM_CONFIGURATION_WRITE);
+
+	// TODO Broadcast message?
+
+	if (argument1 > SYSCALL_BUFFER_LIMIT) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	}
+
+	ConstantBuffer *buffer = (ConstantBuffer *) EsHeapAllocate(sizeof(ConstantBuffer) + argument1, false, K_PAGED);
+	if (!buffer) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	EsMemoryZero(buffer, sizeof(ConstantBuffer));
+	buffer->handles = 1;
+	buffer->bytes = argument1;
+	buffer->isPaged = true;
+	EsDefer(CloseHandleToObject(buffer, KERNEL_OBJECT_CONSTANT_BUFFER));
+	SYSCALL_READ(buffer + 1, argument0, argument1);
+
+	KMutexAcquire(&systemConfigurationMutex);
+	if (systemConfiguration) CloseHandleToObject(systemConfiguration, KERNEL_OBJECT_CONSTANT_BUFFER);
+	OpenHandleToObject(buffer, KERNEL_OBJECT_CONSTANT_BUFFER);
+	systemConfiguration = buffer;
+	KMutexRelease(&systemConfigurationMutex);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_CONFIGURATION_READ) {
+	EsHandle handle = ES_INVALID_HANDLE;
+	size_t bytes = 0;
+
+	KMutexAcquire(&systemConfigurationMutex);
+
+	if (systemConfiguration && OpenHandleToObject(systemConfiguration, KERNEL_OBJECT_CONSTANT_BUFFER)) {
+		bytes = systemConfiguration->bytes;
+		handle = currentProcess->handleTable.OpenHandle(systemConfiguration, 0, KERNEL_OBJECT_CONSTANT_BUFFER);
+	}
+
+	KMutexRelease(&systemConfigurationMutex);
+
+	SYSCALL_WRITE(argument2, &bytes, sizeof(bytes));
+	SYSCALL_RETURN(handle, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_CREATE) {
+	EventSink *sink = (EventSink *) EsHeapAllocate(sizeof(EventSink), true, K_FIXED);
+	
+	if (!sink) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	sink->ignoreDuplicates = argument0;
+	sink->handles = 1;
+
+	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(sink, 0, KERNEL_OBJECT_EVENT_SINK), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_FORWARD) {
+	KEvent *event;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, 1);
+	EventSink *sink;
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EVENT_SINK, sink, 2);
+	EsGeneric data = argument2;
+
+	bool error = false, limitExceeded = false;
+
+	KMutexAcquire(&eventForwardMutex);
+
+	if (!event->sinkTable) {
+		event->sinkTable = (EventSinkTable *) EsHeapAllocate(sizeof(EventSinkTable) * ES_MAX_EVENT_FORWARD_COUNT, true, K_FIXED);
+
+		if (!event->sinkTable) {
+			error = true;
+		}
+	}
+
+	if (!error) {
+		limitExceeded = true;
+
+		for (uintptr_t i = 0; i < ES_MAX_EVENT_FORWARD_COUNT; i++) {
+			if (!event->sinkTable[i].sink) {
+				if (!OpenHandleToObject(sink, KERNEL_OBJECT_EVENT_SINK, 0, false)) {
+					error = true;
+					break;
+				}
+
+				KSpinlockAcquire(&scheduler.lock);
+				event->sinkTable[i].sink = sink;
+				event->sinkTable[i].data = data;
+				KSpinlockRelease(&scheduler.lock);
+
+				limitExceeded = false;
+				break;
+			}
+		}
+	}
+
+	KMutexRelease(&eventForwardMutex);
+
+	if (limitExceeded) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+	} else if (error) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	} else {
+	       	SYSCALL_RETURN(0, false);
+	}
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_POP) {
+	EventSink *sink;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, 1);
+
+	bool empty = false, overflow = false;
+	EsGeneric data = {};
+
+	KSpinlockAcquire(&sink->spinlock);
+
+	if (!sink->queueCount) {
+		if (sink->overflow) {
+			overflow = true;
+			sink->overflow = false;
+		} else {
+			empty = true;
+		}
+	} else {
+		data = sink->queue[sink->queuePosition];
+		sink->queuePosition++;
+		sink->queueCount--;
+
+		if (sink->queuePosition == ES_MAX_EVENT_SINK_BUFFER_SIZE) {
+			sink->queuePosition = 0;
+		}
+	}
+
+	if (!sink->queueCount && !sink->overflow) {
+		KEventReset(&sink->available); // KEvent::Reset doesn't take the scheduler lock, so this won't deadlock!
+	}
+
+	KSpinlockRelease(&sink->spinlock);
+
+	SYSCALL_WRITE(argument1, &data, sizeof(EsGeneric));
+	SYSCALL_RETURN(overflow ? ES_ERROR_EVENT_SINK_OVERFLOW : empty ? ES_ERROR_EVENT_NOT_SET : ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_PUSH) {
+	EventSink *sink;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, 1);
+	KSpinlockAcquire(&scheduler.lock);
+	EsError result = sink->Push(argument1);
+	KSpinlockRelease(&scheduler.lock);
+	SYSCALL_RETURN(result, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_DOMAIN_NAME_RESOLVE) {
+	SYSCALL_PERMISSION(ES_PERMISSION_NETWORKING);
+
+	if (argument1 > ES_DOMAIN_NAME_MAX_LENGTH) {
+		SYSCALL_RETURN(ES_ERROR_BAD_DOMAIN_NAME, false);
+	}
+
+	char domainName[ES_DOMAIN_NAME_MAX_LENGTH];
+	SYSCALL_READ(domainName, argument0, argument1);
+
+	EsAddress address;
+	EsMemoryZero(&address, sizeof(EsAddress));
+
+	KEvent completeEvent = {};
+
+	NetDomainNameResolveTask task = {};
+	task.event = &completeEvent;
+	task.name = domainName;
+	task.nameBytes = (size_t) argument1;
+	task.address = &address;
+	task.callback = NetDomainNameResolve;
+	NetTaskBegin(&task);
+
+	KEventWait(&completeEvent);
+
+	if (task.error == ES_SUCCESS) {
+		SYSCALL_WRITE(argument2, &address, sizeof(EsAddress));
+	}
+
+	SYSCALL_RETURN(task.error, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_ECHO_REQUEST) {
+	SYSCALL_PERMISSION(ES_PERMISSION_NETWORKING);
+
+	if (argument1 > ES_ECHO_REQUEST_MAX_LENGTH) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	}
+
+	uint8_t data[48];
+	EsMemoryZero(data, sizeof(data));
+	SYSCALL_READ(data, argument0, argument1);
+
+	EsAddress address;
+	SYSCALL_READ(&address, argument2, sizeof(EsAddress));
+
+	KEvent completeEvent = {};
+
+	NetEchoRequestTask task = {};
+	task.event = &completeEvent;
+	task.address = &address;
+	task.data = data;
+	task.callback = NetEchoRequest;
+	NetTaskBegin(&task);
+
+	KEventWait(&completeEvent);
+
+	if (task.error == ES_SUCCESS) {
+		SYSCALL_WRITE(argument0, data, argument1);
+	}
+
+	SYSCALL_RETURN(task.error, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_OPEN) {
+	SYSCALL_PERMISSION(ES_PERMISSION_NETWORKING);
+
+	EsConnection connection;
+	SYSCALL_READ(&connection, argument0, sizeof(EsConnection));
+
+	if (connection.sendBufferBytes < 1024 || connection.receiveBufferBytes < 1024) {
+		SYSCALL_RETURN(ES_ERROR_BUFFER_TOO_SMALL, false);
+	}
+
+	// TODO Upper limit on buffer sizes?
+
+	NetConnection *netConnection = NetConnectionOpen(&connection.address, connection.sendBufferBytes, connection.receiveBufferBytes, argument1);
+
+	if (!netConnection) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	connection.sendBuffer = (uint8_t *) MMMapShared(currentVMM, netConnection->bufferRegion, 0, connection.sendBufferBytes + connection.receiveBufferBytes);
+	connection.receiveBuffer = connection.sendBuffer + connection.sendBufferBytes;
+
+	if (!connection.sendBuffer) {
+		CloseHandleToObject(netConnection, KERNEL_OBJECT_CONNECTION);
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	connection.handle = currentProcess->handleTable.OpenHandle(netConnection, 0, KERNEL_OBJECT_CONNECTION); 
+	connection.error = ES_SUCCESS;
+
+	SYSCALL_WRITE(argument0, &connection, sizeof(EsConnection));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_POLL) {
+	SYSCALL_BUFFER(argument0, sizeof(EsConnection), 0, true /* write */);
+	EsConnection *connection = (EsConnection *) argument0;
+	NetConnection *netConnection;
+	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, 1);
+
+	connection->receiveWritePointer = netConnection->receiveWritePointer;
+	connection->sendReadPointer = netConnection->sendReadPointer;
+	connection->open = netConnection->task.step == TCP_STEP_ESTABLISHED;
+	connection->error = netConnection->task.completed ? netConnection->task.error : ES_SUCCESS;
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_NOTIFY) {
+	NetConnection *netConnection;
+	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, 1);
+	NetConnectionNotify(netConnection, argument1, argument2);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
+#ifdef DEBUG_BUILD
+	if (argument0 == 1) {
+		ArchResetCPU();
+	} else if (argument0 == 2) {
+		KernelPanic("Debug command 2.\n");
+	} else if (argument0 == 3) {
+		extern char kernelLog[];
+		extern uintptr_t kernelLogPosition;
+		size_t bytes = kernelLogPosition;
+		if (argument2 < bytes) bytes = argument2;
+		EsMemoryCopy((void *) argument1, kernelLog, bytes);
+		SYSCALL_RETURN(bytes, false);
+	} else if (argument0 == 4) {
+		SYSCALL_BUFFER(argument1, 1, 0, false);
+
+		if (_region0->data.normal.commitPageCount != (argument3 & 0x7FFFFFFFFFFFFFFF)) {
+			KernelPanic("Commit page count mismatch.\n");
+		}
+
+		if (_region0->data.normal.commit.Contains(argument2) != (argument3 >> 63)) {
+			KernelPanic("Commit contains mismatch at %x.\n", argument1);
+		}
+	} else if (argument0 == 6) {
+		// SYSCALL_RETURN(DriversDebugGetEnumeratedPCIDevices((EsPCIDevice *) argument1, argument2), false);
+	} else if (argument0 == 7) {
+		EsAssert(!scheduler.threadEventLog);
+		EsThreadEventLogEntry *buffer = (EsThreadEventLogEntry *) EsHeapAllocate(argument0 * sizeof(EsThreadEventLogEntry), false, K_FIXED);
+		scheduler.threadEventLogAllocated = argument0;
+		scheduler.threadEventLogPosition = 0;
+		__sync_synchronize();
+		scheduler.threadEventLog = buffer;
+	} else if (argument0 == 8) {
+		SYSCALL_RETURN(scheduler.threadEventLogPosition, false);
+	} else if (argument0 == 9) {
+		SYSCALL_WRITE(argument1, scheduler.threadEventLog, scheduler.threadEventLogPosition * sizeof(EsThreadEventLogEntry));
+	} else if (argument0 == 10) {
+		scheduler.threadEventLogAllocated = 0;
+		// HACK Wait for threads to stop writing...
+		KEvent event = {};
+		KEventWait(&event, 1000);
+		EsHeapFree(scheduler.threadEventLog, 0, K_FIXED);
+		scheduler.threadEventLog = nullptr;
+	} else if (argument0 == 12) {
+		EsMemoryStatistics statistics;
+		EsMemoryZero(&statistics, sizeof(statistics));
+		statistics.fixedHeapAllocationCount = K_FIXED->allocationsCount;
+		statistics.fixedHeapTotalSize = K_FIXED->size;
+		statistics.coreHeapAllocationCount = K_CORE->allocationsCount;
+		statistics.coreHeapTotalSize = K_CORE->size;
+		statistics.cachedNodes = fs.bootFileSystem->cachedNodes.count;
+		statistics.cachedDirectoryEntries = fs.bootFileSystem->cachedDirectoryEntries.count;
+		statistics.totalSurfaceBytes = graphics.totalSurfaceBytes;
+		statistics.commitPageable = pmm.commitPageable;
+		statistics.commitFixed = pmm.commitFixed;
+		statistics.commitLimit = pmm.commitLimit;
+		statistics.commitFixedLimit = pmm.commitFixedLimit;
+		statistics.commitRemaining = MM_REMAINING_COMMIT();
+		statistics.maximumObjectCachePages = MM_OBJECT_CACHE_PAGES_MAXIMUM();
+		statistics.approximateObjectCacheSize = pmm.approximateTotalObjectCacheBytes;
+		SYSCALL_WRITE(argument1, &statistics, sizeof(statistics));
+	}
+#endif
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SyscallFunction syscallFunctions[ES_SYSCALL_COUNT + 1] {
+#include <bin/syscall_array.h>
+};
+
+#pragma GCC diagnostic pop
+
+uintptr_t DoSyscall(EsSyscallType index,
+		uintptr_t argument0, uintptr_t argument1,
+		uintptr_t argument2, uintptr_t argument3,
+		uint64_t flags, bool *fatal, uintptr_t *userStackPointer) {
+	bool batched = flags & DO_SYSCALL_BATCHED;
+
+	// Interrupts need to be enabled during system calls,
+	// because many of them block on mutexes or events.
+	ProcessorEnableInterrupts();
+
+	Thread *currentThread = GetCurrentThread();
+	Process *currentProcess = currentThread->process;
+	MMSpace *currentVMM = currentProcess->vmm;
+
+	if (!batched) {
+		if (currentThread->terminating) {
+			// The thread has been terminated.
+			// Yield the scheduler so it can be removed.
+			ProcessorFakeTimerInterrupt();
+		}
+
+		if (currentThread->terminatableState != THREAD_TERMINATABLE) {
+			KernelPanic("DoSyscall - Current thread %x was not terminatable (was %d).\n", 
+					currentThread, currentThread->terminatableState);
+		}
+
+		currentThread->terminatableState = THREAD_IN_SYSCALL;
+	}
+
+	EsError returnValue = ES_FATAL_ERROR_UNKNOWN_SYSCALL;
+	bool fatalError = true;
+
+	if (index < ES_SYSCALL_COUNT) {
+		SyscallFunction function = syscallFunctions[index];
+
+		if (batched && index == ES_SYSCALL_BATCH) {
+			// This could cause a stack overflow, so it's a fatal error.
+		} else if (function) {
+			returnValue = (EsError) function(argument0, argument1, argument2, argument3, 
+					currentThread, currentProcess, currentVMM, userStackPointer, &fatalError);
+		}
+	}
+
+	if (fatal) *fatal = false;
+
+	if (fatalError) {
+		if (fatal) {
+			*fatal = true;
+		} else {
+			EsCrashReason reason;
+			EsMemoryZero(&reason, sizeof(EsCrashReason));
+			reason.errorCode = (EsFatalError) returnValue;
+			reason.duringSystemCall = index;
+			KernelLog(LOG_ERROR, "Syscall", "syscall failure", 
+					"Process crashed during system call [%x, %x, %x, %x, %x]\n", index, argument0, argument1, argument2, argument3);
+			scheduler.CrashProcess(currentProcess, &reason);
+		}
+	}
+
+	if (!batched) {
+		currentThread->terminatableState = THREAD_TERMINATABLE;
+
+		if (currentThread->terminating || currentThread->paused) {
+			// The thread has been terminated or paused.
+			// Yield the scheduler so it can be removed or sent to the paused thread queue.
+			ProcessorFakeTimerInterrupt();
+		}
+	}
+	
+	return returnValue;
+}
+
+bool KCopyToUser(K_USER_BUFFER void *destination, const void *source, size_t length) {
+	__sync_synchronize();
+	Thread *currentThread = GetCurrentThread();
+	MMRegion *region = MMFindAndPinRegion(currentThread->process->vmm, (uintptr_t) destination, length); 
+	if (!region) return false;
+	EsMemoryCopy(destination, source, length);
+	MMUnpinRegion(currentThread->process->vmm, region);
+	return true;
+}
+
+bool KCopyFromUser(void *destination, K_USER_BUFFER const void *source, size_t length) {
+	__sync_synchronize();
+	Thread *currentThread = GetCurrentThread();
+	MMRegion *region = MMFindAndPinRegion(currentThread->process->vmm, (uintptr_t) source, length); 
+	if (!region) return false;
+	EsMemoryCopy(destination, source, length);
+	MMUnpinRegion(currentThread->process->vmm, region);
+	return true;
+}
+
+#endif

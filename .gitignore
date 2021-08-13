@@ -1,0 +1,9 @@
+*.swp
+*.swo
+tags
+.project.gf
+
+bin/
+cross/
+old/
+root/

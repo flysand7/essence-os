@@ -1,0 +1,1491 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#define WARNING_FLAGS \
+	" -Wall -Wextra -Wno-missing-field-initializers -Wno-pmf-conversions -Wno-frame-address -Wno-unused-function -Wno-format-truncation -Wno-invalid-offsetof "
+#define WARNING_FLAGS_C \
+	" -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation -Wno-unused-parameter "
+
+#include <stdint.h>
+#include <stdarg.h>
+
+#define CROSS_COMPILER_INDEX (11)
+
+#include <stdio.h>
+#include <stdbool.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
+#include <dirent.h>
+#include <ctype.h>
+#include <assert.h>
+#include <setjmp.h>
+#include <pthread.h>
+#include <sys/wait.h>
+#include <spawn.h>
+
+#define ColorHighlight "\033[0;36m"
+#define ColorNormal "\033[0m"
+
+bool acceptedLicense;
+bool foundValidCrossCompiler;
+bool coloredOutput;
+bool encounteredErrors;
+bool interactiveMode;
+FILE *systemLog;
+char compilerPath[4096];
+int argc;
+char **argv;
+
+#include "build_common.h"
+
+BuildFont fonts[] = {
+	{ "Inter", "Sans", "Latn,Grek,Cyrl", (FontFile []) {
+		{ "1", "Inter Thin.otf" },
+		{ "1i", "Inter Thin Italic.otf" },
+		{ "2", "Inter Extra Light.otf" },
+		{ "2i", "Inter Extra Light Italic.otf" },
+		{ "3", "Inter Light.otf" },
+		{ "3i", "Inter Light Italic.otf" },
+		{ "4", "Inter Regular.otf" },
+		{ "4i", "Inter Regular Italic.otf" },
+		{ "5", "Inter Medium.otf" },
+		{ "5i", "Inter Medium Italic.otf" },
+		{ "6", "Inter Semi Bold.otf" },
+		{ "6i", "Inter Semi Bold Italic.otf" },
+		{ "7", "Inter Bold.otf" },
+		{ "7i", "Inter Bold Italic.otf" },
+		{ "8", "Inter Extra Bold.otf" },
+		{ "8i", "Inter Extra Bold Italic.otf" },
+		{ "9", "Inter Black.otf" },
+		{ "9i", "Inter Black Italic.otf" },
+		{},
+	} },
+
+	{ "Hack", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
+		{ "4", "Hack Regular.ttf" },
+		{ "4i", "Hack Regular Italic.ttf" },
+		{ "7", "Hack Bold.ttf" },
+		{ "7i", "Hack Bold Italic.ttf" },
+		{},
+	} },
+
+	{},
+};
+
+bool GetYes() {
+	char *line = NULL;
+	size_t pos;
+	getline(&line, &pos, stdin);
+	line[strlen(line) - 1] = 0;
+	bool result = 0 == strcmp(line, "yes") || 0 == strcmp(line, "y");
+	free(line);
+	return result;
+}
+
+int CallSystem(const char *buffer) {
+	struct timespec startTime, endTime;
+	clock_gettime(CLOCK_REALTIME, &startTime);
+	if (systemLog) fprintf(systemLog, "%s\n", buffer);
+	int result = system(buffer);
+	clock_gettime(CLOCK_REALTIME, &endTime);
+	if (systemLog) fprintf(systemLog, "%fs\n", 
+			(double) (endTime.tv_sec - startTime.tv_sec)
+			+ (double) (endTime.tv_nsec - startTime.tv_nsec) / 1000000000);
+	if (result) encounteredErrors = true;
+	return result;
+}
+
+int CallSystemF(const char *format, ...) {
+	va_list arguments;
+	va_start(arguments, format);
+	char tempBuffer[65536];
+	vsnprintf(tempBuffer, sizeof(tempBuffer), format, arguments);
+	int result = CallSystem(tempBuffer);
+	va_end(arguments);
+	return result;
+}
+
+void BuildAPIDependencies() {
+	if (CheckDependencies("API Header")) {
+		CallSystem("bin/build_core headers");
+		ParseDependencies("bin/api_header.d", "API Header", false);
+	}
+
+	CallSystem("cp `x86_64-essence-gcc -print-file-name=\"crtbegin.o\"` bin/crtbegin.o");
+	CallSystem("cp `x86_64-essence-gcc -print-file-name=\"crtend.o\"` bin/crtend.o");
+
+	CallSystem("ports/musl/build.sh > /dev/null");
+
+	CallSystem("ports/freetype/build.sh");
+	CallSystem("ports/harfbuzz/build.sh");
+
+	CallSystem("cp -p kernel/module.h root/Applications/POSIX/include");
+}
+
+void OutputStartOfBuildINI(FILE *f) {
+	LoadOptions();
+
+	FILE *f2 = popen("which nasm", "r");
+	char buffer[1024];
+	buffer[fread(buffer, 1, sizeof(buffer), f2) - 1] = 0;
+	pclose(f2);
+
+	fprintf(f, "[toolchain]\npath=%s\ntmpdir=%s\n"
+			"ar=%s/x86_64-essence-ar\n"
+			"cc=%s/x86_64-essence-gcc\n"
+			"cxx=%s/x86_64-essence-g++\n"
+			"ld=%s/x86_64-essence-ld\n"
+			"nm=%s/x86_64-essence-nm\n"
+			"strip=%s/x86_64-essence-strip\n"
+			"nasm=%s\n"
+			"convert_svg=bin/render_svg\n"
+			"linker_scripts=util/\n"
+			"crt_objects=bin/\n"
+			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\nskip_header_generation=1\ncommon_compile_flags=",
+			compilerPath, getenv("TMPDIR") ?: "",
+			compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, 
+			buffer, coloredOutput, (int) sysconf(_SC_NPROCESSORS_CONF));
+
+	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+		Option *option = &options[i];
+
+		if (!option->id || memcmp(option->id, "Flag.", 5)) {
+			continue;
+		}
+
+		if (option->type == OPTION_TYPE_BOOL && option->state.b) {
+			fprintf(f, "-D%s ", option->id + 5);
+		} else if (option->type == OPTION_TYPE_STRING) {
+			fprintf(f, "-D%s=%s ", option->id + 5, option->state.s);
+		}
+	}
+
+	fprintf(f, "\n\n");
+
+	fprintf(f, "[options]\n");
+
+	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
+		if (options[i].type == OPTION_TYPE_BOOL) {
+			fprintf(f, "%s=%s\n", options[i].id, options[i].state.b ? "1" : "0");
+		} else if (options[i].type == OPTION_TYPE_STRING) {
+			fprintf(f, "%s=%s\n", options[i].id, options[i].state.s ?: "");
+		} else {
+			// TODO.
+		}
+	}
+	
+	fprintf(f, "\n");
+
+	{
+		size_t kernelConfigBytes;
+		char *kernelConfig = (char *) LoadFile("kernel/config.ini", &kernelConfigBytes);
+
+		EsINIState s = {};
+		s.buffer = kernelConfig;
+		s.bytes = kernelConfigBytes;
+
+		char *source = NULL, *name = NULL;
+		bool builtin = false;
+
+		while (EsINIParse(&s)) {
+			EsINIZeroTerminate(&s);
+
+			if (strcmp(s.sectionClass, "driver")) {
+				continue;
+			}
+
+			name = s.section;
+
+			if (0 == strcmp(s.key, "source")) source = s.value;
+			if (0 == strcmp(s.key, "builtin")) builtin = !!atoi(s.value);
+
+			if (!EsINIPeek(&s) || !s.keyBytes) {
+				if (IsDriverEnabled(name)) {
+					fprintf(f, "[@driver]\nname=%s\nsource=%s\nbuiltin=%d\n\n", name, source ?: "", builtin);
+				}
+
+				source = name = NULL;
+				builtin = false;
+			}
+		}
+
+		free(kernelConfig);
+	}
+}
+
+void BuildUtilities();
+
+#define COMPILE_ENABLE_OPTIMISATIONS (1 << 0)
+#define COMPILE_SKIP_COMPILE         (1 << 1)
+#define COMPILE_DO_BUILD             (1 << 2)
+#define COMPILE_FOR_EMULATOR         (1 << 3)
+
+void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
+	buildStartTimeStamp = time(NULL);
+	BuildUtilities();
+	BuildAPIDependencies();
+
+	LoadOptions();
+
+	FILE *f = fopen("bin/build.ini", "wb");
+
+	OutputStartOfBuildINI(f);
+	fprintf(f, "[general]\nfor_emulator=%d\noptimise=%d\nskip_compile=%d\n\n", 
+			!!(flags & COMPILE_FOR_EMULATOR), !!(flags & COMPILE_ENABLE_OPTIMISATIONS), !!(flags & COMPILE_SKIP_COMPILE));
+
+	uintptr_t fontIndex = 0;
+
+	while (fonts[fontIndex].files) {
+		BuildFont *font = fonts + fontIndex;
+		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\n", font->name, font->category, font->scripts);
+		uintptr_t fileIndex = 0;
+
+		while (font->files[fileIndex].path) {
+			FontFile *file = font->files + fileIndex;
+			fprintf(f, ".%s=%s\n", file->type, file->path);
+			fileIndex++;
+		}
+
+		fprintf(f, "\n");
+		fontIndex++;
+	}
+
+	if (~flags & COMPILE_SKIP_COMPILE) {
+		struct dirent *entry;
+		DIR *root = opendir("apps/");
+
+		while (root && (entry = readdir(root))) {
+			const char *manifestSuffix = ".ini";
+
+			if (strlen(entry->d_name) <= strlen(manifestSuffix) || strcmp(entry->d_name + strlen(entry->d_name) - strlen(manifestSuffix), manifestSuffix)) {
+				continue;
+			}
+
+			fprintf(f, "[@application]\nmanifest=apps/%s\n\n", entry->d_name);
+		}
+
+		closedir(root);
+
+		EsINIState s = { (char *) LoadFile("bin/extra_applications.ini", &s.bytes) };
+
+		while (s.buffer && EsINIParse(&s)) {
+			if (!s.keyBytes || s.valueBytes || (s.keyBytes >= 1 && s.key[0] == ';')) continue;
+			fprintf(f, "[@application]\nmanifest=%.*s\n\n", (int) s.keyBytes, s.key);
+		}
+	}
+
+	if (flags & COMPILE_DO_BUILD) {
+		fprintf(f, "[install]\nfile=bin/drive\npartition_size=%d\npartition_label=%s\n\n", partitionSize, volumeLabel ?: "Essence HD");
+	}
+
+	fclose(f);
+
+	fflush(stdout);
+	CallSystem("bin/build_core standard bin/build.ini");
+
+	CallSystem("x86_64-essence-gcc -o root/Applications/POSIX/bin/hello ports/gcc/hello.c");
+
+	forceRebuild = false;
+}
+
+void BuildUtilities() {
+	buildStartTimeStamp = time(NULL);
+
+#define BUILD_UTILITY(x, y, z) \
+	if (CheckDependencies("Utilities." x)) { \
+		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g -std=c2x " WARNING_FLAGS_C " " y)) { \
+			ParseDependencies("bin/" x ".d", "Utilities." x, false); \
+		} \
+	}
+
+	BUILD_UTILITY("render_svg", "-lm", "");
+	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
+	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
+	BUILD_UTILITY("reflect_gen", "", "designer/");
+
+	if (CheckDependencies("Utilities.DesignerHeader")) {
+		if (!CallSystem("bin/reflect_gen util/designer/designer.rf > bin/designer.h")) {
+			FILE *f = fopen("bin/designer_header.d", "wb");
+			fprintf(f, ": util/designer/designer.rf bin/reflect_gen\n");
+			fclose(f);
+			ParseDependencies("bin/designer_header.d", "Utilities.DesignerHeader", false);
+		}
+	}
+
+	//util/designer_luigi.c -lX11 -lm
+
+	if (CheckDependencies("Utilities.Designer1") || CheckDependencies("Utilities.Designer2")) {
+		if (!CallSystem("gcc -MMD -o bin/designer.o -c util/designer/designer.c -g -std=c2x -fsanitize=address " WARNING_FLAGS_C)
+					&& !CallSystem("gcc -MMD -o bin/designer_luigi.o -c util/designer/designer_luigi.c -g -std=c2x " WARNING_FLAGS_C)
+					&& !CallSystem("gcc -o bin/designer -g bin/designer.o bin/designer_luigi.o -lX11 -lm -fsanitize=address ")) {
+			ParseDependencies("bin/designer.d", "Utilities.Designer1", false);
+			ParseDependencies("bin/designer_luigi.d", "Utilities.Designer2", false);
+		}
+	}
+}
+
+void Build(bool enableOptimisations, bool compile) {
+	struct timespec startTime, endTime;
+	clock_gettime(CLOCK_REALTIME, &startTime);
+
+	encounteredErrors = false;
+	srand(time(NULL));
+	printf("Build started...\n");
+	CallSystem("mkdir -p root root/Applications root/Applications/POSIX root/Applications/POSIX/bin "
+			"root/Applications/POSIX/lib root/Applications/POSIX/include root/Essence/Modules");
+
+#if 0
+	if (_installationIdentifier) {
+		strcpy(_installationIdentifier, installationIdentifier);
+	}
+#endif
+
+#ifndef __APPLE__
+	CallSystem("ctags -R "
+			"--exclude=old/* "
+			"--exclude=root/* "
+			"--exclude=bin/* "
+			"--exclude=cross/* "
+			"--exclude=ports/acpica/* "
+			"--langdef=Eshg --langmap=Eshg:.header --regex-Eshg=\"/^struct[ \\t]*([a-zA-Z0-9_]+)/\\1/s,structure/\" "
+			"--regex-Eshg=\"/^define[ \\t]*([a-zA-Z0-9_]+)/\\1/d,definition/\" --regex-Eshg=\"/^enum[ \\t]*([a-zA-Z0-9_]+)/\\1/e,enumeration/\" "
+			"--regex-Eshg=\"/^function[ \\t]*([a-zA-Z0-9_]+)[ \\t\\*]*([a-zA-Z0-9_]+)/\\2/f,function/\" ."
+			" &" /* don't block */);
+#endif
+
+	Compile((enableOptimisations ? COMPILE_ENABLE_OPTIMISATIONS : 0) | (compile ? 0 : COMPILE_SKIP_COMPILE) | COMPILE_DO_BUILD | COMPILE_FOR_EMULATOR, 1024, NULL);
+
+	clock_gettime(CLOCK_REALTIME, &endTime);
+
+	printf(ColorHighlight "%s" ColorNormal " in %.2fs.\n", encounteredErrors ? "\033[0;33mBuild failed" : "Build complete",
+			(double) (endTime.tv_sec - startTime.tv_sec) + (double) (endTime.tv_nsec - startTime.tv_nsec) / 1000000000);
+}
+
+#define LOG_VERBOSE (0)
+#define LOG_NORMAL (1)
+#define LOG_NONE (2)
+#define EMULATOR_QEMU (0)
+#define EMULATOR_BOCHS (1)
+#define EMULATOR_VIRTUALBOX (2)
+#define DEBUG_LATER (0)
+#define DEBUG_START (1)
+#define DEBUG_NONE (2)
+
+void Run(int emulator, int memory, int cores, int log, int debug) {
+	LoadOptions();
+
+	switch (emulator) {
+		case EMULATOR_QEMU: {
+			// -serial file:out.txt
+			// -enable-kvm (doesn't work with GDB)
+
+			const char *driveFlags = IsOptionEnabled("Emulator.ATA")  ? "-drive file=bin/drive,format=raw,media=disk,index=0 " : 
+						 IsOptionEnabled("Emulator.AHCI") ? "-drive file=bin/drive,if=none,id=mydisk,format=raw,media=disk,index=0 "
+						    		                    "-device ich9-ahci,id=ahci "
+							       	                    "-device ide-drive,drive=mydisk,bus=ahci.0 "
+						                                  : "-drive file=bin/drive,if=none,id=mydisk,format=raw "
+                                                                                    "-device nvme,drive=mydisk,serial=1234 ";
+
+			const char *cdromImage = GetOptionString("Emulator.CDROMImage");
+			char cdromFlags[256];
+			if (cdromImage && cdromImage[0]) {
+				if (IsOptionEnabled("Emulator.ATA")) {
+					snprintf(cdromFlags, sizeof(cdromFlags), " -cdrom %s ", cdromImage);
+				} else {
+					snprintf(cdromFlags, sizeof(cdromFlags), "-drive file=%s,if=none,id=mycdrom,format=raw,media=cdrom,index=1 "
+							"-device ide-drive,drive=mycdrom,bus=ahci.1", cdromImage);
+				}
+			} else {
+				cdromFlags[0] = 0;
+			}
+
+			const char *usbImage = GetOptionString("Emulator.USBImage");
+			char usbFlags[256];
+			if (usbImage && usbImage[0]) {
+				snprintf(usbFlags, sizeof(usbFlags), " -drive if=none,id=stick,file=%s -device usb-storage,bus=xhci.0,drive=stick ", usbImage);
+			} else {
+				usbFlags[0] = 0;
+			}
+
+			const char *usbHostVendor = GetOptionString("Emulator.USBHostVendor");
+			const char *usbHostProduct = GetOptionString("Emulator.USBHostProduct");
+			char usbFlags2[256];
+			if (usbHostVendor && usbHostVendor[0] && usbHostProduct && usbHostProduct[0]) {
+				snprintf(usbFlags2, sizeof(usbFlags2), " -device usb-host,vendorid=0x%s,productid=0x%s,bus=xhci.0,id=myusb ", usbHostVendor, usbHostProduct);
+			} else {
+				usbFlags2[0] = 0;
+			}
+
+			bool withAudio = IsOptionEnabled("Emulator.Audio");
+			const char *audioFlags = withAudio ? "QEMU_AUDIO_DRV=wav QEMU_WAV_PATH=bin/audio.wav " : "";
+			const char *audioFlags2 = withAudio ? "-soundhw pcspk,hda" : "";
+			unlink("bin/audio.wav");
+
+			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
+				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
+
+			CallSystemF("%s %s qemu-system-x86_64 %s %s -m %d -s %s -smp cores=%d -cpu Haswell "
+					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
+					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
+					" %s %s %s %s ", 
+					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, memory, 
+					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
+					cores, audioFlags2, logFlags, usbFlags, usbFlags2);
+		} break;
+
+		case EMULATOR_BOCHS: {
+			CallSystem("bochs -f bochs.config -q");
+		} break;
+
+		case EMULATOR_VIRTUALBOX: {
+			// TODO Automatically setup the Essence VM if it doesn't exist. 
+
+			CallSystem("VBoxManage storageattach Essence --storagectl AHCI --port 0 --device 0 --type hdd --medium none");
+			CallSystem("VBoxManage closemedium disk bin/vbox.vdi --delete");
+
+			CallSystem("VBoxManage convertfromraw bin/drive bin/vbox.vdi --format VDI");
+			CallSystem("VBoxManage storageattach Essence --storagectl AHCI --port 0 --device 0 --type hdd --medium bin/vbox.vdi");
+
+			CallSystem("VBoxManage startvm --putenv VBOX_GUI_DBG_ENABLED=true Essence"); 
+		} break;
+	}
+}
+
+bool DownloadGCC() {
+	printf("\nDownloading and extracting sources...\n");
+
+	FILE *test = fopen("bin/binutils-" BINUTILS_VERSION ".tar.xz", "r");
+	if (test) fclose(test);
+	else {
+		printf("Downloading Binutils source...\n");
+		if (CallSystem("curl ftp://ftp.gnu.org/gnu/binutils/binutils-" BINUTILS_VERSION ".tar.xz > bin/binutils-" BINUTILS_VERSION ".tar.xz")) goto fail;
+	}
+	printf("Extracting Binutils source...\n");
+	if (CallSystem("tar -xJf bin/binutils-" BINUTILS_VERSION ".tar.xz")) goto fail;
+	if (CallSystem("mv binutils-" BINUTILS_VERSION " bin")) goto fail;
+
+	test = fopen("bin/gcc-" GCC_VERSION ".tar.xz", "r");
+	if (test) fclose(test);
+	else {
+		printf("Downloading GCC source...\n");
+		if (CallSystem("curl ftp://ftp.gnu.org/gnu/gcc/gcc-" GCC_VERSION "/gcc-" GCC_VERSION ".tar.xz > bin/gcc-" GCC_VERSION ".tar.xz")) goto fail;
+	}
+	printf("Extracting GCC source...\n");
+	if (CallSystem("tar -xJf bin/gcc-" GCC_VERSION ".tar.xz")) goto fail;
+	if (CallSystem("mv gcc-" GCC_VERSION " bin")) goto fail;
+
+	return true;
+	fail: return false;
+}
+
+bool PatchGCC() {
+	// See ports/gcc/notes.txt for how these patches are made.
+	// Keep in sync with ports/gcc/port.sh.
+
+	if (CallSystem("cp ports/gcc/changes/binutils_bfd_config.bfd bin/binutils-" BINUTILS_VERSION "/bfd/config.bfd")) return false; 
+	if (CallSystem("cp ports/gcc/changes/binutils_config.sub bin/binutils-" BINUTILS_VERSION "/config.sub")) return false; 
+	if (CallSystem("cp ports/gcc/changes/binutils_gas_configure.tgt bin/binutils-" BINUTILS_VERSION "/gas/configure.tgt")) return false; 
+	if (CallSystem("cp ports/gcc/changes/binutils_ld_configure.tgt bin/binutils-" BINUTILS_VERSION "/ld/configure.tgt")) return false; 
+
+	if (CallSystem("cp ports/gcc/changes/gcc_config.sub bin/gcc-" GCC_VERSION "/config.sub")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_fixincludes_mkfixinc.sh bin/gcc-" GCC_VERSION "/fixincludes/mkfixinc.sh")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_essence.h bin/gcc-" GCC_VERSION "/gcc/config/essence.h")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_i386_t-x86_64-essence bin/gcc-" GCC_VERSION "/gcc/config/i386/t-x86_64-essence")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config.gcc bin/gcc-" GCC_VERSION "/gcc/config.gcc")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_libgcc_config.host bin/gcc-" GCC_VERSION "/libgcc/config.host")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_libstdc++-v3_configure bin/gcc-" GCC_VERSION "/libstdc++-v3/configure")) return false; 
+
+	return true;
+}
+
+void BuildCrossCompiler() {
+	if (!CallSystem("whoami | grep root")) {
+		printf("Error: Build should not be run as root.\n");
+		return;
+	}
+
+	{
+		printf("\n");
+		printf("A cross compiler for Essence needs to be built.\n");
+		printf("- You need to be connected to the internet. ~100MB will be downloaded.\n");
+		printf("- You need ~3GB of drive space available.\n");
+		printf("- You need ~8GB of RAM available.\n");
+		printf("- This should take ~20 minutes on a modern computer.\n");
+		printf("- This does *not* require root permissions.\n");
+		printf("- You must fully update your system before building.\n\n");
+
+		bool missingPackages = false;
+		if (CallSystem("g++ --version > /dev/null 2>&1")) { printf("Error: Missing GCC/G++.\n"); missingPackages = true; }
+		if (CallSystem("make --version > /dev/null 2>&1")) { printf("Error: Missing GNU Make.\n"); missingPackages = true; }
+		if (CallSystem("bison --version > /dev/null 2>&1")) { printf("Error: Missing GNU Bison.\n"); missingPackages = true; }
+		if (CallSystem("flex --version > /dev/null 2>&1")) { printf("Error: Missing Flex.\n"); missingPackages = true; }
+		if (CallSystem("curl --version > /dev/null 2>&1")) { printf("Error: Missing curl.\n"); missingPackages = true; }
+		if (CallSystem("nasm --version > /dev/null 2>&1")) { printf("Error: Missing nasm.\n"); missingPackages = true; }
+		if (CallSystem("ctags --version > /dev/null 2>&1")) { printf("Error: Missing ctags.\n"); missingPackages = true; }
+		if (CallSystem("xz --version > /dev/null 2>&1")) { printf("Error: Missing xz.\n"); missingPackages = true; }
+		if (CallSystem("gzip --version > /dev/null 2>&1")) { printf("Error: Missing gzip.\n"); missingPackages = true; }
+		if (CallSystem("tar --version > /dev/null 2>&1")) { printf("Error: Missing tar.\n"); missingPackages = true; }
+		if (CallSystem("grep --version > /dev/null 2>&1")) { printf("Error: Missing grep.\n"); missingPackages = true; }
+		if (CallSystem("sed --version > /dev/null 2>&1")) { printf("Error: Missing sed.\n"); missingPackages = true; }
+		if (CallSystem("awk --version > /dev/null 2>&1")) { printf("Error: Missing awk.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lmpc 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lmpfr 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lgmp 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+		if (missingPackages) exit(0);
+
+		char installationFolder[4096];
+		char sysrootFolder[4096];
+		char path[65536];
+
+		int processorCount = sysconf(_SC_NPROCESSORS_CONF);
+		if (processorCount < 1) processorCount = 1;
+		if (processorCount > 16) processorCount = 16;
+
+		printf("Type 'yes' if you have updated your system.\n");
+		if (!GetYes()) { printf("The build has been canceled.\n"); exit(0); }
+
+		{
+			getcwd(installationFolder, 4096);
+			strcat(installationFolder, "/cross");
+			getcwd(sysrootFolder, 4096);
+			strcat(sysrootFolder, "/root");
+			strcpy(compilerPath, installationFolder);
+			strcat(compilerPath, "/bin");
+			printf("\nType 'yes' to install the compiler into '%s'.\n", installationFolder);
+			if (!GetYes()) { printf("The build has been canceled.\n"); exit(0); }
+		}
+
+		{
+			char *originalPath = getenv("PATH");
+			if (strlen(originalPath) > 32768) {
+				printf("PATH too long\n");
+				goto fail;
+			}
+			strcpy(path, compilerPath);
+			strcat(path, ":");
+			strcat(path, originalPath);
+			setenv("PATH", path, 1);
+		}
+
+		{
+			FILE *f = fopen("bin/running_makefiles", "r");
+
+			if (f) {
+				fclose(f);
+				printf("\nThe build system has detected a build was started, but was not completed.\n");
+				printf("Type 'yes' to attempt to resume this build.\n");
+
+				if (GetYes()) {
+					printf("Resuming build...\n");
+					StartSpinner();
+					goto runMakefiles;
+				}
+			}
+		}
+
+		CallSystemF("echo \"Started build of cross compiler index %d, with GCC " GCC_VERSION " and Binutils " BINUTILS_VERSION ". Using %d processors.\" > bin/build_cross.log", 
+				CROSS_COMPILER_INDEX, processorCount);
+
+		CallSystem("rm -rf cross bin/build-binutils bin/build-gcc bin/gcc-" GCC_VERSION " bin/binutils-" BINUTILS_VERSION);
+
+		{
+			CallSystem("echo Preparing C standard library headers... >> bin/build_cross.log");
+			CallSystem("mkdir -p root/Essence root/Applications/POSIX/include root/Applications/POSIX/lib root/Applications/POSIX/bin");
+			CallSystem("ports/musl/build.sh >> bin/build_cross.log 2>&1");
+		}
+
+		if (!DownloadGCC()) goto fail;
+		if (!PatchGCC()) goto fail;
+
+		printf("Starting build...\n");
+		StartSpinner();
+
+		{
+			CallSystem("echo Running configure... >> bin/build_cross.log");
+			if (CallSystem("mkdir bin/build-binutils")) goto fail;
+			if (CallSystem("mkdir bin/build-gcc")) goto fail;
+			if (chdir("bin/build-binutils")) goto fail;
+			if (CallSystemF("../binutils-" BINUTILS_VERSION "/configure --target=x86_64-essence --prefix=\"%s\" --with-sysroot=%s --disable-nls --disable-werror >> ../build_cross.log 2>&1", 
+						installationFolder, sysrootFolder)) goto fail;
+			if (chdir("../..")) goto fail;
+			if (chdir("bin/build-gcc")) goto fail;
+			// Add --without-headers for a x86_64-elf build.
+			if (CallSystemF("../gcc-" GCC_VERSION "/configure --target=x86_64-essence --prefix=\"%s\" --enable-languages=c,c++ --with-sysroot=%s --disable-nls >> ../build_cross.log 2>&1", 
+						installationFolder, sysrootFolder)) goto fail;
+			if (chdir("../..")) goto fail;
+		}
+
+		runMakefiles:;
+
+		{
+			CallSystem("touch bin/running_makefiles");
+
+			CallSystem("echo Building Binutils... >> bin/build_cross.log");
+			if (chdir("bin/build-binutils")) goto fail;
+			if (CallSystemF("make -j%d >> ../build_cross.log 2>&1", processorCount)) goto fail;
+			if (CallSystem("make install >> ../build_cross.log 2>&1")) goto fail;
+			if (chdir("../..")) goto fail;
+
+			CallSystem("echo Building GCC... >> bin/build_cross.log");
+			if (chdir("bin/build-gcc")) goto fail;
+			if (CallSystemF("make all-gcc -j%d >> ../build_cross.log 2>&1", processorCount)) goto fail;
+			if (CallSystem("make all-target-libgcc >> ../build_cross.log 2>&1")) goto fail;
+			if (CallSystem("make install-gcc >> ../build_cross.log 2>&1")) goto fail;
+			if (CallSystem("make install-target-libgcc >> ../build_cross.log 2>&1")) goto fail;
+			if (chdir("../..")) goto fail;
+		}
+
+		{
+			CallSystem("echo Removing debug symbols... >> bin/build_cross.log");
+			CallSystemF("strip %s/bin/* >> bin/build_cross.log 2>&1", installationFolder);
+			CallSystemF("strip %s/libexec/gcc/x86_64-essence/" GCC_VERSION "/* >> bin/build_cross.log 2>&1", installationFolder);
+		}
+
+		{
+			CallSystem("echo Modifying headers... >> bin/build_cross.log");
+			sprintf(path, "%s/lib/gcc/x86_64-essence/" GCC_VERSION "/include/mm_malloc.h", installationFolder);
+			FILE *file = fopen(path, "w");
+			if (!file) {
+				printf("Couldn't modify header files\n");
+				goto fail;
+			} else {
+				fprintf(file, "/*Removed*/\n");
+				fclose(file);
+			}
+		}
+
+		StopSpinner();
+
+		{
+			BuildUtilities();
+			BuildAPIDependencies();
+			FILE *f = fopen("bin/build.ini", "wb");
+			OutputStartOfBuildINI(f);
+			fclose(f);
+			if (CallSystem("bin/build_core standard bin/build.ini")) goto fail;
+		}
+
+		StartSpinner();
+
+		{
+			if (chdir("bin/build-gcc")) goto fail;
+			if (CallSystemF("make -j%d all-target-libstdc++-v3 >> ../build_cross.log 2>&1", processorCount)) goto fail;
+			if (CallSystem("make install-target-libstdc++-v3 >> ../build_cross.log 2>&1")) goto fail;
+			if (chdir("../..")) goto fail;
+		}
+
+		{
+			CallSystem("echo Cleaning up... >> bin/build_cross.log");
+			// printf("\nType 'yes' to remove intermediate build files (recommended).\n");
+			// if (GetYes()) {
+				CallSystem("rm -rf bin/binutils-" BINUTILS_VERSION "/");
+				CallSystem("rm -rf bin/gcc-" GCC_VERSION "/");
+				CallSystem("rm -rf bin/build-binutils");
+				CallSystem("rm -rf bin/build-gcc");
+			// }
+			CallSystem("rm bin/running_makefiles");
+		}
+
+		StopSpinner();
+
+		printf(ColorHighlight "\nThe cross compiler has built successfully.\n" ColorNormal);
+		foundValidCrossCompiler = true;
+	}
+
+	return;
+	fail:;
+	StopSpinner();
+	printf("\nThe build has failed. A log is available in " ColorHighlight "bin/build_cross.log" ColorNormal ".\n");
+	exit(0);
+}
+
+void SaveConfig() {
+	FILE *f = fopen("bin/build_config.ini", "wb");
+	fprintf(f, "accepted_license=%d\ncompiler_path=%s\n"
+			"cross_compiler_index=%d\n",
+			acceptedLicense, compilerPath, 
+			foundValidCrossCompiler ? CROSS_COMPILER_INDEX : 0);
+	fclose(f);
+}
+
+const char *folders[] = {
+	"apps",
+	"desktop",
+	"kernel",
+	"shared",
+	"boot",
+	"drivers",
+};
+
+void Find(char *l2, char *in, bool wordOnly) {
+	for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
+		char buffer[256];
+		sprintf(buffer, "grep --color -nr '%s' -e '%s%s%s'", in ?: folders[i], wordOnly ? "\\b" : "", l2, wordOnly ? "\\b" : "");
+		CallSystem(buffer);
+		if (in) break;
+	}
+}
+
+void Replace(char *l2, char *l3, char *in) {
+	for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
+		char buffer[256];
+		sprintf(buffer, "find %s -type f -exec sed -i 's/\\b%s\\b/%s/g' {} \\;", in ?: folders[i], l2, l3);
+		CallSystem(buffer);
+		if (in) break;
+	}
+}
+
+typedef struct ReplacedFieldNameError {
+	char *file;
+	int line, position;
+} ReplacedFieldNameError;
+
+void FixReplacedFieldName(const char *oldName, const char *newName) {
+	CallSystem("./start.sh c 2> bin/errors.tmp");
+	char *errors = (char *) LoadFile("bin/errors.tmp", NULL); 
+	char *position = errors;
+
+	char needle[256];
+	snprintf(needle, sizeof(needle), "has no member named '%s'", oldName);
+
+	ReplacedFieldNameError *parsedErrors = NULL;
+
+	while (position) {
+		char *s = strstr(position, needle);
+
+		if (!s) {
+			break;
+		}
+
+		while (s != position) {
+			if (*s == '\n') {
+				break;
+			}
+
+			s--;
+		}
+
+		s++;
+
+		char *fileStart = s;
+		char *fileEnd = strchr(fileStart, ':');
+		char *lineStart = fileEnd + 1;
+		char *lineEnd = strchr(lineStart, ':');
+		char *positionStart = lineEnd + 1;
+		char *positionEnd = strchr(positionStart, ':');
+
+		position = strchr(s, '\n');
+
+		*fileEnd = 0;
+		*lineEnd = 0;
+		*positionEnd = 0;
+
+		ReplacedFieldNameError error = { fileStart, atoi(lineStart), atoi(positionStart) };
+		arrput(parsedErrors, error);
+		printf("Parsed error: file %s, line %d, position %d.\n", error.file, error.line, error.position);
+	}
+
+	while (arrlenu(parsedErrors)) {
+		char *path = arrlast(parsedErrors).file;
+		size_t fileLength;
+		char *file = (char *) LoadFile(path, &fileLength);
+
+		if (!file) {
+			printf("Error: Could not access '%s'.\n", path);
+			(void) arrpop(parsedErrors);
+			continue;
+		}
+
+		printf("Replacing errors in file %s...\n", path);
+
+		for (uintptr_t i = 0; i < arrlenu(parsedErrors); i++) {
+			if (strcmp(parsedErrors[i].file, path)) {
+				continue;
+			}
+
+			// printf("(%s:%d:%d)\n", parsedErrors[i].file, parsedErrors[i].line, parsedErrors[i].position);
+
+			int line = 1;
+			char *position = file;
+
+			while (line != parsedErrors[i].line) {
+				position = strchr(position, '\n');
+
+				if (!position) {
+					printf("Error: File '%s' has less lines (%d) than expected (%d).\n", path, line, parsedErrors[i].line);
+					goto nextError;
+				}
+
+				position++;
+				line++;
+			}
+
+			{
+				char *end = strchr(position, '\n');
+				if (!end) end = position + strlen(position);
+				size_t lineLength = end - position;
+
+				if (parsedErrors[i].position + strlen(oldName) > lineLength) {
+					printf("Error: Line %s:%d was shorter than expected (want to replace field at %d).\n", path, line, parsedErrors[i].position);
+					goto nextError;
+				}
+
+				if (memcmp(parsedErrors[i].position + position - 1, oldName, strlen(oldName))) {
+					printf("Warning: Line %s:%d did not contain old field name at position %d.\n", 
+							path, line, parsedErrors[i].position);
+					goto nextError;
+				}
+
+				size_t oldFileLength = fileLength;
+				size_t positionOffset = position - file + parsedErrors[i].position - 1;
+				fileLength = oldFileLength - strlen(oldName) + strlen(newName);
+				if (fileLength > oldFileLength) file = (char *) realloc(file, fileLength + 1);
+				position = file + positionOffset;
+				memmove(position + strlen(newName), position + strlen(oldName), oldFileLength - positionOffset - strlen(oldName));
+				memcpy(position, newName, strlen(newName));
+				file[fileLength] = 0;
+
+				for (uintptr_t j = i + 1; j < arrlenu(parsedErrors); j++) {
+					if (strcmp(parsedErrors[i].file, parsedErrors[j].file) 
+							|| parsedErrors[i].line != parsedErrors[j].line
+							|| parsedErrors[i].position > parsedErrors[j].position) {
+						continue;
+					}
+
+					if (parsedErrors[i].position == parsedErrors[j].position) {
+						arrdel(parsedErrors, j);
+						j--;
+					} else {
+						parsedErrors[j].position += strlen(newName) - strlen(oldName);
+					}
+				}
+			}
+
+			nextError:;
+			arrdel(parsedErrors, i);
+			i--;
+		}
+
+		FILE *f = fopen(path, "wb");
+		fwrite(file, 1, fileLength, f);
+		fclose(f);
+	}
+
+	arrfree(parsedErrors);
+	free(errors);
+	CallSystem("unlink bin/errors.tmp");
+}
+
+void LineCountFile(const char *folder, const char *name) {
+	int lineCountBefore = 0;
+
+	{
+		CallSystem("paste -sd+ bin/count.tmp | bc > bin/count2.tmp");
+		FILE *f = fopen("bin/count2.tmp", "rb");
+		char buffer[16] = {};
+		fread(buffer, 1, sizeof(buffer), f);
+		fclose(f);
+		lineCountBefore = atoi(buffer);
+	}
+
+	CallSystemF("awk 'NF' \"%s%s\" | wc -l >> bin/count.tmp", folder, name);
+
+	{
+		CallSystem("paste -sd+ bin/count.tmp | bc > bin/count2.tmp");
+		FILE *f = fopen("bin/count2.tmp", "rb");
+		char buffer[16] = {};
+		fread(buffer, 1, sizeof(buffer), f);
+		fclose(f);
+		printf("%5d   %s%s\n", atoi(buffer) - lineCountBefore, folder, name);
+	}
+}
+
+void AddressToLine(const char *symbolFile) {
+	char buffer[4096];
+	sprintf(buffer, "echo %s > bin/all_symbol_files.dat", symbolFile);
+	system(buffer);
+		
+	system("echo bin/Kernel >> bin/all_symbol_files.dat && echo bin/Desktop >> bin/all_symbol_files.dat");
+	char symbolFiles[4096] = {};
+	fread(symbolFiles, 1, 4096, fopen("bin/all_symbol_files.dat", "rb"));
+	for (int i = 0; i < 4096; i++) if (symbolFiles[i] == '\n') symbolFiles[i] = 0;
+	system("rm -f bin/all_symbol_files.dat");
+
+	char root[4096];
+	getcwd(root, 4096);
+
+	while (true) {
+		char *line = NULL;
+		size_t bytes = 0;
+		getline(&line, &bytes, stdin);
+
+		for (uintptr_t i = 0; i < strlen(line); i++) {
+			if (line[i] == '0' && line[i + 1] == 'x') {
+				int si = i;
+				uint64_t address = 0;
+				i += 2;
+
+				for (int j = 0; j < 16; j++) {
+					if (line[i] == '_') i++;
+					if (line[i] >= '0' && line[i] <= '9') address = (address * 16) + line[i++] - '0';
+					else if (line[i] >= 'A' && line[i] <= 'F') address = (address * 16) + line[i++] - 'A' + 10;
+					else if (line[i] >= 'a' && line[i] <= 'f') address = (address * 16) + line[i++] - 'a' + 10;
+					else break;
+				}
+
+				char *file = symbolFiles;
+
+				while (*file) {
+					sprintf(buffer, "addr2line --exe=\"%s\" 0x%lx | grep -v ? >> bin/result.tmp", file, address);
+					system(buffer);
+					file += strlen(file) + 1;
+				}
+
+				{
+					char result[4096];
+					FILE *file = fopen("bin/result.tmp", "rb");
+					result[fread(result, 1, 4096, file)] = 0;
+					for (int i = 0; i < 4096; i++) if (result[i] == '\n') result[i] = 0;
+
+					if (result[0] == 0) {
+						putchar('0');
+						i = si;
+					} else {
+						free(file);
+						fputs(strstr(result, "essence") ?: "", stdout);
+						system("rm -f bin/result.tmp");
+						i--;
+					}
+				}
+			} else {
+				putchar(line[i]);
+			}
+		}
+
+		free(line);
+	}
+}
+
+typedef struct BuildType {
+	const char *name, *alias, *emulator;
+	bool optimise, debug, smp, noCompile;
+	int memory;
+} BuildType;
+
+BuildType buildTypes[] = {
+	{ .name = "build", .alias = "b" },
+	{ .name = "build-optimised", .alias = "opt", .optimise = true },
+
+	{ .name = "debug", .alias = "d", .emulator = "qemu", .debug = true },
+	{ .name = "debug-without-compile", .alias = "d3", .emulator = "qemu", .debug = true, .noCompile = true },
+
+	{ .name = "vbox", .alias = "v", .emulator = "vbox", .optimise = true },
+	{ .name = "vbox-without-opt", .alias = "v2", .emulator = "vbox" },
+	{ .name = "vbox-without-compile", .alias = "v3", .emulator = "vbox", .noCompile = true },
+
+	{ .name = "qemu-with-opt", .alias = "t", .emulator = "qemu", .optimise = true },
+	{ .name = "test", .alias = "t2", .emulator = "qemu" },
+	{ .name = "qemu-without-compile", .alias = "t3", .emulator = "qemu", .noCompile = true },
+};
+
+void DoCommand(const char *l) {
+	while (l && (*l == ' ' || *l == '\t')) l++;
+
+	{
+		struct stat s = {};
+		static time_t buildSystemTimeStamp = 0;
+
+		if (stat("util/build.c", &s) || s.st_mtime > buildSystemTimeStamp) {
+			if (buildSystemTimeStamp) {
+				printf("\033[0;33mWarning: The build system appears to be out of date.\nPlease exit and re-run ./start.sh.\n" ColorNormal);
+			} else {
+				buildSystemTimeStamp = s.st_mtime;
+			}
+		}
+	}
+
+	for (uintptr_t i = 0; i < sizeof(buildTypes) / sizeof(buildTypes[0]); i++) {
+		BuildType *entry = buildTypes + i;
+
+		if (strcmp(entry->name, l) && strcmp(entry->alias, l)) {
+			continue;
+		}
+
+		Build(entry->optimise, !entry->noCompile);
+
+		if (encounteredErrors) {
+			printf("Errors were encountered during the build.\n");
+		} else if (entry->emulator) {
+			Run(entry->emulator[0] == 'q' ? EMULATOR_QEMU : EMULATOR_VIRTUALBOX, 
+					entry->memory ?: 1024, entry->smp ? 3 : 1, LOG_NORMAL, entry->debug);
+		}
+
+		return;
+	}
+
+	if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
+		exit(0);
+	} else if (0 == strcmp(l, "reset-config")) {
+		unlink("bin/build_config.ini");
+		printf("Please restart the build system.\n");
+		exit(0);
+	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {
+		Compile(COMPILE_FOR_EMULATOR, 1024, NULL);
+	} else if (0 == strcmp(l, "build-cross")) {
+		BuildCrossCompiler();
+		SaveConfig();
+		printf("Please restart the build system.\n");
+		exit(0);
+	} else if (0 == strcmp(l, "clean-root")) {
+		forceRebuild = true;
+		CallSystem("rm -rf root");
+		CallSystem("mkdir root root/Applications root/Applications/POSIX root/Applications/POSIX/bin root/Applications/POSIX/lib "
+				"root/Applications/POSIX/include root/Essence root/Essence/Modules root/Essence/Fonts");
+	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
+		BuildUtilities();
+	} else if (0 == strcmp(l, "config")) {
+		BuildUtilities();
+		CallSystem("bin/config_editor");
+	} else if (0 == strcmp(l, "designer")) {
+		BuildUtilities();
+		CallSystem("bin/designer \"res/Theme Source.dat\" \"res/Themes/Theme.dat\" \"res/Cursors.png\" \"desktop/styles.header\"");
+	} else if (0 == strcmp(l, "replace-many")) {
+		forceRebuild = true;
+		printf("Enter the name of the replacement file: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		FILE *f = fopen(l2, "r");
+		free(l2);
+		while (!feof(f)) {
+			char a[512], b[512];
+			fscanf(f, "%s %s", a, b);
+			printf("%s -> %s\n", a, b);
+			Replace(a, b, NULL);
+		}
+		fclose(f);
+	} else if (0 == strcmp(l, "find-many")) {
+		forceRebuild = true;
+		printf("Enter the name of the find file: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		FILE *f = fopen(l2, "r");
+		free(l2);
+		while (!feof(f)) {
+			char a[512];
+			fscanf(f, "%s", a);
+			// Find(a);
+			int t = 0;
+			for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
+				char buffer[256];
+				sprintf(buffer, "grep -nr '%s' -e '%s' | wc -l", folders[i], a);
+				FILE *f = popen(buffer, "r");
+				buffer[fread(buffer, 1, sizeof(buffer), f)] = 0;
+				t += atoi(buffer);
+				fclose(f);
+			}
+			printf("%3d %s\n", t, a);
+		}
+		fclose(f);
+	} else if (0 == strcmp(l, "find")) {
+		printf("Enter the query to be found: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		Find(l2, NULL, false);
+		free(l2);
+	} else if (0 == strcmp(l, "find-word")) {
+		printf("Enter the query to be found: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		Find(l2, NULL, true);
+		free(l2);
+	} else if (0 == strcmp(l, "find-in")) {
+		printf("Enter the folder to search in: ");
+		char *in = NULL;
+		size_t pos;
+		getline(&in, &pos, stdin);
+		in[strlen(in) - 1] = 0;
+		printf("Enter the query to be found: ");
+		char *l2 = NULL;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		Find(l2, in, false);
+		free(l2);
+		free(in);
+	} else if (0 == strcmp(l, "replace")) {
+		forceRebuild = true;
+		printf("Enter the word to be replaced: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		printf("Enter the word to replace it with: ");
+		char *l3 = NULL;
+		getline(&l3, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		l3[strlen(l3) - 1] = 0;
+		Replace(l2, l3, NULL);
+		free(l2);
+		free(l3);
+	} else if (0 == strcmp(l, "replace-in")) {
+		forceRebuild = true;
+		printf("Enter the folder to replace in: ");
+		char *in = NULL;
+		size_t pos;
+		getline(&in, &pos, stdin);
+		in[strlen(in) - 1] = 0;
+		printf("Enter the word to be replaced: ");
+		char *l2 = NULL;
+		getline(&l2, &pos, stdin);
+		printf("Enter the word to replace it with: ");
+		char *l3 = NULL;
+		getline(&l3, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		l3[strlen(l3) - 1] = 0;
+		Replace(l2, l3, in);
+		free(l2);
+		free(l3);
+		free(in);
+	} else if (0 == strcmp(l, "fix-replaced-field-name")) {
+		size_t pos;
+
+		printf(">> Please make sure you have saved a backup before running this command!! <<\n");
+		printf("Do not try to rename fields from different structures at the same time.\n\n");
+
+		printf("Enter the old name of the field: ");
+		char *oldName = NULL;
+		getline(&oldName, &pos, stdin);
+		oldName[strlen(oldName) - 1] = 0;
+
+		printf("Enter the new name of the field: ");
+		char *newName = NULL;
+		getline(&newName, &pos, stdin);
+		newName[strlen(newName) - 1] = 0;
+
+		FixReplacedFieldName(oldName, newName);
+
+		free(oldName);
+		free(newName);
+	} else if (0 == memcmp(l, "ascii ", 6)) {
+		const char *text = l + 6;
+
+		while (*text) {
+			char c = *text;
+			printf("0x%.2X - %.3d - '%c'\n", c, c, c);
+			text++;
+		}
+	} else if (0 == strcmp(l, "ascii")) {
+		for (int c = 32; c < 127; c++) {
+			printf("0x%.2X - %.3d - '%c'", c, c, c);
+			if ((c & 3) == 3) printf("\n"); else printf("       ");
+		}
+
+		printf("\n");
+	} else if (0 == strcmp(l, "build-optional-ports")) {
+		DIR *directory = opendir("ports");
+		struct dirent *entry;
+
+		while ((entry = readdir(directory))) {
+			CallSystemF("ports/%s/port.sh", entry->d_name);
+		}
+
+		closedir(directory);
+	} else if (0 == memcmp(l, "do ", 3)) {
+		CallSystem(l + 3);
+	} else if (0 == strcmp(l, "test-gf")) {
+		if (!CallSystem("g++ -g -Wall -o gf util/gf.cpp `wx-config --cxxflags --libs all` " WARNING_FLAGS)) {
+			CallSystem("./gf");
+		}
+	} else if (0 == strcmp(l, "gf")) {
+		CallSystemF("nohup ./gf > /dev/null 2>&1 &");
+	} else if (0 == memcmp(l, "live ", 5)) {
+		if (interactiveMode) {
+			fprintf(stderr, "This command cannot be used in interactive mode. Type \"quit\" and then run \"./start.sh live <...>\".\n");
+			return;
+		}
+
+		if (argc < 4) {
+			fprintf(stderr, "Usage: \"./start.sh live <iso/raw> <drive size in MB> [extra options]\".\n");
+			return;
+		}
+
+		bool wantISO = 0 == strcmp(argv[2], "iso");
+		uint32_t flags = COMPILE_ENABLE_OPTIMISATIONS | COMPILE_DO_BUILD;
+		const char *label = NULL;
+
+		for (int i = 4; i < argc; i++) {
+			if (0 == strcmp(argv[i], "noopt")) {
+				flags &= ~COMPILE_ENABLE_OPTIMISATIONS;
+			} else if (0 == memcmp(argv[i], "label=", 6)) {
+				label = argv[i] + 6;
+			}
+		}
+
+		forceRebuild = true;
+		Compile(flags, atoi(argv[3]), label);
+
+		if (encounteredErrors) {
+			printf("\033[0;33mBuild failed.\n" ColorNormal);
+			return;
+		}
+
+		if (!wantISO) {
+			printf("You can copy the image to the device with "
+					ColorHighlight "sudo dd if=bin/drive of=<path to drive> bs=1024 count=%d conv=notrunc" ColorNormal "\n", 
+					atoi(argv[3]) * 1024);
+			return;
+		}
+
+		if (CallSystem("xorriso --version")) {
+			printf("\033[0;33mCould not produce iso image; xorriso not found.\n" ColorNormal);
+			return;
+		}
+
+		char buffer[512];
+		FILE *f = fopen("bin/drive", "rb");
+		fseek(f, 0x102000, SEEK_SET);
+		fread(buffer, 1, sizeof(buffer), f);
+		fclose(f);
+
+		if (memcmp(buffer, "!EssenceFS2", 11)) {
+			printf("\033[0;33mCould not produce iso image (1).\n" ColorNormal);
+			return;
+		}
+
+		f = fopen("bin/appuse.txt", "wb");
+		fprintf(f, "Essence::%.*s", 16, buffer + 152);
+		fclose(f);
+
+		unlink("bin/essence.iso");
+
+		if (CallSystem("xorriso -rockridge \"off\" -outdev bin/essence.iso -blank as_needed -volid \"Essence Installation Disc\" "
+				"-map bin/drive /ESSENCE.DAT -boot_image any bin_path=/ESSENCE.DAT -boot_image any emul_type=hard_disk "
+				"-application_use bin/appuse.txt")) {
+			printf("\033[0;33mCould not produce iso image (2).\n" ColorNormal);
+			return;
+		}
+
+		printf("Created " ColorHighlight "bin/essence.iso" ColorNormal ".\n");
+	} else if (0 == strcmp(l, "line-count")) {
+		FILE *f = fopen("bin/count.tmp", "wb");
+		fprintf(f, "0");
+		fclose(f);
+
+		LineCountFile("", "start.sh");
+		LineCountFile("", "README.md");
+		LineCountFile("", "LICENSE.md");
+		LineCountFile("", "CONTRIBUTING.md");
+		LineCountFile("res/", "System Configuration Template.ini");
+
+		const char *folders[] = {
+			"desktop/", "boot/x86/", "drivers/", "kernel/", "apps/", "apps/file_manager/", "shared/", "util/", "util/designer/"
+		};
+
+		for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
+			const char *folder = folders[i];
+			DIR *directory = opendir(folder);
+			struct dirent *entry;
+
+			while ((entry = readdir(directory))) {
+				if (0 == strcmp(entry->d_name, "nanosvg.h")) continue;
+				if (0 == strcmp(entry->d_name, "nanosvgrast.h")) continue;
+				if (0 == strcmp(entry->d_name, "stb_ds.h")) continue;
+				if (0 == strcmp(entry->d_name, "stb_image.h")) continue;
+				if (0 == strcmp(entry->d_name, "stb_sprintf.h")) continue;
+				if (0 == strcmp(entry->d_name, "stb_truetype.h")) continue;
+				if (entry->d_type != DT_REG) continue;
+
+				LineCountFile(folder, entry->d_name);
+			}
+
+			closedir(directory);
+		}
+
+		printf("\nTotal line count:" ColorHighlight "\n");
+		CallSystem("paste -sd+ bin/count.tmp | bc");
+		unlink("bin/count.tmp");
+		unlink("bin/count2.tmp");
+		printf(ColorNormal);
+	} else if (0 == memcmp(l, "a2l ", 4)) {
+		AddressToLine(l + 3);
+	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
+		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
+		printf("(t2) test - Qemu\n");
+		printf("(b ) build - Unoptimised build\n");
+		printf("(c ) compile - Compile the kernel and applications.\n");
+		printf("(v ) vbox - VirtualBox (optimised)\n");
+		printf("(d ) debug - Qemu (GDB)\n");
+		printf("(  ) do - Run a system() command.\n");
+		printf("(  ) config - Open the local configuration editor.\n");
+
+		printf(ColorHighlight "\n=== Other Commands ===\n" ColorNormal);
+		printf("(t ) qemu-with-opt - Qemu\n");
+		printf("(t3) qemu-without-compile - Qemu\n");
+		printf("(x ) exit - Exit the build system.\n");
+		printf("(h ) help - Show the help prompt.\n");
+		printf("(u ) build-utilities - Build utility applications.\n");
+		printf("(v2) vbox-without-opt - VirtualBox (unoptimised)\n");
+		printf("(v3) vbox-without-compile - VirtualBox\n");
+		printf("(  ) find - Search the project's source code.\n");
+		printf("(  ) replace - Replace a word throughout the project.\n");
+	} else {
+		printf("Unrecognised command '%s'. Enter 'help' to get a list of commands.\n", l);
+	}
+}
+
+int main(int _argc, char **_argv) {
+	argc = _argc;
+	argv = _argv;
+
+	char cwd[PATH_MAX];
+	getcwd(cwd, sizeof(cwd));
+
+	if (strchr(cwd, ' ')) {
+		printf("Error: The path to your essence directory, '%s', contains spaces.\n", cwd);
+		return 1;
+	}
+
+	sh_new_strdup(applicationDependencies);
+
+	unlink("bin/dependencies.ini");
+
+	coloredOutput = isatty(STDERR_FILENO);
+
+	char *prev = NULL;
+
+	if (argc != 2) {
+		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\n");
+	}
+
+	systemLog = fopen("bin/system.log", "w");
+
+	{
+		EsINIState s = { (char *) LoadFile("bin/build_config.ini", &s.bytes) };
+		char path[32768 + PATH_MAX + 16];
+		path[0] = 0;
+
+		while (EsINIParse(&s)) {
+			if (s.sectionClassBytes || s.sectionBytes) continue;
+			EsINIZeroTerminate(&s);
+
+			INI_READ_BOOL(accepted_license, acceptedLicense);
+			INI_READ_STRING(compiler_path, path);
+
+			if (0 == strcmp("cross_compiler_index", s.key)) {
+				foundValidCrossCompiler = atoi(s.value) == CROSS_COMPILER_INDEX;
+			}
+		}
+
+		if (path[0]) {
+			strcpy(compilerPath, path);
+			strcat(path, ":");
+			char *originalPath = getenv("PATH");
+
+			if (strlen(originalPath) < 32768) {
+				strcat(path, originalPath);
+				setenv("PATH", path, 1);
+			} else {
+				printf("Warning: PATH too long\n");
+			}
+		}
+	}
+
+	if (!acceptedLicense) {
+		printf("\n=== Essence License ===\n\n");
+		CallSystem("cat LICENSE.md");
+		printf("\nType 'yes' to acknowledge you have read the license, or press Ctrl-C to exit.\n");
+		if (!GetYes()) exit(0);
+		acceptedLicense = true;
+	}
+
+	const char *runFirstCommand = NULL;
+
+	if (CallSystem("x86_64-essence-gcc --version > /dev/null 2>&1 ")) {
+		BuildCrossCompiler();
+		runFirstCommand = "b";
+		foundValidCrossCompiler = true;
+	}
+
+	SaveConfig();
+
+	if (argc >= 2) {
+		char buffer[4096];
+		buffer[0] = 0;
+
+		for (int i = 1; i < argc; i++) {
+			if (strlen(argv[i]) + 1 > sizeof(buffer) - strlen(buffer)) break;
+			if (i > 1) strcat(buffer, " ");
+			strcat(buffer, argv[i]);
+		}
+
+		DoCommand(buffer);
+		return 0;
+	} else {
+		interactiveMode = true;
+	}
+
+	if (runFirstCommand) {
+		DoCommand(runFirstCommand);
+	}
+
+	if (!foundValidCrossCompiler) {
+		printf("Warning: Your cross compiler appears to be out of date.\n");
+		printf("Please rebuild the compiler using the command " ColorHighlight "build-cross" ColorNormal " before attempting to build the OS.\n");
+	}
+
+	{
+		CallSystem("x86_64-essence-gcc -mno-red-zone -print-libgcc-file-name > bin/valid_compiler.txt");
+		FILE *f = fopen("bin/valid_compiler.txt", "r");
+		char buffer[256];
+		buffer[fread(buffer, 1, 256, f)] = 0;
+		fclose(f);
+
+		if (!strstr(buffer, "no-red-zone")) {
+			printf("Error: Compiler built without no-red-zone support.\n");
+			exit(1);
+		}
+
+		unlink("bin/valid_compiler.txt");
+	}
+
+	printf("Enter 'help' to get a list of commands.\n");
+
+	while (true) {
+		char *l = NULL;
+		size_t pos = 0;
+		printf("\n> ");
+		printf(ColorHighlight);
+		getline(&l, &pos, stdin);
+		printf(ColorNormal);
+
+		if (strlen(l) == 1) {
+			l = prev;
+			if (!l) {
+				l = (char *) malloc(5);
+				strcpy(l, "help");
+			}
+			printf("(%s)\n", l);
+		} else {
+			l[strlen(l) - 1] = 0;
+		}
+
+		printf(ColorNormal);
+		fflush(stdout);
+		DoCommand(l);
+
+		if (prev != l) free(prev);
+		prev = l;
+	}
+
+	return 0;
+}

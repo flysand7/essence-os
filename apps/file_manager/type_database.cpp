@@ -1,0 +1,110 @@
+struct FileType {
+	char *name;
+	size_t nameBytes;
+	uint32_t iconID;
+	int64_t openHandler;
+
+	// TODO Allow applications to register their own thumbnail generators.
+	bool hasThumbnailGenerator;
+};
+
+Array<FileType> knownFileTypes; 
+HashStore<char, uintptr_t /* index into knownFileTypes */> knownFileTypesByExtension;
+
+void AddKnownFileTypes() {
+#define ADD_FILE_TYPE(_extension, _name, _iconID) \
+	{ \
+		FileType type = {}; \
+		type.name = (char *) _name; \
+		type.iconID = _iconID; \
+		uintptr_t index = knownFileTypes.Length(); \
+		knownFileTypes.Add(type); \
+		*knownFileTypesByExtension.Put(_extension, EsCStringLength(_extension)) = index; \
+	}
+
+#define KNOWN_FILE_TYPE_DIRECTORY (0)
+	ADD_FILE_TYPE("", interfaceString_CommonItemFolder, ES_ICON_FOLDER);
+#define KNOWN_FILE_TYPE_UNKNOWN (1)
+	ADD_FILE_TYPE("", interfaceString_CommonItemFile, ES_ICON_UNKNOWN);
+#define KNOWN_FILE_TYPE_DRIVE_HDD (2)
+	ADD_FILE_TYPE("", interfaceString_CommonDriveHDD, ES_ICON_DRIVE_HARDDISK);
+#define KNOWN_FILE_TYPE_DRIVE_SSD (3)
+	ADD_FILE_TYPE("", interfaceString_CommonDriveSSD, ES_ICON_DRIVE_HARDDISK_SOLIDSTATE);
+#define KNOWN_FILE_TYPE_DRIVE_CDROM (4)
+	ADD_FILE_TYPE("", interfaceString_CommonDriveCDROM, ES_ICON_MEDIA_OPTICAL);
+#define KNOWN_FILE_TYPE_DRIVE_USB_MASS_STORAGE (5)
+	ADD_FILE_TYPE("", interfaceString_CommonDriveUSBMassStorage, ES_ICON_DRIVE_REMOVABLE_MEDIA_USB);
+#define KNOWN_FILE_TYPE_DRIVES_PAGE (6)
+	ADD_FILE_TYPE("", interfaceString_FileManagerDrivesPage, ES_ICON_COMPUTER_LAPTOP);
+
+	size_t groupCount;
+	EsSystemConfigurationGroup *groups = EsSystemConfigurationReadAll(&groupCount); 
+
+	for (uintptr_t i = 0; i < groupCount; i++) {
+		EsSystemConfigurationGroup *group = groups + i;
+
+		if (EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("file_type"))) {
+			continue;
+		}
+
+		FileType type = {};
+
+		type.name = EsSystemConfigurationGroupReadString(group, "name", -1, &type.nameBytes);
+		type.openHandler = EsSystemConfigurationGroupReadInteger(group, "open", -1);
+
+		char *iconName = EsSystemConfigurationGroupReadString(group, "icon", -1);
+
+		if (iconName) {
+			type.iconID = EsIconIDFromString(iconName);
+			EsHeapFree(iconName);
+		}
+
+		char *extension = EsSystemConfigurationGroupReadString(group, "extension", -1);
+
+		// TODO Proper thumbnail generator registrations.
+
+		if (0 == EsCRTstrcmp(extension, "jpg") || 0 == EsCRTstrcmp(extension, "png") || 0 == EsCRTstrcmp(extension, "bmp")) {
+			type.hasThumbnailGenerator = true;
+		}
+
+		uintptr_t index = knownFileTypes.Length();
+		knownFileTypes.Add(type);
+		*knownFileTypesByExtension.Put(extension, EsCStringLength(extension)) = index;
+	}
+}
+
+FileType *FolderEntryGetType(Folder *folder, FolderEntry *entry) {
+	if (entry->isFolder) {
+		if (folder->itemHandler->getFileType != NamespaceDefaultGetFileType) {
+			String path = StringAllocateAndFormat("%s%s", STRFMT(folder->path), STRFMT(entry->GetInternalName()));
+			FileType *type = &knownFileTypes[folder->itemHandler->getFileType(path)];
+			StringDestroy(&path);
+			return type;
+		} else {
+			return &knownFileTypes[KNOWN_FILE_TYPE_DIRECTORY];
+		}
+	} else {
+		String extension = entry->GetExtension();
+		char buffer[32];
+		uintptr_t i = 0;
+
+		for (; i < extension.bytes && i < 32; i++) {
+			if (EsCRTisupper(extension.text[i])) {
+				buffer[i] = EsCRTtolower(extension.text[i]);
+			} else {
+				buffer[i] = extension.text[i];
+			}
+		}
+
+		uintptr_t index = knownFileTypesByExtension.Get1(buffer, i);
+		return &knownFileTypes[index ? index : KNOWN_FILE_TYPE_UNKNOWN];
+	}
+}
+
+uint32_t IconFromDriveType(uint8_t driveType) {
+	if (driveType == ES_DRIVE_TYPE_HDD             ) return ES_ICON_DRIVE_HARDDISK;
+	if (driveType == ES_DRIVE_TYPE_SSD             ) return ES_ICON_DRIVE_HARDDISK_SOLIDSTATE;
+	if (driveType == ES_DRIVE_TYPE_CDROM           ) return ES_ICON_MEDIA_OPTICAL;
+	if (driveType == ES_DRIVE_TYPE_USB_MASS_STORAGE) return ES_ICON_DRIVE_REMOVABLE_MEDIA_USB;
+	return ES_ICON_DRIVE_HARDDISK;
+}

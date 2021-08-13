@@ -1,0 +1,2399 @@
+opaque_type EsElement          EsElementPublic;
+opaque_type EsPanel            EsElement;
+opaque_type EsWindow           EsElement;
+opaque_type EsScrollbar        EsElement;
+opaque_type EsButton           EsElement;
+opaque_type EsTextDisplay      EsElement;
+opaque_type EsIconDisplay      EsElement;
+opaque_type EsTextbox          EsElement;
+opaque_type EsListView         EsElement;
+opaque_type EsMenu             EsElement;
+opaque_type EsColorWell        EsElement;
+opaque_type EsSplitter         EsElement;
+opaque_type EsImageDisplay     EsElement;
+opaque_type EsListDisplay      EsElement;
+opaque_type EsCanvasPane       EsElement;
+opaque_type EsTextPlan         none;
+opaque_type EsPaintTarget      none;
+opaque_type EsUndoManager      none;
+opaque_type EsHeap             none;
+opaque_type EsFileStore        none;
+
+type_name uint8_t EsNodeType;
+type_name intptr_t EsError;
+type_name uintptr_t EsHandle;
+type_name uint64_t EsFileOffset;
+type_name int64_t EsFileOffsetDifference;
+type_name uint64_t EsAudioDeviceID;
+type_name uint16_t EsFontFamily;
+type_name uint64_t EsTimer;
+
+define ES_SCANCODE_A				(0x04)
+define ES_SCANCODE_B				(0x05)
+define ES_SCANCODE_C				(0x06)
+define ES_SCANCODE_D				(0x07)
+define ES_SCANCODE_E				(0x08)
+define ES_SCANCODE_F				(0x09)
+define ES_SCANCODE_G				(0x0A)
+define ES_SCANCODE_H				(0x0B)
+define ES_SCANCODE_I				(0x0C)
+define ES_SCANCODE_J				(0x0D)
+define ES_SCANCODE_K				(0x0E)
+define ES_SCANCODE_L				(0x0F)
+define ES_SCANCODE_M				(0x10)
+define ES_SCANCODE_N				(0x11)
+define ES_SCANCODE_O				(0x12)
+define ES_SCANCODE_P				(0x13)
+define ES_SCANCODE_Q				(0x14)
+define ES_SCANCODE_R				(0x15)
+define ES_SCANCODE_S				(0x16)
+define ES_SCANCODE_T				(0x17)
+define ES_SCANCODE_U				(0x18)
+define ES_SCANCODE_V				(0x19)
+define ES_SCANCODE_W				(0x1A)
+define ES_SCANCODE_X				(0x1B)
+define ES_SCANCODE_Y				(0x1C)
+define ES_SCANCODE_Z				(0x1D)
+
+define ES_SCANCODE_1				(0x1E)
+define ES_SCANCODE_2				(0x1F)
+define ES_SCANCODE_3				(0x20)
+define ES_SCANCODE_4				(0x21)
+define ES_SCANCODE_5				(0x22)
+define ES_SCANCODE_6				(0x23)
+define ES_SCANCODE_7				(0x24)
+define ES_SCANCODE_8				(0x25)
+define ES_SCANCODE_9				(0x26)
+define ES_SCANCODE_0				(0x27)
+
+define ES_SCANCODE_ENTER 			(0x28)
+define ES_SCANCODE_ESCAPE			(0x29)
+define ES_SCANCODE_BACKSPACE			(0x2A)
+define ES_SCANCODE_TAB				(0x2B)
+define ES_SCANCODE_SPACE			(0x2C)
+
+define ES_SCANCODE_HYPHEN			(0x2D)
+define ES_SCANCODE_EQUALS			(0x2E)
+define ES_SCANCODE_LEFT_BRACE			(0x2F)
+define ES_SCANCODE_RIGHT_BRACE			(0x30)
+define ES_SCANCODE_COMMA			(0x36)
+define ES_SCANCODE_PERIOD			(0x37)
+define ES_SCANCODE_SLASH			(0x38)
+define ES_SCANCODE_PUNCTUATION_1		(0x31) // On US keyboard, \|
+define ES_SCANCODE_PUNCTUATION_2		(0x32) // Not on US keyboard
+define ES_SCANCODE_PUNCTUATION_3		(0x33) // On US keyboard, ;:
+define ES_SCANCODE_PUNCTUATION_4		(0x34) // On US keyboard, '"
+define ES_SCANCODE_PUNCTUATION_5		(0x35) // On US keyboard, `~
+define ES_SCANCODE_PUNCTUATION_6		(0x64) // Not on US keyboard
+
+define ES_SCANCODE_F1				(0x3A)
+define ES_SCANCODE_F2				(0x3B)
+define ES_SCANCODE_F3				(0x3C)
+define ES_SCANCODE_F4				(0x3D)
+define ES_SCANCODE_F5				(0x3E)
+define ES_SCANCODE_F6				(0x3F)
+define ES_SCANCODE_F7				(0x40)
+define ES_SCANCODE_F8				(0x41)
+define ES_SCANCODE_F9				(0x42)
+define ES_SCANCODE_F10				(0x43)
+define ES_SCANCODE_F11				(0x44)
+define ES_SCANCODE_F12				(0x45)
+define ES_SCANCODE_F13				(0x68)
+define ES_SCANCODE_F14				(0x69)
+define ES_SCANCODE_F15				(0x6A)
+define ES_SCANCODE_F16				(0x6B)
+define ES_SCANCODE_F17				(0x6C)
+define ES_SCANCODE_F18				(0x6D)
+define ES_SCANCODE_F19				(0x6E)
+define ES_SCANCODE_F20				(0x6F)
+define ES_SCANCODE_F21				(0x70)
+define ES_SCANCODE_F22				(0x71)
+define ES_SCANCODE_F23				(0x72)
+define ES_SCANCODE_F24				(0x73)
+
+define ES_SCANCODE_CAPS_LOCK			(0x39)
+define ES_SCANCODE_PRINT_SCREEN			(0x46)
+define ES_SCANCODE_SCROLL_LOCK			(0x47)
+define ES_SCANCODE_PAUSE			(0x48)
+define ES_SCANCODE_INSERT			(0x49)
+define ES_SCANCODE_HOME				(0x4A)
+define ES_SCANCODE_PAGE_UP			(0x4B)
+define ES_SCANCODE_DELETE			(0x4C)
+define ES_SCANCODE_END				(0x4D)
+define ES_SCANCODE_PAGE_DOWN			(0x4E)
+define ES_SCANCODE_RIGHT_ARROW			(0x4F)
+define ES_SCANCODE_LEFT_ARROW			(0x50)
+define ES_SCANCODE_DOWN_ARROW			(0x51)
+define ES_SCANCODE_UP_ARROW			(0x52)
+define ES_SCANCODE_NUM_LOCK			(0x53)
+define ES_SCANCODE_CONTEXT_MENU 		(0x65)
+define ES_SCANCODE_SYSTEM_REQUEST		(0x9A)
+
+define ES_SCANCODE_ACTION_EXECUTE		(0x74)
+define ES_SCANCODE_ACTION_HELP			(0x75)
+define ES_SCANCODE_ACTION_MENU			(0x76)
+define ES_SCANCODE_ACTION_SELECT		(0x77)
+define ES_SCANCODE_ACTION_STOP			(0x78)
+define ES_SCANCODE_ACTION_AGAIN			(0x79)
+define ES_SCANCODE_ACTION_UNDO			(0x7A)
+define ES_SCANCODE_ACTION_CUT			(0x7B)
+define ES_SCANCODE_ACTION_COPY			(0x7C)
+define ES_SCANCODE_ACTION_PASTE			(0x7D)
+define ES_SCANCODE_ACTION_FIND			(0x7E)
+define ES_SCANCODE_ACTION_CANCEL		(0x9B)
+define ES_SCANCODE_ACTION_CLEAR			(0x9C)
+define ES_SCANCODE_ACTION_PRIOR			(0x9D)
+define ES_SCANCODE_ACTION_RETURN		(0x9E)
+define ES_SCANCODE_ACTION_SEPARATOR		(0x9F)
+
+define ES_SCANCODE_MM_MUTE			(0x7F)
+define ES_SCANCODE_MM_LOUDER			(0x80)
+define ES_SCANCODE_MM_QUIETER			(0x81)
+define ES_SCANCODE_MM_NEXT			(0x103)
+define ES_SCANCODE_MM_PREVIOUS			(0x104)
+define ES_SCANCODE_MM_STOP			(0x105)
+define ES_SCANCODE_MM_PAUSE			(0x106)
+define ES_SCANCODE_MM_SELECT			(0x107)
+define ES_SCANCODE_MM_EMAIL			(0x108)
+define ES_SCANCODE_MM_CALC			(0x109)
+define ES_SCANCODE_MM_FILES			(0x10A)
+
+define ES_SCANCODE_INTERNATIONAL_1		(0x87)
+define ES_SCANCODE_INTERNATIONAL_2		(0x88)
+define ES_SCANCODE_INTERNATIONAL_3		(0x89)
+define ES_SCANCODE_INTERNATIONAL_4		(0x8A)
+define ES_SCANCODE_INTERNATIONAL_5		(0x8B)
+define ES_SCANCODE_INTERNATIONAL_6		(0x8C)
+define ES_SCANCODE_INTERNATIONAL_7		(0x8D)
+define ES_SCANCODE_INTERNATIONAL_8		(0x8E)
+define ES_SCANCODE_INTERNATIONAL_9		(0x8F)
+
+define ES_SCANCODE_HANGUL_ENGLISH_TOGGLE	(0x90)
+define ES_SCANCODE_HANJA_CONVERSION		(0x91)
+define ES_SCANCODE_KATAKANA			(0x92)
+define ES_SCANCODE_HIRAGANA			(0x93)
+define ES_SCANCODE_HANKAKU_ZENKAKU_TOGGLE	(0x94)
+define ES_SCANCODE_ALTERNATE_ERASE		(0x99)
+
+define ES_SCANCODE_THOUSANDS_SEPARATOR		(0xB2)
+define ES_SCANCODE_DECIMAL_SEPARATOR		(0xB3)
+define ES_SCANCODE_CURRENCY_UNIT		(0xB4)
+define ES_SCANCODE_CURRENCY_SUBUNIT		(0xB5)
+
+define ES_SCANCODE_NUM_DIVIDE			(0x54)
+define ES_SCANCODE_NUM_MULTIPLY			(0x55)
+define ES_SCANCODE_NUM_SUBTRACT			(0x56)
+define ES_SCANCODE_NUM_ADD			(0x57)
+define ES_SCANCODE_NUM_ENTER			(0x58)
+define ES_SCANCODE_NUM_1			(0x59)
+define ES_SCANCODE_NUM_2			(0x5A)
+define ES_SCANCODE_NUM_3			(0x5B)
+define ES_SCANCODE_NUM_4			(0x5C)
+define ES_SCANCODE_NUM_5			(0x5D)
+define ES_SCANCODE_NUM_6			(0x5E)
+define ES_SCANCODE_NUM_7			(0x5F)
+define ES_SCANCODE_NUM_8			(0x60)
+define ES_SCANCODE_NUM_9			(0x61)
+define ES_SCANCODE_NUM_0			(0x62)
+define ES_SCANCODE_NUM_POINT			(0x63)
+define ES_SCANCODE_NUM_EQUALS			(0x67)
+define ES_SCANCODE_NUM_COMMA			(0x82)
+define ES_SCANCODE_NUM_00			(0xB0)
+define ES_SCANCODE_NUM_000			(0xB1)
+define ES_SCANCODE_NUM_LEFT_PAREN		(0xB6)
+define ES_SCANCODE_NUM_RIGHT_PAREN		(0xB7)
+define ES_SCANCODE_NUM_LEFT_BRACE		(0xB8)
+define ES_SCANCODE_NUM_RIGHT_BRACE		(0xB9)
+define ES_SCANCODE_NUM_TAB			(0xBA)
+define ES_SCANCODE_NUM_BACKSPACE		(0xBB)
+define ES_SCANCODE_NUM_A			(0xBC)
+define ES_SCANCODE_NUM_B			(0xBD)
+define ES_SCANCODE_NUM_C			(0xBE)
+define ES_SCANCODE_NUM_D			(0xBF)
+define ES_SCANCODE_NUM_E			(0xC0)
+define ES_SCANCODE_NUM_F			(0xC1)
+define ES_SCANCODE_NUM_XOR			(0xC2)
+define ES_SCANCODE_NUM_CARET			(0xC3)
+define ES_SCANCODE_NUM_PERCENT			(0xC4)
+define ES_SCANCODE_NUM_LESS_THAN		(0xC5)
+define ES_SCANCODE_NUM_GREATER_THAN		(0xC6)
+define ES_SCANCODE_NUM_AMPERSAND		(0xC7)
+define ES_SCANCODE_NUM_DOUBLE_AMPERSAND		(0xC8)
+define ES_SCANCODE_NUM_BAR			(0xC9)
+define ES_SCANCODE_NUM_DOUBLE_BAR		(0xCA)
+define ES_SCANCODE_NUM_COLON			(0xCB)
+define ES_SCANCODE_NUM_HASH			(0xCC)
+define ES_SCANCODE_NUM_SPACE			(0xCD)
+define ES_SCANCODE_NUM_AT			(0xCE)
+define ES_SCANCODE_NUM_EXCLAMATION_MARK		(0xCF)
+define ES_SCANCODE_NUM_MEMORY_STORE		(0xD0)
+define ES_SCANCODE_NUM_MEMORY_RECALL		(0xD1)
+define ES_SCANCODE_NUM_MEMORY_CLEAR		(0xD2)
+define ES_SCANCODE_NUM_MEMORY_ADD		(0xD3)
+define ES_SCANCODE_NUM_MEMORY_SUBTRACT		(0xD4)
+define ES_SCANCODE_NUM_MEMORY_MULTIPLY		(0xD5)
+define ES_SCANCODE_NUM_MEMORY_DIVIDE		(0xD6)
+define ES_SCANCODE_NUM_NEGATE			(0xD7)
+define ES_SCANCODE_NUM_CLEAR_ALL		(0xD8)
+define ES_SCANCODE_NUM_CLEAR			(0xD9)
+define ES_SCANCODE_NUM_BINARY			(0xDA)
+define ES_SCANCODE_NUM_OCTAL			(0xDB)
+define ES_SCANCODE_NUM_DECIMAL			(0xDC)
+define ES_SCANCODE_NUM_HEXADECIMAL		(0xDD)
+
+define ES_SCANCODE_LEFT_CTRL			(0xE0)
+define ES_SCANCODE_LEFT_SHIFT			(0xE1)
+define ES_SCANCODE_LEFT_ALT			(0xE2)
+define ES_SCANCODE_LEFT_FLAG			(0xE3)
+define ES_SCANCODE_RIGHT_CTRL			(0xE4)
+define ES_SCANCODE_RIGHT_SHIFT			(0xE5)
+define ES_SCANCODE_RIGHT_ALT			(0xE6)
+define ES_SCANCODE_RIGHT_FLAG			(0xE7)
+
+define ES_SCANCODE_ACPI_POWER 			(0x100)
+define ES_SCANCODE_ACPI_SLEEP 			(0x101)
+define ES_SCANCODE_ACPI_WAKE  			(0x102)
+
+define ES_SCANCODE_WWW_SEARCH			(0x10B)
+define ES_SCANCODE_WWW_HOME			(0x10C)
+define ES_SCANCODE_WWW_BACK			(0x10D)
+define ES_SCANCODE_WWW_FORWARD			(0x10E)
+define ES_SCANCODE_WWW_STOP			(0x10F)
+define ES_SCANCODE_WWW_REFRESH			(0x110)
+define ES_SCANCODE_WWW_STARRED			(0x111)
+
+define ES_PROCESS_STATE_ALL_THREADS_TERMINATED	(1)
+define ES_PROCESS_STATE_TERMINATING		(2)
+define ES_PROCESS_STATE_CRASHED			(4)
+define ES_PROCESS_STATE_PINGED			(8)
+
+define ES_FLAGS_DEFAULT (0)
+define ES_SUCCESS 	(-1)
+
+// TODO Cleanup.
+define ES_ERROR_BUFFER_TOO_SMALL		(-2)
+define ES_ERROR_UNKNOWN 			(-7)
+define ES_ERROR_NO_MESSAGES_AVAILABLE		(-9)
+define ES_ERROR_MESSAGE_QUEUE_FULL		(-10)
+define ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME	(-14)
+define ES_ERROR_PATH_NOT_TRAVERSABLE		(-15)
+define ES_ERROR_FILE_ALREADY_EXISTS		(-19)
+define ES_ERROR_FILE_DOES_NOT_EXIST		(-20)
+define ES_ERROR_DRIVE_ERROR_FILE_DAMAGED	(-21) 
+define ES_ERROR_ACCESS_NOT_WITHIN_FILE_BOUNDS	(-22) 
+define ES_ERROR_FILE_PERMISSION_NOT_GRANTED	(-23)
+define ES_ERROR_FILE_IN_EXCLUSIVE_USE		(-24)
+define ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE	(-25)
+define ES_ERROR_INCORRECT_NODE_TYPE		(-26)
+define ES_ERROR_EVENT_NOT_SET			(-27)
+define ES_ERROR_FILE_HAS_WRITERS		(-28)
+define ES_ERROR_TIMEOUT_REACHED			(-29)
+define ES_ERROR_FILE_ON_READ_ONLY_VOLUME	(-32)
+define ES_ERROR_INVALID_DIMENSIONS		(-34)
+define ES_ERROR_DRIVE_CONTROLLER_REPORTED	(-35)
+define ES_ERROR_COULD_NOT_ISSUE_PACKET		(-36)
+define ES_ERROR_HANDLE_TABLE_FULL		(-37)
+define ES_ERROR_COULD_NOT_RESIZE_FILE		(-38)
+define ES_ERROR_DIRECTORY_NOT_EMPTY		(-39)
+define ES_ERROR_NODE_DELETED			(-41)
+define ES_ERROR_VOLUME_MISMATCH			(-43)
+define ES_ERROR_TARGET_WITHIN_SOURCE		(-44)
+define ES_ERROR_TARGET_INVALID_TYPE		(-45)
+define ES_ERROR_MALFORMED_NODE_PATH		(-47)
+define ES_ERROR_TARGET_IS_SOURCE		(-49)
+define ES_ERROR_INVALID_NAME			(-50)
+define ES_ERROR_CORRUPT_DATA			(-51)
+define ES_ERROR_INSUFFICIENT_RESOURCES		(-52)
+define ES_ERROR_UNSUPPORTED_FEATURE		(-53)
+define ES_ERROR_FILE_TOO_FRAGMENTED		(-54)
+define ES_ERROR_DRIVE_FULL			(-55)
+define ES_ERROR_COULD_NOT_RESOLVE_SYMBOL	(-56)
+define ES_ERROR_ALREADY_EMBEDDED		(-57)
+define ES_ERROR_EVENT_SINK_OVERFLOW 		(-58)
+define ES_ERROR_EVENT_SINK_DUPLICATE		(-59)
+define ES_ERROR_UNSUPPORTED_CONVERSION		(-60)
+define ES_ERROR_SOURCE_EMPTY			(-61)
+define ES_ERROR_UNSUPPORTED_EXECUTABLE		(-62)
+define ES_ERROR_NO_ADDRESS_FOR_DOMAIN_NAME	(-63)
+define ES_ERROR_NO_CONNECTED_NETWORK_INTERFACES	(-64)
+define ES_ERROR_BAD_DOMAIN_NAME			(-65)
+define ES_ERROR_LOST_IP_ADDRESS			(-66)
+define ES_ERROR_CONNECTION_RESET		(-67)
+define ES_ERROR_CONNECTION_REFUSED		(-68)
+define ES_ERROR_ILLEGAL_PATH			(-69)
+define ES_ERROR_INVALID_CLIPBOARD		(-70)
+define ES_ERROR_NODE_NOT_LOADED			(-71)
+define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
+
+define ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND (0)
+define ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS		   (1)
+define ES_SYSTEM_CONSTANT_RIGHT_TO_LEFT		    	   (2)
+define ES_SYSTEM_CONSTANT_WINDOW_INSET 		    	   (3)
+define ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT        (4)
+define ES_SYSTEM_CONSTANT_UI_SCALE                         (5)
+define ES_SYSTEM_CONSTANT_BORDER_THICKNESS                 (6)
+define ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT  (7)
+define ES_SYSTEM_CONSTANT_COUNT (8)
+
+define ES_INVALID_HANDLE 		((EsHandle) (0))
+define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
+define ES_CURRENT_PROCESS	 	((EsHandle) (0x11))
+
+define ES_WAIT_NO_TIMEOUT            (-1)
+define ES_MAX_WAIT_COUNT             (8)
+define ES_MAX_EVENT_FORWARD_COUNT    (4)   // The maximum number of event sinks an event can be forwarded to.
+define ES_MAX_EVENT_SINK_BUFFER_SIZE (256) // The maximum number of events an event sink can capture. TODO Make this configurable in EsEventSinkCreate?
+
+define ES_MAX_DIRECTORY_CHILD_NAME_LENGTH (256)
+
+define ES_PROCESS_EXECUTABLE_NOT_LOADED     (0)
+define ES_PROCESS_EXECUTABLE_FAILED_TO_LOAD (1)
+define ES_PROCESS_EXECUTABLE_LOADED         (2)
+
+define ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH 	(31)
+define ES_SYSTEM_SNAPSHOT_PROCESSES 		(1)
+
+define ES_HANDLED     (-1)
+define ES_REJECTED    (-2)
+
+define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1)
+define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (2)
+
+define ES_SHARED_MEMORY_NAME_MAX_LENGTH (32)
+define ES_MAP_OBJECT_ALL (0)
+
+define ES_TEXT_H_LEFT 	                   (1 << 0) // Keep in sync with designer.c.
+define ES_TEXT_H_CENTER                    (1 << 1)
+define ES_TEXT_H_RIGHT 	                   (1 << 2)
+define ES_TEXT_V_TOP 	                   (1 << 3)
+define ES_TEXT_V_CENTER                    (1 << 4)
+define ES_TEXT_V_BOTTOM                    (1 << 5)
+define ES_TEXT_ELLIPSIS	                   (1 << 6)
+define ES_TEXT_WRAP 	                   (1 << 7)
+define ES_TEXT_PLAN_SINGLE_USE             (1 << 8)
+define ES_TEXT_PLAN_TRIM_SPACES            (1 << 9)
+define ES_TEXT_PLAN_RTL	                   (1 << 10)
+define ES_TEXT_PLAN_CLIP_UNBREAKABLE_LINES (1 << 11)
+define ES_TEXT_PLAN_NO_FONT_SUBSTITUTION   (1 << 12)
+
+define ES_FILE_READ_SHARED		(0x1) // Read-only. The file can still be opened for writing.
+define ES_FILE_READ			(0x2) // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
+define ES_FILE_WRITE			(0x4) // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
+define ES_FILE_WRITE_EXCLUSIVE 		(0x8) // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
+
+define ES_NODE_FILE			(0)
+define ES_NODE_DIRECTORY		(0x10)
+define ES_NODE_INVALID			(0x20)
+
+define ES_NODE_FAIL_IF_FOUND		(0x001000)
+define ES_NODE_FAIL_IF_NOT_FOUND	(0x002000)
+define ES_NODE_PREVENT_RESIZE		(0x004000)
+define ES_NODE_CREATE_DIRECTORIES	(0x008000)  // Create the directories leading to the file, if they don't already exist.
+
+define _ES_NODE_FROM_WRITE_EXCLUSIVE	(0x020000)
+define _ES_NODE_DIRECTORY_WRITE		(0x040000)
+define _ES_NODE_NO_WRITE_BASE		(0x080000)
+
+define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
+
+define ES_MEMORY_OPEN_FAIL_IF_FOUND     (0x1000)
+define ES_MEMORY_OPEN_FAIL_IF_NOT_FOUND (0x2000)
+
+define ES_MAP_OBJECT_READ_WRITE         (0)
+define ES_MAP_OBJECT_READ_ONLY          (1)
+define ES_MAP_OBJECT_COPY_ON_WRITE      (2)
+
+define ES_STRING_FORMAT_ENOUGH_SPACE	((_EsLongConstant) (-1))
+
+// Flags set with %f.
+define ES_STRING_FORMAT_SIMPLE		(1 << 0)
+
+define ES_PERMISSION_NETWORKING				(1 << 0)
+define ES_PERMISSION_PROCESS_CREATE			(1 << 2)
+define ES_PERMISSION_PROCESS_OPEN			(1 << 3)
+define ES_PERMISSION_SCREEN_MODIFY			(1 << 4)	
+define ES_PERMISSION_SHUTDOWN				(1 << 5)
+define ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT		(1 << 6)
+define ES_PERMISSION_SYSTEM_CONFIGURATION_WRITE		(1 << 7)
+define ES_PERMISSION_GET_VOLUME_INFORMATION		(1 << 8)
+define ES_PERMISSION_WINDOW_MANAGER			(1 << 9)
+define ES_PERMISSION_POSIX_SUBSYSTEM			(1 << 10)
+define ES_PERMISSION_ALL				((_EsLongConstant) (-1))
+define ES_PERMISSION_INHERIT				((_EsLongConstant) (1) << 63)
+
+define ES_PANEL_BAND_SIZE_DEFAULT              (-1)
+
+// Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
+
+define ES_ELEMENT_FOCUSABLE			((_EsLongConstant) (1) << 32)
+define ES_ELEMENT_HIDDEN			((_EsLongConstant) (1) << 33) // Hides the element and descendents. 
+									      // Also prevents the element and descendents from taking focus or being hovered/pressed.
+define ES_ELEMENT_DISABLED			((_EsLongConstant) (1) << 34) // Prevents the element from taking focus or being pressed.
+define ES_ELEMENT_DEBUG				((_EsLongConstant) (1) << 35) // Prints some extra debug information about the element.
+define ES_ELEMENT_NO_CLIP			((_EsLongConstant) (1) << 36) // Do not clip children to the element's bounds.
+define ES_ELEMENT_NO_HOVER			((_EsLongConstant) (1) << 37) // For z-stacked elements. Can still hover descendents and overlapped siblings/parent.
+									      // Override HIT_TEST to return false to prevent hovering descendents.
+define ES_ELEMENT_NO_HOVER_DESCENDENTS		((_EsLongConstant) (1) << 38) // Prevent hovering over any descendents.
+define ES_ELEMENT_BLOCK_FOCUS			((_EsLongConstant) (1) << 39) // This element and descendents cannot take focus.
+define ES_ELEMENT_NOT_TAB_TRAVERSABLE		((_EsLongConstant) (1) << 40) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
+define ES_ELEMENT_CENTER_ACCESS_KEY_HINT	((_EsLongConstant) (1) << 41) // TODO Make this more customizable with a message perhaps?
+define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 42) // Hint for autoCorners and autoBorders.
+define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 43) // Hint for autoCorners and autoBorders; and tab traversal.
+define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 44) // Don't exit access key mode after using the access key.
+define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 45) 
+
+// For children of splitters:
+define ES_CELL_COLLAPSABLE	((_EsLongConstant) (1) << 51)
+
+define ES_CELL_H_PUSH           ((_EsLongConstant) (1) << 54)
+define ES_CELL_H_EXPAND         ((_EsLongConstant) (1) << 55)
+define ES_CELL_H_SHRINK		((_EsLongConstant) (1) << 56)
+define ES_CELL_H_LEFT           ((_EsLongConstant) (1) << 57)
+define ES_CELL_H_RIGHT          ((_EsLongConstant) (1) << 58)
+define ES_CELL_V_PUSH           ((_EsLongConstant) (1) << 59)
+define ES_CELL_V_EXPAND         ((_EsLongConstant) (1) << 60)
+define ES_CELL_V_SHRINK		((_EsLongConstant) (1) << 61)
+define ES_CELL_V_TOP            ((_EsLongConstant) (1) << 62)
+define ES_CELL_V_BOTTOM         ((_EsLongConstant) (1) << 63)
+
+define ES_PANEL_STACK			(0) // Default.
+define ES_PANEL_SWITCHER		(1 << 0)
+define ES_PANEL_Z_STACK			(1 << 1)
+define ES_PANEL_TABLE			(1 << 2)
+
+define ES_PANEL_H_SCROLL_FIXED		(1 << 4)
+define ES_PANEL_V_SCROLL_FIXED		(1 << 5)
+define ES_PANEL_H_SCROLL_AUTO		(1 << 6)
+define ES_PANEL_V_SCROLL_AUTO		(1 << 7)
+
+// For ES_PANEL_TABLE and ES_PANEL_STACK.
+define ES_PANEL_VERTICAL		(0) // Default.
+define ES_PANEL_HORIZONTAL		(1 << 8) 
+define ES_PANEL_REVERSE 		(1 << 9) // Reverse layout is not supported with ES_PANEL_TABLE yet.
+
+// For ES_PANEL_TABLE.
+define ES_PANEL_H_LEFT			(1 << 16)
+define ES_PANEL_H_RIGHT			(1 << 17)
+define ES_PANEL_H_CENTER		(1 << 18)
+define ES_PANEL_H_JUSTIFY		(1 << 19)
+define ES_PANEL_V_TOP			(1 << 20)
+define ES_PANEL_V_BOTTOM		(1 << 21)
+define ES_PANEL_V_CENTER		(1 << 22)
+define ES_PANEL_V_JUSTIFY		(1 << 23)
+
+define ES_TEXTBOX_MULTILINE			(1 << 0)
+define ES_TEXTBOX_EDIT_BASED			(1 << 1)
+define ES_TEXTBOX_MARGIN			(1 << 2)
+define ES_TEXTBOX_NO_SMART_CONTEXT_MENUS	(1 << 3)
+define ES_TEXTBOX_ALLOW_TABS			(1 << 4)
+define ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS	(1 << 5)
+
+define ES_TEXTBOX_FIND_BACKWARDS		(1 << 0)
+
+define ES_TEXTBOX_GET_CONTENTS_SELECTED_ONLY	(1 << 0)
+
+// First few bits reserved for the check state.
+define ES_BUTTON_DEFAULT			(1 << 3)
+define ES_BUTTON_MENU_ITEM			(1 << 4)
+define ES_BUTTON_NOT_FOCUSABLE			(1 << 5)
+define ES_BUTTON_TOOLBAR			(1 << 6)
+define ES_BUTTON_DROPDOWN			(1 << 7)
+define ES_BUTTON_COMPACT			(1 << 8)
+define ES_MENU_ITEM_HEADER			(1 << 9)
+define ES_BUTTON_CHECKBOX			(1 << 10)
+define ES_BUTTON_RADIOBOX			(1 << 11)
+define ES_BUTTON_CANCEL				(1 << 12)
+define ES_BUTTON_PUSH				(1 << 13)
+define ES_MENU_ITEM_CHECKED			(1 << 14)
+
+define ES_COLOR_WELL_HAS_OPACITY		(1 << 0)
+
+define ES_SCROLLBAR_VERTICAL			(0 << 0)
+define ES_SCROLLBAR_HORIZONTAL			(1 << 0)
+
+define ES_SPLITTER_VERTICAL			(0 << 0)
+define ES_SPLITTER_HORIZONTAL			(1 << 0)
+
+define ES_LIST_VIEW_HORIZONTAL			(1 << 0) // Layout horizontally instead of vertically.
+define ES_LIST_VIEW_VARIABLE_SIZE		(1 << 1) // Each item can be a different size. 
+							 // You need to respond to the LIST_VIEW_MEASURE_ITEM message.
+							 // The size of items cannot depend on the size of the parent.
+define ES_LIST_VIEW_TILED			(1 << 2) // Multiple items per band. Incompatible with variable size items, columns mode and non-linear mode.
+define ES_LIST_VIEW_NON_LINEAR			(1 << 3) // Indices within a group are arbitrary values. They must be stable.
+							 // You need to respond to LIST_VIEW_NEXT_INDEX, LIST_VIEW_PREVIOUS_INDEX, 
+							 // LIST_VIEW_COMPARE_INDICES, LIST_VIEW_FIRST_INDEX, and LIST_VIEW_LAST_INDEX messages.
+							 // If the flag is not set, indices are consecutive within a group, starting at 0. 
+							 // These are non-stable, but are updated automatically when items are inserted/removed.
+define ES_LIST_VIEW_SINGLE_SELECT		(1 << 4) // One item can be selected. By default, selections are disabled.
+define ES_LIST_VIEW_MULTI_SELECT		(1 << 5) // Multiple items can be selected.
+define ES_LIST_VIEW_CHOICE_SELECT		(1 << 6) // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
+define ES_LIST_VIEW_COLUMNS			(1 << 7) // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
+define ES_LIST_VIEW_FIXED_ITEMS			(1 << 8) // Use the fixed item API rather than the callback API.
+define ES_LIST_VIEW_CENTER_TILES                (1 << 9) // Center tiled items.
+
+define ES_LIST_VIEW_GROUP_HAS_HEADER		(1 << 0) // The first item in the group is a header.
+define ES_LIST_VIEW_GROUP_HAS_FOOTER		(1 << 1) // The last item in the group is a footer.
+define ES_LIST_VIEW_GROUP_INDENT		(1 << 2) // Indent the group's items (excluding the header and footer).
+define ES_LIST_VIEW_GROUP_COLLAPSABLE		(1 << 3) // The group can be collapsed.
+
+define ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED	(1 << 0) // The column's contents is right-aligned.
+define ES_LIST_VIEW_COLUMN_HAS_MENU		(1 << 1) // The header can be clicked to open a menu.
+define ES_LIST_VIEW_COLUMN_TABULAR		(1 << 2) // Use tabular text figures (so that digits are aligned).
+
+define ES_MENU_AT_CURSOR			(1 << 0)
+define ES_MENU_MAXIMUM_HEIGHT			(1 << 1)
+
+define ES_FONT_SANS 		(0xFFFF)
+define ES_FONT_SERIF 		(0xFFFE)
+define ES_FONT_MONOSPACED 	(0xFFFD)
+
+define ES_FONT_REGULAR		(4)
+define ES_FONT_BOLD 		(7)
+
+define ES_TEXT_FIGURE_DEFAULT	(0)
+define ES_TEXT_FIGURE_OLD	(1)
+define ES_TEXT_FIGURE_TABULAR	(2)
+
+define ES_TEXT_DECORATION_UNDERLINE      (1 << 0)
+define ES_TEXT_DECORATION_STRIKE_THROUGH (1 << 1)
+
+define ES_TEXT_DISPLAY_RICH_TEXT            (1 << 0)
+define ES_TEXT_DISPLAY_PREFORMATTED         (1 << 1) // Prevents trimming of trailing/leading whitespace.
+define ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION (1 << 2)
+
+define ES_LIST_DISPLAY_BULLETED         (0 << 0) // Default.
+define ES_LIST_DISPLAY_NUMBERED         (1 << 0)
+define ES_LIST_DISPLAY_LOWER_ALPHA      (2 << 0)
+define ES_LIST_DISPLAY_CUSTOM_MARKER	(0xFF << 0) // Sends ES_MSG_LIST_DISPLAY_GET_MARKER.
+define ES_LIST_DISPLAY_MARKER_TYPE_MASK (0xFF << 0)
+
+define ES_IMAGE_DISPLAY_DECODE_WHEN_NEEDED (1 << 0) // The image is only kept in its decoded state when the display is on-screen.
+define ES_IMAGE_DISPLAY_MANUAL_SIZE        (1 << 1) // The display will be manually sized; its size does not depend on the loaded image.
+
+define ES_COMMAND_SYSTEM_START		(0xF0000000)
+define ES_COMMAND_DELETE		(0xF0000001)
+define ES_COMMAND_SELECT_ALL		(0xF0000002)
+define ES_COMMAND_CUT			(0xF0000003)
+define ES_COMMAND_COPY			(0xF0000004)
+define ES_COMMAND_PASTE			(0xF0000005)
+define ES_COMMAND_UNDO			(0xF0000006)
+define ES_COMMAND_REDO			(0xF0000007)
+define ES_COMMAND_SAVE			(0xF0000008)
+define ES_COMMAND_SHOW_IN_FILE_MANAGER	(0xF0000009)
+
+// Some common layouts...
+define ES_CELL_FILL	 (ES_CELL_H_FILL | ES_CELL_V_FILL)
+define ES_CELL_H_FILL	 (ES_CELL_H_PUSH | ES_CELL_H_EXPAND | ES_CELL_H_SHRINK)
+define ES_CELL_V_FILL	 (ES_CELL_V_PUSH | ES_CELL_V_EXPAND | ES_CELL_V_SHRINK)
+define ES_CELL_CENTER	 (ES_CELL_H_CENTER | ES_CELL_V_CENTER)
+define ES_CELL_PUSH	 (ES_CELL_H_PUSH | ES_CELL_V_PUSH)
+define ES_CELL_EXPAND    (ES_CELL_H_EXPAND | ES_CELL_V_EXPAND)
+define ES_CELL_CORNER	 (ES_CELL_H_LEFT | ES_CELL_V_TOP)
+define ES_CELL_SHRINK	 (ES_CELL_H_SHRINK | ES_CELL_V_SHRINK)
+define ES_CELL_H_CENTER  (ES_CELL_H_LEFT | ES_CELL_H_RIGHT)
+define ES_CELL_V_CENTER  (ES_CELL_V_TOP | ES_CELL_V_BOTTOM)
+
+// Mask bits for EsThemeMetrics:
+define ES_THEME_METRICS_INSETS (1 << 0)
+define ES_THEME_METRICS_CLIP_INSETS (1 << 1)
+define ES_THEME_METRICS_GLOBAL_OFFSET (1 << 2)	
+define ES_THEME_METRICS_CLIP_ENABLED (1 << 3)
+define ES_THEME_METRICS_CURSOR (1 << 4)
+define ES_THEME_METRICS_ENTRANCE_TRANSITION (1 << 5)
+define ES_THEME_METRICS_EXIT_TRANSITION (1 << 6)
+define ES_THEME_METRICS_ENTRANCE_DURATION (1 << 7)
+define ES_THEME_METRICS_EXIT_DURATION (1 << 8)
+define ES_THEME_METRICS_PREFERRED_WIDTH (1 << 9)
+define ES_THEME_METRICS_PREFERRED_HEIGHT (1 << 10)
+define ES_THEME_METRICS_MINIMUM_WIDTH (1 << 11)
+define ES_THEME_METRICS_MINIMUM_HEIGHT (1 << 12)
+define ES_THEME_METRICS_MAXIMUM_WIDTH (1 << 13)
+define ES_THEME_METRICS_MAXIMUM_HEIGHT (1 << 14)
+define ES_THEME_METRICS_GAP_MAJOR (1 << 15)
+define ES_THEME_METRICS_GAP_MINOR (1 << 16)
+define ES_THEME_METRICS_GAP_WRAP (1 << 17)
+define ES_THEME_METRICS_GAP_ALL (ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR | ES_THEME_METRICS_GAP_WRAP)
+define ES_THEME_METRICS_TEXT_COLOR (1 << 18)
+define ES_THEME_METRICS_SELECTED_BACKGROUND (1 << 19)
+define ES_THEME_METRICS_SELECTED_TEXT (1 << 20)
+define ES_THEME_METRICS_ICON_COLOR (1 << 21)
+define ES_THEME_METRICS_TEXT_ALIGN (1 << 22)
+define ES_THEME_METRICS_TEXT_SIZE (1 << 23)
+define ES_THEME_METRICS_FONT_FAMILY (1 << 24)
+define ES_THEME_METRICS_FONT_WEIGHT (1 << 25)
+define ES_THEME_METRICS_ICON_SIZE (1 << 26)
+define ES_THEME_METRICS_IS_ITALIC (1 << 27)
+define ES_THEME_METRICS_ELLIPSIS (1 << 28)
+define ES_THEME_METRICS_LAYOUT_VERTICAL (1 << 29)
+
+define ES_WINDOW_MOVE_MAXIMISED (1 << 0)
+define ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN (1 << 1)
+define ES_WINDOW_MOVE_HIDDEN (1 << 2)
+define ES_WINDOW_MOVE_ALWAYS_ON_TOP (1 << 3)
+define ES_WINDOW_MOVE_AT_BOTTOM (1 << 4)
+define ES_WINDOW_MOVE_UPDATE_SCREEN (1 << 5)
+define ES_WINDOW_MOVE_DYNAMIC (1 << 6)
+
+define ES_WINDOW_SOLID_TRUE (1 << 0)
+define ES_WINDOW_SOLID_NO_ACTIVATE (1 << 1)
+define ES_WINDOW_SOLID_NO_BRING_TO_FRONT (1 << 2)
+
+define ES_THEME_CURSORS_WIDTH (264)
+define ES_THEME_CURSORS_HEIGHT (128)
+define ES_THEME_CURSORS_NAME "Desktop.ThemeCursors"
+
+define ES_TEXTBOX_MOVE_CARET_SINGLE (2)
+define ES_TEXTBOX_MOVE_CARET_WORD (3)
+define ES_TEXTBOX_MOVE_CARET_LINE (4)
+define ES_TEXTBOX_MOVE_CARET_VERTICAL (5)
+define ES_TEXTBOX_MOVE_CARET_ALL (6)
+define ES_TEXTBOX_MOVE_CARET_FIRST_ONLY (1 << 8)
+define ES_TEXTBOX_MOVE_CARET_SECOND_ONLY (1 << 9)
+define ES_TEXTBOX_MOVE_CARET_BACKWARDS (1 << 10)
+define ES_TEXTBOX_MOVE_CARET_STRONG_WHITESPACE (1 << 11)
+
+define ES_GAME_CONTROLLER_MAX_COUNT (16)
+
+define ES_DOMAIN_NAME_MAX_LENGTH (255)
+define ES_ECHO_REQUEST_MAX_LENGTH (48)
+
+define ES_CONNECTION_OPEN_WAIT (1 << 0)
+
+define ES_FILE_CONTROL_NOTIFY_MONITORS (1 << 0)
+define ES_FILE_CONTROL_FLUSH           (1 << 1)
+
+define ES_ELEMENT_UPDATE_CONTENT_WIDTH  (1 << 0)
+define ES_ELEMENT_UPDATE_CONTENT_HEIGHT (1 << 1)
+
+define ES_DIALOG_ALERT_OK_BUTTON (1 << 0)
+
+define ES_MEMORY_RESERVE_COMMIT_ALL (1 << 0)
+
+define ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION (1 << 0)
+
+define ES_ELEMENT_TRANSITION_ENTRANCE (1 << 0)
+
+define ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
+
+define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C (1)
+define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI (2)
+
+define ES_DRAW_LINE_CAP_ROUND (1 << 0)
+define ES_DRAW_LINE_CAP_SQUARE (1 << 1)
+
+define ES_INSTANCE_CLASS_VIEWER (0) // Default.
+define ES_INSTANCE_CLASS_EDITOR (1)
+
+define ES_MOUNT_POINT_MAX_COUNT (256)
+
+define ES_DRIVE_TYPE_OTHER            (0)
+define ES_DRIVE_TYPE_HDD              (1)
+define ES_DRIVE_TYPE_SSD              (2)
+define ES_DRIVE_TYPE_CDROM            (3)
+define ES_DRIVE_TYPE_USB_MASS_STORAGE (4)
+
+define ES_ELEMENT_FOCUS_ENSURE_VISIBLE (1 << 0)
+define ES_ELEMENT_FOCUS_FROM_KEYBOARD  (1 << 1)
+
+define ES_APPLICATION_STARTUP_MANUAL_PATH                (1 << 0)
+define ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS (1 << 1)
+
+define ES_LIST_VIEW_INLINE_TEXTBOX_COPY_EXISTING_TEXT        (1 << 0)
+define ES_LIST_VIEW_INLINE_TEXTBOX_REJECT_EDIT_IF_FOCUS_LOST (1 << 1)
+
+define ES_DRAW_CONTENT_MARKER_DOWN_ARROW (1 << 0)
+define ES_DRAW_CONTENT_MARKER_UP_ARROW   (1 << 1)
+define ES_DRAW_CONTENT_TABULAR           (1 << 2)
+define ES_DRAW_CONTENT_RICH_TEXT         (1 << 3)
+
+define ES_MODIFIER_CTRL		(1 << 0)
+define ES_MODIFIER_SHIFT	(1 << 1)
+define ES_MODIFIER_ALT		(1 << 2)
+define ES_MODIFIER_FLAG		(1 << 3)
+
+define ES_PROCESS_CREATE_PAUSED (1 << 0)
+
+define ES_THREAD_EVENT_MUTEX_ACQUIRE (1)
+define ES_THREAD_EVENT_MUTEX_RELEASE (2)
+
+define ES_WINDOW_PROPERTY_SOLID              (0x01) // Standard window properties.
+define ES_WINDOW_PROPERTY_OPAQUE_BOUNDS      (0x02)
+define ES_WINDOW_PROPERTY_BLUR_BOUNDS        (0x03)
+define ES_WINDOW_PROPERTY_ALPHA              (0x04)
+define ES_WINDOW_PROPERTY_FOCUSED            (0x05)
+define ES_WINDOW_PROPERTY_MATERIAL           (0x06)
+define ES_WINDOW_PROPERTY_EMBED              (0x07)
+define ES_WINDOW_PROPERTY_OBJECT             (0x81) // Embedded window properties.
+define ES_WINDOW_PROPERTY_EMBED_OWNER        (0x82)
+define ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR (0x83)
+
+define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
+define ES_DRAW_BITMAP_XOR    (0xFFFE)
+define ES_DRAW_BITMAP_BLEND  (0)
+
+include desktop/icons.header
+
+enum EsFatalError {
+	ES_FATAL_ERROR_ABORT
+	ES_FATAL_ERROR_INCORRECT_FILE_ACCESS
+	ES_FATAL_ERROR_INCORRECT_NODE_TYPE
+	ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS
+	ES_FATAL_ERROR_INVALID_BUFFER
+	ES_FATAL_ERROR_INVALID_HANDLE
+	ES_FATAL_ERROR_INVALID_MEMORY_REGION
+	ES_FATAL_ERROR_OUT_OF_RANGE // A parameter exceeds a limit, or is not a valid choice from an enumeration.
+	ES_FATAL_ERROR_PROCESSOR_EXCEPTION
+	ES_FATAL_ERROR_RECURSIVE_BATCH
+	ES_FATAL_ERROR_UNKNOWN_SYSCALL
+	ES_FATAL_ERROR_COUNT
+}
+
+enum EsSyscallType {
+	// Memory.
+
+	ES_SYSCALL_MEMORY_ALLOCATE
+	ES_SYSCALL_MEMORY_FREE
+	ES_SYSCALL_MEMORY_SHARE
+	ES_SYSCALL_MEMORY_MAP_OBJECT
+	ES_SYSCALL_MEMORY_OPEN
+	ES_SYSCALL_MEMORY_COMMIT
+	ES_SYSCALL_MEMORY_FAULT_RANGE
+
+	// Processing.
+
+	ES_SYSCALL_PROCESS_CREATE
+	ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT
+	ES_SYSCALL_THREAD_TERMINATE
+	ES_SYSCALL_THREAD_CREATE
+	ES_SYSCALL_WAIT
+	ES_SYSCALL_PROCESS_TERMINATE
+	ES_SYSCALL_EVENT_CREATE
+	ES_SYSCALL_EVENT_SET
+	ES_SYSCALL_EVENT_RESET
+	ES_SYSCALL_PROCESS_PAUSE
+	ES_SYSCALL_PROCESS_CRASH
+	ES_SYSCALL_THREAD_GET_ID
+	ES_SYSCALL_PROCESS_GET_STATE
+	ES_SYSCALL_YIELD_SCHEDULER
+	ES_SYSCALL_SLEEP
+	ES_SYSCALL_PROCESS_OPEN
+	ES_SYSCALL_PROCESS_SET_TLS
+	ES_SYSCALL_PROCESS_GET_TLS
+	ES_SYSCALL_PROCESS_GET_STATUS
+	ES_SYSCALL_EVENT_FORWARD
+	ES_SYSCALL_EVENT_SINK_CREATE
+	ES_SYSCALL_EVENT_SINK_POP
+	ES_SYSCALL_EVENT_SINK_PUSH
+	ES_SYSCALL_THREAD_STACK_SIZE
+	ES_SYSCALL_PROCESS_SHARE
+
+	// Windowing.
+
+	ES_SYSCALL_MESSAGE_GET
+	ES_SYSCALL_MESSAGE_POST
+	ES_SYSCALL_MESSAGE_WAIT
+
+	ES_SYSCALL_CURSOR_POSITION_GET
+	ES_SYSCALL_CURSOR_POSITION_SET
+	ES_SYSCALL_GAME_CONTROLLER_STATE_POLL
+	ES_SYSCALL_EYEDROP_START
+
+	ES_SYSCALL_SCREEN_WORK_AREA_SET
+	ES_SYSCALL_SCREEN_WORK_AREA_GET
+	ES_SYSCALL_SCREEN_BOUNDS_GET
+	ES_SYSCALL_SCREEN_FORCE_UPDATE
+
+	ES_SYSCALL_WINDOW_CREATE
+	ES_SYSCALL_WINDOW_CLOSE
+	ES_SYSCALL_WINDOW_REDRAW
+	ES_SYSCALL_WINDOW_MOVE
+	ES_SYSCALL_WINDOW_GET_ID
+	ES_SYSCALL_WINDOW_GET_BOUNDS
+	ES_SYSCALL_WINDOW_SET_BITS
+	ES_SYSCALL_WINDOW_SET_CURSOR
+	ES_SYSCALL_WINDOW_SET_PROPERTY
+
+	ES_SYSCALL_MESSAGE_DESKTOP
+
+	ES_SYSCALL_CLIPBOARD_ADD
+	ES_SYSCALL_CLIPBOARD_HAS
+	ES_SYSCALL_CLIPBOARD_READ
+
+	// IO.
+
+	ES_SYSCALL_NODE_OPEN
+	ES_SYSCALL_FILE_READ_SYNC
+	ES_SYSCALL_FILE_WRITE_SYNC
+	ES_SYSCALL_FILE_RESIZE
+	ES_SYSCALL_FILE_GET_SIZE
+	ES_SYSCALL_DIRECTORY_ENUMERATE
+	ES_SYSCALL_NODE_DELETE
+	ES_SYSCALL_NODE_MOVE
+	ES_SYSCALL_FILE_CONTROL
+	ES_SYSCALL_NODE_SHARE
+	ES_SYSCALL_VOLUME_GET_INFORMATION
+
+	// Networking.
+
+	ES_SYSCALL_DOMAIN_NAME_RESOLVE
+	ES_SYSCALL_ECHO_REQUEST
+	ES_SYSCALL_CONNECTION_OPEN
+	ES_SYSCALL_CONNECTION_POLL
+	ES_SYSCALL_CONNECTION_NOTIFY
+
+	// IPC.
+
+	ES_SYSCALL_CONSTANT_BUFFER_READ
+	ES_SYSCALL_CONSTANT_BUFFER_SHARE
+	ES_SYSCALL_CONSTANT_BUFFER_CREATE
+	ES_SYSCALL_PIPE_CREATE
+	ES_SYSCALL_PIPE_WRITE
+	ES_SYSCALL_PIPE_READ
+
+	// System information.
+
+	ES_SYSCALL_SYSTEM_GET_CONSTANTS
+	ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT
+	ES_SYSCALL_SYSTEM_CONFIGURATION_WRITE
+	ES_SYSCALL_SYSTEM_CONFIGURATION_READ
+
+	// Misc.
+
+	ES_SYSCALL_PRINT
+	ES_SYSCALL_HANDLE_CLOSE
+	ES_SYSCALL_BATCH
+	ES_SYSCALL_SHUTDOWN
+	ES_SYSCALL_POSIX
+	ES_SYSCALL_DEBUG_COMMAND
+
+	// End.
+
+	ES_SYSCALL_COUNT
+}
+
+enum EsMessageType {
+	// Window manager messages (don't rearrange; see SendMessageToWindow in kernel/window_manager.cpp):
+	ES_MSG_WM_START				= 0x1000
+	ES_MSG_MOUSE_MOVED 			= 0x1001
+	ES_MSG_WINDOW_ACTIVATED			= 0x1002
+	ES_MSG_WINDOW_DEACTIVATED		= 0x1003
+	ES_MSG_WINDOW_DESTROYED 		= 0x1004
+	ES_MSG_MOUSE_EXIT			= 0x1006 
+	ES_MSG_WINDOW_RESIZED			= 0x1007
+	ES_MSG_MOUSE_LEFT_DOWN 			= 0x1008	// Return ES_REJECTED to prevent taking focus, even if ES_ELEMENT_FOCUSABLE is set. Propagates.
+	ES_MSG_MOUSE_LEFT_UP 			= 0x1009	// Propagates.
+	ES_MSG_MOUSE_RIGHT_DOWN 		= 0x100A	// Propagates.
+	ES_MSG_MOUSE_RIGHT_UP 			= 0x100B	// Propagates.
+	ES_MSG_MOUSE_MIDDLE_DOWN 		= 0x100C	// Propagates.
+	ES_MSG_MOUSE_MIDDLE_UP 			= 0x100D 	// Propagates.
+	ES_MSG_KEY_DOWN				= 0x100E	// Propagates to ancestors if unhandled.
+	ES_MSG_KEY_UP				= 0x100F
+	ES_MSG_UPDATE_WINDOW			= 0x1010
+	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x1011
+	ES_MSG_WM_END				= 0x13FF
+
+	// Internal GUI messages:				// None of these should be sent directly.
+	ES_MSG_PAINT				= 0x2000	// Paint the element using the painter specified in the message.
+	ES_MSG_PAINT_BACKGROUND			= 0x2001	// Paint the element's background. Sent before ES_MSG_PAINT. 
+								// If unhandled, the background is drawn using the default settings. 
+								// The width/height parameters of EsPainter may be larger than expected - this includes the 'non-client' area.
+	ES_MSG_GET_CURSOR			= 0x2003	// Get the cursor for the element.
+	ES_MSG_ANIMATE				= 0x2004	// Animate the element. Returns the number of microseconds to wait for the next frame, 
+								// or whether the animation is complete.
+	ES_MSG_Z_ORDER				= 0x2005	// Get the child of an element based on its Z-order.
+	ES_MSG_DESTROY				= 0x2006	// The element has been marked to be destroyed. Free any resources allocated. 
+								// Sent after the parent receives its ES_MSG_REMOVE_CHILD message.
+	ES_MSG_GET_WIDTH			= 0x2007	// Measure the element's width. If known, the height is specified.
+	ES_MSG_GET_HEIGHT			= 0x2008	// Measure the element's height. If known, the width is specified.
+	ES_MSG_LAYOUT				= 0x2009	// The size of the element has been updated. Layout the element's children.
+	ES_MSG_ENSURE_VISIBLE			= 0x200A	// Center the specified child (where possible) in your scrolled viewport.
+	ES_MSG_ADD_CHILD			= 0x200B	// An element has been created with this element as its parent.
+	ES_MSG_REMOVE_CHILD			= 0x200C	// An element has been destroyed with this element as its parent. 
+								// Sent before the child receives its ES_MSG_DESTROY message. 
+								// It will be removed from the `children` later (but before the next ES_MSG_LAYOUT message is received).
+	ES_MSG_PRE_ADD_CHILD			= 0x200D	// An element has been created with this element as its parent, but is not yet added to the parent.
+	ES_MSG_HIT_TEST				= 0x200E	// For non-rectangular elements: test whether a pixel should be considered inside the element. Set response to ES_HANDLED.
+	ES_MSG_KEY_TYPED			= 0x2011	// Sent to the focused element when a key is pressed.
+	ES_MSG_SCROLL_X				= 0x2012	// The element has been horizontally scrolled.
+	ES_MSG_SCROLL_Y				= 0x2013	// The element has been vertically scrolled.
+	ES_MSG_STRONG_FOCUS_END			= 0x2014	// Sent once when the user 'clicks off' the element, even if a new element was not necessarily focused.
+	ES_MSG_BEFORE_Z_ORDER			= 0x2015	// Sent before a batch of Z_ORDER messages.
+	ES_MSG_AFTER_Z_ORDER			= 0x2016	// Sent after a batch of Z_ORDER messages.
+	ES_MSG_PAINT_CHILDREN			= 0x2017	// Paint the element's children. Useful for animations, with EsPaintTargetTake/Return.
+	ES_MSG_DESTROY_CONTENTS			= 0x2018	// Sent after EsElementDestroyContents is called.
+	ES_MSG_GET_INSPECTOR_INFORMATION	= 0x2019	// Get a string containing information about the element to display in the inspector.
+	ES_MSG_NOT_VISIBLE			= 0x2020	// Sent to elements in the check visible list when they move off-screen.
+	ES_MSG_GET_CHILD_STYLE_VARIANT		= 0x2021	// Allows the parent of an element to customize its default style.
+	ES_MSG_PAINT_ICON			= 0x2022	// Sent during EsDrawContent.
+	ES_MSG_MOUSE_LEFT_CLICK			= 0x2023	// Indicates the element has been "clicked" (might be different for other input devices).
+	ES_MSG_MOUSE_RIGHT_CLICK		= 0x2024	// Right click, similar to LEFT_CLICK above.
+	ES_MSG_MOUSE_MIDDLE_CLICK		= 0x2025	// Middle click, similar to LEFT_CLICK above.
+	ES_MSG_MOUSE_LEFT_DRAG			= 0x2026	// Left button is pressed and the mouse is moving. 
+								// Only starts being sent after a threshold is reached. 
+								// This will NOT be sent if the element did not handle LEFT_DOWN.
+	ES_MSG_MOUSE_RIGHT_DRAG			= 0x2027	// Similar to LEFT_DRAG above, but for the right button. 
+	ES_MSG_MOUSE_MIDDLE_DRAG		= 0x2028	// Similar to LEFT_DRAG above, but for the middle button. 
+
+	// State change messages: (causes a style refresh)
+	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
+	ES_MSG_HOVERED_START			= 0x2081	// Sent when the mouse starts hovering over an element.
+	ES_MSG_HOVERED_END			= 0x2082	// Opposite of ES_MSG_HOVERED_START. Sent before ES_MSG_HOVERED_START is sent to the new hovered element.
+	ES_MSG_PRESSED_START			= 0x2083	// Sent when an element is pressed.
+	ES_MSG_PRESSED_END			= 0x2084	// Opposite of ES_MSG_PRESSED_START. 
+	ES_MSG_FOCUSED_START			= 0x2085	// Sent when an element is focused.
+	ES_MSG_FOCUSED_END			= 0x2086	// Opposite of ES_MSG_FOCUSED_START. 
+	ES_MSG_FOCUS_WITHIN_START		= 0x2087	// Sent when an element is focused.
+	ES_MSG_FOCUS_WITHIN_END			= 0x2088	// Opposite of ES_MSG_FOCUSED_START. 
+	ES_MSG_STATE_CHANGE_MESSAGE_END		= 0x20FF
+
+	// Element messages:
+	ES_MSG_SCROLLBAR_MOVED			= 0x3000	// The scrollbar has been moved.
+	ES_MSG_CHECK_UPDATED			= 0x3001	// Button's check state has changed. See message->checkState.
+	ES_MSG_RADIO_GROUP_UPDATED		= 0x3002	// Sent to all siblings of a radiobox when it is checked, so they can uncheck themselves.
+	ES_MSG_COLOR_CHANGED			= 0x3003	// Color well's color has changed. See message->colorChanged.
+	ES_MSG_LIST_DISPLAY_GET_MARKER		= 0x3004	// Get the string for a marker in an EsListDisplay. See message->getContent.
+	ES_MSG_REORDER_ITEM_TEST		= 0x3005
+
+	// Desktop messages: 
+	ES_MSG_POWER_BUTTON_PRESSED		= 0x4801
+	ES_MSG_EMBEDDED_WINDOW_DESTROYED 	= 0x4802
+	ES_MSG_SET_SCREEN_RESOLUTION		= 0x4803
+	ES_MSG_REGISTER_FILE_SYSTEM		= 0x4804
+	ES_MSG_UNREGISTER_FILE_SYSTEM		= 0x4805
+	ES_MSG_DESKTOP	                        = 0x4806
+
+	// Messages sent from Desktop to application instances:
+	ES_MSG_TAB_INSPECT_UI			= 0x4A01
+	ES_MSG_TAB_CLOSE_REQUEST		= 0x4A02
+	ES_MSG_INSTANCE_SAVE_RESPONSE		= 0x4A03	// Sent by Desktop after an application requested to save its document.
+	ES_MSG_INSTANCE_DOCUMENT_RENAMED	= 0x4A04
+	ES_MSG_INSTANCE_DOCUMENT_UPDATED	= 0x4A05
+
+	// Debugger messages:
+	ES_MSG_APPLICATION_CRASH		= 0x4C00
+	ES_MSG_PROCESS_TERMINATED		= 0x4C01
+
+	// Undo item messages:
+	ES_MSG_UNDO_CANCEL			= 0x4D00
+	ES_MSG_UNDO_INVOKE			= 0x4D01
+	ES_MSG_UNDO_TO_STRING			= 0x4D02
+
+	// Misc messages:
+	ES_MSG_EYEDROP_REPORT			= 0x5001
+	ES_MSG_SYSTEM_CONSTANT_UPDATED		= 0x5002
+	ES_MSG_TIMER				= 0x5003
+	ES_MSG_PING				= 0x5004	// Sent by Desktop to check processes are processing messages.
+	ES_MSG_WAKEUP				= 0x5005	// Sent to wakeup the message thread, so that it can process locally posted messages.
+
+	// File Manager messages:
+	ES_MSG_FILE_MANAGER_FILE_MODIFIED	= 0x5100
+
+	// Textbox messages:
+	ES_MSG_TEXTBOX_UPDATED			= 0x5200
+	ES_MSG_TEXTBOX_EDIT_START		= 0x5201 	// Set ES_TEXTBOX_EDIT_BASED to receive.
+	ES_MSG_TEXTBOX_EDIT_END			= 0x5202 	// Set ES_TEXTBOX_EDIT_BASED to receive.
+	ES_MSG_TEXTBOX_NUMBER_DRAG_START	= 0x5203 	// For EsTextboxUseNumberOverlay.
+	ES_MSG_TEXTBOX_NUMBER_DRAG_END		= 0x5204 	// For EsTextboxUseNumberOverlay.
+	ES_MSG_TEXTBOX_NUMBER_DRAG_DELTA	= 0x5205 	// For EsTextboxUseNumberOverlay.
+	ES_MSG_TEXTBOX_NUMBER_UPDATED		= 0x5206 	// For EsTextboxUseNumberOverlay with defaultBehaviour=true.
+	ES_MSG_TEXTBOX_GET_BREADCRUMB		= 0x5207 	// For EsTextboxUseBreadcrumbOverlay.
+	ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB	= 0x5208 	// For EsTextboxUseBreadcrumbOverlay.
+
+	// List view messages:
+	ES_MSG_LIST_VIEW_COMPARE_INDICES	= 0x5300
+	ES_MSG_LIST_VIEW_NEXT_INDEX		= 0x5301
+	ES_MSG_LIST_VIEW_PREVIOUS_INDEX		= 0x5302
+	ES_MSG_LIST_VIEW_FIRST_INDEX		= 0x5303
+	ES_MSG_LIST_VIEW_LAST_INDEX		= 0x5304
+	ES_MSG_LIST_VIEW_FIND_INDEX		= 0x5305
+	ES_MSG_LIST_VIEW_COUNT_ITEMS		= 0x5306
+	ES_MSG_LIST_VIEW_MEASURE_RANGE		= 0x5307
+	ES_MSG_LIST_VIEW_MEASURE_ITEM		= 0x5308
+	ES_MSG_LIST_VIEW_CREATE_ITEM		= 0x5309
+	ES_MSG_LIST_VIEW_GET_CONTENT		= 0x530A
+	ES_MSG_LIST_VIEW_GET_INDENT		= 0x530B
+	ES_MSG_LIST_VIEW_FIND_POSITION		= 0x530C
+	ES_MSG_LIST_VIEW_IS_SELECTED		= 0x530D
+	ES_MSG_LIST_VIEW_SELECT			= 0x530E
+	ES_MSG_LIST_VIEW_SELECT_RANGE		= 0x530F
+	ES_MSG_LIST_VIEW_CHOOSE_ITEM		= 0x5310
+	ES_MSG_LIST_VIEW_SEARCH			= 0x5311
+	ES_MSG_LIST_VIEW_CONTEXT_MENU		= 0x5312
+	ES_MSG_LIST_VIEW_COLUMN_MENU		= 0x5313
+	ES_MSG_LIST_VIEW_GET_SUMMARY		= 0x5314
+	ES_MSG_LIST_VIEW_GET_COLUMN_SORT	= 0x5315
+
+	// Application messages:
+	ES_MSG_APPLICATION_EXIT			= 0x7001
+	ES_MSG_INSTANCE_CREATE			= 0x7002
+	ES_MSG_INSTANCE_OPEN			= 0x7003
+	ES_MSG_INSTANCE_SAVE			= 0x7004
+	ES_MSG_INSTANCE_DESTROY			= 0x7005
+
+	// User messages:
+	ES_MSG_USER_START			= 0x8000
+	ES_MSG_USER_END				= 0xBFFF
+}
+
+enum EsCursorStyle {
+	ES_CURSOR_NORMAL 
+	ES_CURSOR_TEXT 
+	ES_CURSOR_RESIZE_VERTICAL 
+	ES_CURSOR_RESIZE_HORIZONTAL
+	ES_CURSOR_RESIZE_DIAGONAL_1 // '/'
+	ES_CURSOR_RESIZE_DIAGONAL_2 // '\'
+	ES_CURSOR_SPLIT_VERTICAL
+	ES_CURSOR_SPLIT_HORIZONTAL
+	ES_CURSOR_HAND_HOVER
+	ES_CURSOR_HAND_DRAG
+	ES_CURSOR_HAND_POINT
+	ES_CURSOR_SCROLL_UP_LEFT
+	ES_CURSOR_SCROLL_UP
+	ES_CURSOR_SCROLL_UP_RIGHT
+	ES_CURSOR_SCROLL_LEFT
+	ES_CURSOR_SCROLL_CENTER
+	ES_CURSOR_SCROLL_RIGHT
+	ES_CURSOR_SCROLL_DOWN_LEFT
+	ES_CURSOR_SCROLL_DOWN
+	ES_CURSOR_SCROLL_DOWN_RIGHT
+	ES_CURSOR_SELECT_LINES
+	ES_CURSOR_DROP_TEXT
+	ES_CURSOR_CROSS_HAIR_PICK
+	ES_CURSOR_CROSS_HAIR_RESIZE
+	ES_CURSOR_MOVE_HOVER
+	ES_CURSOR_MOVE_DRAG
+	ES_CURSOR_ROTATE_HOVER
+	ES_CURSOR_ROTATE_DRAG
+	ES_CURSOR_BLANK
+	ES_CURSOR_COUNT
+}
+
+enum EsWindowStyle {
+	ES_WINDOW_NORMAL
+	ES_WINDOW_CONTAINER
+	ES_WINDOW_MENU
+	ES_WINDOW_TIP
+	ES_WINDOW_PLAIN
+	ES_WINDOW_INSPECTOR
+}
+
+enum EsCheckState {
+	ES_CHECK_UNCHECKED = 0
+	ES_CHECK_CHECKED = 1
+	ES_CHECK_INDETERMINATE = 2
+}
+
+enum EsTransitionType {
+	ES_TRANSITION_NONE
+	ES_TRANSITION_SLIDE_UP
+	ES_TRANSITION_SLIDE_DOWN
+	ES_TRANSITION_COVER_UP
+	ES_TRANSITION_COVER_DOWN
+	ES_TRANSITION_SQUISH_UP
+	ES_TRANSITION_SQUISH_DOWN
+	ES_TRANSITION_ZOOM_OUT
+	ES_TRANSITION_ZOOM_IN
+	ES_TRANSITION_ZOOM_OUT_LIGHT
+	ES_TRANSITION_ZOOM_IN_LIGHT
+	ES_TRANSITION_REVEAL_UP
+	ES_TRANSITION_REVEAL_DOWN
+	ES_TRANSITION_FADE_IN
+	ES_TRANSITION_FADE_OUT
+	ES_TRANSITION_SLIDE_UP_OVER
+	ES_TRANSITION_SLIDE_DOWN_OVER
+	ES_TRANSITION_SLIDE_UP_UNDER
+	ES_TRANSITION_SLIDE_DOWN_UNDER
+}
+
+enum EsMemoryProtection {
+	ES_MEMORY_PROTECTION_READ_ONLY
+	ES_MEMORY_PROTECTION_READ_WRITE
+	ES_MEMORY_PROTECTION_EXECUTABLE
+}
+
+enum EsClipboard {
+	ES_CLIPBOARD_PRIMARY
+}
+
+function_pointer int EsUICallbackFunction(struct EsElement *element, struct EsMessage *message);
+
+struct EsBuffer {
+	union { const uint8_t *in; uint8_t *out; };
+	size_t position, bytes;
+	void *context;
+	bool error, canGrow;
+};
+
+struct EsElementPublic {
+	EsUICallbackFunction messageUser;
+	EsCString cName; 
+	EsGeneric userData; 
+	char accessKey; // Upper-case.
+
+	// These fields are read-only!
+	EsWindow *window;
+	ES_INSTANCE_TYPE *instance;
+	uint64_t flags; // Bits 0-31: specific to the type of element; bits 32-63: common to all elements.
+};
+
+struct EsBatchCall {
+	EsSyscallType index; 
+	bool stopBatchIfError;
+	union { uintptr_t argument0, returnValue; };
+	uintptr_t argument1, argument2, argument3;
+}
+
+struct EsThreadInformation {
+	EsHandle handle;
+	uint64_t tid;
+}
+
+struct EsProcessInformation {
+	EsHandle handle;
+	uintptr_t pid;
+	EsThreadInformation mainThread;
+}
+
+struct EsUniqueIdentifier {
+	// Don't mess with this structure, it's used in filesystems.
+	uint8_t d[16];
+}
+
+struct EsFileInformation {
+	EsHandle handle; 
+	EsFileOffset size;
+	EsError error;
+}
+
+struct EsDirectoryChild {
+	char name[ES_MAX_DIRECTORY_CHILD_NAME_LENGTH];
+	size_t nameBytes;
+	EsNodeType type;
+	EsFileOffsetDifference fileSize; // -1 if unsupported.
+	EsFileOffsetDifference directoryChildren; // ES_DIRECTORY_CHILDREN_UNKNOWN if unsupported.
+}
+
+struct EsPoint {
+	int32_t x;
+	int32_t y;
+}
+
+struct EsRectangle {
+	int32_t l; // Inclusive.
+	int32_t r; // Exclusive.
+	int32_t t; // Inclusive.
+	int32_t b; // Exclusive.
+}
+
+struct EsSpinlock {
+	volatile uint8_t state;
+}
+
+struct EsMutex {
+	EsHandle event;
+	EsSpinlock spinlock;
+	volatile uint8_t state;
+	volatile uint32_t queued;
+}
+
+struct EsCrashReason {
+	EsFatalError errorCode;
+	EsSyscallType duringSystemCall;
+}
+
+struct EsProcessState {
+	EsCrashReason crashReason;
+	uint64_t id;
+	uint8_t executableState;
+	uint8_t flags;
+}
+
+struct EsPainter {
+	EsRectangle clip;
+	int offsetX, offsetY, width, height;
+	void *style;
+	EsPaintTarget *target;
+}
+
+struct EsDebuggerMessage {
+	EsHandle process;
+	EsCrashReason reason;
+}
+
+struct EsSnapshotProcessesItem {
+	int64_t pid, memoryUsage, cpuTimeSlices, idleTimeSlices, handleCount;
+	char name[ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH];
+	uint8_t nameBytes;
+	bool isKernel;
+}
+
+struct EsSnapshotProcesses {
+	size_t count;
+	EsSnapshotProcessesItem processes[];
+}
+
+struct EsMountPoint {
+	char prefix[16];
+	size_t prefixBytes;
+	EsHandle base;
+	bool write;
+};
+
+struct EsProcessCreationArguments {
+	EsHandle executable;
+
+	const void *environmentBlock;
+	size_t environmentBlockBytes;
+
+	EsGeneric creationArgument;
+	uint64_t permissions;
+
+	EsMountPoint *initialMountPoints;
+	size_t initialMountPointCount;
+
+	uint64_t flags;
+};
+
+struct EsInstance {
+	// Read-only variables.
+	void *_private;
+	EsWindow *window;
+	EsUndoManager *undoManager;
+};
+
+struct EsPanelBand {
+	int preferredSize, minimumSize, maximumSize;
+	int push, pull; // Similar to flex-grow and flex-shrink from CSS.
+}
+
+struct EsThemeMetrics {
+	uint64_t mask;
+	EsRectangle insets, clipInsets;
+	EsRectangle globalOffset;
+	int clipEnabled, cursor, entranceTransition, exitTransition;
+	int entranceDuration, exitDuration;
+	int preferredWidth, preferredHeight;
+	int minimumWidth, minimumHeight;
+	int maximumWidth, maximumHeight;
+	int gapMajor, gapMinor, gapWrap;
+	uint32_t textColor, selectedBackground, selectedText, iconColor;
+	int textAlign, textSize, fontFamily, fontWeight, iconSize;
+	bool isItalic, ellipsis, layoutVertical;
+};
+
+struct EsThemeAppearance {
+	bool enabled;
+	uint32_t backgroundColor;
+	uint32_t borderColor;
+	EsRectangle borderSize;
+};
+
+struct EsStyle {
+	void *inherit;
+	EsThemeMetrics metrics;
+	EsThemeAppearance appearance;
+};
+
+include desktop/styles.header
+
+struct EsFont {
+	EsFontFamily family;
+	uint8_t weight;
+	bool italic;
+}
+
+struct EsTextStyle {
+	// TODO Indicating RTL/vertical writing modes.
+	// TODO Support for features.
+	// TODO Support for variable fonts.
+
+	EsFont font;
+	uint16_t size, baselineOffset;
+
+	int8_t tracking;
+	uint8_t figures;
+	bool alternateDirection;
+
+	// Render properties:
+	uint8_t blur;
+	uint8_t decorations;
+	uint32_t color;
+	uint32_t decorationsColor;
+};
+
+struct EsTextRun {
+	EsTextStyle style;
+	uint32_t offset;
+};
+
+struct EsTextPlanProperties {
+	EsCString cLanguage;
+	uint32_t flags; 
+	int maxLines; // Set to 0 for no limit.
+};
+
+struct EsTextSelection {
+	ptrdiff_t caret0, caret1;
+	bool hideCaret, snapCaretToInsets;
+	uint32_t foreground, background;
+};
+
+function_pointer uint32_t EsFragmentShaderCallbackFunction(int x, int y, struct EsStyledBox *box);
+
+struct EsStyledBox {
+	EsRectangle bounds, clip; 
+	uint32_t backgroundColor, backgroundColor2; 
+	EsFragmentShaderCallbackFunction fragmentShader;
+	uint32_t borderColor; 
+	EsRectangle borders;
+	int cornerRadiusTopLeft, cornerRadiusTopRight, cornerRadiusBottomLeft, cornerRadiusBottomRight; 
+};
+
+struct EsArena {
+	// Arenas are not thread-safe!
+	// You can use different arenas in different threads, though.
+	void *firstEmptySlot, *firstBlock;
+	size_t slotsPerBlock, slotSize, blockSize;
+};
+
+struct EsCalculationValue {
+	bool error;
+	double number;
+};
+
+function_pointer void EsCommandCallbackFunction(ES_INSTANCE_TYPE *instance, EsElement *element, struct EsCommand *command);
+
+struct EsCommand {
+	EsElement **elements;
+	EsCommandCallbackFunction callback;
+	bool disabled, registered, allocated;
+	EsCheckState check;
+	uint32_t stableID;
+	EsCString cKeyboardShortcut;
+	EsGeneric data;
+};
+
+struct EsListViewColumn {
+	STRING title;
+	uint32_t flags;
+	int width;
+};
+
+struct EsApplicationStartupInformation {
+	int64_t id;
+	STRING filePath;
+	EsWindow *targetWindow;
+	uint32_t flags;
+	EsHandle readHandle; // Internal use.
+};
+
+struct EsINIState {
+	char *buffer, *sectionClass, *section, *key, *value;
+	size_t bytes, sectionClassBytes, sectionBytes, keyBytes, valueBytes;
+};
+
+struct EsSystemConfigurationItem {
+	char *key, *value;
+	size_t keyBytes, valueBytes;
+};
+
+struct EsSystemConfigurationGroup {
+	char *section, *sectionClass;
+	size_t sectionBytes, sectionClassBytes;
+	EsSystemConfigurationItem *items;
+	size_t itemCount;
+};
+
+struct EsAnalogInput {
+	uint8_t x, y, z;
+};
+
+struct EsGameControllerState {
+	uint64_t id; 
+	uint8_t buttonCount, analogCount; // Number of buttons and analog inputs.
+	uint8_t directionalPad; // Directions given from 0-7, starting at up, going clockwise. 15 indicates unpressed.
+	uint32_t buttons; // Bitset of pressed buttons.
+	EsAnalogInput analog[8];
+};
+
+struct EsPCIDevice {
+	uint32_t deviceID;
+	uint8_t classCode, subclassCode, progIF;
+	uint8_t bus, slot, function;
+	uint8_t interruptPin, interruptLine;
+	size_t baseAddressesSizes[6];
+	uint32_t baseAddresses[6];
+	char driverName[64];
+	size_t driverNameBytes;
+};
+
+struct EsAddress {
+	union {
+		struct {
+			uint32_t ipv4;
+			uint16_t port;
+		};
+
+		uint8_t d[20];
+	};
+};
+
+struct EsConnection {
+	EsAddress address;
+	size_t receiveBufferBytes;
+	size_t sendBufferBytes;
+
+	uint8_t *receiveBuffer;
+	uint8_t *sendBuffer;
+
+	uintptr_t receiveWritePointer;
+	uintptr_t sendReadPointer;
+	bool open;
+	EsError error;
+
+	uintptr_t receiveReadPointer;
+	uintptr_t sendWritePointer;
+
+	EsHandle handle;
+};
+
+struct EsFileMenuSettings {
+};
+
+struct EsInstanceClassEditorSettings {
+	STRING newDocumentFileName; // The default file name to use when creating a new document.
+	STRING newDocumentTitle; // The title to show in the file menu if the document has not been saved.
+	uint32_t documentIconID;
+};
+
+struct EsInstanceClassViewerSettings {
+};
+
+struct _EsNodeInformation {
+	EsHandle handle; 
+	EsFileOffset fileSize;
+	EsFileOffsetDifference directoryChildren; 
+	EsNodeType type;
+};
+
+struct EsVolumeInformation {
+	char label[64];
+	uint8_t labelBytes;
+	uint8_t driveType;
+	uint64_t id;
+	EsFileOffset spaceTotal;
+	EsFileOffset spaceUsed;
+};
+
+// User interface messages.
+
+struct EsMessageMouseMotion {
+	int newPositionX;
+	int newPositionY;
+	int originalPositionX; // For MOUSE_DRAGGED only.
+	int originalPositionY;
+};
+
+struct EsMessageMouseButton {
+	int positionX;
+	int positionY;
+	uint8_t clickChainCount;
+};
+
+struct EsMessageKeyboard {
+	uint32_t scancode; 
+	uint8_t modifiers;
+	bool repeat, numpad, numlock;
+};
+
+struct EsMessageAnimate {
+	int64_t deltaMs, waitMs;
+	bool complete;
+};
+
+struct EsMessageLayout {
+	bool sizeChanged;
+};
+
+struct EsMessageWindowResized {
+	EsRectangle content;
+	bool hidden;
+};
+
+struct EsMessageMeasure {
+	int width, height;
+};
+
+struct EsMessageHitTest {
+	int x, y;
+	bool inside;
+};
+
+struct EsMessageZOrder {
+	uintptr_t index;
+	EsElement *child;
+};
+
+struct EsMessageBeforeZOrder {
+	uintptr_t start, end, nonClient;
+	EsRectangle clip;
+};
+
+struct EsMessageItemToString {
+	EsGeneric item;
+	STRING text;
+};
+
+// List view messages.
+
+struct EsMessageCompareIndices {
+	int32_t group;
+	EsGeneric left, right;
+	int result;
+};
+
+struct EsMessageIterateIndex {
+	int32_t group;
+	EsGeneric index;
+
+	// FIND_INDEX and FIND_POSITION: (TODO Pass the reference item?)
+	int64_t position;
+};
+
+struct EsMessageItemRange {
+	int32_t group;
+	EsGeneric firstIndex, lastIndex;
+	int64_t result;
+};
+
+struct EsMessageMeasureItem {
+	int32_t group;
+	EsGeneric index;
+	int64_t result;
+};
+
+struct EsMessageCreateItem {
+	int32_t group;
+	EsGeneric index;
+	EsElement *item;
+};
+
+struct EsMessageGetContent {
+	EsGeneric index;
+	int32_t group;
+	uint32_t icon;
+	EsBuffer *buffer;
+	bool richText;
+	uint8_t column;
+};
+
+struct EsMessageGetIndent {
+	int32_t group;
+	EsGeneric index;
+
+	uint8_t indent;
+};
+
+struct EsMessageSelectRange {
+	EsGeneric fromIndex, toIndex;
+	int32_t group; 
+	bool select, toggle;
+};
+
+struct EsMessageSelectItem {
+	int32_t group;
+	EsGeneric index;
+	bool isSelected;
+};
+
+struct EsMessageChooseItem {
+	int32_t group;
+	EsGeneric index;
+};
+
+struct EsMessageSearchItem {
+	int32_t group;
+	EsGeneric index;
+	STRING query;
+};
+
+struct EsMessageFocus {
+	uint32_t flags;
+};
+
+struct EsMessageColumnMenu {
+	uint8_t index;
+	EsElement *source;
+};
+
+struct EsMessageGetColumnSort {
+	uint8_t index;
+};
+
+// Specific element messages.
+
+struct EsMessageScrollbarMoved {
+	int scroll, previous;
+};
+
+struct EsMessageColorChanged {
+	uint32_t newColor;
+	bool pickerClosed;
+};
+
+struct EsMessageNumberDragDelta {
+	int delta;
+	int32_t hoverCharacter;
+	bool fast;
+};
+
+struct EsMessageNumberUpdated {
+	double delta;
+	double newValue;
+};
+
+struct EsMessageGetBreadcrumb {
+	uintptr_t index; // Set response to ES_REJECTED if this equals the number of breadcrumbs.
+	EsBuffer *buffer;
+};
+
+struct EsMessageEndEdit {
+	bool rejected;
+};
+
+// Instance messages.
+
+struct EsMessageInstanceOpen {
+	ES_INSTANCE_TYPE *instance;
+	EsFileStore *file;
+	STRING name;
+	bool update;
+};
+
+struct EsMessageInstanceSave {
+	ES_INSTANCE_TYPE *instance;
+	EsFileStore *file;
+};
+
+struct EsMessageInstanceDestroy {
+	ES_INSTANCE_TYPE *instance;
+};
+
+// Internal system messages.
+
+struct EsMessageProcessCrash {
+	EsCrashReason reason;
+	EsHandle process;
+	uintptr_t pid;
+};
+
+struct EsMessageDesktop {
+	uint64_t windowID;
+	EsHandle buffer;
+	size_t bytes;
+};
+
+struct EsMessageEyedrop {
+	uint32_t color;
+	bool cancelled;
+};
+
+struct EsMessageCreateInstance {
+	EsHandle window;
+	EsHandle data;
+	size_t dataBytes;
+};
+
+struct EsMessageTabOperation {
+	uint64_t id;
+	EsHandle handle;
+	union { size_t bytes; bool isSource; };
+	EsError error;
+};
+
+struct EsMessageSystemConstantUpdated {
+	uintptr_t index;
+	uint64_t newValue;
+};
+
+struct EsMessageRegisterFileSystem {
+	EsHandle rootDirectory;
+	bool isBootFileSystem;
+	EsMountPoint *mountPoint;
+};
+
+struct EsMessageUnregisterFileSystem {
+	uint64_t id;
+	EsMountPoint *mountPoint;
+};
+
+// Message structure.
+
+struct EsMessageUser {
+	EsGeneric context1, context2, context3, context4;
+};
+
+struct EsMessage {
+	EsMessageType type;
+
+	union {
+		struct { uintptr_t _size[4]; } _size; // EsMessagePost supports messages at most 4 pointers in size.
+		EsMessageUser user; // For application specific messages.
+
+		// User interface messages:
+		EsMessageMouseMotion mouseMoved;
+		EsMessageMouseMotion mouseDragged;
+		EsMessageMouseButton mouseDown;
+		EsMessageKeyboard keyboard;
+		EsMessageWindowResized windowResized;
+		EsMessageAnimate animate;
+		EsMessageLayout layout;
+		EsMessageMeasure measure;
+		EsMessageHitTest hitTest;
+		EsPainter *painter;
+		EsElement *child;
+		EsCursorStyle cursorStyle;
+		EsMessageZOrder zOrder;
+		EsMessageBeforeZOrder beforeZOrder;
+		EsMessageItemToString itemToString;
+		EsMessageFocus focus;
+		const EsStyle *childStyleVariant;
+
+		// List view messages:
+		EsMessageCompareIndices compareIndices;
+		EsMessageIterateIndex iterateIndex;
+		EsMessageItemRange itemRange;
+		EsMessageMeasureItem measureItem;
+		EsMessageCreateItem createItem;
+		EsMessageGetContent getContent;
+		EsMessageGetIndent getIndent;
+		EsMessageSelectRange selectRange;
+		EsMessageSelectItem selectItem;
+		EsMessageChooseItem chooseItem;
+		EsMessageSearchItem searchItem;
+		EsMessageColumnMenu columnMenu;
+		EsMessageGetColumnSort getColumnSort;
+
+		// Specific element messages:
+		EsMessageScrollbarMoved scrollbarMoved;
+		EsMessageColorChanged colorChanged;
+		EsMessageNumberDragDelta numberDragDelta;
+		EsMessageNumberUpdated numberUpdated;
+		EsMessageGetBreadcrumb getBreadcrumb;
+		EsMessageEndEdit endEdit;
+		uintptr_t activateBreadcrumb;
+		EsCheckState checkState;
+
+		// Instance messages:
+		EsMessageInstanceOpen instanceOpen;
+		EsMessageInstanceSave instanceSave;
+		EsMessageInstanceDestroy instanceDestroy;
+
+		// Internal messages:
+		void *_argument;
+		EsMessageProcessCrash crash;
+		EsMessageSystemConstantUpdated systemConstantUpdated;
+		EsMessageDesktop desktop;
+		EsMessageEyedrop eyedrop;
+		EsMessageCreateInstance createInstance;
+		EsMessageTabOperation tabOperation;
+		EsMessageRegisterFileSystem registerFileSystem;
+		EsMessageUnregisterFileSystem unregisterFileSystem;
+	};
+}
+
+struct _EsMessageWithObject {
+	void *object;
+	EsMessage message;
+};
+
+struct EsThreadEventLogEntry {
+	char file[31];
+	uint8_t fileBytes;
+	char expression[31];
+	uint8_t expressionBytes;
+	uint8_t event;
+	uint16_t line;
+	uint64_t objectID, threadID;
+};
+
+struct EsMemoryStatistics {
+	size_t fixedHeapAllocationCount;
+	size_t fixedHeapTotalSize;
+	size_t coreHeapAllocationCount;
+	size_t coreHeapTotalSize;
+	size_t cachedNodes;
+	size_t cachedDirectoryEntries;
+	size_t totalSurfaceBytes;
+	size_t commitPageable;
+	size_t commitFixed;
+	size_t commitLimit;
+	size_t commitFixedLimit;
+	size_t commitRemaining;
+	size_t maximumObjectCachePages;
+	size_t approximateObjectCacheSize;
+};
+
+struct EsFontInformation {
+	char name[96];
+	size_t nameBytes;
+	char category[32];
+	size_t categoryBytes;
+	EsFontFamily id;
+	uint16_t availableWeightsNormal;
+	uint16_t availableWeightsItalic;
+};
+
+// Function pointer types.
+
+function_pointer void EsThreadEntryFunction(EsGeneric argument);
+function_pointer int EsComparisonCallbackFunction(const void *left, const void *right, EsGeneric context);
+function_pointer void EsSwapCallbackFunction(const void *left, const void *right, EsGeneric context);
+function_pointer int EsCRTComparisonCallback(const void *left, const void *right);
+function_pointer void EsTimerCallbackFunction(EsGeneric argument);
+function_pointer void EsMenuCallbackFunction(EsMenu *menu, EsGeneric context); 
+function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
+function_pointer void EsMountPointEnumerationCallbackFunction(const char *prefix, size_t prefixBytes, EsGeneric context);
+function_pointer void EsListViewEnumerateVisibleItemsCallbackFunction(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
+function_pointer void EsFontEnumerationCallbackFunction(const EsFontInformation *information, EsGeneric context);
+
+// System.
+
+function void EsApplicationStart(const EsApplicationStartupInformation *information);
+function void EsApplicationRunTemporary(ES_INSTANCE_TYPE *instance, STRING path);
+function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize); 
+function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
+function EsError EsHandleClose(EsHandle handle); 
+function void EsSystemShowShutdownDialog(ES_INSTANCE_TYPE *instance);
+
+function void EsPOSIXInitialise(int *argc, char ***argv); 
+function intptr_t EsPOSIXSystemCall(intptr_t n, intptr_t a1, intptr_t a2, intptr_t a3, intptr_t a4, intptr_t a5, intptr_t a6); 
+function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix);
+
+function void EsBatch(EsBatchCall *calls, size_t count); 
+function uintptr_t _EsSyscall(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e, uintptr_t f); 
+
+// Configuration and settings.
+
+function uint64_t EsSystemGetConstant(uintptr_t index); 
+
+function EsSystemConfigurationGroup *EsSystemConfigurationReadAll(size_t *groupCount); // Read with the message mutex acquired.
+function int64_t EsSystemConfigurationReadInteger(STRING section, STRING key, int64_t defaultValue = 0);
+function int64_t EsSystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, STRING key, int64_t defaultValue = 0);
+function char *EsSystemConfigurationReadString(STRING section, STRING key, size_t *valueBytes = ES_NULL); // Free with EsHeapFree.
+function char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, STRING key, size_t *valueBytes = ES_NULL); // Free with EsHeapFree.
+
+// INI files.
+
+function bool EsINIParse(EsINIState *s);
+function bool EsINIPeek(EsINIState *s);
+function size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes);
+function void EsINIZeroTerminate(EsINIState *s);
+
+// File systems.
+
+function const void *EsEmbeddedFileGet(const char *cName, size_t *byteCount = ES_NULL);
+
+function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer); // Free buffer with EsHeapFree. Returns number of children.
+
+function void *EsFileReadAll(STRING filePath, size_t *fileSize, EsError *error = ES_NULL); // Free with EsHeapFree.
+function void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error = ES_NULL); // Free with EsHeapFree.
+function EsError EsFileWriteAll(STRING filePath, const void *data, size_t fileSize); 
+function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, size_t fileSize); 
+function EsError EsFileWriteAllGather(STRING filePath, const void **data, size_t *fileSize, size_t gatherCount); 
+function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_t *fileSize, size_t gatherCount); 
+function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags);
+
+function EsError EsFileControl(EsHandle file, uint32_t flags); 
+function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
+function EsFileOffset EsFileGetSize(EsHandle handle);
+function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer);
+function EsError EsFileResize(EsHandle file, EsFileOffset newSize);
+function size_t EsFileWriteSync(EsHandle file, EsFileOffset offset, size_t size, const void *buffer);
+
+function EsError EsPathDelete(STRING path);
+function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes);
+function EsError EsPathMove(STRING oldPath, STRING newPath);
+function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL); // Returns true if the file/directory exists.
+function EsError EsPathCreate(STRING filePath, EsNodeType type, bool createLeadingDirectories);
+function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information);
+
+function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize); // Free with EsHeapFree.
+function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes);
+function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
+function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags);
+
+// Requires permission_all_files.
+function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
+function void EsMountPointEnumerate(EsMountPointEnumerationCallbackFunction callback, EsGeneric context);
+function void _EsPathAnnouncePathMoved(EsInstance *instance, STRING oldPath, STRING newPath);
+
+// Processes and threads.
+
+function EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information); 
+function int EsProcessGetExitStatus(EsHandle process); 
+function uintptr_t EsProcessGetID(EsHandle process); 
+function void EsProcessGetState(EsHandle process, EsProcessState *state); 
+function EsHandle EsProcessOpen(uint64_t pid); 
+function void EsProcessPause(EsHandle process, bool resume); 
+function void EsProcessTerminate(EsHandle process, int status); 
+function void EsProcessTerminateCurrent(); 
+function EsError EsThreadCreate(EsThreadEntryFunction entryFunction, EsThreadInformation *information, EsGeneric argument); 
+function uint64_t EsThreadGetID(EsHandle thread); // TODO Make this 64-bit.
+function void EsThreadTerminate(EsHandle thread); 
+
+// Memory.
+
+function void *EsArenaAllocate(EsArena *arena, bool zero); // Not thread-safe.
+function void EsArenaFree(EsArena *arena, void *pointer); // Not thread-safe.
+function void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSize);
+
+function const void *EsBufferRead(struct EsBuffer *buffer, size_t readBytes);
+function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
+function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
+function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
+function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments); // Appends.
+
+function EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess); 
+function void EsConstantBufferRead(EsHandle constantBuffer, void *output); 
+function EsHandle EsConstantBufferShare(EsHandle constantBuffer, EsHandle targetProcess); 
+function size_t EsConstantBufferGetSize(EsHandle constantBuffer);
+
+function_not_in_kernel void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *heap = ES_NULL);
+function_not_in_kernel void EsHeapFree(void *address, size_t expectedSize = 0, EsHeap *heap = ES_NULL);
+function_not_in_kernel void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *heap = ES_NULL);
+
+function void EsHeapValidate(); 
+
+function bool EsMemoryCommit(void *pointer, size_t bytes);
+function int EsMemoryCompare(const void *a, const void *b, size_t bytes); 
+function void EsMemoryCopy(void *destination, const void *source, size_t bytes); 
+function void EsMemoryCopyReverse(void *_destination, void *_source, size_t bytes); 
+function bool EsMemoryDecommit(void *pointer, size_t bytes); // May fail in low-memory conditions when the commit ranges on the region are fragmented. (Cannot fail if you decommit the entire region.)
+function void EsMemoryFaultRange(const void *pointer, size_t bytes, uint32_t flags = ES_FLAGS_DEFAULT); // Simulate a page fault in each page in the range.
+function void EsMemoryFill(void *from, void *to, uint8_t byte); 
+function void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace); 
+function EsHandle EsMemoryOpen(size_t size, STRING name, unsigned flags); 
+function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, uint32_t flags = ES_MEMORY_RESERVE_COMMIT_ALL); 
+function EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly); 
+function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes); 
+function void EsMemoryUnreserve(void *pointer, size_t size = 0); // Must cover the entire reserved region. Leave size 0 if you don't know the size.
+function void EsMemoryZero(void *destination, size_t bytes); 
+
+function void *EsObjectMap(EsHandle object, uintptr_t offset, size_t size, unsigned flags); 
+
+// Standard functions.
+
+function void EsAssertionFailure(EsCString cFile, int line); 
+function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
+function double EsDoubleParse(STRING string, char **endptr); 
+function uint8_t EsRandomU8(); 
+function uint64_t EsRandomU64();
+function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.
+function_not_in_kernel void EsPanic(EsCString format, ...); 
+function_not_in_kernel void EsPrint(EsCString format, ...);
+function void EsPrintDirect(STRING string); 
+function void EsPrintHelloWorld(); 
+function void EsRandomAddEntropy(uint64_t x); 
+function void EsRandomSeed(uint64_t x); 
+function EsRectangle EsRectangleAdd(EsRectangle a, EsRectangle b);
+function EsRectangle EsRectangleAddBorder(EsRectangle rectangle, EsRectangle border);
+function EsRectangle EsRectangleBounding(EsRectangle a, EsRectangle b);
+function EsRectangle EsRectangleCenter(EsRectangle parent, EsRectangle child);
+function EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side);
+function EsRectangle EsRectangleFit(EsRectangle parent, EsRectangle child, bool allowScalingUp); // Preserves aspect ratio.
+function EsRectangle EsRectangleIntersection(EsRectangle a, EsRectangle b);
+function EsRectangle EsRectangleSplit(EsRectangle *a, int32_t amount, char side, int32_t gap = 0); // Same as EsRectangleCut, but the source rectangle is modified.
+function EsRectangle EsRectangleSubtract(EsRectangle a, EsRectangle b);
+function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
+function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
+function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
+function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallbackFunction compar, EsGeneric argument); 
+function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallbackFunction compar, EsGeneric argument, EsSwapCallbackFunction swap); 
+function uint64_t EsTimeStamp(); 
+function double EsTimeStampMs(); 
+
+// Graphics.
+
+function uint32_t EsColorBlend(uint32_t under, uint32_t over, bool fullAlpha);
+function uint32_t EsColorConvertToRGB(float h, float s, float v); // 0 <= hue < 6; 0 <= saturation <= 1; 0 <= value <= 1.
+function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v);
+function uint32_t EsColorParse(STRING string);
+
+function void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *bits, uintptr_t stride, uint16_t mode); // OR mode with alpha.
+function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *bits, uintptr_t stride, uint16_t alpha); // Set alpha to 0xFFFF if source is opaque.
+function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, uint32_t mainColor);
+function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
+function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, EsTextSelection *selectionProperties = nullptr);
+function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
+function void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, uint32_t color, float width, uint32_t flags); // Vertices are pairs of x,y coordinates.
+function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, uint32_t mainColor, uint32_t borderColor, EsRectangle borderSize);
+function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, uint32_t color);
+function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
+function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *clip = ES_NULL, EsTextSelection *selectionProperties = ES_NULL); 
+function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsTextSelection *selectionProperties = ES_NULL); 
+function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes);
+
+function uint32_t EsIconIDFromString(STRING string = BLANK_STRING);
+
+function uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *width, uint32_t *height, int imageChannels);
+
+function EsRectangle EsPainterBoundsClient(EsPainter *painter); 
+function EsRectangle EsPainterBoundsInset(EsPainter *painter); 
+
+function void EsPaintTargetClear(EsPaintTarget *target);
+function void EsPaintTargetEndDirectAccess(EsPaintTarget *target);
+function void EsPaintTargetStartDirectAccess(EsPaintTarget *target, uint32_t **bits, size_t *width, size_t *height, size_t *stride);
+function EsPaintTarget *EsPaintTargetCreate(size_t width, size_t height, bool hasAlphaChannel);
+function EsPaintTarget *EsPaintTargetCreateFromBitmap(uint32_t *bits, size_t width, size_t height, bool hasAlphaChannel); // Do not access the bits again until calling EsPaintTargetDestroy!
+function void EsPaintTargetGetSize(EsPaintTarget *target, size_t *width, size_t *height);
+function void EsPaintTargetDestroy(EsPaintTarget *target);
+
+function int EsTextGetLineHeight(const EsTextStyle *style);
+function EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount); // textRuns should point to an array of (textRunCount + 1) EsTextRuns; the last one should have its offset set to the total number of bytes in the string. The passed string must remain valid until the plan is destroyed.
+function int EsTextPlanGetWidth(EsTextPlan *plan); // TODO Public property?
+function int EsTextPlanGetHeight(EsTextPlan *plan); // TODO Public property?
+function size_t EsTextPlanGetLineCount(EsTextPlan *plan); // TODO Public property?
+function void EsTextPlanDestroy(EsTextPlan *plan);
+function void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, EsTextStyle *style); // Only render properties - like color or underline, but not font weight - will be replaced.
+
+function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes, 
+		char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount,
+		EsTextStyle *baseStyle);
+
+function void EsFontDatabaseEnumerate(EsFontEnumerationCallbackFunction callback, EsGeneric context);
+function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information); // Returns false if the font does not exist in the database.
+function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
+
+// Networking.
+
+function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address);
+function void EsConnectionClose(EsConnection *connection);
+function void EsConnectionNotify(EsConnection *connection);
+function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags);
+function void EsConnectionPoll(EsConnection *connection);
+function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead); // Returns the number of bytes copied into the buffer.
+function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
+
+// Input.
+
+function size_t EsGameControllerStatePoll(EsGameControllerState *buffer); // Returns number of connected controllers. Buffer must have space for ES_GAME_CONTROLLER_MAX_COUNT.
+
+function uint8_t EsKeyboardGetModifiers(); // Synchronous with respect to message processing.
+
+function EsPoint EsMouseGetPosition(EsElement *relativeElement = ES_NULL); 
+function void EsMouseSetPosition(EsWindow *relativeWindow, int x, int y); 
+function bool EsMouseIsLeftHeld();
+function bool EsMouseIsRightHeld();
+function bool EsMouseIsMiddleHeld();
+
+// Synchronisation and timing.
+
+function EsHandle EsEventCreate(bool autoReset); 
+function void EsEventForward(EsHandle event, EsHandle eventSink, EsGeneric data); // TODO Forwarding process/thread killed events. 
+function void EsEventReset(EsHandle event); 
+function void EsEventSet(EsHandle event); 
+function EsHandle EsEventSinkCreate(bool ignoreDuplicates); 
+function EsError EsEventSinkPop(EsHandle eventSink, EsGeneric *data); // Returns ES_ERROR_EVENT_NOT_SET if empty, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
+function EsError EsEventSinkPush(EsHandle eventSink, EsGeneric data); // Returns ES_ERROR_EVENT_SINK_DUPLICATE if duplicate, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
+function void EsMutexAcquire(EsMutex *mutex); 
+function void EsMutexDestroy(EsMutex *mutex); 
+function void EsMutexRelease(EsMutex *mutex); 
+function void EsPerformanceTimerPush(); // Stack size should not exceed 100 values.
+function double EsPerformanceTimerPop(); // Returns value in seconds.
+function void EsSchedulerYield(); 
+function void EsSleep(uint64_t milliseconds); 
+function void EsSpinlockAcquire(EsSpinlock *spinlock); 
+function void EsSpinlockRelease(EsSpinlock *spinlock); 
+function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallbackFunction callback, EsGeneric argument); 
+function void EsTimerCancel(EsTimer id);
+function uintptr_t EsWait(EsHandle *objects, size_t objectCount, uintptr_t timeoutMs); 
+
+// Strings.
+
+function char *EsCStringDuplicate(EsCString string); 
+function size_t EsCStringLength(EsCString string); 
+function char *EsStringAllocateAndFormat(size_t *bytes, EsCString format, ...); // Zero-terminated.
+function char *EsStringAllocateAndFormatV(size_t *bytes, EsCString format, va_list arguments); 
+function int EsStringCompare(STRING s1, STRING s2); 
+function int EsStringCompareRaw(STRING s1, STRING s2); 
+function ptrdiff_t EsStringFormat(char *buffer, size_t bufferLength, EsCString format, ...); 
+function const char *EsStringFormatTemporary(EsCString format, ...);  // Not thread safe. The result is valid until the next call. Zero-terminated.
+function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments); 
+function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...); // Return false if buffer filled.
+function bool EsStringFormatAppendV(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, va_list arguments); 
+function size_t EsStringLength(const char *string, uint8_t end); 
+function bool EsStringStartsWith(STRING string, STRING prefix, bool caseInsensitive); 
+function bool EsStringEndsWith(STRING string, STRING prefix, bool caseInsensitive); 
+function char *EsStringZeroTerminate(STRING string); // Free with EsHeapFree.
+function bool EsUTF8IsValid(const char *input, ptrdiff_t bytes); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
+
+// CRT functions.
+
+function int EsCRTabs(int n); 
+function float EsCRTacosf(float x); 
+function float EsCRTasinf(float x); 
+function float EsCRTatan2f(float y, float x); 
+function float EsCRTatanf(float x); 
+function int EsCRTatoi(const char *string); 
+function void *EsCRTbsearch(const void *key, const void *base, size_t num, size_t size, EsCRTComparisonCallback compar);
+function void *EsCRTcalloc(size_t num, size_t size); 
+function double EsCRTceil(double x); 
+function float EsCRTceilf(float x); 
+function float EsCRTcosf(float x); 
+function double EsCRTexp(double x);
+function float EsCRTexp2f(float x);
+function double EsCRTfabs(double x); 
+function float EsCRTfabsf(float x); 
+function double EsCRTfloor(double x); 
+function float EsCRTfloorf(float x); 
+function float EsCRTfmodf(float x, float y); 
+function void EsCRTfree(void *ptr); 
+function char *EsCRTgetenv(const char *name); 
+function int EsCRTisalpha(int c); 
+function int EsCRTisdigit(int c); 
+function bool EsCRTisnanf(float f); 
+function int EsCRTisspace(int c); 
+function int EsCRTisupper(int c);
+function int EsCRTisxdigit(int c);
+function void *EsCRTmalloc(size_t size); 
+function void *EsCRTmemchr(const void *_s, int _c, size_t n); 
+function int EsCRTmemcmp(const void *s1, const void *s2, size_t n); 
+function void *EsCRTmemcpy(void *dest, const void *src, size_t n); 
+function void *EsCRTmemmove(void *dest, const void *src, size_t n); 
+function void *EsCRTmemset(void *s, int c, size_t n); 
+function float EsCRTpowf(float x, float y);
+function void EsCRTqsort(void *_base, size_t nmemb, size_t size, EsCRTComparisonCallback compar); 
+function int EsCRTrand();
+function void *EsCRTrealloc(void *ptr, size_t size); 
+function float EsCRTsinf(float x); 
+function int EsCRTsnprintf(char *buffer, size_t bufferSize, const char *format, ...); 
+function int EsCRTsprintf(char *buffer, const char *format, ...); 
+function double EsCRTsqrt(double x); 
+function float EsCRTsqrtf(float x); 
+function char *EsCRTstrcat(char *dest, const char *src); 
+function char *EsCRTstrchr(const char *s, int c); 
+function int EsCRTstrcmp(const char *s1, const char *s2); 
+function char *EsCRTstrcpy(char *dest, const char *src); 
+function char *EsCRTstrdup(const char *string); 
+function char *EsCRTstrerror(int errnum); 
+function size_t EsCRTstrlen(const char *s); 
+function int EsCRTstrncmp(const char *s1, const char *s2, size_t n); 
+function char *EsCRTstrncpy(char *dest, const char *src, size_t n); 
+function size_t EsCRTstrnlen(const char *s, size_t maxlen); 
+function char *EsCRTstrstr(const char *haystack, const char *needle); 
+function long EsCRTstrtol(const char *nptr, char **endptr, int base); 
+function uint64_t EsCRTstrtoul(const char *nptr, char **endptr, int base); 
+function int EsCRTtolower(int c); 
+function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format, va_list arguments); 
+
+// Clipboard and undo.
+
+function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
+function bool EsClipboardHasText(EsClipboard clipboard);
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes);
+
+function void EsUndoClear(EsUndoManager *manager);
+function void EsUndoContinueGroup(EsUndoManager *manager);
+function void EsUndoEndGroup(EsUndoManager *manager);
+function void EsUndoInvokeGroup(EsUndoManager *manager, bool redo);
+function bool EsUndoPeek(EsUndoManager *manager, EsUndoCallback *callback, const void **item);
+function void EsUndoPop(EsUndoManager *manager);
+function void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes);
+function bool EsUndoInUndo(EsUndoManager *manager);
+function bool EsUndoIsEmpty(EsUndoManager *manager, bool redo);
+function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
+
+// Instances and commands.
+
+function void EsCommandAddButton(EsCommand *command, EsButton *button);
+function EsCommand *EsCommandByID(EsInstance *instance, uint32_t stableID);
+function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, EsCommandCallbackFunction callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
+function void EsCommandSetCallback(EsCommand *command, EsCommandCallbackFunction callback);
+function void EsCommandSetDisabled(EsCommand *command, bool disabled);
+function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
+
+function void EsInstanceDestroy(ES_INSTANCE_TYPE *instance);
+function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoManager *manager);
+function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
+function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings);
+function const EsApplicationStartupInformation *EsInstanceGetStartupInformation(ES_INSTANCE_TYPE *instance);
+function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
+function void EsInstanceSaveComplete(EsMessage *message, bool success);
+
+// Message processing.
+
+function size_t EsMessageGetInputText(EsMessage *message, char *buffer); // The buffer should be 64 bytes in size. 
+function void EsMessageMutexAcquire(); 
+function void EsMessageMutexCheck();
+function void EsMessageMutexRelease(); 
+function EsError EsMessagePost(EsElement *target, EsMessage *message); 
+function EsError EsMessagePostRemote(EsHandle process, EsMessage *message); 
+function int EsMessageSend(EsElement *object, EsMessage *message);
+function EsMessage *EsMessageReceive();
+
+// User interface elements.
+
+function void EsElementDraw(EsElement *element, EsPainter *painter); // Actually draw an element onto a painter.
+function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsElementSetDisabled(EsElement *element, bool disabled = true);
+function void EsElementSetHidden(EsElement *element, bool hidden = true);
+function void EsElementSetCallback(EsElement *element, EsUICallbackFunction callback);
+function void EsElementGetSize(EsElement *element, int *width, int *height);
+function void EsElementRepaint(EsElement *element, const EsRectangle *region = nullptr); // Mark an element to be repainted. If region is null, then the whole element is repainted.
+function void EsElementRepaintForScroll(EsElement *element, EsMessage *message); // Minimal repaint for ES_MSG_SCROLL_X/Y.
+function void EsElementRelayout(EsElement *element);
+function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
+function EsRectangle EsElementGetInsets(EsElement *element); 
+function EsRectangle EsElementGetInsetSize(EsElement *element); // Get the size of the element, minus the insets.
+function EsThemeMetrics EsElementGetMetrics(EsElement *element);
+function EsRectangle EsElementGetPreferredSize(EsElement *element);
+function void EsElementMove(EsElement *element, int x, int y, int width, int height, bool applyCellLayout = true); // x, y are given relative to the top-left of the parent.
+function EsElement *EsElementGetLayoutParent(EsElement *element);
+function void EsElementDestroy(EsElement *element);
+function void EsElementDestroyContents(EsElement *element);
+function bool EsElementStartAnimating(EsElement *element); // Returns false if the element was already animating.
+function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, uint32_t timeMs = 150); // TODO More customization.
+function void EsElementInsertAfter(EsElement *element); // The next element created will be inserted after this element. They must have the same parent. Or, if this is the parent of the next element created, then it will be inserted at the start of the parent.
+function void EsElementUpdateContentSize(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style);
+function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = true);
+function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
+
+function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+
+// Windows, menus, popups, toolbars and dialogs.
+
+function EsWindow *EsWindowCreate(ES_INSTANCE_TYPE *instance, EsWindowStyle style);
+function EsRectangle EsWindowGetBounds(EsWindow *window);
+function EsElement *EsWindowGetToolbar(EsWindow *window, bool createNew = false);
+function void EsWindowSwitchToolbar(EsWindow *window, EsElement *toolbar, EsTransitionType transitionType);
+function void EsWindowSetIcon(EsWindow *window, uint32_t iconID);
+function void EsWindowSetTitle(EsWindow *window, STRING title = BLANK_STRING);
+function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsElement *big, int widthThreshold, int heightThreshold); // Switch between elements when the window size goes below a threshold.
+
+function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
+function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
+function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallbackFunction callback = ES_NULL, EsGeneric context = ES_NULL);
+function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command);
+function void EsMenuAddSeparator(EsMenu *menu);
+function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
+function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
+function void EsMenuCloseAll();
+function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
+
+function void EsDialogClose(EsWindow *window);
+function EsElement *EsDialogShow(EsWindow *window);
+function EsElement *EsDialogShowAlert(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT); // Returns the button container.
+
+function void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings = ES_NULL);
+
+// Buttons.
+
+function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
+
+function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
+function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
+function EsCheckState EsButtonGetCheck(EsButton *button);
+function void EsButtonOnCommand(EsButton *button, EsCommandCallbackFunction callback, EsCommand *command = ES_NULL); // TODO Public property?
+function void EsButtonSetCheckBuddy(EsButton *button, EsElement *checkBuddy); // The buddy element is enabled/disabled when the button is checked/unchecked.
+function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public property?
+
+// Textboxes.
+
+function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+
+function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags);
+function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
+function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT); // Result will be zero-terminated; free with EsHeapFree.
+function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags = ES_FLAGS_DEFAULT); 
+function size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line = 0);
+function void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte);
+function void EsTextboxMoveCaret(EsTextbox *textbox, int32_t line, int32_t byte);
+function void EsTextboxSetSelection(EsTextbox *textbox, int32_t fromLine, int32_t fromByte, int32_t toLine, int32_t toByte);
+function void EsTextboxSelectAll(EsTextbox *textbox);
+function void EsTextboxClear(EsTextbox *textbox, bool sendUpdatedMessage);
+function void EsTextboxUseNumberOverlay(EsTextbox *textbox, bool defaultBehaviour);
+function void EsTextboxUseBreadcrumbOverlay(EsTextbox *textbox); 
+function void EsTextboxMoveCaretRelative(EsTextbox *textbox, uint32_t flags);
+function void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter = false);
+function void EsTextboxSetUndoManager(EsTextbox *textbox, EsUndoManager *manager);
+function void EsTextboxGetTextStyle(EsTextbox *textbox, EsTextStyle *textStyle);
+function void EsTextboxSetTextStyle(EsTextbox *textbox, const EsTextStyle *textStyle);
+function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
+function void EsTextboxStartEdit(EsTextbox *textbox);
+
+// Panels, spacers and splitters.
+
+function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsElement *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, int width = 0, int height = 0);
+function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+
+function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, EsPanelBand *columns = ES_NULL, EsPanelBand *rows = ES_NULL);
+function void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column = ES_NULL, EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
+function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
+
+function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, uint32_t timeMs = 150); // TODO More customization of transitions?
+function void EsPanelStartMovementAnimation(EsPanel *panel, uint32_t timeMs = 150); // TODO More customization.
+
+// Static displays.
+
+function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, uint32_t iconID = 0);
+
+function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride);
+function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes);
+
+function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
+function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);
+function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount); // See EsTextPlanCreate for how runCount works.
+function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
+
+function EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function void EsListDisplaySetCounterContinuation(EsListDisplay *display, EsListDisplay *previous);
+function void EsListDisplaySetCounterStart(EsListDisplay *display, uintptr_t index); // If index = 0, then the first item will be "1." or "(a)".
+
+function void EsAnnouncementShow(EsWindow *window, uint64_t flags, int32_t x, int32_t y, STRING text = BLANK_STRING);
+
+// Color wells.
+
+function EsColorWell *EsColorWellCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, uint32_t colorRGB = 0);
+
+function uint32_t EsColorWellGetRGB(EsColorWell *well); // TODO Public property?
+function void EsColorWellSetRGB(EsColorWell *well, uint32_t colorRGB, bool sendChangedMessage);
+function void EsColorWellSetIndeterminate(EsColorWell *well);
+
+// List views.
+
+function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, 
+		const EsStyle *style = ES_NULL, const EsStyle *itemStyle = ES_NULL, 
+		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
+
+function EsGeneric EsListViewGetIndexFromItem(EsElement *element, int32_t *group = ES_NULL);
+function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallbackFunction callback);
+
+function void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount);
+function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);
+function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand);
+function void EsListViewSelect(EsListView *view, int32_t group, EsGeneric index);
+function void EsListViewFocusItem(EsListView *view, int32_t group, EsGeneric index);
+function bool EsListViewGetFocusedItem(EsListView *view, int32_t *group, EsGeneric *index); // Returns false if not item was focused.
+function void EsListViewInvalidateContent(EsListView *view, int32_t group, EsGeneric index);
+function void EsListViewInvalidateAll(EsListView *view);
+function void EsListViewContentChanged(EsListView *view);
+function void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
+		const EsStyle *headerItemStyle, const EsStyle *footerItemStyle, uint32_t addFlags, uint32_t removeFlags);
+function void EsListViewScrollToEnd(EsListView *view);
+
+function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, int32_t group, EsGeneric index, uint32_t flags = ES_FLAGS_DEFAULT);
+
+// (Callback items.)
+function void EsListViewInsertGroup(EsListView *view, int32_t group, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsListViewInsert(EsListView *view, int32_t group, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count = -1);
+function void EsListViewRemove(EsListView *view, int32_t group, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count = -1);
+function void EsListViewRemoveAll(EsListView *view, int32_t group);
+// (Fixed items.)
+function void EsListViewInsertFixedItem(EsListView *view, STRING string = BLANK_STRING, EsGeneric data = ES_NULL, intptr_t index = -1);
+function bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data); // Returns false if the item was not found.
+function bool EsListViewGetSelectedFixedItem(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
