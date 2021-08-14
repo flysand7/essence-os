@@ -38,14 +38,26 @@ int OptionTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 			Option *option = options + index;
 
 			if (option->type == OPTION_TYPE_BOOL) {
-				option->state.b = !option->state.b;
+				bool okay = true;
+
+				if (option->warning && !option->state.b) {
+					if (UIDialogShow(element->window, 0, "Warning:\n%s\n%f%b%b", option->warning, "Enable", "Cancel")[0] == 'C') {
+						okay = false;
+					}
+				}
+
+				if (okay) {
+					option->state.b = !option->state.b;
+					option->useDefaultState = false;
+				}
 			} else if (option->type == OPTION_TYPE_STRING) {
 				UIDialogShow(element->window, 0, "New value:          \n%t\n%f%b", &option->state.s, "OK");
+				option->useDefaultState = false;
 			} else {
 				// TODO.
+				option->useDefaultState = false;
 			}
 
-			option->useDefaultState = false;
 			UITableResizeColumns(optionTable);
 			UIElementRefresh(element);
 			UILabelSetContent(unsavedChangedLabel, "You have unsaved changes!", -1);
@@ -91,10 +103,6 @@ void ActionSave(void *_unused) {
 }
 
 int main(int argc, char **argv) {
-	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
-		options[i].state = options[i].defaultState;
-	}
-
 	LoadOptions();
 
 	UIInitialise();

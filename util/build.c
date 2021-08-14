@@ -375,7 +375,7 @@ void Build(bool enableOptimisations, bool compile) {
 #define DEBUG_START (1)
 #define DEBUG_NONE (2)
 
-void Run(int emulator, int memory, int cores, int log, int debug) {
+void Run(int emulator, int cores, int log, int debug) {
 	LoadOptions();
 
 	switch (emulator) {
@@ -386,7 +386,7 @@ void Run(int emulator, int memory, int cores, int log, int debug) {
 			const char *driveFlags = IsOptionEnabled("Emulator.ATA")  ? "-drive file=bin/drive,format=raw,media=disk,index=0 " : 
 						 IsOptionEnabled("Emulator.AHCI") ? "-drive file=bin/drive,if=none,id=mydisk,format=raw,media=disk,index=0 "
 						    		                    "-device ich9-ahci,id=ahci "
-							       	                    "-device ide-drive,drive=mydisk,bus=ahci.0 "
+							       	                    "-device ide-hd,drive=mydisk,bus=ahci.0 "
 						                                  : "-drive file=bin/drive,if=none,id=mydisk,format=raw "
                                                                                     "-device nvme,drive=mydisk,serial=1234 ";
 
@@ -397,7 +397,7 @@ void Run(int emulator, int memory, int cores, int log, int debug) {
 					snprintf(cdromFlags, sizeof(cdromFlags), " -cdrom %s ", cdromImage);
 				} else {
 					snprintf(cdromFlags, sizeof(cdromFlags), "-drive file=%s,if=none,id=mycdrom,format=raw,media=cdrom,index=1 "
-							"-device ide-drive,drive=mycdrom,bus=ahci.1", cdromImage);
+							"-device ide-cd,drive=mycdrom,bus=ahci.1", cdromImage);
 				}
 			} else {
 				cdromFlags[0] = 0;
@@ -432,7 +432,8 @@ void Run(int emulator, int memory, int cores, int log, int debug) {
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
 					" %s %s %s %s ", 
-					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, memory, 
+					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, 
+					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
 					cores, audioFlags2, logFlags, usbFlags, usbFlags2);
 		} break;
@@ -973,7 +974,6 @@ void AddressToLine(const char *symbolFile) {
 typedef struct BuildType {
 	const char *name, *alias, *emulator;
 	bool optimise, debug, smp, noCompile;
-	int memory;
 } BuildType;
 
 BuildType buildTypes[] = {
@@ -1020,8 +1020,7 @@ void DoCommand(const char *l) {
 		if (encounteredErrors) {
 			printf("Errors were encountered during the build.\n");
 		} else if (entry->emulator) {
-			Run(entry->emulator[0] == 'q' ? EMULATOR_QEMU : EMULATOR_VIRTUALBOX, 
-					entry->memory ?: 1024, entry->smp ? 3 : 1, LOG_NORMAL, entry->debug);
+			Run(entry->emulator[0] == 'q' ? EMULATOR_QEMU : EMULATOR_VIRTUALBOX, entry->smp ? 3 : 1, LOG_NORMAL, entry->debug);
 		}
 
 		return;

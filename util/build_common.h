@@ -251,6 +251,7 @@ typedef struct Option {
 	OptionVariant defaultState;
 	OptionVariant state;
 	bool useDefaultState;
+	const char *warning;
 } Option;
 
 Option options[] = {
@@ -262,9 +263,9 @@ Option options[] = {
 	{ "Driver.FAT", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.HDAudio", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Driver.I8254x", OPTION_TYPE_BOOL, { .b = true } },
-	{ "Driver.IDE", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Driver.IDE", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.ISO9660", OPTION_TYPE_BOOL, { .b = true } },
-	{ "Driver.NTFS", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Driver.NTFS", OPTION_TYPE_BOOL, { .b = false }, .warning = "The NTFS driver has not been updated to work with the new FS layer." },
 	{ "Driver.NVMe", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.Networking", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.PCI", OPTION_TYPE_BOOL, { .b = true } },
@@ -289,15 +290,16 @@ Option options[] = {
 	{ "Dependency.stb_sprintf", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.HarfBuzz", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.FreeType", OPTION_TYPE_BOOL, { .b = true } },
-	{ "Emulator.AHCI", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Emulator.AHCI", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Emulator.ATA", OPTION_TYPE_BOOL, { .b = false } },
-	{ "Emulator.NVMe", OPTION_TYPE_BOOL, { .b = true } },
+	{ "Emulator.NVMe", OPTION_TYPE_BOOL, { .b = false }, .warning = "Recent versions of Qemu have trouble booting from NVMe drives." },
 	{ "Emulator.CDROMImage", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "Emulator.USBImage", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "Emulator.USBHostVendor", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "Emulator.USBHostProduct", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "Emulator.RunWithSudo", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Emulator.Audio", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Emulator.MemoryMB", OPTION_TYPE_STRING, { .s = "1024" } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
 };
@@ -312,6 +314,10 @@ void LoadOptions() {
 	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
 		options[i].state = options[i].defaultState;
 		options[i].useDefaultState = true;
+
+		if (options[i].type == OPTION_TYPE_STRING && options[i].state.s) {
+			options[i].state.s = strdup(options[i].state.s);
+		}
 	}
 
 	while (s.buffer && EsINIParse(&s)) {

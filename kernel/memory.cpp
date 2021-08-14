@@ -78,6 +78,7 @@ struct MMSpace {
 
 	bool user; 			// Regions in the space may be accessed from userspace.
 	uint64_t commit; 		// An *approximate* commit in pages. TODO Better memory usage tracking.
+	uint64_t reserve;		// The number of reserved pages.
 };
 
 // A physical page of memory.
@@ -933,6 +934,8 @@ MMRegion *MMReserve(MMSpace *space, size_t bytes, unsigned flags, uintptr_t forc
 			outputRegion->itemNonGuard.thisItem = outputRegion;
 			space->usedRegionsNonGuard.InsertEnd(&outputRegion->itemNonGuard); 
 		}
+
+		space->reserve += pagesNeeded;
 	}
 
 	// EsPrint("Reserve: %x->%x\n", outputRegion->baseAddress, outputRegion->pageCount * K_PAGE_SIZE + outputRegion->baseAddress);
@@ -976,6 +979,8 @@ void MMUnreserve(MMSpace *space, MMRegion *remove, bool unmapPages, bool guardRe
 		MMArchUnmapPages(space, remove->baseAddress,
 				remove->pageCount, ES_FLAGS_DEFAULT);
 	}
+	
+	space->reserve += remove->pageCount;
 
 	if (space == coreMMSpace) {
 		remove->core.used = false;
