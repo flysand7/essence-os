@@ -802,8 +802,6 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 	isMaximised = flags & ES_WINDOW_MOVE_MAXIMISED;
 	alwaysOnTop = flags & ES_WINDOW_MOVE_ALWAYS_ON_TOP;
 
-	EsPrint("isMaximised = %d\n", isMaximised);
-
 	// TS("Move window\n");
 
 	if (flags & ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN) {
