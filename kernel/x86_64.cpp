@@ -282,6 +282,13 @@ void MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualA
 	ProcessorInvalidatePage(oldVirtualAddress);
 }
 
+bool MMArchIsBufferInUserRange(uintptr_t baseAddress, size_t byteCount) {
+	if (baseAddress               & 0xFFFF800000000000) return false;
+	if (byteCount                 & 0xFFFF800000000000) return false;
+	if ((baseAddress + byteCount) & 0xFFFF800000000000) return false;
+	return true;
+}
+
 bool MMArchHandlePageFault(uintptr_t address, uint32_t flags) {
 	// EsPrint("Fault %x\n", address);
 	address &= ~(K_PAGE_SIZE - 1);
@@ -883,7 +890,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 	if (interrupt < 0x20) {
 		// If we received a non-maskable interrupt, halt execution.
 		if (interrupt == 2) {
-			GetLocalStorage()->panicContext = context;
+			local->panicContext = context;
 			ProcessorHalt();
 		}
 
@@ -992,20 +999,19 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 					ProcessorEnableInterrupts();
 				}
 
-				{
-					CPULocalStorage *storage = GetLocalStorage();
-
-					if (storage && storage->spinlockCount && ((context->cr2 >= 0xFFFF900000000000 && context->cr2 < 0xFFFFF00000000000) 
-								|| context->cr2 < 0x8000000000000000)) {
-						KernelPanic("HandlePageFault - Page fault occurred in critical section at %x (S = %x, B = %x, LG = %x) (CR2 = %x).\n", 
-								context->rip, context->rsp, context->rbp, storage->currentThread->lastKnownExecutionAddress, context->cr2);
-					}
+				if (local && local->spinlockCount && ((context->cr2 >= 0xFFFF900000000000 && context->cr2 < 0xFFFFF00000000000) 
+							|| context->cr2 < 0x8000000000000000)) {
+					KernelPanic("HandlePageFault - Page fault occurred in critical section at %x (S = %x, B = %x, LG = %x) (CR2 = %x).\n", 
+							context->rip, context->rsp, context->rbp, local->currentThread->lastKnownExecutionAddress, context->cr2);
 				}
-
 				
 				if (!MMArchHandlePageFault(context->cr2, MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR
 							| ((context->errorCode & 2) ? MM_HANDLE_PAGE_FAULT_WRITE : 0))) {
-					goto fault;
+					if (local->currentThread->inSafeCopy && context->cr2 < 0x8000000000000000) {
+						context->rip = context->r8; // See definition of MMArchSafeCopy.
+					} else {
+						goto fault;
+					}
 				}
 
 				ProcessorDisableInterrupts();

@@ -34,6 +34,7 @@ struct POSIXThread {
 	Process *forkProcess;
 };
 
+// TODO Use SYSCALL_READ and SYSCALL_WRITE.
 #define SYSCALL_BUFFER_POSIX(address, length, index, write) \
 	MMRegion *_region ## index = MMFindAndPinRegion(currentVMM, (address), (length)); \
 	if (!_region ## index && !fromKernel) { KernelLog(LOG_ERROR, "POSIX", "EFAULT", "POSIX application EFAULT at %x.\n", address); return -EFAULT; } \

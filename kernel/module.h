@@ -227,6 +227,7 @@ enum KernelObjectType : uint32_t {
 	KERNEL_OBJECT_CONNECTION	= 0x00004000, // A network connection.
 };
 
+// TODO Rename to KObjectReference and KObjectDereference?
 void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags = 0);
 bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags = 0, bool maybeHasNoHandles = false);
 

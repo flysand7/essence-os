@@ -151,6 +151,22 @@ void InitialiseInstance(EsInstance *instance) {
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait, then crash"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); EsAssert(false); });
 
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 2"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsSyscall(ES_SYSCALL_WAIT, 0x8000000000000000, 1, 0, 0); 
+	});
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 3"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsSyscall(ES_SYSCALL_PRINT, 0, 16, 0, 0);
+	});
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 4"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsSyscall(ES_SYSCALL_WAIT, 0x0000FFFFFFFFFFFF, 1, 0, 0); 
+	});
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 5"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsSyscall(ES_SYSCALL_WAIT, 0x00000FFFFFFFFFFF, 1, 0, 0); 
+	});
+
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Announcement 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
 		EsRectangle bounds = EsElementGetWindowBounds(element);
 		EsAnnouncementShow(element->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, (bounds.t + bounds.b) / 2, "Hello, world!", -1); 

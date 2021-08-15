@@ -43,6 +43,9 @@ struct Thread {
 							// Used by the asynchronous task threads,
 							// and the memory manager's balancer.
 
+	// ** Must be the first item in the structure; see MMArchSafeCopy. **
+	bool inSafeCopy;
+
 	LinkedItem<Thread> item;			// Entry in relevent thread queue or blockedThreads list for mutexes/writer locks.
 	LinkedItem<Thread> allItem; 			// Entry in the allThreads list.
 	LinkedItem<Thread> processItem; 		// Entry in the process's list of threads.

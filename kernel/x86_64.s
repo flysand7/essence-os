@@ -336,7 +336,7 @@ EnableCPUFeatures:
 	wrmsr
 	.no_tce_support:
 
-	; Enable write protect, so copy-on-write works in the kernel.
+	; Enable write protect, so copy-on-write works in the kernel, and MMArchSafeCopy will page fault in read-only regions.
 	mov	rax,cr0
 	or	rax,1 << 16
 	mov	cr0,rax
@@ -907,6 +907,21 @@ ProcessorInstallTSS:
 	ltr	ax
 
 	pop	rbx
+	ret
+
+[global MMArchSafeCopy]
+MMArchSafeCopy:
+	call	GetCurrentThread
+	mov	byte [rax + 0],1 ; see definition of Thread
+	mov	rcx,rdx
+	mov	r8,.error ; where to jump to if we get a page fault
+	rep	movsb
+	mov	byte [rax + 0],0
+	mov	al,1
+	ret
+	.error: ; we got a page fault in a user address, return false
+	mov	byte [rax + 0],0
+	mov	al,0
 	ret
 
 [global ArchResetCPU]

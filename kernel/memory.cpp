@@ -255,6 +255,8 @@ void MMArchInitialiseVAS();
 bool MMArchInitialiseUserSpace(MMSpace *space);
 bool MMArchCommitPageTables(MMSpace *space, MMRegion *region);
 bool MMArchMakePageWritable(MMSpace *space, uintptr_t virtualAddress);
+bool MMArchIsBufferInUserRange(uintptr_t baseAddress, size_t byteCount);
+extern "C" bool MMArchSafeCopy(uintptr_t destinationAddress, uintptr_t sourceAddress, size_t byteCount); // Returns false if a page fault occured during the copy.
 void MMFreeVAS(MMSpace *space);
 void MMFinalizeVAS(MMSpace *space);
 

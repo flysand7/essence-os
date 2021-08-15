@@ -128,32 +128,19 @@ bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
 	CHECK_OBJECT(_object ## index); \
 	*((void **) &__object) = (_object ## index).object;
 #define SYSCALL_READ(destination, source, length) \
-	do { if ((length) > 0) { \
-		SYSCALL_BUFFER((uintptr_t) (source), (length), 0, false); \
-		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
-		__sync_synchronize(); \
-	}} while (0)
+	if (!MMArchIsBufferInUserRange(source, length) || !MMArchSafeCopy((uintptr_t) (destination), source, length)) \
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 #define SYSCALL_READ_HEAP(destination, source, length) \
-	if ((length) > 0) { \
-		void *x = EsHeapAllocate((length), false, K_FIXED); \
-		if (!x) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false); \
-		bool success = false; \
-		EsDefer(if (!success) EsHeapFree(x, 0, K_FIXED);); \
-		SYSCALL_BUFFER((uintptr_t) (source), (length), 0, false); \
-		*((void **) &(destination)) = x; \
-		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
-		success = true; \
-		__sync_synchronize(); \
-	} else destination = nullptr; EsDefer(EsHeapFree(destination, 0, K_FIXED))
+	*(void **) &(destination) = EsHeapAllocate((length), false, K_FIXED); \
+	if ((length) != 0 && !(destination)) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false); \
+	EsDefer(EsHeapFree((destination), (length), K_FIXED)); \
+	SYSCALL_READ(destination, source, length);
 #define SYSCALL_WRITE(destination, source, length) \
-	do { \
-		__sync_synchronize(); \
-		SYSCALL_BUFFER((uintptr_t) (destination), (length), 0, true); \
-		EsMemoryCopy((void *) (destination), (const void *) (source), (length)); \
-	} while (0)
+	if (!MMArchIsBufferInUserRange(destination, length) || !MMArchSafeCopy(destination, (uintptr_t) (source), length)) \
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 #define SYSCALL_ARGUMENTS uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t argument3, \
 		Thread *currentThread, Process *currentProcess, MMSpace *currentVMM, uintptr_t *userStackPointer, bool *fatalError
-#define SYSCALL_IMPLEMENT(_type) uintptr_t Do ## _type ( SYSCALL_ARGUMENTS ) 
+#define SYSCALL_IMPLEMENT(_type) uintptr_t Do ## _type (SYSCALL_ARGUMENTS) 
 #define SYSCALL_RETURN(value, fatal) do { *fatalError = fatal; return (value); } while (0)
 #define SYSCALL_PERMISSION(x) do { if ((x) != (currentProcess->permissions & (x))) { *fatalError = true; return ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS; } } while (0)
 typedef uintptr_t (*SyscallFunction)(SYSCALL_ARGUMENTS);
@@ -1414,8 +1401,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_YIELD_SCHEDULER) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
-	SYSCALL_BUFFER(argument0, sizeof(uint64_t) * ES_SYSTEM_CONSTANT_COUNT, 1, true /* write */);
-	uint64_t *systemConstants = (uint64_t *) argument0;
+	uint64_t systemConstants[ES_SYSTEM_CONSTANT_COUNT];
+	EsMemoryZero(systemConstants, sizeof(systemConstants));
 	systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] = timeStampTicksPerMs / 1000;
 	systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET] = WINDOW_INSET;
 	systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT] = CONTAINER_TAB_BAND_HEIGHT;
@@ -1423,6 +1410,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
 	systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] = UI_SCALE;
 	systemConstants[ES_SYSTEM_CONSTANT_BORDER_THICKNESS] = BORDER_THICKNESS;
 	systemConstants[ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT] = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
+	SYSCALL_WRITE(argument0, systemConstants, sizeof(systemConstants));
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

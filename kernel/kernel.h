@@ -70,9 +70,6 @@ struct AsyncTask {
 };
 
 struct CPULocalStorage {
-	// Must be the first fields; used in __cyg_profile_func_enter.
-	uintptr_t kernelFunctionCallCount;
-
 	struct Thread *currentThread, 
 		      *idleThread, 
 		      *asyncTaskThread;
