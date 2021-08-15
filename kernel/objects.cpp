@@ -71,8 +71,13 @@ struct HandleTable {
 	bool destroyed;
 	uint32_t handleCount;
 
+	// Be careful putting handles in the handle table!
+	// The process will be able to immediately close it.
+	// If this fails, the handle is closed and ES_INVALID_HANDLE is returned.
 	EsHandle OpenHandle(void *_object, uint32_t _flags, KernelObjectType _type, EsHandle at = ES_INVALID_HANDLE);
+
 	bool CloseHandle(EsHandle handle);
+	void ModifyFlags(EsHandle handle, uint32_t newFlags);
 
 	// Resolve the handle if it is valid and return the type in type.
 	// The initial value of type is used as a mask of expected object types for the handle.
@@ -438,6 +443,17 @@ bool HandleTable::CloseHandle(EsHandle handle) {
 	return true;
 }
 
+void HandleTable::ModifyFlags(EsHandle handle, uint32_t newFlags) {
+	KMutexAcquire(&lock);
+	EsDefer(KMutexRelease(&lock));
+	if ((!handle) || handle >= HANDLE_TABLE_L1_ENTRIES * HANDLE_TABLE_L2_ENTRIES) return;
+	HandleTableL2 *l2 = l1r.t[handle / HANDLE_TABLE_L2_ENTRIES];
+	if (!l2) return;
+	Handle *_handle = l2->t + (handle % HANDLE_TABLE_L2_ENTRIES);
+	if (!_handle->object) return;
+	_handle->flags = newFlags;
+}
+
 void HandleTable::ResolveHandle(KObject *object, EsHandle handle) {
 	KernelObjectType requestedType = object->type;
 	object->type = COULD_NOT_RESOLVE_HANDLE;
@@ -463,17 +479,16 @@ void HandleTable::ResolveHandle(KObject *object, EsHandle handle) {
 	EsDefer(KMutexRelease(&lock));
 
 	HandleTableL2 *l2 = l1r.t[handle / HANDLE_TABLE_L2_ENTRIES];
+	if (!l2) return;
 
-	if (l2) {
-		Handle *_handle = l2->t + (handle % HANDLE_TABLE_L2_ENTRIES);
+	Handle *_handle = l2->t + (handle % HANDLE_TABLE_L2_ENTRIES);
 
-		if ((_handle->type & requestedType) && (_handle->object)) {
-			// Open a handle to the object so that it can't be destroyed while the system call is still using it.
-			// The handle is closed in the KObject's destructor.
-			if (OpenHandleToObject(_handle->object, _handle->type, _handle->flags)) {
-				object->type = _handle->type, object->object = _handle->object, object->flags = _handle->flags;
-				object->valid = object->close = true;
-			}
+	if ((_handle->type & requestedType) && (_handle->object)) {
+		// Open a handle to the object so that it can't be destroyed while the system call is still using it.
+		// The handle is closed in the KObject's destructor.
+		if (OpenHandleToObject(_handle->object, _handle->type, _handle->flags)) {
+			object->type = _handle->type, object->object = _handle->object, object->flags = _handle->flags;
+			object->valid = object->close = true;
 		}
 	}
 }
@@ -515,6 +530,7 @@ EsHandle HandleTable::OpenHandle(void *object, uint32_t flags, KernelObjectType 
 
 		if (!l1->t[l1Index]) l1->t[l1Index] = (HandleTableL2 *) EsHeapAllocate(sizeof(HandleTableL2), true, K_FIXED);
 		HandleTableL2 *l2 = l1->t[l1Index];
+		if (!l2) goto error;
 		uintptr_t l2Index = HANDLE_TABLE_L2_ENTRIES;
 
 		for (uintptr_t i = 0; i < HANDLE_TABLE_L2_ENTRIES; i++) {
@@ -539,7 +555,7 @@ EsHandle HandleTable::OpenHandle(void *object, uint32_t flags, KernelObjectType 
 	}
 
 	error:;
-	// TODO Close the handle to the object with CloseHandleToObject?
+	CloseHandleToObject(object, type, flags);
 	return ES_INVALID_HANDLE;
 }
 
@@ -578,19 +594,7 @@ ConstantBuffer *MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes)
 
 EsHandle MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes, Process *process) {
 	void *object = MakeConstantBuffer(data, bytes);
-
-	if (!object) {
-		return ES_INVALID_HANDLE;
-	}
-
-	EsHandle h = process->handleTable.OpenHandle(object, 0, KERNEL_OBJECT_CONSTANT_BUFFER); 
-
-	if (h == ES_INVALID_HANDLE) {
-		CloseHandleToObject(object, KERNEL_OBJECT_CONSTANT_BUFFER, 0);
-		return ES_INVALID_HANDLE;
-	}
-
-	return h;
+	return object ? process->handleTable.OpenHandle(object, 0, KERNEL_OBJECT_CONSTANT_BUFFER) : ES_INVALID_HANDLE; 
 }
 
 EsHandle MakeConstantBufferForDesktop(K_USER_BUFFER const void *data, size_t bytes) {

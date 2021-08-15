@@ -1881,9 +1881,15 @@ void FSRegisterFileSystem(KFileSystem *fileSystem) {
 	EsMessage m;
 	EsMemoryZero(&m, sizeof(EsMessage));
 	m.type = ES_MSG_REGISTER_FILE_SYSTEM;
-	m.registerFileSystem.rootDirectory = desktopProcess->handleTable.OpenHandle(fileSystem->rootDirectory, _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
 	m.registerFileSystem.isBootFileSystem = fileSystem->isBootFileSystem;
-	desktopProcess->messageQueue.SendMessage(nullptr, &m);
+
+	m.registerFileSystem.rootDirectory = desktopProcess->handleTable.OpenHandle(fileSystem->rootDirectory, _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
+
+	if (m.registerFileSystem.rootDirectory) {
+		if (!desktopProcess->messageQueue.SendMessage(nullptr, &m)) {
+			desktopProcess->handleTable.CloseHandle(m.registerFileSystem.rootDirectory); // This will check that the handle is still valid.
+		}
+	}
 }
 
 void FSRegisterBlockDevice(KBlockDevice *device) {

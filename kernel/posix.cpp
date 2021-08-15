@@ -261,25 +261,13 @@ namespace POSIX {
 				file->path = (char *) EsHeapAllocate(pathLength + 1, true, K_FIXED);
 				EsMemoryCopy(file->path, path, pathLength);
 
-				EsHandle fd = handleTable->OpenHandle(file, (flags & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD);
-
-				// EsPrint("OPEN '%s' %z\n", pathLength, path, (openFlags & ES_NODE_WRITE_ACCESS) ? "Write" : ((openFlags & ES_NODE_READ_ACCESS) ? "Read" : "None"));
-
-				if (!fd) {
-					if (file->type == POSIX_FILE_NORMAL || file->type == POSIX_FILE_DIRECTORY) {
-						CloseHandleToObject(file->node, KERNEL_OBJECT_NODE, openFlags);
-					}
-
-					EsHeapFree(file->path, pathLength + 1, K_FIXED);
-					EsHeapFree(file, sizeof(POSIXFile), K_FIXED);
-					return -ENFILE;
-				}
-
 				if ((flags & O_TRUNC) && file->type == POSIX_FILE_NORMAL) {
 					FSFileResize(file->node, 0);
 				}
 
-				return fd;
+				// EsPrint("OPEN '%s' %z\n", pathLength, path, (openFlags & ES_NODE_WRITE_ACCESS) ? "Write" : ((openFlags & ES_NODE_READ_ACCESS) ? "Read" : "None"));
+
+				return handleTable->OpenHandle(file, (flags & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD) ?: -ENFILE;
 			} break;
 
 			case ES_POSIX_SYSCALL_GET_POSIX_FD_PATH: {
@@ -324,30 +312,18 @@ namespace POSIX {
 					return _object1.flags;
 				} else if (syscall.arguments[1] == F_SETFD) {
 					KObject object;
-					uint64_t newFlags = syscall.arguments[2];
-					handleTable->ResolveHandle(&object, syscall.arguments[0], &newFlags);
+					uint32_t newFlags = syscall.arguments[2];
+					handleTable->ModifyFlags(syscall.arguments[0], newFlags);
 				} else if (syscall.arguments[1] == F_GETFL) {
 					return file->posixFlags;
 				} else if (syscall.arguments[1] == F_DUPFD) {
-					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-					int fd = handleTable->OpenHandle(_object1.object, _object1.flags, _object1.type);
-
-					if (!fd) {
-						CloseHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-						return -EBUSY;
-					} else return fd;
+					// Duplicate with FD_CLOEXEC clear.
+					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, 0);
+					return handleTable->OpenHandle(_object1.object, 0, _object1.type) ?: -ENFILE;
 				} else if (syscall.arguments[1] == F_DUPFD_CLOEXEC) {
-					KObject object;
-					uint64_t newFlags = syscall.arguments[2];
-					handleTable->ResolveHandle(&object, syscall.arguments[0], &newFlags);
-
-					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-					int fd = handleTable->OpenHandle(_object1.object, _object1.flags, _object1.type);
-
-					if (!fd) {
-						CloseHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-						return -EBUSY;
-					} else return fd;
+					// Duplicate with FD_CLOEXEC set.
+					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, FD_CLOEXEC);
+					return handleTable->OpenHandle(_object1.object, FD_CLOEXEC, _object1.type) ?: -ENFILE;
 				} else {
 					KernelPanic("POSIX::DoSyscall - Unimplemented fcntl %d.\n", syscall.arguments[1]);
 				}
@@ -570,10 +546,7 @@ namespace POSIX {
 
 				if (!process) return -ENOMEM;
 
-				EsHandle processHandle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS);
-				if (!processHandle) CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
-
-				return processHandle;
+				return currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS);
 			} break;
 
 			case SYS_exit_group: {
@@ -600,7 +573,6 @@ namespace POSIX {
 					KEventSet(&process->killedEvent);
 
 					processHandle = currentProcess->handleTable.OpenHandle(currentThread->posixData->forkProcess, 0, KERNEL_OBJECT_PROCESS);
-					if (!processHandle) CloseHandleToObject(currentThread->posixData->forkProcess, KERNEL_OBJECT_PROCESS);
 
 					// Close any handles the process owned.
 					process->handleTable.Destroy();
@@ -645,11 +617,8 @@ namespace POSIX {
 				// Clone the oldfd as newfd.
 
 				OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-
-				if (!handleTable->OpenHandle(_object1.object, _object1.flags, _object1.type, ConvertStandardInputTo3(syscall.arguments[1]))) {
-					CloseHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-					return -EBUSY;
-				} else return 0;
+				return handleTable->OpenHandle(_object1.object, _object1.flags, _object1.type, 
+						ConvertStandardInputTo3(syscall.arguments[1])) ? 0 : -EBUSY;
 			} break;
 
 			case SYS_pipe2: {
@@ -665,7 +634,7 @@ namespace POSIX {
 				POSIXFile *writer = (POSIXFile *) EsHeapAllocate(sizeof(POSIXFile), true, K_FIXED);
 
 				if (!reader || !writer || !pipe) {
-					EsHeapFree(pipe, sizeof(Pipe), K_PAGED);
+					EsHeapFree(pipe, 0, K_PAGED);
 					EsHeapFree(reader, 0, K_FIXED);
 					EsHeapFree(writer, 0, K_FIXED);
 					return -ENOMEM;
@@ -683,29 +652,12 @@ namespace POSIX {
 				writer->handles = 1;
 				writer->pipe = pipe;
 
-				EsHandle fd0, fd1;
-				fd0 = handleTable->OpenHandle(reader, (syscall.arguments[1] & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD);
-
-				if (!fd0) { 
-					EsHeapFree(pipe, sizeof(Pipe), K_PAGED);
-					EsHeapFree(reader, 0, K_FIXED);
-					EsHeapFree(writer, 0, K_FIXED);
-					return -EMFILE;
-				}
-
 				pipe->readers = 1;
-
-				fd1 = handleTable->OpenHandle(writer, (syscall.arguments[1] & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD);
-
-				if (!fd1) { 
-					handleTable->CloseHandle(ConvertStandardInputTo3(fd0));
-					EsHeapFree(writer, 0, K_FIXED);
-					return -EMFILE;
-				}
-
 				pipe->writers = 1;
 
-				fildes[0] = fd0, fildes[1] = fd1;
+				fildes[0] = handleTable->OpenHandle(reader, (syscall.arguments[1] & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD);
+				fildes[1] = handleTable->OpenHandle(writer, (syscall.arguments[1] & O_CLOEXEC) ? FD_CLOEXEC : 0, KERNEL_OBJECT_POSIX_FD);
+
 				return 0;
 			} break;
 

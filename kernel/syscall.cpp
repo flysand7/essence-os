@@ -1,6 +1,5 @@
 // TODO Replace ES_ERROR_UNKNOWN with proper errors.
 // TODO Clean up the return values for system calls; with FATAL_ERRORs there should need to be less error codes returned.
-// TODO Close handles if OpenHandle fails or SendMessage fails.
 // TODO If a file system call fails with an error indicating the file system is corrupted, or a drive is failing, report the problem to the user.
 
 #ifndef IMPLEMENTATION
@@ -300,11 +299,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 		SYSCALL_RETURN(ES_ERROR_UNKNOWN, false);
 	}
 
-	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
 	processInformation.pid = process->id;
+	processInformation.mainThread.tid = process->executableMainThread->id;
 
 	processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
-	processInformation.mainThread.tid = process->executableMainThread->id;
+	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
 
 	SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -403,35 +402,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CLOSE) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_OBJECT) {
-	EmbeddedWindow *window;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EMBEDDED_WINDOW, window, 1);
-
-	if (window->owner != currentProcess) {
-		// TODO Permissions.
-	}
-
-	void *old = window->apiWindow;
-	window->apiWindow = (void *) argument2;
-	__sync_synchronize();
-
-	KMutexAcquire(&windowManager.mutex);
-
-	if (window->container) {
-		EsMessage message;
-		EsMemoryZero(&message, sizeof(EsMessage));
-		message.type = ES_MSG_WINDOW_RESIZED;
-		int embedWidth = window->container->width - WINDOW_INSET * 2;
-		int embedHeight = window->container->height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT;
-		message.windowResized.content = ES_RECT_4(0, embedWidth, 0, embedHeight);
-		window->owner->messageQueue.SendMessage((void *) argument2, &message);
-	}
-
-	KMutexRelease(&windowManager.mutex);
-
-	SYSCALL_RETURN((uintptr_t) old, false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 	uint8_t property = argument3;
 
@@ -493,11 +463,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		Process *process;
 		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, 2);
 		OpenHandleToObject(embed, KERNEL_OBJECT_EMBEDDED_WINDOW);
-		EsHandle handle = process->handleTable.OpenHandle(embed, 0, KERNEL_OBJECT_EMBEDDED_WINDOW);
 		KMutexAcquire(&windowManager.mutex);
 		embed->SetEmbedOwner(process);
 		KMutexRelease(&windowManager.mutex);
-		SYSCALL_RETURN(handle, false);
+		SYSCALL_RETURN(process->handleTable.OpenHandle(embed, 0, KERNEL_OBJECT_EMBEDDED_WINDOW), false);
 	} else if (property == ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR) {
 		embed->resizeClearColor = argument1;
 	} else {
@@ -736,9 +705,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_CREATE) {
 		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	}
 
-	// Register processObject as a handle.
-	thread.handle = currentProcess->handleTable.OpenHandle(threadObject, 0, KERNEL_OBJECT_THREAD); 
 	thread.tid = threadObject->id;
+
+	thread.handle = currentProcess->handleTable.OpenHandle(threadObject, 0, KERNEL_OBJECT_THREAD); 
 
 	SYSCALL_WRITE(argument2, &thread, sizeof(EsThreadInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -1518,9 +1487,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 		} break;
 	}
 
-	EsHandle constantBuffer = MakeConstantBuffer(buffer, bufferSize, currentProcess);
 	SYSCALL_WRITE(argument1, &bufferSize, sizeof(size_t));
-	SYSCALL_RETURN(constantBuffer, false);
+	SYSCALL_RETURN(MakeConstantBuffer(buffer, bufferSize, currentProcess), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_OPEN) {
@@ -1588,7 +1556,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 		m.message.desktop.buffer = MakeConstantBufferForDesktop(buffer, argument1);
 		m.message.desktop.bytes = argument1;
 		m.message.desktop.windowID = window ? window->id : 0;
-		desktopProcess->messageQueue.SendMessage(&m);
+
+		if (!desktopProcess->messageQueue.SendMessage(&m)) {
+			desktopProcess->handleTable.CloseHandle(m.message.desktop.buffer); // This will check that the handle is still valid.
+		}
 	}
 
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -1899,8 +1870,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_OPEN) {
 		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	}
 
-	connection.handle = currentProcess->handleTable.OpenHandle(netConnection, 0, KERNEL_OBJECT_CONNECTION); 
 	connection.error = ES_SUCCESS;
+
+	connection.handle = currentProcess->handleTable.OpenHandle(netConnection, 0, KERNEL_OBJECT_CONNECTION); 
 
 	SYSCALL_WRITE(argument0, &connection, sizeof(EsConnection));
 	SYSCALL_RETURN(ES_SUCCESS, false);

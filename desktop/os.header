@@ -1683,7 +1683,6 @@ struct EsMessageInstanceDestroy {
 
 struct EsMessageProcessCrash {
 	EsCrashReason reason;
-	EsHandle process;
 	uintptr_t pid;
 };
 

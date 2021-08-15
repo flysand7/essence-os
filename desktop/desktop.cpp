@@ -1068,8 +1068,11 @@ void ApplicationTemporaryDestroy(InstalledApplication *application) {
 }
 
 void ApplicationInstanceCrashed(EsMessage *message) {
+	EsHandle processHandle = EsProcessOpen(message->crash.pid);
+	EsAssert(processHandle); // Since the process is paused, it cannot be removed.
+
 	EsProcessState state;
-	EsProcessGetState(message->crash.process, &state); 
+	EsProcessGetState(processHandle, &state); 
 	const char *fatalErrorString = state.crashReason.errorCode >= ES_FATAL_ERROR_COUNT ? "[unknown]" 
 		: EnumLookupNameFromValue(enumStrings_EsFatalError, state.crashReason.errorCode);
 	const char *systemCallString = state.crashReason.duringSystemCall == -1 ? "[none]" 
@@ -1114,8 +1117,8 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 		}
 	}
 
-	EsProcessTerminate(message->crash.process, 1); 
-	EsHandleClose(message->crash.process);
+	EsProcessTerminate(processHandle, 1); 
+	EsHandleClose(processHandle);
 }
 
 void ApplicationProcessTerminated(uint64_t pid) {

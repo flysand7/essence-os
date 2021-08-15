@@ -894,11 +894,12 @@ void Scheduler::RemoveProcess(Process *process) {
 
 	// Free the process.
 
-	KRegisterAsyncTask([] (EsGeneric process) { 
-		MMSpace *space = ((Process *) process.p)->vmm;
-		MMFinalizeVAS(space);
+	KRegisterAsyncTask([] (EsGeneric _process) { 
+		Process *process = (Process *) _process.p;
+		MMSpace *space = process->vmm;
+		if (process->executableStartRequest) MMFinalizeVAS(space);
 		scheduler.mmSpacePool.Remove(space);
-		scheduler.processPool.Remove(process.p); 
+		scheduler.processPool.Remove(process); 
 	}, process);
 
 	if (started) {
@@ -964,11 +965,9 @@ void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
 	EsMemoryCopy(&process->crashReason, crashReason, sizeof(EsCrashReason));
 
 	if (!shutdown) {
-		OpenHandleToObject(process, KERNEL_OBJECT_PROCESS);
 		_EsMessageWithObject m;
 		EsMemoryZero(&m, sizeof(m));
 		m.message.type = ES_MSG_APPLICATION_CRASH;
-		m.message.crash.process = desktopProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS);
 		m.message.crash.pid = process->id;
 		EsMemoryCopy(&m.message.crash.reason, crashReason, sizeof(EsCrashReason));
 		desktopProcess->messageQueue.SendMessage(&m);
