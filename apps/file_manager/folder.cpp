@@ -284,7 +284,7 @@ void BookmarkAdd(String path, bool saveConfiguration = true) {
 	if (saveConfiguration) ConfigurationSave();
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
-		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, bookmarks.Length(), bookmarks.Length());
+		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, bookmarks.Length(), 1);
 	}
 }
 
@@ -294,7 +294,7 @@ void BookmarkRemove(String path) {
 			bookmarks.Delete(i);
 
 			for (uintptr_t i = 0; i < instances.Length(); i++) {
-				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, i + 1, i + 1);
+				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, i + 1, 1);
 			}
 
 			ConfigurationSave();

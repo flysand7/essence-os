@@ -60,10 +60,10 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 		HistoryEntry historyEntry = {};
 		historyEntry.path = instance->path;
 
-		EsGeneric focusedIndex;
+		EsListViewIndex focusedIndex;
 
 		if (EsListViewGetFocusedItem(instance->list, nullptr, &focusedIndex)) {
-			String name = instance->listContents[focusedIndex.u].entry->GetName();
+			String name = instance->listContents[focusedIndex].entry->GetName();
 			historyEntry.focusedItem = StringDuplicate(name);
 		}
 
@@ -311,7 +311,7 @@ void InstanceAddSingle(Instance *instance, ListEntry entry) {
 	}
 
 	instance->listContents.Insert(entry, low);
-	EsListViewInsert(instance->list, 0, low, low);
+	EsListViewInsert(instance->list, 0, low, 1);
 
 	if (entry.selected) {
 		EsListViewSelect(instance->list, 0, low);
@@ -344,13 +344,13 @@ void InstanceAddContents(Instance *instance, HashTable *newEntries) {
 	}
 
 	if (oldListEntryCount) {
-		EsListViewRemove(instance->list, 0, 0, oldListEntryCount - 1);
+		EsListViewRemove(instance->list, 0, 0, oldListEntryCount);
 	}
 
 	InstanceSortListContents(instance->listContents.array, instance->listContents.Length(), instance->viewSettings.sortColumn);
 
 	if (instance->listContents.Length()) {
-		EsListViewInsert(instance->list, 0, 0, instance->listContents.Length() - 1);
+		EsListViewInsert(instance->list, 0, 0, instance->listContents.Length());
 
 		if (instance->delayedFocusItem.bytes) {
 			for (uintptr_t i = 0; i < instance->listContents.Length(); i++) {
@@ -378,7 +378,7 @@ ListEntry InstanceRemoveSingle(Instance *instance, FolderEntry *folderEntry) {
 		if (compare == 0) {
 			ListEntry entry = instance->listContents[middle];
 			InstanceRemoveInternal(instance, &entry);
-			EsListViewRemove(instance->list, 0, middle, middle);
+			EsListViewRemove(instance->list, 0, middle, 1);
 			instance->listContents.Delete(middle);
 			InstanceUpdateStatusString(instance);
 			return entry;
@@ -401,7 +401,7 @@ void InstanceRemoveContents(Instance *instance) {
 	EsAssert(instance->selectedItemCount == 0); // After removing all items none should be selected.
 
 	if (instance->listContents.Length()) {
-		EsListViewRemove(instance->list, 0, 0, instance->listContents.Length() - 1);
+		EsListViewRemove(instance->list, 0, 0, instance->listContents.Length());
 		EsListViewContentChanged(instance->list);
 	}
 
@@ -609,7 +609,7 @@ void ListItemGenerateThumbnailTaskComplete(Instance *, Task *task) {
 
 Thumbnail *ListItemGetThumbnail(EsElement *element) {
 	Instance *instance = element->instance;
-	ListEntry *entry = &instance->listContents[EsListViewGetIndexFromItem(element).u];
+	ListEntry *entry = &instance->listContents[EsListViewGetIndexFromItem(element)];
 	Thumbnail *thumbnail = thumbnailCache.Get(&entry->entry->id);
 	return thumbnail;
 }
@@ -686,7 +686,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 	Instance *instance = element->instance;
 
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index.i;
+		int column = message->getContent.column, index = message->getContent.index;
 		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
 		ListEntry *listEntry = &instance->listContents[index];
 		FolderEntry *entry = listEntry->entry;
@@ -704,7 +704,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 			}
 		}
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_SUMMARY) {
-		int index = message->getContent.index.i;
+		int index = message->getContent.index;
 		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
 		ListEntry *listEntry = &instance->listContents[index];
 		FolderEntry *entry = listEntry->entry;
@@ -714,7 +714,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		message->getContent.icon = fileType->iconID;
 		message->getContent.richText = true;
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT_RANGE) {
-		for (intptr_t i = message->selectRange.fromIndex.i; i <= message->selectRange.toIndex.i; i++) {
+		for (intptr_t i = message->selectRange.fromIndex; i <= message->selectRange.toIndex; i++) {
 			ListEntry *entry = &instance->listContents[i];
 			if (entry->selected) { instance->selectedItemCount--; instance->selectedItemsTotalSize -= entry->entry->size; }
 			entry->selected = message->selectRange.toggle ? !entry->selected : message->selectRange.select;
@@ -725,7 +725,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		StringDestroy(&instance->delayedFocusItem);
 		InstanceUpdateStatusString(instance);
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT) {
-		ListEntry *entry = &instance->listContents[message->selectItem.index.i];
+		ListEntry *entry = &instance->listContents[message->selectItem.index];
 		if (entry->selected) { instance->selectedItemCount--; instance->selectedItemsTotalSize -= entry->entry->size; }
 		entry->selected = message->selectItem.isSelected;
 		if (entry->selected) { instance->selectedItemCount++; instance->selectedItemsTotalSize += entry->entry->size; }
@@ -733,10 +733,10 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		StringDestroy(&instance->delayedFocusItem);
 		InstanceUpdateStatusString(instance);
 	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
-		ListEntry *entry = &instance->listContents[message->selectItem.index.i];
+		ListEntry *entry = &instance->listContents[message->selectItem.index];
 		message->selectItem.isSelected = entry->selected;
 	} else if (message->type == ES_MSG_LIST_VIEW_CHOOSE_ITEM) {
-		ListEntry *listEntry = &instance->listContents[message->chooseItem.index.i];
+		ListEntry *listEntry = &instance->listContents[message->chooseItem.index];
 
 		if (listEntry) {
 			FolderEntry *entry = listEntry->entry;
@@ -777,7 +777,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_LIST_VIEW_CREATE_ITEM) {
 		EsElement *element = message->createItem.item;
 		element->messageUser = ListItemMessage;
-		ListItemCreated(element, message->createItem.index.u, false);
+		ListItemCreated(element, message->createItem.index, false);
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
 
@@ -826,7 +826,7 @@ int PlacesViewCallback(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
 		int group = message->getContent.group;
-		int index = message->getContent.index.i;
+		int index = message->getContent.index;
 
 		if (group == PLACES_VIEW_GROUP_DRIVES) {
 			// TODO Use namespace lookup.
@@ -851,33 +851,33 @@ int PlacesViewCallback(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT && message->selectItem.isSelected) {
 		if (message->selectItem.group == PLACES_VIEW_GROUP_DRIVES) {
-			if (message->selectItem.index.i == 0) {
+			if (message->selectItem.index == 0) {
 				InstanceLoadFolder(instance, StringAllocateAndFormat("%z", interfaceString_FileManagerDrivesPage), LOAD_FOLDER_NO_FOCUS);
 			} else {
-				Drive *drive = &drives[message->selectItem.index.i - 1];
+				Drive *drive = &drives[message->selectItem.index - 1];
 				InstanceLoadFolder(instance, StringAllocateAndFormat("%s/", drive->prefixBytes, drive->prefix), LOAD_FOLDER_NO_FOCUS);
 			}
-		} else if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && message->selectItem.index.i) {
-			String string = bookmarks[message->selectItem.index.i - 1];
+		} else if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && message->selectItem.index) {
+			String string = bookmarks[message->selectItem.index - 1];
 			InstanceLoadFolder(instance, StringAllocateAndFormat("%s", STRFMT(string)), LOAD_FOLDER_NO_FOCUS);
 		}
 	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
 		if (message->selectItem.group == PLACES_VIEW_GROUP_DRIVES) {
-			if (message->selectItem.index.i == 0) {
+			if (message->selectItem.index == 0) {
 				message->selectItem.isSelected = 0 == EsStringCompareRaw(INTERFACE_STRING(FileManagerDrivesPage), 
 						instance->path.text, instance->path.bytes);
 			} else {
-				Drive *drive = &drives[message->selectItem.index.i - 1];
+				Drive *drive = &drives[message->selectItem.index - 1];
 				message->selectItem.isSelected = 0 == EsStringCompareRaw(drive->prefix, drive->prefixBytes, 
 						instance->path.text, instance->path.bytes - 1);
 			}
-		} else if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && message->selectItem.index.i) {
-			String string = bookmarks[message->selectItem.index.i - 1];
+		} else if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && message->selectItem.index) {
+			String string = bookmarks[message->selectItem.index - 1];
 			message->selectItem.isSelected = 0 == EsStringCompareRaw(string.text, string.bytes, 
 					instance->path.text, instance->path.bytes);
 		}
 	} else if (message->type == ES_MSG_LIST_VIEW_CONTEXT_MENU) {
-		if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && !message->selectItem.index.i) {
+		if (message->selectItem.group == PLACES_VIEW_GROUP_BOOKMARKS && !message->selectItem.index) {
 			bool isCurrentFolderBookmarked = false;
 
 			for (uintptr_t i = 0; i < bookmarks.Length(); i++) {

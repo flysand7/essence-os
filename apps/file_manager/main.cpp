@@ -420,7 +420,7 @@ void DriveRemove(const char *prefix, size_t prefixBytes) {
 			found = true;
 
 			for (uintptr_t i = 0; i < instances.Length(); i++) {
-				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, index, index);
+				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, index, 1);
 			}
 
 			break;
@@ -457,7 +457,7 @@ void DriveAdd(const char *prefix, size_t prefixBytes) {
 	drives.Add(drive);
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
-		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, drives.Length(), drives.Length());
+		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, drives.Length(), 1);
 	}
 
 	EsMutexRelease(&drivesMutex);

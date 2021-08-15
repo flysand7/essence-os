@@ -195,7 +195,7 @@ void UpdateProcesses(Instance *instance) {
 
 	for (uintptr_t i = 0; i < previous.Length(); i++) {
 		if (!FindProcessByPID(processes, previous[i].data.pid)) {
-			EsListViewRemove(instance->listViewProcesses, 0, i, i);
+			EsListViewRemove(instance->listViewProcesses, 0, i, 1);
 			previous.Delete(i--);
 		}
 	}
@@ -229,7 +229,7 @@ void UpdateProcesses(Instance *instance) {
 
 	for (uintptr_t i = 0; i < processes.Length(); i++) {
 		if (!FindProcessByPID(previous, processes[i].data.pid)) {
-			EsListViewInsert(instance->listViewProcesses, 0, i, i);
+			EsListViewInsert(instance->listViewProcesses, 0, i, 1);
 		}
 	}
 
@@ -267,7 +267,7 @@ void UpdateDisplay(Instance *instance, int index) {
 	} else if (index == DISPLAY_PCI_DEVICES) {
 		size_t count = EsSyscall(ES_SYSCALL_DEBUG_COMMAND, index, (uintptr_t) pciDevices, sizeof(pciDevices) / sizeof(pciDevices[0]), 0);
 		EsListViewRemoveAll(instance->listViewPCIDevices, 0);
-		EsListViewInsert(instance->listViewPCIDevices, 0, 0, count - 1);
+		EsListViewInsert(instance->listViewPCIDevices, 0, 0, count);
 		EsPanelSwitchTo(instance->switcher, instance->listViewPCIDevices, ES_TRANSITION_NONE);
 	} else if (index == DISPLAY_MEMORY) {
 		EsMemoryStatistics statistics = {};
@@ -341,7 +341,7 @@ void UpdateDisplay(Instance *instance, int index) {
 
 int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index.i;
+		int column = message->getContent.column, index = message->getContent.index;
 		ProcessItem *item = &processes[index];
 		if      (column == 0) GET_CONTENT("%s", item->data.nameBytes, item->data.name);
 		else if (column == 1) { if (item->data.pid == -1) GET_CONTENT("n/a"); else GET_CONTENT("%d", item->data.pid); }
@@ -350,9 +350,9 @@ int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 		else if (column == 4) GET_CONTENT("%d", item->data.handleCount);
 		else EsAssert(false);
 	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
-		message->selectItem.isSelected = processes[message->selectItem.index.u].data.pid == selectedPID;
+		message->selectItem.isSelected = processes[message->selectItem.index].data.pid == selectedPID;
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT && message->selectItem.isSelected) {
-		selectedPID = processes[message->selectItem.index.u].data.pid;
+		selectedPID = processes[message->selectItem.index].data.pid;
 		EsCommandSetDisabled(&element->instance->commandTerminateProcess, selectedPID < 0 || !FindProcessByPID(processes, selectedPID));
 	} else {
 		return 0;
@@ -363,7 +363,7 @@ int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 
 int ListViewPCIDevicesCallback(EsElement *, EsMessage *message) {
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index.i;
+		int column = message->getContent.column, index = message->getContent.index;
 
 		EsPCIDevice *entry = pciDevices + index;
 

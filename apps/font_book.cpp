@@ -153,7 +153,7 @@ int FontListMessage(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_LIST_VIEW_CREATE_ITEM) {
 		EsPanel *panel = EsPanelCreate(message->createItem.item, ES_CELL_FILL, &styleFontInformationPanel);
-		EsFontInformation *font = &instance->fonts[message->createItem.index.u];
+		EsFontInformation *font = &instance->fonts[message->createItem.index];
 
 		EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
 		// EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY_SMALL, ES_ICON_FONT_X_GENERIC);
@@ -285,7 +285,7 @@ void LoadFontsFromDatabase(Instance *instance) {
 		return EsStringCompareRaw(fontLeft->name, fontLeft->nameBytes, fontRight->name, fontRight->nameBytes);
 	}, 0); 
 
-	EsListViewInsert(instance->fontList, 0, 0, instance->fonts.Length() - 1);
+	EsListViewInsert(instance->fontList, 0, 0, instance->fonts.Length());
 }
 
 void BackCommand(Instance *instance, EsElement *, EsCommand *) {

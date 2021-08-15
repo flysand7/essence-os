@@ -9,9 +9,9 @@ struct ListViewItemElement : EsElement {
 
 struct ListViewItem {
 	ListViewItemElement *element;
-	int32_t group;
+	EsListViewIndex group;
 	int32_t size;
-	EsGeneric index;
+	EsListViewIndex index;
 	uint8_t indent;
 	bool startAtSecondColumn;
 	bool isHeader, isFooter;
@@ -20,7 +20,7 @@ struct ListViewItem {
 
 struct ListViewGroup {
 	// TODO Empty groups.
-	uint64_t itemCount;
+	EsListViewIndex itemCount;
 	int64_t totalSize;
 	uint32_t flags;
 	bool initialised;
@@ -51,12 +51,12 @@ struct EsListView : EsElement {
 	UIStyle *secondaryCellStyle;
 
 	bool hasFocusedItem;
-	int32_t focusedItemGroup;
-	EsGeneric focusedItemIndex;
+	EsListViewIndex focusedItemGroup;
+	EsListViewIndex focusedItemIndex;
 
 	bool hasAnchorItem;
-	int32_t anchorItemGroup;
-	EsGeneric anchorItemIndex;
+	EsListViewIndex anchorItemGroup;
+	EsListViewIndex anchorItemIndex;
 
 	// Valid only during Z-order messages.
 	Array<EsElement *> zOrderItems;
@@ -83,8 +83,8 @@ struct EsListView : EsElement {
 	int64_t totalColumnWidth;
 
 	EsTextbox *inlineTextbox;
-	int32_t inlineTextboxGroup;
-	EsGeneric inlineTextboxIndex;
+	EsListViewIndex inlineTextboxGroup;
+	EsListViewIndex inlineTextboxIndex;
 
 	int maximumItemsPerBand;
 
@@ -102,173 +102,65 @@ struct EsListView : EsElement {
 		return bounds;
 	}
 
-	int CompareIndices(int32_t groupIndex, EsGeneric left, EsGeneric right) {
-		if (left.u == right.u) {
-			return 0;
-		}
-
-		if (~flags & ES_LIST_VIEW_NON_LINEAR) {
-			if (left.i > right.i) return  1;
-			if (left.i < right.i) return -1;
-		}
-
-		EsMessage m = { ES_MSG_LIST_VIEW_COMPARE_INDICES };
-		m.compareIndices.group = groupIndex;
-		m.compareIndices.left = left;
-		m.compareIndices.right = right;
-		EsAssert(EsMessageSend(this, &m) == ES_HANDLED); // Could not compare indices.
-		return m.compareIndices.result;
-	}
-
 	inline void GetFirstIndex(EsMessage *message) {
-		EsAssert(message->iterateIndex.group < (int32_t) groups.Length()); // Invalid group index.
+		EsAssert(message->iterateIndex.group < (EsListViewIndex) groups.Length()); // Invalid group index.
 		EsAssert(groups[message->iterateIndex.group].itemCount); // No items in the group.
-
-		if (flags & ES_LIST_VIEW_NON_LINEAR) {
-			message->type = ES_MSG_LIST_VIEW_FIRST_INDEX;
-			EsAssert(ES_HANDLED == EsMessageSend(this, message)); // First index message not handled.
-		} else {
-			message->iterateIndex.index.i = 0;
-		}
-	}
-
-	inline EsGeneric GetFirstIndex(int32_t group) {
-		EsMessage m = {};
-		m.iterateIndex.group = group;
-		GetFirstIndex(&m);
-		return m.iterateIndex.index;
+		message->iterateIndex.index = 0;
 	}
 
 	inline void GetLastIndex(EsMessage *message) {
-		EsAssert(message->iterateIndex.group < (int32_t) groups.Length()); // Invalid group index.
+		EsAssert(message->iterateIndex.group < (EsListViewIndex) groups.Length()); // Invalid group index.
 		EsAssert(groups[message->iterateIndex.group].itemCount); // No items in the group.
-
-		if (flags & ES_LIST_VIEW_NON_LINEAR) {
-			message->type = ES_MSG_LIST_VIEW_LAST_INDEX;
-			EsAssert(ES_HANDLED == EsMessageSend(this, message)); // First index message not handled.
-		} else {
-			message->iterateIndex.index.i = groups[message->iterateIndex.group].itemCount - 1;
-		}
-	}
-
-	inline EsGeneric GetLastIndex(int32_t group) {
-		EsMessage m = {};
-		m.iterateIndex.group = group;
-		GetLastIndex(&m);
-		return m.iterateIndex.index;
+		message->iterateIndex.index = groups[message->iterateIndex.group].itemCount - 1;
 	}
 
 	inline bool IterateForwards(EsMessage *message) {
-		if (flags & ES_LIST_VIEW_NON_LINEAR) {
-			message->type = ES_MSG_LIST_VIEW_NEXT_INDEX;
-			int response = EsMessageSend(this, message);
-			EsAssert(0 != response); // Next index message not handled.
-			return response == ES_HANDLED;
-		} else {
-			if (message->iterateIndex.index.u == groups[message->iterateIndex.group].itemCount - 1) {
-				if (message->iterateIndex.group == (int32_t) groups.Length() - 1) {
-					return false;
-				}
-
-				message->iterateIndex.group++;
-				message->iterateIndex.index.i = 0;
-			} else {
-				message->iterateIndex.index.i++;
+		if (message->iterateIndex.index == groups[message->iterateIndex.group].itemCount - 1) {
+			if (message->iterateIndex.group == (EsListViewIndex) groups.Length() - 1) {
+				return false;
 			}
 
-			return true;
+			message->iterateIndex.group++;
+			message->iterateIndex.index = 0;
+		} else {
+			message->iterateIndex.index++;
 		}
+
+		return true;
 	}
 
 	inline bool IterateBackwards(EsMessage *message) {
-		if (flags & ES_LIST_VIEW_NON_LINEAR) {
-			message->type = ES_MSG_LIST_VIEW_PREVIOUS_INDEX;
-			int response = EsMessageSend(this, message);
-			EsAssert(0 != response); // Previous index message not handled.
-			return response == ES_HANDLED;
+		if (message->iterateIndex.index == 0) {
+			if (message->iterateIndex.group == 0) {
+				return false;
+			}
+
+			message->iterateIndex.group--;
+			message->iterateIndex.index = groups[message->iterateIndex.group].itemCount - 1;
 		} else {
-			if (message->iterateIndex.index.u == 0) {
-				if (message->iterateIndex.group == 0) {
-					return false;
-				}
-
-				message->iterateIndex.group--;
-				message->iterateIndex.index.i = groups[message->iterateIndex.group].itemCount - 1;
-			} else {
-				message->iterateIndex.index.i--;
-			}
-
-			return true;
+			message->iterateIndex.index--;
 		}
+
+		return true;
 	}
 
-	int64_t CountItems(int32_t groupIndex, EsGeneric firstIndex, EsGeneric lastIndex) {
-		if (firstIndex.u == lastIndex.u) {
-			return 1;
-		}
+	int64_t MeasureItems(EsListViewIndex groupIndex, EsListViewIndex firstIndex, EsListViewIndex count) {
+		if (count == 0) return 0;
+		EsAssert(count > 0);
 
-		if (~flags & ES_LIST_VIEW_NON_LINEAR) {
-			return lastIndex.i - firstIndex.i + 1;
-		}
-
-		{
-			EsMessage m = { ES_MSG_LIST_VIEW_COUNT_ITEMS };
-			m.itemRange.group = groupIndex;
-			m.itemRange.firstIndex = firstIndex;
-			m.itemRange.lastIndex = lastIndex;
-
-			if (ES_HANDLED == EsMessageSend(this, &m)) {
-				return m.itemRange.result;
-			}
-		}
-
-		EsMessage m = {};
-		m.iterateIndex.group = groupIndex;
-		m.iterateIndex.index = firstIndex;
-
-		int64_t count = 1;
-
-		while (true) {
-			IterateForwards(&m);
-			EsAssert(groupIndex == m.iterateIndex.group); // Index range did not exist in group.
-			count++;
-
-			if (m.iterateIndex.index.u == lastIndex.u) {
-				return count;
-			}
-		}
-	}
-
-	int64_t MeasureItems(int32_t groupIndex, EsGeneric firstIndex, EsGeneric lastIndex, int64_t *count = nullptr) {
-		int64_t _tempCount = -1;
-		if (!count) count = &_tempCount;
-
-		if (~flags & ES_LIST_VIEW_NON_LINEAR) {
-			if (*count == -1) {
-				*count = lastIndex.i - firstIndex.i + 1;
-			} else {
-				EsAssert(*count == lastIndex.i - firstIndex.i + 1); // Invalid item count.
-			}
-		}
-
-		bool haveCount = *count != -1;
 		bool variableSize = flags & ES_LIST_VIEW_VARIABLE_SIZE;
 
 		if (!variableSize) {
-			if (!haveCount) {
-				*count = CountItems(groupIndex, firstIndex, lastIndex);
-			} 
-
 			ListViewGroup *group = &groups[groupIndex];
-			int64_t normalCount = *count;
+			int64_t normalCount = count;
 			int64_t additionalSize = 0;
 
-			if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && firstIndex.u == 0) {
+			if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && firstIndex == 0) {
 				normalCount--;
 				additionalSize += fixedHeaderSize;
 			}
 
-			if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && lastIndex.u == group->itemCount - 1) {
+			if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && firstIndex + count == group->itemCount) {
 				normalCount--;
 				additionalSize += fixedFooterSize;
 			}
@@ -276,11 +168,11 @@ struct EsListView : EsElement {
 			return additionalSize + normalCount * (flags & ES_LIST_VIEW_HORIZONTAL ? fixedWidth : fixedHeight);
 		}
 
-		if (firstIndex.u != lastIndex.u) {
+		if (count > 1) {
 			EsMessage m = { ES_MSG_LIST_VIEW_MEASURE_RANGE };
 			m.itemRange.group = groupIndex;
 			m.itemRange.firstIndex = firstIndex;
-			m.itemRange.lastIndex = lastIndex;
+			m.itemRange.count = count;
 
 			if (ES_HANDLED == EsMessageSend(this, &m)) {
 				return m.itemRange.result;
@@ -301,9 +193,7 @@ struct EsListView : EsElement {
 			total += m2.measureItem.result;
 			_count++;
 
-			if (m.iterateIndex.index.u == lastIndex.u) {
-				if (*count != -1) EsAssert(*count == _count); // Invalid item count.
-				else *count = _count;
+			if (count == _count) {
 				return total;
 			}
 
@@ -312,7 +202,7 @@ struct EsListView : EsElement {
 		}
 	}
 
-	void GetItemPosition(int32_t groupIndex, EsGeneric index, int64_t *_position, int64_t *_itemSize) {
+	void GetItemPosition(EsListViewIndex groupIndex, EsListViewIndex index, int64_t *_position, int64_t *_itemSize) {
 		int64_t gapBetweenGroup = currentStyle->gapMajor,
 			gapBetweenItems = (flags & ES_LIST_VIEW_TILED) ? currentStyle->gapWrap : currentStyle->gapMinor,
 			fixedSize       = (flags & ES_LIST_VIEW_VARIABLE_SIZE) ? 0 : (flags & ES_LIST_VIEW_HORIZONTAL ? fixedWidth : fixedHeight),
@@ -321,23 +211,21 @@ struct EsListView : EsElement {
 		int64_t position = (flags & ES_LIST_VIEW_HORIZONTAL ? -scroll.position[0] : -scroll.position[1]) + startInset, 
 			itemSize = 0;
 
-		EsGeneric targetIndex = index;
+		EsListViewIndex targetIndex = index;
 
-		for (int32_t i = 0; i < groupIndex; i++) {
+		for (EsListViewIndex i = 0; i < groupIndex; i++) {
 			position += groups[i].totalSize + gapBetweenGroup;
 		}
 
 		ListViewGroup *group = &groups[groupIndex];
 
-		if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && index.u == 0) {
+		if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && index == 0) {
 			itemSize = fixedHeaderSize;
-		} else if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && index.u == group->itemCount - 1) {
+		} else if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && index == group->itemCount - 1) {
 			position += group->totalSize - fixedFooterSize;
 			itemSize = fixedFooterSize;
-		} else if ((~flags & ES_LIST_VIEW_NON_LINEAR) && (~flags & ES_LIST_VIEW_VARIABLE_SIZE)) {
-			// TODO MAP_TO_LINEAR if non-linear but fixed size.
-
-			intptr_t linearIndex = index.i;
+		} else if (~flags & ES_LIST_VIEW_VARIABLE_SIZE) {
+			intptr_t linearIndex = index;
 
 			if (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) {
 				linearIndex--;
@@ -348,7 +236,7 @@ struct EsListView : EsElement {
 			position += (fixedSize + gapBetweenItems) * linearIndex;
 			itemSize = fixedSize;
 		} else {
-			EsAssert(~flags & ES_LIST_VIEW_TILED); // Tiled list views must be linear and fixed-size.;
+			EsAssert(~flags & ES_LIST_VIEW_TILED); // Tiled list views must be fixed-size.
 
 			EsMessage index = {};
 			index.type = ES_MSG_LIST_VIEW_FIND_POSITION;
@@ -365,14 +253,13 @@ struct EsListView : EsElement {
 				bool forwards;
 				ListViewItem *reference = visibleItems.Length() ? visibleItems.array : nullptr;
 
-				bool closerToStartThanReference = reference && targetIndex.i < reference->index.i / 2;
-				bool closerToEndThanReference   = reference && targetIndex.i > reference->index.i / 2 + (intptr_t) group->itemCount / 2;
-				if (flags & ES_LIST_VIEW_NON_LINEAR) closerToStartThanReference = closerToEndThanReference = false;
+				bool closerToStartThanReference = reference && targetIndex < reference->index / 2;
+				bool closerToEndThanReference   = reference && targetIndex > reference->index / 2 + (intptr_t) group->itemCount / 2;
 
 				if (reference && reference->group == groupIndex && !closerToStartThanReference && !closerToEndThanReference) {
 					index.iterateIndex.index = reference->index;
 					position = (flags & ES_LIST_VIEW_HORIZONTAL) ? reference->element->offsetX : reference->element->offsetY;
-					forwards = CompareIndices(groupIndex, reference->index, targetIndex) < 0;
+					forwards = reference->index < targetIndex;
 
 					EsMessage firstIndex = {};
 					firstIndex.iterateIndex.group = groupIndex;
@@ -381,24 +268,24 @@ struct EsListView : EsElement {
 					if (index.iterateIndex.index == firstIndex.iterateIndex.index) {
 						forwards = true;
 					}
-				} else if ((~flags & ES_LIST_VIEW_NON_LINEAR) && targetIndex.u > group->itemCount / 2) {
+				} else if (targetIndex > group->itemCount / 2) {
 					GetLastIndex(&index); 
 					position += group->totalSize;
-					position -= MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+					position -= MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 					forwards = false;
 				} else {
 					GetFirstIndex(&index); 
 					forwards = true;
 				}
 
-				while (index.iterateIndex.index.u != targetIndex.u) {
-					int64_t size = MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+				while (index.iterateIndex.index != targetIndex) {
+					int64_t size = MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 					position += forwards ? (size + gapBetweenItems) : -(size + gapBetweenItems);
 					EsAssert((forwards ? IterateForwards(&index) : IterateBackwards(&index)) && index.iterateIndex.group == groupIndex);
 							// Could not find the item in the group.
 				}
 
-				itemSize = MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+				itemSize = MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 			}
 		}
 
@@ -406,7 +293,7 @@ struct EsListView : EsElement {
 		*_itemSize = itemSize;
 	}
 
-	void EnsureItemVisible(int32_t groupIndex, EsGeneric index, bool alignTop) {
+	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, bool alignTop) {
 		EsRectangle contentBounds = GetListBounds();
 
 		int64_t startInset = flags & ES_LIST_VIEW_HORIZONTAL ? currentStyle->insets.l : currentStyle->insets.t,
@@ -443,10 +330,10 @@ struct EsListView : EsElement {
 		// Find the group.
 		// TODO Faster searching when there are many groups.
 
-		int32_t groupIndex = 0;
+		EsListViewIndex groupIndex = 0;
 		bool foundGroup = false;
 
-		for (; groupIndex < (int32_t) groups.Length(); groupIndex++) {
+		for (; groupIndex < (EsListViewIndex) groups.Length(); groupIndex++) {
 			ListViewGroup *group = &groups[groupIndex];
 			int64_t totalSize = group->totalSize;
 
@@ -472,10 +359,8 @@ struct EsListView : EsElement {
 
 		// Can we go directly to the item?
 
-		if ((~flags & ES_LIST_VIEW_NON_LINEAR) && (~flags & ES_LIST_VIEW_VARIABLE_SIZE)) {
-			// TODO MAP_FROM_LINEAR message if non-linear but fixed size.
-
-			index.iterateIndex.index.i = 0;
+		if (~flags & ES_LIST_VIEW_VARIABLE_SIZE) {
+			index.iterateIndex.index = 0;
 			intptr_t addHeader = 0;
 
 			ListViewGroup *group = &groups[groupIndex];
@@ -498,17 +383,17 @@ struct EsListView : EsElement {
 				band *= GetItemsPerBand();
 			}
 
-			index.iterateIndex.index.i = band + addHeader;
+			index.iterateIndex.index = band + addHeader;
 
-			if (index.iterateIndex.index.i >= (intptr_t) group->itemCount) {
-				index.iterateIndex.index.i = group->itemCount - 1;
+			if (index.iterateIndex.index >= (intptr_t) group->itemCount) {
+				index.iterateIndex.index = group->itemCount - 1;
 			}
 
 			*_position = position;
 			return index;
 		}
 
-		EsAssert(~flags & ES_LIST_VIEW_TILED); // Trying to use TILED mode with NON_LINEAR or VARIABLE_SIZE mode.
+		EsAssert(~flags & ES_LIST_VIEW_TILED); // Trying to use TILED mode with VARIABLE_SIZE mode.
 
 		// Try asking the application to find the item.
 
@@ -551,7 +436,7 @@ struct EsListView : EsElement {
 		} else {
 			GetLastIndex(&index); // Use end of group as reference
 			position += groups[groupIndex].totalSize;
-			position -= MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+			position -= MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 			forwards = false;
 		}
 
@@ -561,7 +446,7 @@ struct EsListView : EsElement {
 			// Iterate forwards from reference point.
 
 			while (true) {
-				int64_t size = fixedSize ?: MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+				int64_t size = fixedSize ?: MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 
 				if (position + size > 0) {
 					*_position = position;
@@ -581,7 +466,7 @@ struct EsListView : EsElement {
 					return index;
 				}
 
-				int64_t size = fixedSize ?: MeasureItems(index.iterateIndex.group, index.iterateIndex.index, index.iterateIndex.index);
+				int64_t size = fixedSize ?: MeasureItems(index.iterateIndex.group, index.iterateIndex.index, 1);
 				EsAssert(index.iterateIndex.group == groupIndex);
 						// No items in the group are visible. Maybe invalid scroll position?
 				position -= size + gapBetweenItems;
@@ -642,7 +527,7 @@ struct EsListView : EsElement {
 
 					if (position < expectedPosition - 1 || position > expectedPosition + 1) {
 						EsPrint("Item in unexpected position: expected %d, got %d; index %d, scroll %d.\n", 
-								expectedPosition, position, visibleItem->index.i, scroll);
+								expectedPosition, position, visibleItem->index, scroll);
 						EsAssert(false);
 					}
 				}
@@ -655,15 +540,15 @@ struct EsListView : EsElement {
 
 				visibleItem->group = currentItem.iterateIndex.group;
 				visibleItem->index = currentItem.iterateIndex.index;
-				visibleItem->size = MeasureItems(visibleItem->group, visibleItem->index, visibleItem->index);
+				visibleItem->size = MeasureItems(visibleItem->group, visibleItem->index, 1);
 
 				ListViewGroup *group = &groups[visibleItem->group];
 				const EsStyle *style = nullptr;
 
-				if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && visibleItem->index.i == 0 ) {
+				if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && visibleItem->index == 0) {
 					style = headerItemStyle;
 					visibleItem->isHeader = true;
-				} else if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && visibleItem->index.i == (intptr_t) group->itemCount - 1) {
+				} else if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && visibleItem->index == (intptr_t) group->itemCount - 1) {
 					style = footerItemStyle;
 					visibleItem->isFooter = true;
 				} else {
@@ -681,7 +566,7 @@ struct EsListView : EsElement {
 
 				visibleItem->element->messageClass = ListViewProcessItemMessage;
 
-				if (hasFocusedItem && visibleItem->group == focusedItemGroup && visibleItem->index.u == focusedItemIndex.u) {
+				if (hasFocusedItem && visibleItem->group == focusedItemGroup && visibleItem->index == focusedItemIndex) {
 					visibleItem->element->customStyleState |= THEME_STATE_FOCUSED_ITEM;
 				}
 
@@ -733,8 +618,8 @@ struct EsListView : EsElement {
 				minorPosition += computedMinorGap + fixedMinorSize;
 				itemInBand++;
 
-				bool endOfGroup = ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && currentItem.iterateIndex.index.u == group->itemCount - 2)
-					|| (currentItem.iterateIndex.index.u == group->itemCount - 1);
+				bool endOfGroup = ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && currentItem.iterateIndex.index == group->itemCount - 2)
+					|| (currentItem.iterateIndex.index == group->itemCount - 1);
 
 				if (itemInBand == itemsPerBand || endOfGroup) {
 					minorPosition = 0;
@@ -768,7 +653,7 @@ struct EsListView : EsElement {
 					position += visibleItem->element->height;
 				}
 
-				if ((flags & ES_LIST_VIEW_TILED) && (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && currentItem.iterateIndex.index.u == 0) {
+				if ((flags & ES_LIST_VIEW_TILED) && (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && currentItem.iterateIndex.index == 0) {
 					position += currentStyle->gapWrap;
 				}
 			}
@@ -776,7 +661,7 @@ struct EsListView : EsElement {
 			// Go to the next item.
 
 			visibleIndex++;
-			int32_t previousGroup = currentItem.iterateIndex.group;
+			EsListViewIndex previousGroup = currentItem.iterateIndex.group;
 			if (!IterateForwards(&currentItem)) break;
 			position += previousGroup == currentItem.iterateIndex.group ? (flags & ES_LIST_VIEW_TILED ? 0 : currentStyle->gapMinor) : currentStyle->gapMajor;
 		}
@@ -867,7 +752,7 @@ struct EsListView : EsElement {
 		EsElementUpdateContentSize(this);
 	}
 
-	void SetSelected(int32_t fromGroup, EsGeneric fromIndex, int32_t toGroup, EsGeneric toIndex, 
+	void SetSelected(EsListViewIndex fromGroup, EsListViewIndex fromIndex, EsListViewIndex toGroup, EsListViewIndex toIndex, 
 			bool select, bool toggle,
 			intptr_t period = 0, intptr_t periodBegin = 0, intptr_t periodEnd = 0) {
 		if (!select && (flags & ES_LIST_VIEW_CHOICE_SELECT)) {
@@ -883,15 +768,15 @@ struct EsListView : EsElement {
 			return;
 		}
 
-		if (fromGroup == toGroup && CompareIndices(fromGroup, fromIndex, toIndex) > 0) {
-			EsGeneric temp = fromIndex;
+		if (fromGroup == toGroup && fromIndex > toIndex) {
+			EsListViewIndex temp = fromIndex;
 			fromIndex = toIndex;
 			toIndex = temp;
 		} else if (fromGroup > toGroup) {
-			int32_t temp1 = fromGroup;
+			EsListViewIndex temp1 = fromGroup;
 			fromGroup = toGroup;
 			toGroup = temp1;
-			EsGeneric temp2 = fromIndex;
+			EsListViewIndex temp2 = fromIndex;
 			fromIndex = toIndex;
 			toIndex = temp2;
 		}
@@ -965,7 +850,7 @@ struct EsListView : EsElement {
 				}
 
 				m.type = ES_MSG_LIST_VIEW_SELECT;
-				fixedItemSelection = m.selectItem.index.u;
+				fixedItemSelection = m.selectItem.index;
 				EsMessageSend(this, &m);
 
 				ignore:;
@@ -1086,7 +971,7 @@ struct EsListView : EsElement {
 		int r2 = (flags & ES_LIST_VIEW_HORIZONTAL) ? currentStyle->insets.l - x2 : currentStyle->insets.t - y2 + scroll.fixedViewport[1];
 		start = FindFirstVisibleItem(&offset, r1, nullptr, &noItems);
 		if (noItems) return;
-		adjustStart = -offset >= MeasureItems(start.iterateIndex.group, start.iterateIndex.index, start.iterateIndex.index);
+		adjustStart = -offset >= MeasureItems(start.iterateIndex.group, start.iterateIndex.index, 1);
 		end = FindFirstVisibleItem(&offset, r2, nullptr, &noItems);
 		adjustEnd = !noItems;
 		if (noItems) { end.iterateIndex.group = groups.Length() - 1; GetLastIndex(&end); }
@@ -1103,12 +988,12 @@ struct EsListView : EsElement {
 			if (adjustStart) {
 				ListViewGroup *group = &groups[start.iterateIndex.group];
 
-				if (((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && start.iterateIndex.index.u == 0)
-						|| ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && start.iterateIndex.index.u == group->itemCount - 1)) {
+				if (((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && start.iterateIndex.index == 0)
+						|| ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && start.iterateIndex.index == group->itemCount - 1)) {
 					IterateForwards(&start);
 				} else {
 					for (intptr_t i = 0; i < itemsPerBand; i++) {
-						if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && start.iterateIndex.index.u == group->itemCount - 1) {
+						if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && start.iterateIndex.index == group->itemCount - 1) {
 							break;
 						}
 
@@ -1120,11 +1005,11 @@ struct EsListView : EsElement {
 			if (adjustEnd) {
 				ListViewGroup *group = &groups[end.iterateIndex.group];
 
-				if (((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && end.iterateIndex.index.u == 0)
-						|| ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && end.iterateIndex.index.u == group->itemCount - 1)) {
+				if (((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && end.iterateIndex.index == 0)
+						|| ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && end.iterateIndex.index == group->itemCount - 1)) {
 				} else {
 					for (intptr_t i = 0; i < itemsPerBand - 1; i++) {
-						if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && end.iterateIndex.index.u == group->itemCount - 1) {
+						if ((group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) && end.iterateIndex.index == group->itemCount - 1) {
 							IterateBackwards(&end);
 							break;
 						}
@@ -1167,7 +1052,7 @@ struct EsListView : EsElement {
 		}
 	}
 
-	void Select(int32_t group, EsGeneric index, bool range, bool toggle, bool moveAnchorOnly) {
+	void Select(EsListViewIndex group, EsListViewIndex index, bool range, bool toggle, bool moveAnchorOnly) {
 		if ((~flags & ES_LIST_VIEW_SINGLE_SELECT) && (~flags & ES_LIST_VIEW_MULTI_SELECT) && (~flags & ES_LIST_VIEW_CHOICE_SELECT)) {
 			return;
 		}
@@ -1200,7 +1085,7 @@ struct EsListView : EsElement {
 
 		if (!toggle) {
 			// Clear existing selection.
-			SetSelected(0, GetFirstIndex(0), groups.Length() - 1, GetLastIndex(groups.Length() - 1), false, false);
+			SetSelected(0, 0, groups.Length() - 1, groups.Last().itemCount - 1, false, false);
 		}
 
 		if (range) {
@@ -1291,7 +1176,7 @@ struct EsListView : EsElement {
 
 				standardPaint:;
 
-				if (inlineTextbox && inlineTextboxGroup == item->group && inlineTextboxIndex.u == item->index.u) {
+				if (inlineTextbox && inlineTextboxGroup == item->group && inlineTextboxIndex == item->index) {
 					buffer.position = 0;
 				}
 
@@ -1356,7 +1241,7 @@ struct EsListView : EsElement {
 			m.getContent.index = item->index;
 			m.getContent.group = item->group;
 			EsMessageSend(this, &m);
-			EsBufferFormat(message->getContent.buffer, "index %d '%s'", item->index.u, buffer.position, buffer.out);
+			EsBufferFormat(message->getContent.buffer, "index %d '%s'", item->index, buffer.position, buffer.out);
 		} else {
 			return 0;
 		}
@@ -1371,11 +1256,11 @@ struct EsListView : EsElement {
 			: bounds.r - bounds.l - currentStyle->insets.r - currentStyle->insets.l;
 	}
 
-	ListViewItem *FindVisibleItem(int32_t group, EsGeneric index) {
+	ListViewItem *FindVisibleItem(EsListViewIndex group, EsListViewIndex index) {
 		for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
 			ListViewItem *item = &visibleItems[i];
 
-			if (item->group == group && item->index.u == index.u) {
+			if (item->group == group && item->index == index) {
 				return item;
 			}
 		}
@@ -1442,7 +1327,7 @@ struct EsListView : EsElement {
 
 				m.getContent.index = m2.iterateIndex.index;
 				m.getContent.group = m2.iterateIndex.group;
-			} while (m.getContent.index.u != focusedItemIndex.u || m.getContent.group != focusedItemGroup);
+			} while (m.getContent.index != focusedItemIndex || m.getContent.group != focusedItemGroup);
 
 			focusedItemIndex = m.getContent.index;
 			focusedItemGroup = m.getContent.group;
@@ -1756,14 +1641,14 @@ struct EsListView : EsElement {
 			if (!hasFocusedItem && groups.Length() && (message->focus.flags & ES_ELEMENT_FOCUS_FROM_KEYBOARD)) {
 				hasFocusedItem = true;
 				focusedItemGroup = 0;
-				focusedItemIndex = GetFirstIndex(focusedItemGroup);
+				focusedItemIndex = 0;
 			}
 
 			for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
 				ListViewItem *item = &visibleItems[i];
 				item->element->customStyleState |= THEME_STATE_LIST_FOCUSED;
 
-				if (hasFocusedItem && focusedItemGroup == item->group && focusedItemIndex.u == item->index.u) {
+				if (hasFocusedItem && focusedItemGroup == item->group && focusedItemIndex == item->index) {
 					item->element->customStyleState |= THEME_STATE_FOCUSED_ITEM;
 				}
 
@@ -1776,7 +1661,7 @@ struct EsListView : EsElement {
 			EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
 				EsListView *list = (EsListView *) command->data.p;
 				if (!list->groups.Length() || !list->totalItemCount) return;
-				list->SetSelected(0, list->GetFirstIndex(0), list->groups.Length() - 1, list->GetLastIndex(list->groups.Length() - 1), true, false);
+				list->SetSelected(0, 0, list->groups.Length() - 1, list->groups.Last().itemCount - 1, true, false);
 				list->UpdateVisibleItemsSelectionState();
 			});
 
@@ -1892,7 +1777,7 @@ struct EsListView : EsElement {
 			intptr_t focused = -1, hovered = -1;
 
 			for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
-				if (hasFocusedItem && visibleItems[i].index.u == focusedItemIndex.u && visibleItems[i].group == focusedItemGroup) {
+				if (hasFocusedItem && visibleItems[i].index == focusedItemIndex && visibleItems[i].group == focusedItemGroup) {
 					focused = i;
 				} else if (visibleItems[i].element->state & UI_STATE_HOVERED) {
 					hovered = i;
@@ -1911,11 +1796,11 @@ struct EsListView : EsElement {
 		} else if (message->type == ES_MSG_AFTER_Z_ORDER) {
 			zOrderItems.Free();
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
-			uintptr_t index = message->getContent.index.u;
+			uintptr_t index = message->getContent.index;
 			EsAssert(index < fixedItems.Length());
 			EsBufferFormat(message->getContent.buffer, "%s", fixedItems[index].stringBytes, fixedItems[index].string);
 		} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
-			message->selectItem.isSelected = message->selectItem.index.i == fixedItemSelection;
+			message->selectItem.isSelected = message->selectItem.index == fixedItemSelection;
 		} else {
 			return 0;
 		}
@@ -2032,7 +1917,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 	for (uintptr_t i = 0; i < view->groups.Length(); i++) {
 		if (!view->groups[i].itemCount) continue;
 		spaceDelta -= view->groups[i].totalSize;
-		view->groups[i].totalSize = view->MeasureItems(i, view->GetFirstIndex(i), view->GetLastIndex(i));
+		view->groups[i].totalSize = view->MeasureItems(i, 0, view->groups[i].itemCount);
 		spaceDelta += view->groups[i].totalSize;
 	}
 
@@ -2066,13 +1951,13 @@ EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 	return view;
 }
 
-void EsListViewInsertGroup(EsListView *view, int32_t group, uint32_t flags) {
+void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, uint32_t flags) {
 	EsMessageMutexCheck();
 
 	// Add the group.
 
 	ListViewGroup empty = { .flags = flags };
-	EsAssert(group <= (int32_t) view->groups.Length()); // Invalid group index.
+	EsAssert(group <= (EsListViewIndex) view->groups.Length()); // Invalid group index.
 	view->groups.Insert(empty, group);
 
 	// Update the group index on visible items.
@@ -2098,52 +1983,36 @@ void EsListViewInsertGroup(EsListView *view, int32_t group, uint32_t flags) {
 	// Create header and footer items.
 
 	int64_t additionalItems = ((flags & ES_LIST_VIEW_GROUP_HAS_HEADER) ? 1 : 0) + ((flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) ? 1 : 0);
-	if (additionalItems) EsListViewInsert(view, group, 0, additionalItems - 1, additionalItems);
+	EsListViewInsert(view, group, 0, additionalItems);
 	view->groups[group].initialised = true;
 }
 
-void EsListViewInsert(EsListView *view, int32_t groupIndex, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count) {
+void EsListViewInsert(EsListView *view, EsListViewIndex groupIndex, EsListViewIndex firstIndex, EsListViewIndex count) {
 	EsMessageMutexCheck();
-
-	bool pushIndices = false;
-
-	if (~view->flags & ES_LIST_VIEW_NON_LINEAR) {
-		// Skip check for non-linear views, because it'd be expensive.
-		EsAssert(firstIndex.i <= lastIndex.i); // Invalid item index range.
-
-		pushIndices = true;
-	}
+	if (!count) return;
+	EsAssert(count > 0);
 
 	// Get the group.
 
-	EsAssert(groupIndex < (int32_t) view->groups.Length()); // Invalid group index.
+	EsAssert(groupIndex < (EsListViewIndex) view->groups.Length()); // Invalid group index.
 	ListViewGroup *group = &view->groups[groupIndex];
 
 	if (group->initialised) {
 		if (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) {
-			EsAssert(firstIndex.i > 0); // Cannot insert before group header.
+			EsAssert(firstIndex > 0); // Cannot insert before group header.
 		}
 
 		if (group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) {
-			EsAssert(firstIndex.i < (intptr_t) group->itemCount); // Cannot insert after group footer.
+			EsAssert(firstIndex < (intptr_t) group->itemCount); // Cannot insert after group footer.
 		}
 	}
 
 	// Add the items to the group.
 
-	bool alreadySetItemCount = false;
 	bool addedFirstItemInGroup = !group->itemCount;
-
-	if (count != -1) {
-		// Setting the item count early is necessary for MeasureItems when adding the group header/footer items.
-		alreadySetItemCount = true;
-		group->itemCount += count;
-	}
-
-	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, lastIndex, &count);
+	group->itemCount += count;
+	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, count);
 	int64_t sizeToAdd = (count - (addedFirstItemInGroup ? 1 : 0)) * view->currentStyle->gapMinor + totalSizeOfItems;
-
-	if (!alreadySetItemCount) group->itemCount += count;
 	group->totalSize += sizeToAdd;
 	view->totalItemCount += count;
 
@@ -2151,15 +2020,15 @@ void EsListViewInsert(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 
 	uintptr_t firstVisibleItemToMove = view->visibleItems.Length();
 
-	if (view->hasFocusedItem && view->focusedItemGroup == groupIndex && pushIndices) {
-		if (view->CompareIndices(groupIndex, view->focusedItemIndex, firstIndex) >= 0) {
-			view->focusedItemIndex.i += count;
+	if (view->hasFocusedItem && view->focusedItemGroup == groupIndex) {
+		if (view->focusedItemIndex >= firstIndex) {
+			view->focusedItemIndex += count;
 		}
 	}
 
-	if (view->hasAnchorItem && view->anchorItemGroup == groupIndex && pushIndices) {
-		if (view->CompareIndices(groupIndex, view->anchorItemIndex, firstIndex) >= 0) {
-			view->anchorItemIndex.i += count;
+	if (view->hasAnchorItem && view->anchorItemGroup == groupIndex) {
+		if (view->anchorItemIndex >= firstIndex) {
+			view->anchorItemIndex += count;
 		}
 	}
 
@@ -2176,27 +2045,11 @@ void EsListViewInsert(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 			break;
 		}
 
-		if (view->flags & ES_LIST_VIEW_NON_LINEAR) {
-			int result = 1;
+		if (item->index >= firstIndex) {
+			item->index += count;
 
-			if (firstVisibleItemToMove >= i) {
-				result = view->CompareIndices(groupIndex, item->index, lastIndex);
-			}
-
-			EsAssert(result != 0); // Adding item already in the list.
-
-			if (result > 0) {
-				if (i < firstVisibleItemToMove) {
-					firstVisibleItemToMove = i;
-				}
-			}
-		} else {
-			if (item->index.i >= firstIndex.i) {
-				item->index.i += count;
-
-				if (i < firstVisibleItemToMove) {
-					firstVisibleItemToMove = i;
-				}
+			if (i < firstVisibleItemToMove) {
+				firstVisibleItemToMove = i;
 			}
 		}
 	}
@@ -2206,39 +2059,31 @@ void EsListViewInsert(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 	view->InsertSpace(sizeToAdd, firstVisibleItemToMove);
 }
 
-void EsListViewRemove(EsListView *view, int32_t groupIndex, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count) {
+void EsListViewRemove(EsListView *view, EsListViewIndex groupIndex, EsListViewIndex firstIndex, EsListViewIndex count) {
 	EsMessageMutexCheck();
-
-	bool pushIndices = false;
-
-	if (~view->flags & ES_LIST_VIEW_NON_LINEAR) {
-		// Skip check for non-linear views, because it'd be expensive.
-		EsAssert(firstIndex.i <= lastIndex.i); // Invalid item index range.
-
-		pushIndices = true;
-	}
+	if (!count) return;
+	EsAssert(count > 0);
 
 	// Get the group.
 
-	EsAssert(groupIndex < (int32_t) view->groups.Length()); // Invalid group index.
+	EsAssert(groupIndex < (EsListViewIndex) view->groups.Length()); // Invalid group index.
 	ListViewGroup *group = &view->groups[groupIndex];
 
 	if (group->initialised) {
 		if (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) {
-			EsAssert(firstIndex.i > 0); // Cannot remove the group header.
+			EsAssert(firstIndex > 0); // Cannot remove the group header.
 		}
 
 		if (group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) {
-			EsAssert(lastIndex.i < (intptr_t) group->itemCount - 1); // Cannot remove the group footer.
+			EsAssert(firstIndex + count < (intptr_t) group->itemCount); // Cannot remove the group footer.
 		}
 	}
 
 	// Remove the items from the group.
 
-	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, lastIndex, &count);
+	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, count);
 	int64_t sizeToRemove = (int64_t) group->itemCount == count ? group->totalSize 
 		: (count * view->currentStyle->gapMinor + totalSizeOfItems);
-
 	group->itemCount -= count;
 	group->totalSize -= sizeToRemove;
 	view->totalItemCount -= count;
@@ -2249,20 +2094,18 @@ void EsListViewRemove(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 	uintptr_t firstVisibleItemToMove = view->visibleItems.Length();
 
 	if (view->hasFocusedItem && view->focusedItemGroup == groupIndex) {
-		if (view->CompareIndices(groupIndex, view->focusedItemIndex, firstIndex) >= 0 
-				&& view->CompareIndices(groupIndex, view->focusedItemIndex, lastIndex) <= 0) {
+		if (view->focusedItemIndex >= firstIndex && view->focusedItemIndex < firstIndex + count) {
 			view->hasFocusedItem = false;
-		} else if (pushIndices) {
-			view->focusedItemIndex.i -= count;
+		} else {
+			view->focusedItemIndex -= count;
 		}
 	}
 
 	if (view->hasAnchorItem && view->anchorItemGroup == groupIndex) {
-		if (view->CompareIndices(groupIndex, view->focusedItemIndex, firstIndex) >= 0 
-				&& view->CompareIndices(groupIndex, view->anchorItemIndex, lastIndex) <= 0) {
+		if (view->focusedItemIndex >= firstIndex && view->anchorItemIndex < firstIndex + count) {
 			view->hasAnchorItem = false;
-		} else if (pushIndices) {
-			view->anchorItemIndex.i -= count;
+		} else {
+			view->anchorItemIndex -= count;
 		}
 	}
 
@@ -2279,36 +2122,17 @@ void EsListViewRemove(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 			break;
 		}
 
-		if (view->flags & ES_LIST_VIEW_NON_LINEAR) {
-			int r1 = view->CompareIndices(groupIndex, item->index, firstIndex);
-			int r2 = view->CompareIndices(groupIndex, item->index, lastIndex);
+		if (item->index >= firstIndex + count) {
+			item->index -= count;
 
-			if (r1 < 0) EsAssert(r2 < 0); // Invalid index order.
-			if (r2 > 0) EsAssert(r1 > 0); // Invalid index order.
-
-			if (r2 > 0) {
-				if (i < firstVisibleItemToMove) {
-					firstVisibleItemToMove = i;
-				}
-			} else if (r1 >= 0 && r2 <= 0) {
-				item->element->index = i;
-				item->element->Destroy();
-				view->visibleItems.Delete(i);
-				i--;
+			if (i < firstVisibleItemToMove) {
+				firstVisibleItemToMove = i;
 			}
-		} else {
-			if (item->index.i > lastIndex.i) {
-				item->index.i -= count;
-
-				if (i < firstVisibleItemToMove) {
-					firstVisibleItemToMove = i;
-				}
-			} else if (item->index.i >= firstIndex.i && item->index.i <= lastIndex.i) {
-				item->element->index = i;
-				item->element->Destroy();
-				view->visibleItems.Delete(i);
-				i--;
-			}
+		} else if (item->index >= firstIndex && item->index < firstIndex + count) {
+			item->element->index = i;
+			item->element->Destroy();
+			view->visibleItems.Delete(i);
+			i--;
 		}
 	}
 
@@ -2317,11 +2141,11 @@ void EsListViewRemove(EsListView *view, int32_t groupIndex, EsGeneric firstIndex
 	view->InsertSpace(-sizeToRemove, firstVisibleItemToMove);
 }
 
-void EsListViewRemoveAll(EsListView *view, int32_t group) {
+void EsListViewRemoveAll(EsListView *view, EsListViewIndex group) {
 	EsMessageMutexCheck();
 
 	if (view->groups[group].itemCount) {
-		EsListViewRemove(view, group, view->GetFirstIndex(group), view->GetLastIndex(group), view->groups[group].itemCount);
+		EsListViewRemove(view, group, 0, view->groups[group].itemCount);
 	}
 }
 
@@ -2418,7 +2242,7 @@ void EsListViewContentChanged(EsListView *view) {
 	EsListViewInvalidateAll(view);
 }
 
-void EsListViewFocusItem(EsListView *view, int32_t group, EsGeneric index) {
+void EsListViewFocusItem(EsListView *view, EsListViewIndex group, EsListViewIndex index) {
 	ListViewItem *oldFocus = view->FindVisibleItem(view->focusedItemGroup, view->focusedItemIndex);
 
 	if (oldFocus) {
@@ -2440,7 +2264,7 @@ void EsListViewFocusItem(EsListView *view, int32_t group, EsGeneric index) {
 	view->EnsureItemVisible(group, index, false);
 }
 
-bool EsListViewGetFocusedItem(EsListView *view, int32_t *group, EsGeneric *index) {
+bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index) {
 	if (view->hasFocusedItem) {
 		if (group) *group = view->focusedItemGroup;
 		if (index) *index = view->focusedItemIndex;
@@ -2449,7 +2273,7 @@ bool EsListViewGetFocusedItem(EsListView *view, int32_t *group, EsGeneric *index
 	return view->hasFocusedItem;
 }
 
-void EsListViewSelect(EsListView *view, int32_t group, EsGeneric index) {
+void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index) {
 	EsMessageMutexCheck();
 
 	view->Select(group, index, false, false, false);
@@ -2466,7 +2290,7 @@ void EsListViewSetEmptyMessage(EsListView *view, const char *message, ptrdiff_t 
 	}
 }
 
-EsGeneric EsListViewGetIndexFromItem(EsElement *_element, int32_t *group) {
+EsListViewIndex EsListViewGetIndexFromItem(EsElement *_element, EsListViewIndex *group) {
 	ListViewItemElement *element = (ListViewItemElement *) _element;
 	EsListView *view = (EsListView *) element->parent;
 	EsAssert(element->index < view->visibleItems.Length());
@@ -2479,9 +2303,9 @@ void EsListViewInvalidateAll(EsListView *view) {
 	view->Repaint(true);
 }
 
-void EsListViewInvalidateContent(EsListView *view, int32_t group, EsGeneric index) {
+void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsListViewIndex index) {
 	for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
-		if (view->visibleItems[i].group == group && view->visibleItems[i].index.u == index.u) {
+		if (view->visibleItems[i].group == group && view->visibleItems[i].index == index) {
 			view->UpdateVisibleItemSelectionState(i);
 			view->visibleItems[i].element->Repaint(true);
 			break;
@@ -2489,7 +2313,7 @@ void EsListViewInvalidateContent(EsListView *view, int32_t group, EsGeneric inde
 	}
 }
 
-void EsListViewInsertFixedItem(EsListView *view, const char *string, ptrdiff_t stringBytes, EsGeneric data, intptr_t index) {
+void EsListViewInsertFixedItem(EsListView *view, const char *string, ptrdiff_t stringBytes, EsGeneric data, EsListViewIndex index) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 
 	if (stringBytes == -1) {
@@ -2511,7 +2335,7 @@ void EsListViewInsertFixedItem(EsListView *view, const char *string, ptrdiff_t s
 	item.stringBytes = stringBytes;
 	view->fixedItems.Insert(item, index);
 
-	EsListViewInsert(view, 0, index, index);
+	EsListViewInsert(view, 0, index, 1);
 }
 
 bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data) {
@@ -2519,7 +2343,7 @@ bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data) {
 	EsMessageMutexCheck();
 
 	for (uintptr_t i = 0; i < view->fixedItems.Length(); i++) {
-		if (view->fixedItems[i].data.u == data.u) {
+		if (view->fixedItems[i].data == data) {
 			EsListViewSelect(view, 0, i);
 			return true;
 		}
@@ -2554,7 +2378,7 @@ int ListViewInlineTextboxMessage(EsElement *element, EsMessage *message) {
 	return response;
 }
 
-EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, int32_t group, EsGeneric index, uint32_t flags) {
+EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group, EsListViewIndex index, uint32_t flags) {
 	if (view->inlineTextbox) {
 		view->inlineTextbox->Destroy();
 	}

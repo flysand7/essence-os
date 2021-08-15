@@ -27,6 +27,7 @@ type_name int64_t EsFileOffsetDifference;
 type_name uint64_t EsAudioDeviceID;
 type_name uint16_t EsFontFamily;
 type_name uint64_t EsTimer;
+type_name int64_t EsListViewIndex;
 
 define ES_SCANCODE_A				(0x04)
 define ES_SCANCODE_B				(0x05)
@@ -518,18 +519,13 @@ define ES_LIST_VIEW_HORIZONTAL			(1 << 0) // Layout horizontally instead of vert
 define ES_LIST_VIEW_VARIABLE_SIZE		(1 << 1) // Each item can be a different size. 
 							 // You need to respond to the LIST_VIEW_MEASURE_ITEM message.
 							 // The size of items cannot depend on the size of the parent.
-define ES_LIST_VIEW_TILED			(1 << 2) // Multiple items per band. Incompatible with variable size items, columns mode and non-linear mode.
-define ES_LIST_VIEW_NON_LINEAR			(1 << 3) // Indices within a group are arbitrary values. They must be stable.
-							 // You need to respond to LIST_VIEW_NEXT_INDEX, LIST_VIEW_PREVIOUS_INDEX, 
-							 // LIST_VIEW_COMPARE_INDICES, LIST_VIEW_FIRST_INDEX, and LIST_VIEW_LAST_INDEX messages.
-							 // If the flag is not set, indices are consecutive within a group, starting at 0. 
-							 // These are non-stable, but are updated automatically when items are inserted/removed.
-define ES_LIST_VIEW_SINGLE_SELECT		(1 << 4) // One item can be selected. By default, selections are disabled.
-define ES_LIST_VIEW_MULTI_SELECT		(1 << 5) // Multiple items can be selected.
-define ES_LIST_VIEW_CHOICE_SELECT		(1 << 6) // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
-define ES_LIST_VIEW_COLUMNS			(1 << 7) // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
-define ES_LIST_VIEW_FIXED_ITEMS			(1 << 8) // Use the fixed item API rather than the callback API.
-define ES_LIST_VIEW_CENTER_TILES                (1 << 9) // Center tiled items.
+define ES_LIST_VIEW_TILED			(1 << 2) // Multiple items per band. Incompatible with variable size items and columns mode.
+define ES_LIST_VIEW_SINGLE_SELECT		(1 << 3) // One item can be selected. By default, selections are disabled.
+define ES_LIST_VIEW_MULTI_SELECT		(1 << 4) // Multiple items can be selected.
+define ES_LIST_VIEW_CHOICE_SELECT		(1 << 5) // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
+define ES_LIST_VIEW_COLUMNS			(1 << 6) // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
+define ES_LIST_VIEW_FIXED_ITEMS			(1 << 7) // Use the fixed item API rather than the callback API.
+define ES_LIST_VIEW_CENTER_TILES                (1 << 8) // Center tiled items.
 
 define ES_LIST_VIEW_GROUP_HAS_HEADER		(1 << 0) // The first item in the group is a header.
 define ES_LIST_VIEW_GROUP_HAS_FOOTER		(1 << 1) // The last item in the group is a footer.
@@ -1000,13 +996,7 @@ enum EsMessageType {
 	ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB	= 0x5208 	// For EsTextboxUseBreadcrumbOverlay.
 
 	// List view messages:
-	ES_MSG_LIST_VIEW_COMPARE_INDICES	= 0x5300
-	ES_MSG_LIST_VIEW_NEXT_INDEX		= 0x5301
-	ES_MSG_LIST_VIEW_PREVIOUS_INDEX		= 0x5302
-	ES_MSG_LIST_VIEW_FIRST_INDEX		= 0x5303
-	ES_MSG_LIST_VIEW_LAST_INDEX		= 0x5304
 	ES_MSG_LIST_VIEW_FIND_INDEX		= 0x5305
-	ES_MSG_LIST_VIEW_COUNT_ITEMS		= 0x5306
 	ES_MSG_LIST_VIEW_MEASURE_RANGE		= 0x5307
 	ES_MSG_LIST_VIEW_MEASURE_ITEM		= 0x5308
 	ES_MSG_LIST_VIEW_CREATE_ITEM		= 0x5309
@@ -1546,41 +1536,36 @@ struct EsMessageItemToString {
 
 // List view messages.
 
-struct EsMessageCompareIndices {
-	int32_t group;
-	EsGeneric left, right;
-	int result;
-};
-
 struct EsMessageIterateIndex {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 
 	// FIND_INDEX and FIND_POSITION: (TODO Pass the reference item?)
 	int64_t position;
 };
 
 struct EsMessageItemRange {
-	int32_t group;
-	EsGeneric firstIndex, lastIndex;
+	EsListViewIndex group;
+	EsListViewIndex firstIndex;
+	uint64_t count;
 	int64_t result;
 };
 
 struct EsMessageMeasureItem {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 	int64_t result;
 };
 
 struct EsMessageCreateItem {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 	EsElement *item;
 };
 
 struct EsMessageGetContent {
-	EsGeneric index;
-	int32_t group;
+	EsListViewIndex index;
+	EsListViewIndex group;
 	uint32_t icon;
 	EsBuffer *buffer;
 	bool richText;
@@ -1588,32 +1573,32 @@ struct EsMessageGetContent {
 };
 
 struct EsMessageGetIndent {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 
 	uint8_t indent;
 };
 
 struct EsMessageSelectRange {
-	EsGeneric fromIndex, toIndex;
-	int32_t group; 
+	EsListViewIndex fromIndex, toIndex;
+	EsListViewIndex group; 
 	bool select, toggle;
 };
 
 struct EsMessageSelectItem {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 	bool isSelected;
 };
 
 struct EsMessageChooseItem {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 };
 
 struct EsMessageSearchItem {
-	int32_t group;
-	EsGeneric index;
+	EsListViewIndex group;
+	EsListViewIndex index;
 	STRING query;
 };
 
@@ -1759,7 +1744,6 @@ struct EsMessage {
 		const EsStyle *childStyleVariant;
 
 		// List view messages:
-		EsMessageCompareIndices compareIndices;
 		EsMessageIterateIndex iterateIndex;
 		EsMessageItemRange itemRange;
 		EsMessageMeasureItem measureItem;
@@ -2369,30 +2353,30 @@ function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLA
 		const EsStyle *style = ES_NULL, const EsStyle *itemStyle = ES_NULL, 
 		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
 
-function EsGeneric EsListViewGetIndexFromItem(EsElement *element, int32_t *group = ES_NULL);
+function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL);
 function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallbackFunction callback);
 
 function void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount);
 function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);
 function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand);
-function void EsListViewSelect(EsListView *view, int32_t group, EsGeneric index);
-function void EsListViewFocusItem(EsListView *view, int32_t group, EsGeneric index);
-function bool EsListViewGetFocusedItem(EsListView *view, int32_t *group, EsGeneric *index); // Returns false if not item was focused.
-function void EsListViewInvalidateContent(EsListView *view, int32_t group, EsGeneric index);
+function void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index);
+function void EsListViewFocusItem(EsListView *view, EsListViewIndex group, EsListViewIndex index);
+function bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index); // Returns false if not item was focused.
+function void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsListViewIndex index);
 function void EsListViewInvalidateAll(EsListView *view);
 function void EsListViewContentChanged(EsListView *view);
 function void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
 		const EsStyle *headerItemStyle, const EsStyle *footerItemStyle, uint32_t addFlags, uint32_t removeFlags);
 function void EsListViewScrollToEnd(EsListView *view);
 
-function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, int32_t group, EsGeneric index, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group, EsListViewIndex index, uint32_t flags = ES_FLAGS_DEFAULT);
 
 // (Callback items.)
-function void EsListViewInsertGroup(EsListView *view, int32_t group, uint32_t flags = ES_FLAGS_DEFAULT);
-function void EsListViewInsert(EsListView *view, int32_t group, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count = -1);
-function void EsListViewRemove(EsListView *view, int32_t group, EsGeneric firstIndex, EsGeneric lastIndex, int64_t count = -1);
-function void EsListViewRemoveAll(EsListView *view, int32_t group);
+function void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsListViewInsert(EsListView *view, EsListViewIndex group, EsListViewIndex firstIndex, EsListViewIndex count);
+function void EsListViewRemove(EsListView *view, EsListViewIndex group, EsListViewIndex firstIndex, EsListViewIndex count);
+function void EsListViewRemoveAll(EsListView *view, EsListViewIndex group);
 // (Fixed items.)
-function void EsListViewInsertFixedItem(EsListView *view, STRING string = BLANK_STRING, EsGeneric data = ES_NULL, intptr_t index = -1);
+function void EsListViewInsertFixedItem(EsListView *view, STRING string = BLANK_STRING, EsGeneric data = ES_NULL, EsListViewIndex index = -1);
 function bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function bool EsListViewGetSelectedFixedItem(EsListView *view, EsGeneric *data); // Returns false if no item was selected.

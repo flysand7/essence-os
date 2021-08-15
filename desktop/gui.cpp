@@ -6695,12 +6695,12 @@ int InspectorElementItemCallback(EsElement *element, EsMessage *message) {
 	InspectorWindow *inspector = (InspectorWindow *) element->instance;
 
 	if (message->type == ES_MSG_HOVERED_START) {
-		InspectorElementEntry *entry = &inspector->elements[EsListViewGetIndexFromItem(element).u];
+		InspectorElementEntry *entry = &inspector->elements[EsListViewGetIndexFromItem(element)];
 		if (entry->element->parent) entry->element->parent->Repaint(true);
 		else entry->element->Repaint(true);
 		inspector->hoveredElement = *entry;
 	} else if (message->type == ES_MSG_HOVERED_END || message->type == ES_MSG_DESTROY) {
-		InspectorElementEntry *entry = &inspector->elements[EsListViewGetIndexFromItem(element).u];
+		InspectorElementEntry *entry = &inspector->elements[EsListViewGetIndexFromItem(element)];
 		if (entry->element->parent) entry->element->parent->Repaint(true);
 		else entry->element->Repaint(true);
 		inspector->hoveredElement = {};
@@ -6795,7 +6795,7 @@ int InspectorElementListCallback(EsElement *element, EsMessage *message) {
 	InspectorWindow *inspector = (InspectorWindow *) element->instance;
 
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index.i;
+		int column = message->getContent.column, index = message->getContent.index;
 		EsAssert(index >= 0 && index < (int) inspector->elements.Length());
 		InspectorElementEntry *entry = &inspector->elements[index];
 
@@ -6811,7 +6811,7 @@ int InspectorElementListCallback(EsElement *element, EsMessage *message) {
 
 		return ES_HANDLED;
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_INDENT) {
-		message->getIndent.indent = inspector->elements[message->getIndent.index.i].depth;
+		message->getIndent.indent = inspector->elements[message->getIndent.index].depth;
 		return ES_HANDLED;
 	} else if (message->type == ES_MSG_LIST_VIEW_CREATE_ITEM) {
 		message->createItem.item->messageUser = InspectorElementItemCallback;
@@ -6821,7 +6821,7 @@ int InspectorElementListCallback(EsElement *element, EsMessage *message) {
 			inspector->elements[inspector->selectedElement].element->state &= ~UI_STATE_INSPECTING;
 		}
 		
-		inspector->selectedElement = message->selectItem.isSelected ? message->selectItem.index.i : -1;
+		inspector->selectedElement = message->selectItem.isSelected ? message->selectItem.index : -1;
 
 		if (inspector->selectedElement != -1) {
 			EsElement *e = inspector->elements[inspector->selectedElement].element;
@@ -6832,7 +6832,7 @@ int InspectorElementListCallback(EsElement *element, EsMessage *message) {
 		InspectorUpdateEditor(inspector);
 		return ES_HANDLED;
 	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
-		message->selectItem.isSelected = message->selectItem.index.i == inspector->selectedElement;
+		message->selectItem.isSelected = message->selectItem.index == inspector->selectedElement;
 		return ES_HANDLED;
 	}
 
@@ -6945,7 +6945,7 @@ void InspectorNotifyElementDestroyed(EsElement *element) {
 				inspector->selectedElement--;
 			}
 
-			EsListViewRemove(inspector->elementList, 0, i, i);
+			EsListViewRemove(inspector->elementList, 0, i, 1);
 			inspector->elements.Delete(i);
 			return;
 		}
@@ -7013,7 +7013,7 @@ void InspectorNotifyElementCreated(EsElement *element) {
 	entry.element = element;
 	entry.depth = depth;
 	inspector->elements.Insert(entry, insertAfterIndex + 1);
-	EsListViewInsert(inspector->elementList, 0, insertAfterIndex + 1, insertAfterIndex + 1);
+	EsListViewInsert(inspector->elementList, 0, insertAfterIndex + 1, 1);
 }
 
 void InspectorFindElementsRecursively(InspectorWindow *inspector, EsElement *element, int depth) {
@@ -7031,7 +7031,7 @@ void InspectorRefreshElementList(InspectorWindow *inspector) {
 	EsListViewRemoveAll(inspector->elementList, 0);
 	inspector->elements.Free();
 	InspectorFindElementsRecursively(inspector, inspector->instance->window, 0);
-	EsListViewInsert(inspector->elementList, 0, 0, inspector->elements.Length() - 1);
+	EsListViewInsert(inspector->elementList, 0, 0, inspector->elements.Length());
 }
 
 void InspectorNotifyElementPainted(EsElement *element, EsPainter *painter) {
