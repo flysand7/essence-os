@@ -1464,6 +1464,12 @@ struct EsListView : EsElement {
 			Select(focusedItemGroup, focusedItemIndex, false, true, false);
 			return true;
 		} else if (isEnter && hasFocusedItem && !shift && !ctrl && !alt) {
+			if (searchBufferBytes) {
+				searchBufferLastKeyTime = 0;
+				searchBufferBytes = 0;
+				EsListViewInvalidateAll(this);
+			}
+
 			EsMessage m = { ES_MSG_LIST_VIEW_CHOOSE_ITEM };
 			m.chooseItem.group = focusedItemGroup;
 			m.chooseItem.index = focusedItemIndex;
