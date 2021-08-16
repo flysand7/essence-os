@@ -129,8 +129,7 @@ struct FSNode {
 	Inode inode;
 };
 
-struct Volume : KDevice {
-	KFileSystem *fileSystem;
+struct Volume : KFileSystem {
 	SuperBlock superBlock;
 	BlockGroupDescriptor *blockGroupDescriptorTable;
 	size_t blockBytes;
@@ -141,16 +140,16 @@ static bool Mount(Volume *volume) {
 
 	// Load the superblock.
 
-	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(volume->fileSystem->block->sectorSize, false, K_FIXED);
+	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(volume->block->sectorSize, false, K_FIXED);
 
 	if (!sectorBuffer) {
 		MOUNT_FAILURE("Could not allocate buffer.\n");
 	}
 
-	EsDefer(EsHeapFree(sectorBuffer, volume->fileSystem->block->sectorSize, K_FIXED));
+	EsDefer(EsHeapFree(sectorBuffer, volume->block->sectorSize, K_FIXED));
 
 	{
-		if (!volume->fileSystem->Access(1024, volume->fileSystem->block->sectorSize, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access(1024, volume->block->sectorSize, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not read boot sector.\n");
 		}
 
@@ -170,7 +169,7 @@ static bool Mount(Volume *volume) {
 
 		volume->blockBytes = 1024 << volume->superBlock.blockSizeExponent;
 
-		if (volume->blockBytes < volume->fileSystem->block->sectorSize) {
+		if (volume->blockBytes < volume->block->sectorSize) {
 			MOUNT_FAILURE("Block size smaller than drive sector size.\n");
 		}
 	}
@@ -188,7 +187,7 @@ static bool Mount(Volume *volume) {
 			MOUNT_FAILURE("Could not allocate the block group descriptor table.\n");
 		}
 
-		if (!volume->fileSystem->Access(firstBlockContainingBlockGroupDescriptorTable * volume->blockBytes, 
+		if (!volume->Access(firstBlockContainingBlockGroupDescriptorTable * volume->blockBytes, 
 				blockGroupDescriptorTableLengthInBlocks * volume->blockBytes, 
 				K_ACCESS_READ, volume->blockGroupDescriptorTable, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not read the block group descriptor table from the drive.\n");
@@ -202,29 +201,29 @@ static bool Mount(Volume *volume) {
 
 		uint32_t blockGroup = (inode - 1) / volume->superBlock.inodesPerBlockGroup;
 		uint32_t indexInInodeTable = (inode - 1) % volume->superBlock.inodesPerBlockGroup;
-		uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->fileSystem->block->sectorSize;
-		uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->fileSystem->block->sectorSize;
+		uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->sectorSize;
+		uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->sectorSize;
 
 		BlockGroupDescriptor *blockGroupDescriptor = volume->blockGroupDescriptorTable + blockGroup;
 
-		if (!volume->fileSystem->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
-					+ sectorInInodeTable * volume->fileSystem->block->sectorSize, 
-				volume->fileSystem->block->sectorSize, 
+		if (!volume->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
+					+ sectorInInodeTable * volume->block->sectorSize, 
+				volume->block->sectorSize, 
 				K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not read the inode table.\n");
 		}
 
-		volume->fileSystem->rootDirectory->driverNode = EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
+		volume->rootDirectory->driverNode = EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
 
-		if (!volume->fileSystem->rootDirectory->driverNode) {
+		if (!volume->rootDirectory->driverNode) {
 			MOUNT_FAILURE("Could not allocate root node.\n");
 		}
 
-		FSNode *root = (FSNode *) volume->fileSystem->rootDirectory->driverNode;
+		FSNode *root = (FSNode *) volume->rootDirectory->driverNode;
 		root->volume = volume;
 		EsMemoryCopy(&root->inode, sectorBuffer + offsetInSector, sizeof(Inode));
 
-		volume->fileSystem->rootDirectoryInitialChildren = root->inode.fileSizeLow / sizeof(DirectoryEntry); // TODO This is a terrible upper-bound!
+		volume->rootDirectoryInitialChildren = root->inode.fileSizeLow / sizeof(DirectoryEntry); // TODO This is a terrible upper-bound!
 
 		if ((root->inode.type & 0xF000) != INODE_TYPE_DIRECTORY) {
 			MOUNT_FAILURE("Root directory is not a directory.\n");
@@ -235,7 +234,7 @@ static bool Mount(Volume *volume) {
 }
 
 static uint32_t GetDataBlock(Volume *volume, Inode *node, uint64_t blockIndex, uint8_t *blockBuffer) {
-#define CHECK_BLOCK_INDEX() if (offset == 0 || offset / volume->fileSystem->block->sectorSize > volume->fileSystem->block->sectorCount) { \
+#define CHECK_BLOCK_INDEX() if (offset == 0 || offset / volume->block->sectorSize > volume->block->sectorCount) { \
 		KernelLog(LOG_ERROR, "Ext2", "invalid block index", "GetDataBlock - Block out of bounds.\n"); return 0; }
 #define GET_DATA_BLOCK_ACCESS_FAILURE() do { KernelLog(LOG_ERROR, "Ext2", "block access failure", "GetDataBlock - Could not read block.\n"); return 0; } while (0)
 
@@ -254,7 +253,7 @@ static uint32_t GetDataBlock(Volume *volume, Inode *node, uint64_t blockIndex, u
 	if (blockIndex < blockPointersPerBlock) {
 		offset = node->indirectBlockPointers[0] * volume->blockBytes;
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[blockIndex];
 		CHECK_BLOCK_INDEX();
 		return offset;
@@ -265,10 +264,10 @@ static uint32_t GetDataBlock(Volume *volume, Inode *node, uint64_t blockIndex, u
 	if (blockIndex < blockPointersPerBlock * blockPointersPerBlock) {
 		offset = node->indirectBlockPointers[1] * volume->blockBytes;
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[blockIndex / blockPointersPerBlock];
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[blockIndex % blockPointersPerBlock];
 		CHECK_BLOCK_INDEX();
 		return offset;
@@ -279,13 +278,13 @@ static uint32_t GetDataBlock(Volume *volume, Inode *node, uint64_t blockIndex, u
 	if (blockIndex < blockPointersPerBlock * blockPointersPerBlock * blockPointersPerBlock) {
 		offset = node->indirectBlockPointers[2] * volume->blockBytes;
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[blockIndex / blockPointersPerBlock / blockPointersPerBlock];
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[(blockIndex / blockPointersPerBlock) % blockPointersPerBlock];
 		CHECK_BLOCK_INDEX();
-		if (!volume->fileSystem->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
+		if (!volume->Access(offset, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) GET_DATA_BLOCK_ACCESS_FAILURE();
 		offset = blockPointers[blockIndex % blockPointersPerBlock];
 		CHECK_BLOCK_INDEX();
 		return offset;
@@ -318,7 +317,7 @@ static EsError Enumerate(KNode *node) {
 			return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 		}
 
-		if (!volume->fileSystem->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
 			ENUMERATE_FAILURE("Could not read block.\n");
 		}
 
@@ -388,7 +387,7 @@ static EsError Scan(const char *name, size_t nameBytes, KNode *_directory) {
 			return ES_ERROR_UNKNOWN;
 		}
 
-		if (!volume->fileSystem->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
 			SCAN_FAILURE("Could not read block.\n");
 		}
 
@@ -449,14 +448,14 @@ static EsError Load(KNode *_directory, KNode *node, KNodeMetadata *metadata, con
 
 	uint32_t blockGroup = (inode - 1) / volume->superBlock.inodesPerBlockGroup;
 	uint32_t indexInInodeTable = (inode - 1) % volume->superBlock.inodesPerBlockGroup;
-	uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->fileSystem->block->sectorSize;
-	uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->fileSystem->block->sectorSize;
+	uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->sectorSize;
+	uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->sectorSize;
 
 	BlockGroupDescriptor *blockGroupDescriptor = volume->blockGroupDescriptorTable + blockGroup;
 
-	if (!volume->fileSystem->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
-				+ sectorInInodeTable * volume->fileSystem->block->sectorSize, 
-				volume->fileSystem->block->sectorSize, 
+	if (!volume->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
+				+ sectorInInodeTable * volume->block->sectorSize, 
+				volume->block->sectorSize, 
 				K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
 		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 	}
@@ -505,7 +504,7 @@ struct ReadDispatchGroup : KWorkGroup {
 	void QueueExtent() {
 		if (!extentCount) return;
 
-		volume->fileSystem->Access(extentIndex * volume->blockBytes, 
+		volume->Access(extentIndex * volume->blockBytes, 
 				volume->blockBytes * extentCount, K_ACCESS_READ, extentBuffer, ES_FLAGS_DEFAULT, this);
 	}
 
@@ -568,7 +567,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 			dispatchGroup.QueueBlock(volume, block, outputBuffer + outputPosition);
 			outputPosition += volume->blockBytes;
 		} else {
-			if (!volume->fileSystem->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
+			if (!volume->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
 				READ_FAILURE("Could not read blocks from drive.\n");
 			}
 
@@ -594,55 +593,53 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("ext2", parent, sizeof(Volume));
+	Volume *volume = (Volume *) KDeviceCreate("ext2", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
 
-	if (!volume) {
-		KernelLog(LOG_ERROR, "Ext2", "allocate error", "Could not allocate Volume structure.\n");
+	if (!volume || !FSFileSystemInitialise(volume)) {
+		KernelLog(LOG_ERROR, "Ext2", "allocate error", "Could not initialise volume.\n");
 		return;
 	}
 
-	volume->fileSystem = (KFileSystem *) parent;
-
-	if (volume->fileSystem->block->sectorSize & 0x1FF) {
+	if (volume->block->sectorSize & 0x1FF) {
 		KernelLog(LOG_ERROR, "Ext2", "incorrect sector size", "Expected sector size to be a multiple of 512, but drive's sectors are %D.\n", 
-				volume->fileSystem->block->sectorSize);
+				volume->block->sectorSize);
 		KDeviceDestroy(volume);
 		return;
 	}
 
 	if (!Mount(volume)) {
 		KernelLog(LOG_ERROR, "Ext2", "mount failure", "Could not mount Ext2 volume.\n");
-		EsHeapFree(volume->fileSystem->rootDirectory->driverNode, 0, K_FIXED);
+		EsHeapFree(volume->rootDirectory->driverNode, 0, K_FIXED);
 		EsHeapFree(volume->blockGroupDescriptorTable, 0, K_FIXED);
 		KDeviceDestroy(volume);
 		return;
 	}
 
-	volume->fileSystem->read = Read;
-	volume->fileSystem->scan = Scan;
-	volume->fileSystem->load = Load;
-	volume->fileSystem->enumerate = Enumerate;
-	volume->fileSystem->close = Close;
+	volume->read = Read;
+	volume->scan = Scan;
+	volume->load = Load;
+	volume->enumerate = Enumerate;
+	volume->close = Close;
 
-	volume->fileSystem->spaceTotal = volume->superBlock.blockCount * volume->blockBytes;
-	volume->fileSystem->spaceUsed = (volume->superBlock.blockCount - volume->superBlock.unallocatedBlockCount) * volume->blockBytes;
+	volume->spaceTotal = volume->superBlock.blockCount * volume->blockBytes;
+	volume->spaceUsed = (volume->superBlock.blockCount - volume->superBlock.unallocatedBlockCount) * volume->blockBytes;
 
-	volume->fileSystem->nameBytes = sizeof(volume->superBlock.volumeName);
-	if (volume->fileSystem->nameBytes > sizeof(volume->fileSystem->name)) volume->fileSystem->nameBytes = sizeof(volume->fileSystem->name);
-	EsMemoryCopy(volume->fileSystem->name, volume->superBlock.volumeName, volume->fileSystem->nameBytes);
+	volume->nameBytes = sizeof(volume->superBlock.volumeName);
+	if (volume->nameBytes > sizeof(volume->name)) volume->nameBytes = sizeof(volume->name);
+	EsMemoryCopy(volume->name, volume->superBlock.volumeName, volume->nameBytes);
 
-	for (uintptr_t i = 0; i < volume->fileSystem->nameBytes; i++) {
-		if (!volume->fileSystem->name[i]) {
-			volume->fileSystem->nameBytes = i;
+	for (uintptr_t i = 0; i < volume->nameBytes; i++) {
+		if (!volume->name[i]) {
+			volume->nameBytes = i;
 		}
 	}
 
-	volume->fileSystem->directoryEntryDataBytes = sizeof(uint32_t);
-	volume->fileSystem->nodeDataBytes = sizeof(FSNode);
+	volume->directoryEntryDataBytes = sizeof(uint32_t);
+	volume->nodeDataBytes = sizeof(FSNode);
 
 	KernelLog(LOG_INFO, "Ext2", "register file system", "Registering file system with name '%s'.\n", 
-			volume->fileSystem->nameBytes, volume->fileSystem->name);
-	FSRegisterFileSystem(volume->fileSystem); 
+			volume->nameBytes, volume->name);
+	FSRegisterFileSystem(volume); 
 }
 
 KDriver driverExt2 = {

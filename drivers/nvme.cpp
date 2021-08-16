@@ -792,7 +792,7 @@ void NVMeController::Initialise() {
 			KernelLog(LOG_INFO, "NVMe", "namespace identified", "Identifier namespace %d with sectors of size %D, and a capacity of %D.%z\n",
 					nsid, sectorBytes, capacity, readOnly ? " The namespace is read-only." : "");
 
-			NVMeDrive *device = (NVMeDrive *) KDeviceCreate("NVMe namespace", this, sizeof(NVMeDrive));
+			NVMeDrive *device = (NVMeDrive *) KDeviceCreate("NVMe namespace", this, sizeof(NVMeDrive), ES_DEVICE_BLOCK);
 
 			if (!device) {
 				KernelLog(LOG_ERROR, "NVMe", "allocation failure", "Could not create device for namespace %d.\n", nsid);
@@ -849,7 +849,7 @@ void NVMeController::Shutdown() {
 static void DeviceAttach(KDevice *_parent) {
 	KPCIDevice *parent = (KPCIDevice *) _parent;
 
-	NVMeController *device = (NVMeController *) KDeviceCreate("NVMe controller", parent, sizeof(NVMeController));
+	NVMeController *device = (NVMeController *) KDeviceCreate("NVMe controller", parent, sizeof(NVMeController), ES_DEVICE_CONTROLLER);
 	if (!device) return;
 	device->pci = parent;
 

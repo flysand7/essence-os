@@ -185,7 +185,7 @@ void Device::Initialise() {
 
 		// Register the drive.
 
-		Drive *drive = (Drive *) KDeviceCreate("USB bulk drive", this, sizeof(Drive));
+		Drive *drive = (Drive *) KDeviceCreate("USB bulk drive", this, sizeof(Drive), ES_DEVICE_BLOCK);
 
 		if (!drive) {
 			KernelLog(LOG_ERROR, "USBBulk", "allocation failure", "Could not create drive for LUN %d.\n", i);
@@ -206,7 +206,7 @@ void Device::Initialise() {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Device *device = (Device *) KDeviceCreate("USB bulk", parent, sizeof(Device));
+	Device *device = (Device *) KDeviceCreate("USB bulk", parent, sizeof(Device), ES_DEVICE_OTHER);
 
 	if (!device) {
 		KernelLog(LOG_ERROR, "USBBulk", "allocation failure", "Could not allocate device structure.\n");

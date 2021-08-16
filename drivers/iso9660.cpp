@@ -100,8 +100,7 @@ struct FSNode {
 	DirectoryRecord record;
 };
 
-struct Volume : KDevice {
-	KFileSystem *fileSystem;
+struct Volume : KFileSystem {
 	PrimaryDescriptor primaryDescriptor;
 };
 
@@ -113,7 +112,7 @@ static bool Mount(Volume *volume) {
 	uintptr_t descriptorIndex = 0;
 
 	while (true) {
-		if (!volume->fileSystem->Access(32768 + SECTOR_SIZE * descriptorIndex, SECTOR_SIZE, K_ACCESS_READ, &volume->primaryDescriptor, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access(32768 + SECTOR_SIZE * descriptorIndex, SECTOR_SIZE, K_ACCESS_READ, &volume->primaryDescriptor, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not access descriptor list.\n");
 		}	
 
@@ -135,7 +134,7 @@ static bool Mount(Volume *volume) {
 	}
 
 	if (volume->primaryDescriptor.version != 1 || volume->primaryDescriptor.fileStructureVersion != 1) {
-		MOUNT_FAILURE("Unsupported fileSystem version.\n");
+		MOUNT_FAILURE("Unsupported file system version.\n");
 	}
 
 	if (volume->primaryDescriptor.logicalBlockSize.x != SECTOR_SIZE) {
@@ -149,8 +148,8 @@ static bool Mount(Volume *volume) {
 			MOUNT_FAILURE("Could not allocate root node.\n");
 		}
 
-		volume->fileSystem->rootDirectory->driverNode = root;
-		volume->fileSystem->rootDirectoryInitialChildren = volume->primaryDescriptor.rootDirectory.extentSize.x / sizeof(DirectoryRecord);
+		volume->rootDirectory->driverNode = root;
+		volume->rootDirectoryInitialChildren = volume->primaryDescriptor.rootDirectory.extentSize.x / sizeof(DirectoryRecord);
 
 		root->volume = volume;
 		root->record = volume->primaryDescriptor.rootDirectory;
@@ -170,11 +169,11 @@ static bool Mount(Volume *volume) {
 		}
 
 		DirectoryRecord record = {};
-		ScanInternal(EsLiteral("ESSENCE.DAT;1"), volume->fileSystem->rootDirectory, &record);
+		ScanInternal(EsLiteral("ESSENCE.DAT;1"), volume->rootDirectory, &record);
 		record.extentSize.x = (record.extentSize.x + SECTOR_SIZE - 1) / SECTOR_SIZE;
 
-		if (!record.length || record.extentStart.x >= volume->fileSystem->block->sectorCount 
-				|| record.extentSize.x >= volume->fileSystem->block->sectorCount - record.extentStart.x) {
+		if (!record.length || record.extentStart.x >= volume->block->sectorCount 
+				|| record.extentSize.x >= volume->block->sectorCount - record.extentStart.x) {
 			goto notBoot;
 		}
 
@@ -189,7 +188,7 @@ static bool Mount(Volume *volume) {
 
 		EsDefer(EsHeapFree(firstSector, SECTOR_SIZE, K_FIXED));
 
-		if (!volume->fileSystem->Access(record.extentStart.x * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, firstSector, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access(record.extentStart.x * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, firstSector, ES_FLAGS_DEFAULT)) {
 			goto notBoot;
 		}	
 
@@ -206,7 +205,7 @@ static bool Mount(Volume *volume) {
 
 		KernelLog(LOG_INFO, "ISO9660", "found boot disc", "Found boot disc. Image at %d/%d.\n",
 				record.extentStart.x, record.extentSize.x);
-		FSPartitionDeviceCreate(volume->fileSystem->block, record.extentStart.x, record.extentSize.x, ES_FLAGS_DEFAULT, "CD-ROM boot partition");
+		FSPartitionDeviceCreate(volume->block, record.extentStart.x, record.extentSize.x, ES_FLAGS_DEFAULT, "CD-ROM boot partition");
 	}
 
 	notBoot:;
@@ -236,7 +235,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 
 	while (count) {
 		if (offset || count < SECTOR_SIZE) {
-			if (!volume->fileSystem->Access(lba * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
+			if (!volume->Access(lba * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
 				READ_FAILURE("Could not read file sector.\n");
 			}
 
@@ -247,7 +246,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 		} else {
 			uint64_t sectorsToRead = count / SECTOR_SIZE;
 
-			if (!volume->fileSystem->Access(lba * SECTOR_SIZE, sectorsToRead * SECTOR_SIZE, K_ACCESS_READ, outputBuffer, ES_FLAGS_DEFAULT)) {
+			if (!volume->Access(lba * SECTOR_SIZE, sectorsToRead * SECTOR_SIZE, K_ACCESS_READ, outputBuffer, ES_FLAGS_DEFAULT)) {
 				READ_FAILURE("Could not read file sectors.\n");
 			}
 
@@ -278,7 +277,7 @@ static EsError Enumerate(KNode *node) {
 	uint32_t remainingBytes = directory->record.extentSize.x;
 
 	while (remainingBytes) {
-		bool accessResult = volume->fileSystem->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
+		bool accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
 
 		if (!accessResult) {
 			ENUMERATE_FAILURE("Could not read sector.\n");
@@ -380,7 +379,7 @@ static EsError ScanInternal(const char *name, size_t nameBytes, KNode *_director
 	uint32_t remainingBytes = directory->record.extentSize.x;
 
 	while (remainingBytes) {
-		bool accessResult = volume->fileSystem->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
+		bool accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
 
 		if (!accessResult) {
 			SCAN_FAILURE("Could not read sector.\n");
@@ -465,7 +464,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 
 	EsDefer(EsHeapFree(sectorBuffer, SECTOR_SIZE, K_FIXED));
 
-	if (!volume->fileSystem->Access(reference.sector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT)) {
+	if (!volume->Access(reference.sector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT)) {
 		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 	}
 
@@ -489,55 +488,53 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("ISO9660", parent, sizeof(Volume));
+	Volume *volume = (Volume *) KDeviceCreate("ISO9660", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
 
-	if (!volume) {
-		KernelLog(LOG_ERROR, "ISO9660", "allocate error", "EntryISO9660 - Could not allocate Volume structure.\n");
+	if (!volume || !FSFileSystemInitialise(volume)) {
+		KernelLog(LOG_ERROR, "ISO9660", "allocate error", "DeviceAttach - Could not initialise volume.\n");
 		return;
 	}
 
-	volume->fileSystem = (KFileSystem *) parent;
-
-	if (volume->fileSystem->block->sectorSize != SECTOR_SIZE) {
-		KernelLog(LOG_ERROR, "ISO9660", "incorrect sector size", "EntryISO9660 - Expected 2KB sectors, but drive's sectors are %D.\n", 
-				volume->fileSystem->block->sectorSize);
+	if (volume->block->sectorSize != SECTOR_SIZE) {
+		KernelLog(LOG_ERROR, "ISO9660", "incorrect sector size", "DeviceAttach - Expected 2KB sectors, but drive's sectors are %D.\n", 
+				volume->block->sectorSize);
 		KDeviceDestroy(volume);
 		return;
 	}
 
 	if (!Mount(volume)) {
-		KernelLog(LOG_ERROR, "ISO9660", "mount failure", "EntryISO9660 - Could not mount ISO9660 volume.\n");
+		KernelLog(LOG_ERROR, "ISO9660", "mount failure", "DeviceAttach - Could not mount ISO9660 volume.\n");
 		KDeviceDestroy(volume);
 		return;
 	}
 
-	volume->fileSystem->read = Read;
-	volume->fileSystem->scan = Scan;
-	volume->fileSystem->load = Load;
-	volume->fileSystem->enumerate = Enumerate;
-	volume->fileSystem->close = Close;
+	volume->read = Read;
+	volume->scan = Scan;
+	volume->load = Load;
+	volume->enumerate = Enumerate;
+	volume->close = Close;
 
-	volume->fileSystem->spaceUsed = volume->primaryDescriptor.volumeSize.x * volume->primaryDescriptor.logicalBlockSize.x;
-	volume->fileSystem->spaceTotal = volume->fileSystem->spaceUsed;
+	volume->spaceUsed = volume->primaryDescriptor.volumeSize.x * volume->primaryDescriptor.logicalBlockSize.x;
+	volume->spaceTotal = volume->spaceUsed;
 
-	volume->fileSystem->nameBytes = sizeof(volume->primaryDescriptor.volumeIdentifier);
-	if (volume->fileSystem->nameBytes > sizeof(volume->fileSystem->name)) volume->fileSystem->nameBytes = sizeof(volume->fileSystem->name);
-	EsMemoryCopy(volume->fileSystem->name, volume->primaryDescriptor.volumeIdentifier, volume->fileSystem->nameBytes);
+	volume->nameBytes = sizeof(volume->primaryDescriptor.volumeIdentifier);
+	if (volume->nameBytes > sizeof(volume->name)) volume->nameBytes = sizeof(volume->name);
+	EsMemoryCopy(volume->name, volume->primaryDescriptor.volumeIdentifier, volume->nameBytes);
 
-	for (intptr_t i = volume->fileSystem->nameBytes - 1; i >= 0; i--) {
-		if (volume->fileSystem->name[i] == ' ') {
-			volume->fileSystem->nameBytes--;
+	for (intptr_t i = volume->nameBytes - 1; i >= 0; i--) {
+		if (volume->name[i] == ' ') {
+			volume->nameBytes--;
 		} else {
 			break;
 		}
 	}
 
-	volume->fileSystem->directoryEntryDataBytes = sizeof(DirectoryRecordReference);
-	volume->fileSystem->nodeDataBytes = sizeof(FSNode);
+	volume->directoryEntryDataBytes = sizeof(DirectoryRecordReference);
+	volume->nodeDataBytes = sizeof(FSNode);
 
-	KernelLog(LOG_INFO, "ISO9660", "register file system", "EntryISO9660 - Registering file system with name '%s'.\n", 
-			volume->fileSystem->nameBytes, volume->fileSystem->name);
-	FSRegisterFileSystem(volume->fileSystem); 
+	KernelLog(LOG_INFO, "ISO9660", "register file system", "DeviceAttach - Registering file system with name '%s'.\n", 
+			volume->nameBytes, volume->name);
+	FSRegisterFileSystem(volume); 
 }
 
 KDriver driverISO9660 = {

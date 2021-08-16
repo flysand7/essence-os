@@ -1212,7 +1212,7 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("NTFS", parent, sizeof(Volume));
+	Volume *volume = (Volume *) KDeviceCreate("NTFS", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
 
 	if (!volume) {
 		KernelLog(LOG_ERROR, "NTFS", "allocate error", "EntryNTFS - Could not allocate Volume structure.\n");

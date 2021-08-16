@@ -165,6 +165,7 @@ typedef enum UIMessage {
 	UI_MSG_WINDOW_CLOSE, // return 1 to prevent default (process exit for UIWindow; close for UIMDIChild)
 	UI_MSG_TAB_SELECTED, // sent to the tab that was selected (not the tab pane itself)
 	UI_MSG_WINDOW_DROP_FILES, // di = count, dp = char ** of paths
+	UI_MSG_WINDOW_ACTIVATE,
 
 	UI_MSG_USER,
 } UIMessage;
@@ -4538,6 +4539,7 @@ bool _UIProcessEvent(XEvent *event) {
 		UIWindow *window = _UIFindWindow(event->xfocus.window);
 		if (!window) return false;
 		window->ctrl = window->shift = window->alt = false;
+		UIElementMessage(&window->e, UI_MSG_WINDOW_ACTIVATE, 0, 0);
 	} else if (event->type == ClientMessage && event->xclient.message_type == ui.dndEnterID) {
 		UIWindow *window = _UIFindWindow(event->xclient.window);
 		if (!window) return false;
@@ -4607,11 +4609,19 @@ bool _UIProcessEvent(XEvent *event) {
 					while (!(i && data[i - 1] == '\r' && data[i] == '\n' && i < (int) count)) i++;
 					copy[i - 1] = 0;
 
+					for (int j = 0; s[j]; j++) {
+						if (s[j] == '%' && s[j + 1] && s[j + 2]) {
+							char n[3];
+							n[0] = s[j + 1], n[1] = s[j + 2], n[2] = 0;
+							s[j] = strtol(n, NULL, 16);
+							if (!s[j]) break;
+							memmove(s + j + 1, s + j + 3, strlen(s) - j - 2);
+						}
+					}
+
 					if (s[0] == 'f' && s[1] == 'i' && s[2] == 'l' && s[3] == 'e' && s[4] == ':' && s[5] == '/' && s[6] == '/') {
 						files[fileCount++] = s + 7;
 					}
-
-					// TODO Replace % codes in the URL.
 				}
 
 				UIElementMessage(&window->e, UI_MSG_WINDOW_DROP_FILES, fileCount, files);
@@ -4847,9 +4857,27 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
 		if (message == WM_SETFOCUS) {
 			_UIInspectorSetFocusedWindow(window);
+			UIElementMessage(&window->e, UI_MSG_WINDOW_ACTIVATE, 0, 0);
 		}
 	} else if (message == WM_MOUSEACTIVATE && (window->e.flags & UI_WINDOW_MENU)) {
 		return MA_NOACTIVATE;
+	} else if (message == WM_DROPFILES) {
+		HDROP drop = (HDROP) wParam;
+		int count = DragQueryFile(drop, 0xFFFFFFFF, NULL, 0);
+		char **files = (char **) UI_MALLOC(sizeof(char *) * count);
+		
+		for (int i = 0; i < count; i++) {
+			int length = DragQueryFile(drop, i, NULL, 0);
+			files[i] = (char *) UI_MALLOC(length + 1);
+			files[i][length] = 0;
+			DragQueryFile(drop, i, files[i], length + 1);
+		}
+		
+		UIElementMessage(&window->e, UI_MSG_WINDOW_DROP_FILES, count, files);
+		for (int i = 0; i < count; i++) UI_FREE(files[i]);		
+		UI_FREE(files);
+		DragFinish(drop);
+		_UIUpdate();
 	} else if (message == WM_APP + 1) {
 		UIElementMessage(&window->e, (UIMessage) wParam, 0, (void *) lParam);
 		_UIUpdate();
@@ -4945,7 +4973,7 @@ UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, in
 		window->hwnd = CreateWindowEx(WS_EX_TOPMOST | WS_EX_NOACTIVATE, "shadow", 0, WS_POPUP, 
 			0, 0, 0, 0, owner->hwnd, NULL, NULL, NULL);
 	} else {
-		window->hwnd = CreateWindow("normal", cTitle, WS_OVERLAPPEDWINDOW, 
+		window->hwnd = CreateWindowEx(WS_EX_ACCEPTFILES, "normal", cTitle, WS_OVERLAPPEDWINDOW, 
 			CW_USEDEFAULT, CW_USEDEFAULT, width ? width : CW_USEDEFAULT, height ? height : CW_USEDEFAULT,
 			owner ? owner->hwnd : NULL, NULL, NULL, NULL);
 	}

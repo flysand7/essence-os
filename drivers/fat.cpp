@@ -64,9 +64,7 @@ struct DirectoryEntry {
 	uint32_t fileSizeBytes;
 } __attribute__((packed));
 
-struct Volume : KDevice {
-	KFileSystem *fileSystem;
-
+struct Volume : KFileSystem {
 	union {
 		char _unused0[SECTOR_SIZE];
 		SuperBlock16 sb16;
@@ -84,7 +82,7 @@ struct Volume : KDevice {
 #define TYPE_FAT32 (32)
 	int type;
 
-	DirectoryEntry *rootDirectory;
+	DirectoryEntry *rootDirectoryEntries;
 };
 
 struct DirectoryEntryReference {
@@ -154,7 +152,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 	DirectoryEntry entry;
 
 	if (!directory->rootDirectory) {
-		if (!volume->fileSystem->Access((reference.cluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+		if (!volume->Access((reference.cluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
 					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
 			return ES_ERROR_UNKNOWN;
 		}
@@ -199,7 +197,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 		uint32_t bytesFromThisCluster = superBlock->sectorsPerCluster * SECTOR_SIZE - offset;
 		if (bytesFromThisCluster > count) bytesFromThisCluster = count;
 
-		if (!volume->fileSystem->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+		if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
 					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, 
 					(uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
 			READ_FAILURE("Could not read cluster.\n");
@@ -244,7 +242,7 @@ static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
 
 	while (currentCluster < volume->terminateCluster) {
 		if (!directory->rootDirectory) {
-			if (!volume->fileSystem->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+			if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
 						superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
 				SCAN_FAILURE("Could not read cluster.\n");
 			}
@@ -311,7 +309,7 @@ static EsError Enumerate(KNode *node) {
 
 	while (currentCluster < volume->terminateCluster) {
 		if (!directory->rootDirectory) {
-			if (!volume->fileSystem->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+			if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
 						superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
 				ENUMERATE_FAILURE("Could not read cluster.\n");
 			}
@@ -373,7 +371,7 @@ static bool Mount(Volume *volume) {
 
 	{
 		SuperBlockCommon *superBlock = &volume->superBlock;
-		if (!volume->fileSystem->Access(0, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) superBlock, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read superBlock.\n");
+		if (!volume->Access(0, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) superBlock, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read superBlock.\n");
 
 		uint32_t sectorCount = superBlock->totalSectors ?: superBlock->largeSectorCount;
 		uint32_t clusterCount = sectorCount / superBlock->sectorsPerCluster;
@@ -402,16 +400,16 @@ static bool Mount(Volume *volume) {
 
 		volume->fat = (uint8_t *) EsHeapAllocate(sectorsPerFAT * SECTOR_SIZE, true, K_FIXED);
 		if (!volume->fat) MOUNT_FAILURE("Could not allocate FAT.\n");
-		if (!volume->fileSystem->Access(superBlock->reservedSectors * SECTOR_SIZE, 
+		if (!volume->Access(superBlock->reservedSectors * SECTOR_SIZE, 
 					sectorsPerFAT * SECTOR_SIZE, K_ACCESS_READ, volume->fat, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read FAT.\n");
 
-		volume->fileSystem->spaceUsed = CountUsedClusters(volume) * superBlock->sectorsPerCluster * superBlock->bytesPerSector;
-		volume->fileSystem->spaceTotal = volume->fileSystem->block->sectorSize * volume->fileSystem->block->sectorCount;
+		volume->spaceUsed = CountUsedClusters(volume) * superBlock->sectorsPerCluster * superBlock->bytesPerSector;
+		volume->spaceTotal = volume->block->sectorSize * volume->block->sectorCount;
 
-		volume->fileSystem->rootDirectory->driverNode = EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
-		if (!volume->fileSystem->rootDirectory->driverNode) MOUNT_FAILURE("Could not allocate root node.\n");
+		volume->rootDirectory->driverNode = EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
+		if (!volume->rootDirectory->driverNode) MOUNT_FAILURE("Could not allocate root node.\n");
 
-		FSNode *root = (FSNode *) volume->fileSystem->rootDirectory->driverNode;
+		FSNode *root = (FSNode *) volume->rootDirectory->driverNode;
 		root->volume = volume;
 
 		if (volume->type == TYPE_FAT32) {
@@ -422,13 +420,13 @@ static bool Mount(Volume *volume) {
 
 			while (currentCluster < volume->terminateCluster) {
 				currentCluster = NextCluster(volume, currentCluster);
-				volume->fileSystem->rootDirectoryInitialChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(DirectoryEntry);
+				volume->rootDirectoryInitialChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(DirectoryEntry);
 			}
 		} else {
 			root->rootDirectory = (DirectoryEntry *) EsHeapAllocate(rootDirectorySectors * SECTOR_SIZE, true, K_FIXED);
-			volume->rootDirectory = root->rootDirectory;
+			volume->rootDirectoryEntries = root->rootDirectory;
 
-			if (!volume->fileSystem->Access(rootDirectoryOffset * SECTOR_SIZE, rootDirectorySectors * SECTOR_SIZE, 
+			if (!volume->Access(rootDirectoryOffset * SECTOR_SIZE, rootDirectorySectors * SECTOR_SIZE, 
 						K_ACCESS_READ, (uint8_t *) root->rootDirectory, ES_FLAGS_DEFAULT)) {
 				MOUNT_FAILURE("Could not read root directory.\n");
 			}
@@ -436,7 +434,7 @@ static bool Mount(Volume *volume) {
 			for (uintptr_t i = 0; i < superBlock->rootDirectoryEntries; i++) {
 				if (root->rootDirectory[i].name[0] == 0xE5 || root->rootDirectory[i].attributes == 0x0F || (root->rootDirectory[i].attributes & 0x08)) continue;
 				else if (root->rootDirectory[i].name[0] == 0x00) break;
-				else volume->fileSystem->rootDirectoryInitialChildren++;
+				else volume->rootDirectoryInitialChildren++;
 			}
 		}
 
@@ -456,57 +454,49 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("FAT", parent, sizeof(Volume));
+	Volume *volume = (Volume *) KDeviceCreate("FAT", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
 
-	if (!volume) {
-		KernelLog(LOG_ERROR, "FAT", "allocate error", "EntryFAT - Could not allocate Volume structure.\n");
+	if (!volume || !FSFileSystemInitialise(volume)) {
+		KernelLog(LOG_ERROR, "FAT", "allocate error", "DeviceAttach - Could not initialise volume.\n");
 		return;
 	}
 
-	volume->fileSystem = (KFileSystem *) parent;
-
-	if (!volume->fileSystem) {
-		KernelLog(LOG_ERROR, "FAT", "device error", "EntryFAT - Could not create file system device.\n");
-		KDeviceDestroy(volume);
-		return;
-	}
-
-	if (volume->fileSystem->block->sectorSize != SECTOR_SIZE) {
-		KernelLog(LOG_ERROR, "FAT", "mount failure", "EntryFAT - Unsupported sector size.\n");
+	if (volume->block->sectorSize != SECTOR_SIZE) {
+		KernelLog(LOG_ERROR, "FAT", "mount failure", "DeviceAttach - Unsupported sector size.\n");
 		KDeviceDestroy(volume);
 		return;
 	}
 
 	if (!Mount(volume)) {
-		KernelLog(LOG_ERROR, "FAT", "mount failure", "EntryFAT - Could not mount FAT volume.\n");
+		KernelLog(LOG_ERROR, "FAT", "mount failure", "DeviceAttach - Could not mount FAT volume.\n");
 		KDeviceDestroy(volume);
 		return;
 	}
 
-	volume->fileSystem->read = Read;
-	volume->fileSystem->load = Load;
-	volume->fileSystem->scan = Scan;
-	volume->fileSystem->enumerate = Enumerate;
-	volume->fileSystem->close = Close;
+	volume->read = Read;
+	volume->load = Load;
+	volume->scan = Scan;
+	volume->enumerate = Enumerate;
+	volume->close = Close;
 
 	if (volume->type == TYPE_FAT32) {
-		volume->fileSystem->nameBytes = sizeof(volume->sb32.label);
-		EsMemoryCopy(volume->fileSystem->name, volume->sb32.label, volume->fileSystem->nameBytes);
+		volume->nameBytes = sizeof(volume->sb32.label);
+		EsMemoryCopy(volume->name, volume->sb32.label, volume->nameBytes);
 	} else {
-		if (volume->rootDirectory[0].attributes & 8) {
-			volume->fileSystem->nameBytes = sizeof(volume->rootDirectory[0].name);
-			EsMemoryCopy(volume->fileSystem->name, volume->rootDirectory[0].name, volume->fileSystem->nameBytes);
+		if (volume->rootDirectoryEntries[0].attributes & 8) {
+			volume->nameBytes = sizeof(volume->rootDirectoryEntries[0].name);
+			EsMemoryCopy(volume->name, volume->rootDirectoryEntries[0].name, volume->nameBytes);
 		} else {
-			volume->fileSystem->nameBytes = sizeof(volume->sb16.label);
-			EsMemoryCopy(volume->fileSystem->name, volume->sb16.label, volume->fileSystem->nameBytes);
+			volume->nameBytes = sizeof(volume->sb16.label);
+			EsMemoryCopy(volume->name, volume->sb16.label, volume->nameBytes);
 		}
 	}
 
-	volume->fileSystem->rootDirectory->driverNode = volume->root;
-	volume->fileSystem->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
-	volume->fileSystem->nodeDataBytes = sizeof(FSNode);
+	volume->rootDirectory->driverNode = volume->root;
+	volume->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
+	volume->nodeDataBytes = sizeof(FSNode);
 
-	FSRegisterFileSystem(volume->fileSystem); 
+	FSRegisterFileSystem(volume); 
 }
 
 KDriver driverFAT = {

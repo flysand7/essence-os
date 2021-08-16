@@ -1105,6 +1105,19 @@ enum EsClipboard {
 	ES_CLIPBOARD_PRIMARY
 }
 
+enum EsDeviceType {
+	ES_DEVICE_OTHER
+	ES_DEVICE_CONTROLLER
+	ES_DEVICE_FILE_SYSTEM
+	ES_DEVICE_GRAPHICS_TARGET
+	ES_DEVICE_BLOCK
+	ES_DEVICE_AUDIO
+	ES_DEVICE_HID
+	ES_DEVICE_NETWORK_CARD
+	ES_DEVICE_USB
+	ES_DEVICE_PCI_FUNCTION
+}
+
 function_pointer int EsUICallbackFunction(struct EsElement *element, struct EsMessage *message);
 
 struct EsBuffer {

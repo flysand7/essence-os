@@ -548,7 +548,7 @@ struct KDevice {
 
 #define K_DEVICE_REMOVED (1 << 0)
 	uint8_t flags;
-
+	uint16_t type;
 	uint32_t handles;
 
 	// These callbacks are called with the deviceTreeMutex locked.
@@ -582,7 +582,7 @@ void KDeviceAttachAll(KDevice *parentDevice, const char *cParentDriver);
 // Similar to KDeviceAttach, except it calls `attach` only for the driver matching the provided name. Returns true if the driver was found.
 bool KDeviceAttachByName(KDevice *parentDevice, const char *cName);
 
-KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes /* must be at least the size of a KDevice */);
+KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes /* must be at least the size of a KDevice */, EsDeviceType type);
 void KDeviceOpenHandle(KDevice *device);
 void KDeviceDestroy(KDevice *device); // Call if initialisation of the device failed. Otherwise use KDeviceCloseHandle.
 void KDeviceCloseHandle(KDevice *device); // The device creator is responsible for one handle after the creating it. The device is destroyed once all handles are closed.
@@ -798,6 +798,24 @@ void KRegisterUSBDevice(KUSBDevice *device); // Takes ownership of the device's 
 // File systems.
 // ---------------------------------------------------------------------------------------------------------------
 
+struct CCSpace {
+	// A sorted list of the cached sections in the file.
+	// Maps offset -> physical address.
+	KMutex cachedSectionsMutex;
+	Array<struct CCCachedSection, K_CORE> cachedSections;
+
+	// A sorted list of the active sections.
+	// Maps offset -> virtual address.
+	KMutex activeSectionsMutex;
+	Array<struct CCActiveSectionReference, K_CORE> activeSections;
+
+	// Used by CCSpaceFlush.
+	KEvent writeComplete;
+
+	// Callbacks.
+	const struct CCSpaceCallbacks *callbacks;
+};
+
 struct KNodeMetadata {
 	// Metadata stored in the node's directory entry.
 	EsNodeType type;
@@ -836,8 +854,6 @@ struct KFileSystem : KDevice {
 
 	// Fill these fields in before registering the file system:
 
-	void *driverData;
-
 	char name[64];
 	size_t nameBytes;
 
@@ -870,6 +886,7 @@ struct KFileSystem : KDevice {
 	bool isBootFileSystem, unmounting;
 	volatile uint64_t totalHandleCount;
 	uint64_t id;
+	CCSpace cacheSpace;
 
 	MMObjectCache cachedDirectoryEntries, // Directory entries without a loaded node.
 		      cachedNodes; // Nodes with no handles or directory entries.
@@ -887,6 +904,8 @@ void FSNodeScanAndLoadComplete(KNode *node, bool success);
 // Equivalent to FSDirectoryEntryFound with update set to true, 
 // but lets you pass an arbitrary KNode instead of a [directory, file name] pair.
 void FSNodeUpdateDriverData(KNode *node, const void *newDriverData);
+
+bool FSFileSystemInitialise(KFileSystem *fileSystem); // Do not attempt to load the file system if this returns false; the file system will be destroyed.
 
 // All these functions take ownership of the device's main handle.
 void FSRegisterBlockDevice(KBlockDevice *blockDevice);

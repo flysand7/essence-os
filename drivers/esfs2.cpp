@@ -17,9 +17,8 @@
 #define ESFS_CHECK_FATAL(x, y)       if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", "Mount - " y "\n"); return false; }
 #define ESFS_CHECK_READ_ONLY(x, y)   if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "mount read only", "Mount - " y " Mounting as read only.\n"); volume->readOnly = true; }
 
-struct Volume : KDevice {
+struct Volume : KFileSystem {
 	Superblock superblock;
-	KFileSystem *fileSystem;
 	struct FSNode *root;
 	bool readOnly;
 	KWriterLock blockBitmapLock; 
@@ -39,7 +38,7 @@ struct FSNode {
 static bool AccessBlock(Volume *volume, uint64_t index, uint64_t count, void *buffer, uint64_t flags, int driveAccess) {
 	// TODO Return EsError.
 	Superblock *superblock = &volume->superblock;
-	bool result = volume->fileSystem->Access(index * superblock->blockSize, count * superblock->blockSize, driveAccess, buffer, flags, nullptr);
+	bool result = volume->Access(index * superblock->blockSize, count * superblock->blockSize, driveAccess, buffer, flags, nullptr);
 	ESFS_CHECK(result, "AccessBlock - Could not access blocks.");
 	return result;
 }
@@ -585,7 +584,7 @@ static bool AllocateExtent(Volume *volume, uint64_t nearby, uint64_t increaseBlo
 
 	*extentStart += (target - volume->groupDescriptorTable) * superblock->blocksPerGroup;
 	superblock->blocksUsed += *extentCount;
-	volume->fileSystem->spaceUsed += *extentCount * superblock->blockSize;
+	volume->spaceUsed += *extentCount * superblock->blockSize;
 
 	if (zero) {
 		// TODO This is really slow - introduce K_ACCESS_ZERO?
@@ -659,7 +658,7 @@ static bool FreeExtent(Volume *volume, uint64_t extentStart, uint64_t extentCoun
 	target->checksum = 0;
 	target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor));
 	superblock->blocksUsed -= extentCount;
-	volume->fileSystem->spaceUsed -= extentCount * superblock->blockSize;
+	volume->spaceUsed -= extentCount * superblock->blockSize;
 
 	return true;
 }
@@ -1829,12 +1828,12 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 
 	Superblock *superblock = &volume->superblock;
 
-	if (!volume->fileSystem->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_READ, (uint8_t *) superblock, ES_FLAGS_DEFAULT)) {
+	if (!volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_READ, (uint8_t *) superblock, ES_FLAGS_DEFAULT)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Mount - Could not read superblock.\n");
 		return false;
 	}
 
-	if (volume->fileSystem->block->readOnly) {
+	if (volume->block->readOnly) {
 		volume->readOnly = true;
 	}
 
@@ -1847,8 +1846,8 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 
 	ESFS_CHECK_FATAL(0 == EsMemoryCompare(volume->superblock.signature, ESFS_SIGNATURE_STRING, 16), "Invalid superblock signature.");
 	ESFS_CHECK_FATAL(volume->superblock.requiredReadVersion <= ESFS_DRIVER_VERSION, "Incompatible file system version.");
-	ESFS_CHECK_FATAL(superblock->blockSize >= 1024 && superblock->blockSize <= 16384 && (superblock->blockSize % volume->fileSystem->block->sectorSize) == 0, "Invalid block size.");
-	ESFS_CHECK_FATAL(superblock->blockCount * superblock->blockSize / volume->fileSystem->block->sectorSize <= volume->fileSystem->block->sectorCount, "More blocks than drive.");
+	ESFS_CHECK_FATAL(superblock->blockSize >= 1024 && superblock->blockSize <= 16384 && (superblock->blockSize % volume->block->sectorSize) == 0, "Invalid block size.");
+	ESFS_CHECK_FATAL(superblock->blockCount * superblock->blockSize / volume->block->sectorSize <= volume->block->sectorCount, "More blocks than drive.");
 	ESFS_CHECK_FATAL(superblock->blocksUsed <= superblock->blockCount, "More blocks used than exist.");
 	ESFS_CHECK_FATAL(superblock->blocksPerGroup <= 65536 && superblock->blocksPerGroup < superblock->blockCount && superblock->blocksPerGroup >= 1024, "Invalid block group size.");
 	ESFS_CHECK_FATAL((superblock->groupCount - 1) * superblock->blocksPerGroup <= superblock->blockCount, "Invalid number of block groups.");
@@ -1870,7 +1869,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 		superblock->mounted = true;
 		superblock->checksum = 0;
 		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock));
-		ESFS_CHECK_READ_ONLY(volume->fileSystem->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, 
+		ESFS_CHECK_READ_ONLY(volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, 
 					K_ACCESS_WRITE, (uint8_t *) superblock, ES_FLAGS_DEFAULT), "Could not mark volume as mounted.");
 	}
 
@@ -1936,7 +1935,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 }
 
 static void Unmount(KFileSystem *fileSystem) {
-	Volume *volume = (Volume *) fileSystem->driverData;
+	Volume *volume = (Volume *) fileSystem;
 	Superblock *superblock = &volume->superblock;
 
 	if (!volume->readOnly) {
@@ -1946,7 +1945,7 @@ static void Unmount(KFileSystem *fileSystem) {
 		superblock->mounted = false;
 		superblock->checksum = 0;
 		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock));
-		volume->fileSystem->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_WRITE, 
+		volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_WRITE, 
 				(uint8_t *) superblock, ES_FLAGS_DEFAULT);
 	}
 
@@ -1954,15 +1953,12 @@ static void Unmount(KFileSystem *fileSystem) {
 }
 
 static void Register(KDevice *_parent) {
-	KFileSystem *fileSystem = (KFileSystem *) _parent;
-	Volume *volume = (Volume *) KDeviceCreate("EssenceFS", fileSystem, sizeof(Volume));
+	Volume *volume = (Volume *) KDeviceCreate("EssenceFS", _parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
 
-	if (!volume) {
-		KernelLog(LOG_ERROR, "EsFS", "allocation failure", "Register - Could not allocate Volume structure.\n");
+	if (!volume || !FSFileSystemInitialise(volume)) {
+		KernelLog(LOG_ERROR, "EsFS", "allocation failure", "Register - Could not allocate file system.\n");
 		return;
 	}
-
-	volume->fileSystem = fileSystem;
 
 	EsFileOffsetDifference rootDirectoryChildren;
 
@@ -1972,36 +1968,35 @@ static void Register(KDevice *_parent) {
 		return;
 	}
 
-	fileSystem->spaceUsed = volume->superblock.blocksUsed * volume->superblock.blockSize;
-	fileSystem->spaceTotal = volume->superblock.blockCount * volume->superblock.blockSize;
+	volume->spaceUsed = volume->superblock.blocksUsed * volume->superblock.blockSize;
+	volume->spaceTotal = volume->superblock.blockCount * volume->superblock.blockSize;
 
-	fileSystem->read = Read;
-	fileSystem->scan = Scan;
-	fileSystem->load = Load;
-	fileSystem->enumerate = Enumerate;
-	fileSystem->unmount = Unmount;
-	fileSystem->close = Close;
+	volume->read = Read;
+	volume->scan = Scan;
+	volume->load = Load;
+	volume->enumerate = Enumerate;
+	volume->unmount = Unmount;
+	volume->close = Close;
 
 	if (!volume->readOnly) {
-		fileSystem->write = Write;
-		fileSystem->sync = Sync;
-		fileSystem->resize = Resize;
-		fileSystem->create = Create;
-		fileSystem->remove = Remove;
-		fileSystem->move = Move;
+		volume->write = Write;
+		volume->sync = Sync;
+		volume->resize = Resize;
+		volume->create = Create;
+		volume->remove = Remove;
+		volume->move = Move;
 	}
 
 	volume->superblock.volumeName[ESFS_MAXIMUM_VOLUME_NAME_LENGTH - 1] = 0;
-	fileSystem->nameBytes = EsCStringLength(volume->superblock.volumeName);
-	EsMemoryCopy(fileSystem->name, volume->superblock.volumeName, fileSystem->nameBytes);
+	volume->nameBytes = EsCStringLength(volume->superblock.volumeName);
+	EsMemoryCopy(volume->name, volume->superblock.volumeName, volume->nameBytes);
 
-	fileSystem->driverData = volume;
-	fileSystem->rootDirectory->driverNode = volume->root;
-	fileSystem->rootDirectoryInitialChildren = rootDirectoryChildren;
-	fileSystem->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
-	fileSystem->nodeDataBytes = sizeof(FSNode);
+	volume->rootDirectory->driverNode = volume->root;
+	volume->rootDirectoryInitialChildren = rootDirectoryChildren;
+	volume->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
+	volume->nodeDataBytes = sizeof(FSNode);
 
-	FSRegisterBootFileSystem(fileSystem, volume->superblock.osInstallation);
+	FSRegisterBootFileSystem(volume, volume->superblock.osInstallation);
 }
 
 KDriver driverEssenceFS = {

@@ -54,26 +54,6 @@ struct CCSpaceCallbacks {
 	EsError (*writeFrom)(CCSpace *fileCache, const void *buffer, EsFileOffset offset, EsFileOffset count);
 };
 
-// Describes the physical and virtual memory covering a file.
-
-struct CCSpace {
-	// A sorted list of the cached sections in the file.
-	// Maps offset -> physical address.
-	KMutex cachedSectionsMutex;
-	Array<CCCachedSection, K_CORE> cachedSections;
-
-	// A sorted list of the active sections.
-	// Maps offset -> virtual address.
-	KMutex activeSectionsMutex;
-	Array<CCActiveSectionReference, K_CORE> activeSections;
-
-	// Used by CCSpaceFlush.
-	KEvent writeComplete;
-
-	// Callbacks.
-	const CCSpaceCallbacks *callbacks;
-};
-
 void CCInitialise();
 
 void CCDereferenceActiveSection(CCActiveSection *section, uintptr_t startingPage = 0);

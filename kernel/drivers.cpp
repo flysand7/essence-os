@@ -17,7 +17,7 @@ Array<KInstalledDriver, K_FIXED> installedDrivers;
 
 void *ResolveKernelSymbol(const char *name, size_t nameBytes);
 
-KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes) {
+KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes, EsDeviceType type) {
 	if (bytes < sizeof(KDevice)) {
 		KernelPanic("KDeviceCreate - Device structure size is too small (less than KDevice).\n");
 	}
@@ -28,6 +28,7 @@ KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes) {
 	device->parent = parent;
 	device->cDebugName = cDebugName;
 	device->handles = 2; // One handle for the creator, and another closed when the device is removed (by the parent).
+	device->type = type;
 
 	if (parent) {
 		KMutexAcquire(&deviceTreeMutex);
@@ -254,7 +255,7 @@ bool KDeviceAttachByName(KDevice *parentDevice, const char *cName) {
 void DeviceRootAttach(KDevice *parentDevice) {
 	// Load all the root drivers and create their devices.
 
-	KDeviceAttachAll(KDeviceCreate("root", parentDevice, sizeof(KDevice)), "Root");
+	KDeviceAttachAll(KDeviceCreate("root", parentDevice, sizeof(KDevice), ES_DEVICE_OTHER), "Root");
 
 	// Check we have found the drive from which we booted.
 	// TODO Decide the timeout.

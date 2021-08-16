@@ -663,7 +663,7 @@ void ACPIInitialise2() {
 
 	if (AE_OK == AcpiEnableEvent(ACPI_EVENT_POWER_BUTTON, 0)
 			&& AE_OK == AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON, ACPIPowerButtonPressed, nullptr)) {
-		KDeviceCreate("ACPI power button", acpi.computer, sizeof(KDevice));
+		KDeviceCreate("ACPI power button", acpi.computer, sizeof(KDevice), ES_DEVICE_OTHER);
 	}
 
 	void *result;
@@ -695,7 +695,7 @@ void KPS2SafeToInitialise() {
 }
 
 static void DeviceAttach(KDevice *parentDevice) {
-	acpi.computer = KDeviceCreate("ACPI computer", parentDevice, sizeof(KDevice));
+	acpi.computer = KDeviceCreate("ACPI computer", parentDevice, sizeof(KDevice), ES_DEVICE_OTHER);
 
 #ifndef SERIAL_STARTUP
 	KThreadCreate("InitACPI", [] (uintptr_t) { ACPIInitialise2(); });

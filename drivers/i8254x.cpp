@@ -469,7 +469,7 @@ void Controller::Initialise() {
 static void DeviceAttach(KDevice *_parent) {
 	KPCIDevice *parent = (KPCIDevice *) _parent;
 
-	Controller *device = (Controller *) KDeviceCreate("I8254x", parent, sizeof(Controller));
+	Controller *device = (Controller *) KDeviceCreate("I8254x", parent, sizeof(Controller), ES_DEVICE_NETWORK_CARD);
 	if (!device) return;
 
 	device->shutdown = [] (KDevice *device) {

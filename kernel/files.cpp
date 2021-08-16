@@ -1014,7 +1014,7 @@ void FSUnmountFileSystem(uintptr_t argument) {
 	}
 
 	KernelLog(LOG_INFO, "FS", "unmount complete", "Unmounted file system %x.\n", fileSystem);
-	KDeviceCloseHandle(fileSystem->children[0]);
+	KDeviceCloseHandle(fileSystem);
 	__sync_fetch_and_sub(&fs.fileSystemsUnmounting, 1);
 	KEventSet(&fs.fileSystemUnmounted, false, true);
 }
@@ -1594,13 +1594,13 @@ bool FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 	}
 }
 
-EsError FSReadIntoBlockCache(CCSpace *fileCache, void *buffer, EsFileOffset offset, EsFileOffset count) {
-	KFileSystem *fileSystem = (KFileSystem *) fileCache - 1;
+EsError FSReadIntoBlockCache(CCSpace *cache, void *buffer, EsFileOffset offset, EsFileOffset count) {
+	KFileSystem *fileSystem = EsContainerOf(KFileSystem, cacheSpace, cache);
 	return fileSystem->Access(offset, count, K_ACCESS_READ, buffer, ES_FLAGS_DEFAULT, nullptr) ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 }
 
-EsError FSWriteFromBlockCache(CCSpace *fileCache, const void *buffer, EsFileOffset offset, EsFileOffset count) {
-	KFileSystem *fileSystem = (KFileSystem *) fileCache - 1;
+EsError FSWriteFromBlockCache(CCSpace *cache, const void *buffer, EsFileOffset offset, EsFileOffset count) {
+	KFileSystem *fileSystem = EsContainerOf(KFileSystem, cacheSpace, cache);
 	return fileSystem->Access(offset, count, K_ACCESS_WRITE, (void *) buffer, ES_FLAGS_DEFAULT, nullptr) ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 }
 
@@ -1631,7 +1631,7 @@ bool KFileSystem::Access(EsFileOffset offset, size_t count, int operation, void 
 		// We use the CC_ACCESS_PRECISE flag for file systems that have a block size less than the page size.
 		// Otherwise, we might end up trashing file blocks (which aren't kept in the block device cache).
 
-		EsError result = CCSpaceAccess((CCSpace *) (this + 1), buffer, offset, count, 
+		EsError result = CCSpaceAccess(&cacheSpace, buffer, offset, count, 
 				operation == K_ACCESS_READ ? CC_ACCESS_READ : (CC_ACCESS_WRITE | CC_ACCESS_WRITE_BACK | CC_ACCESS_PRECISE));
 
 		if (dispatchGroup) {
@@ -1669,7 +1669,7 @@ void FSPartitionDeviceAccess(KBlockDeviceAccessRequest request) {
 }
 
 void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *cName) {
-	PartitionDevice *child = (PartitionDevice *) KDeviceCreate(cName, parent, sizeof(PartitionDevice));
+	PartitionDevice *child = (PartitionDevice *) KDeviceCreate(cName, parent, sizeof(PartitionDevice), ES_DEVICE_BLOCK);
 	if (!child) return;
 
 	child->parent = parent;
@@ -1692,7 +1692,7 @@ void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOf
 //////////////////////////////////////////
 
 bool FSSignatureCheck(KInstalledDriver *driver, KDevice *device) {
-	uint8_t *block = ((KFileSystem *) device)->block->information;
+	uint8_t *block = ((KBlockDevice *) device)->information;
 
 	EsINIState s = {};
 	s.buffer = driver->config;
@@ -1762,6 +1762,28 @@ bool FSCheckMBR(KBlockDevice *device) {
 	return true;
 }
 
+bool FSFileSystemInitialise(KFileSystem *fileSystem) {
+	FSDirectoryEntry *rootEntry = (FSDirectoryEntry *) EsHeapAllocate(sizeof(FSDirectoryEntry), true, K_FIXED);
+	if (!rootEntry) goto error;
+
+	rootEntry->type = ES_NODE_DIRECTORY;
+	if (ES_SUCCESS != FSDirectoryEntryAllocateNode(rootEntry, nullptr, true, false)) goto error;
+
+	fileSystem->rootDirectory = rootEntry->node;
+	fileSystem->rootDirectory->fileSystem = fileSystem;
+	fileSystem->block = (KBlockDevice *) fileSystem->parent;
+	if (!CCSpaceInitialise(&fileSystem->cacheSpace)) goto error;
+
+	fileSystem->cacheSpace.callbacks = &fsBlockCacheCallbacks;
+	return true;
+
+	error:;
+	if (rootEntry && rootEntry->node) FSNodeFree(rootEntry->node);
+	if (rootEntry) EsHeapFree(rootEntry, sizeof(FSDirectoryEntry), K_FIXED);
+	KDeviceDestroy(fileSystem);
+	return false;
+}
+
 void FSDetectFileSystem(KBlockDevice *device) {
 	KernelLog(LOG_INFO, "FS", "detect file system", "Detecting file system on block device '%z'.\n", device->cModel);
 
@@ -1793,35 +1815,7 @@ void FSDetectFileSystem(KBlockDevice *device) {
 		if (!device->noMBR && FSCheckMBR(device)) {
 			// Found an MBR.
 		} else {
-			FSDirectoryEntry *rootEntry = nullptr;
-			KFileSystem *fileSystem = nullptr;
-			CCSpace *cache = nullptr;
-
-			rootEntry = (FSDirectoryEntry *) EsHeapAllocate(sizeof(FSDirectoryEntry), true, K_FIXED);
-			if (!rootEntry) goto error;
-
-			rootEntry->type = ES_NODE_DIRECTORY;
-			if (ES_SUCCESS != FSDirectoryEntryAllocateNode(rootEntry, nullptr, true, false)) goto error;
-
-			fileSystem = (KFileSystem *) KDeviceCreate("file system", device, sizeof(KFileSystem) + sizeof(CCSpace));
-			if (!fileSystem) goto error;
-
-			fileSystem->rootDirectory = rootEntry->node;
-			fileSystem->rootDirectory->fileSystem = fileSystem;
-			fileSystem->block = device;
-			cache = (CCSpace *) (fileSystem + 1);
-			if (!CCSpaceInitialise(cache)) goto error;
-
-			cache->callbacks = &fsBlockCacheCallbacks;
-			KDeviceAttach(fileSystem, "Files", FSSignatureCheck);
-			KDeviceCloseHandle(fileSystem);
-			goto success;
-
-			error:;
-			if (fileSystem) KDeviceDestroy(fileSystem);
-			if (rootEntry && rootEntry->node) FSNodeFree(rootEntry->node);
-			if (rootEntry) EsHeapFree(rootEntry, sizeof(FSDirectoryEntry), K_FIXED);
-			success:;
+			KDeviceAttach(device, "Files", FSSignatureCheck);
 		}
 	}
 
@@ -1862,10 +1856,6 @@ void FSFileSystemDeviceRemoved(KDevice *device) {
 }
 
 void FSRegisterFileSystem(KFileSystem *fileSystem) {
-	if (fileSystem->children.Length() != 1) {
-		KernelPanic("FSRegisterFileSystem - File system %x does not have a child device.\n", fileSystem);
-	}
-
 	static volatile uint64_t id = 1;
 	fileSystem->id = __sync_fetch_and_add(&id, 1);
 
