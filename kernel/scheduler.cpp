@@ -53,7 +53,7 @@ struct Thread {
 
 	struct Process *process;
 
-	uint64_t id;
+	EsObjectID id;
 	volatile uintptr_t cpuTimeSlices;
 	volatile size_t handles;
 	int executingProcessorID;
@@ -132,7 +132,7 @@ struct Process {
 	ProcessType type;
 
 	// Object management:
-	uint64_t id;
+	EsObjectID id;
 	volatile size_t handles;
 	LinkedItem<Process> allItem;
 
@@ -220,8 +220,8 @@ struct Scheduler {
 	Pool threadPool, processPool, mmSpacePool;
 	LinkedList<Thread>  allThreads;
 	LinkedList<Process> allProcesses;
-	uint64_t nextThreadID;
-	uint64_t nextProcessID;
+	EsObjectID nextThreadID;
+	EsObjectID nextProcessID;
 	size_t activeProcessCount;
 
 	volatile bool started, panic, shutdown;

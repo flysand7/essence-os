@@ -551,7 +551,7 @@ void ATAController::Initialise() {
 	for (uintptr_t i = 0; i < ATA_DRIVES; i++) {
 		if (sectorCount[i]) {
 			// Register the drive.
-			ATADrive *device = (ATADrive *) KDeviceCreate("IDE drive", this, sizeof(ATADrive), ES_DEVICE_BLOCK);
+			ATADrive *device = (ATADrive *) KDeviceCreate("IDE drive", this, sizeof(ATADrive));
 
 			if (!device) {
 				KernelLog(LOG_ERROR, "IDE", "allocation failure", "Could not create device for drive %d.\n", i);
@@ -585,7 +585,7 @@ static void DeviceAttach(KDevice *_parent) {
 		return;
 	}
 
-	ATAController *device = (ATAController *) KDeviceCreate("IDE controller", parent, sizeof(ATAController), ES_DEVICE_CONTROLLER);
+	ATAController *device = (ATAController *) KDeviceCreate("IDE controller", parent, sizeof(ATAController));
 	if (!device) return;
 	ataController = device;
 	device->pci = parent;

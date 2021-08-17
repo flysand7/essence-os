@@ -1669,7 +1669,7 @@ void FSPartitionDeviceAccess(KBlockDeviceAccessRequest request) {
 }
 
 void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *cName) {
-	PartitionDevice *child = (PartitionDevice *) KDeviceCreate(cName, parent, sizeof(PartitionDevice), ES_DEVICE_BLOCK);
+	PartitionDevice *child = (PartitionDevice *) KDeviceCreate(cName, parent, sizeof(PartitionDevice));
 	if (!child) return;
 
 	child->parent = parent;
@@ -1851,14 +1851,11 @@ void FSFileSystemDeviceRemoved(KDevice *device) {
 	EsMessage m;
 	EsMemoryZero(&m, sizeof(EsMessage));
 	m.type = ES_MSG_UNREGISTER_FILE_SYSTEM;
-	m.unregisterFileSystem.id = fileSystem->id;
+	m.unregisterFileSystem.id = fileSystem->objectID;
 	desktopProcess->messageQueue.SendMessage(nullptr, &m);
 }
 
 void FSRegisterFileSystem(KFileSystem *fileSystem) {
-	static volatile uint64_t id = 1;
-	fileSystem->id = __sync_fetch_and_add(&id, 1);
-
 	fileSystem->removed = FSFileSystemDeviceRemoved;
 		
 	MMObjectCacheRegister(&fileSystem->cachedDirectoryEntries, FSTrimCachedDirectoryEntry, 
@@ -1880,6 +1877,8 @@ void FSRegisterFileSystem(KFileSystem *fileSystem) {
 			desktopProcess->handleTable.CloseHandle(m.registerFileSystem.rootDirectory); // This will check that the handle is still valid.
 		}
 	}
+
+	KDeviceSendConnectedMessage(fileSystem, ES_DEVICE_FILE_SYSTEM);
 }
 
 void FSRegisterBlockDevice(KBlockDevice *device) {

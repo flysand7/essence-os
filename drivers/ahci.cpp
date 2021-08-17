@@ -827,7 +827,7 @@ void AHCIController::Initialise() {
 	for (uintptr_t i = 0; i < MAX_PORTS; i++) {
 		if (!ports[i].connected) continue;
 
-		AHCIDrive *device = (AHCIDrive *) KDeviceCreate("AHCI drive", this, sizeof(AHCIDrive), ES_DEVICE_BLOCK);
+		AHCIDrive *device = (AHCIDrive *) KDeviceCreate("AHCI drive", this, sizeof(AHCIDrive));
 
 		if (!device) {
 			KernelLog(LOG_ERROR, "AHCI", "allocation failure", "Could not create device for port %d.\n", i);
@@ -863,7 +863,7 @@ void AHCIController::Initialise() {
 static void DeviceAttach(KDevice *_parent) {
 	KPCIDevice *parent = (KPCIDevice *) _parent;
 
-	AHCIController *device = (AHCIController *) KDeviceCreate("AHCI controller", parent, sizeof(AHCIController), ES_DEVICE_CONTROLLER);
+	AHCIController *device = (AHCIController *) KDeviceCreate("AHCI controller", parent, sizeof(AHCIController));
 	if (!device) return;
 	device->pci = parent;
 

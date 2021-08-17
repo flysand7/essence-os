@@ -849,7 +849,7 @@ void XHCIController::OnPortEnable(uintptr_t port) {
 
 	// Register the device with USB subsystem.
 
-	XHCIDevice *device = (XHCIDevice *) KDeviceCreate("XHCI device", this, sizeof(XHCIDevice), ES_DEVICE_USB);
+	XHCIDevice *device = (XHCIDevice *) KDeviceCreate("XHCI device", this, sizeof(XHCIDevice));
 	ports[port].device = device;
 	device->port = port;
 	device->controlTransfer = ControlTransferWrapper;
@@ -1255,7 +1255,7 @@ void XHCIController::Initialise() {
 static void DeviceAttach(KDevice *_parent) {
 	KPCIDevice *parent = (KPCIDevice *) _parent;
 
-	XHCIController *device = (XHCIController *) KDeviceCreate("XHCI controller", parent, sizeof(XHCIController), ES_DEVICE_CONTROLLER);
+	XHCIController *device = (XHCIController *) KDeviceCreate("XHCI controller", parent, sizeof(XHCIController));
 	if (!device) return;
 	device->pci = parent;
 

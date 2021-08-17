@@ -1953,7 +1953,7 @@ static void Unmount(KFileSystem *fileSystem) {
 }
 
 static void Register(KDevice *_parent) {
-	Volume *volume = (Volume *) KDeviceCreate("EssenceFS", _parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
+	Volume *volume = (Volume *) KDeviceCreate("EssenceFS", _parent, sizeof(Volume));
 
 	if (!volume || !FSFileSystemInitialise(volume)) {
 		KernelLog(LOG_ERROR, "EsFS", "allocation failure", "Register - Could not allocate file system.\n");

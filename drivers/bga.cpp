@@ -29,7 +29,7 @@ void BGADebugClearScreen() {
 void BGADeviceAttached(KDevice *_parent) {
 	KPCIDevice *parent = (KPCIDevice *) _parent;
 
-	BGADisplay *device = (BGADisplay *) KDeviceCreate("BGA", parent, sizeof(BGADisplay), ES_DEVICE_GRAPHICS_TARGET);
+	BGADisplay *device = (BGADisplay *) KDeviceCreate("BGA", parent, sizeof(BGADisplay));
 	if (!device) return;
 
 	parent->EnableFeatures(K_PCI_FEATURE_IO_PORT_ACCESS | K_PCI_FEATURE_MEMORY_SPACE_ACCESS | K_PCI_FEATURE_BAR_0);

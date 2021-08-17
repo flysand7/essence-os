@@ -245,6 +245,10 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags, boo
 			hadNoHandles = 0 == __sync_fetch_and_add(&connection->handles, 1);
 		} break;
 
+		case KERNEL_OBJECT_DEVICE: {
+			KDeviceOpenHandle((KDevice *) object);
+		} break;
+
 		default: {
 			KernelPanic("OpenHandleToObject - Cannot open object of type %x.\n", type);
 		} break;
@@ -411,6 +415,10 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			unsigned previous = __sync_fetch_and_sub(&connection->handles, 1);
 			if (!previous) KernelPanic("CloseHandleToObject - NetConnection %x has no handles.\n", connection);
 			if (previous == 1) NetConnectionClose(connection);
+		} break;
+
+		case KERNEL_OBJECT_DEVICE: {
+			KDeviceCloseHandle((KDevice *) object);
 		} break;
 
 		default: {

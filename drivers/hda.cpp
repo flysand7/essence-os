@@ -286,7 +286,7 @@ static void HDAControllerExploreFunctionGroup(HDAController *controller, uint32_
 
 		uint32_t widgetType = ES_EXTRACT_BITS(widgetCapabilities, 23, 20);
 
-		HDAWidget *widget = (HDAWidget *) KDeviceCreate("HD Audio widget", controller, sizeof(HDAWidget), ES_DEVICE_AUDIO);
+		HDAWidget *widget = (HDAWidget *) KDeviceCreate("HD Audio widget", controller, sizeof(HDAWidget));
 		widget->codec = codec;
 		widget->node = j;
 		widget->functionGroup = functionGroupNode;
@@ -369,7 +369,7 @@ static void HDAControllerExploreFunctionGroup(HDAController *controller, uint32_
 				}
 			}
 
-			// TODO Register the device with the audio subsystem.
+			KDeviceSendConnectedMessage(widget, ES_DEVICE_AUDIO);
 		}
 	}
 }
@@ -382,7 +382,7 @@ static void HDAControllerDestroy(KDevice *_controller) {
 }
 
 static void HDAControllerAttach(KDevice *_parent) {
-	HDAController *controller = (HDAController *) KDeviceCreate("HD Audio controller", _parent, sizeof(HDAController), ES_DEVICE_CONTROLLER);
+	HDAController *controller = (HDAController *) KDeviceCreate("HD Audio controller", _parent, sizeof(HDAController));
 
 	if (!controller) {
 		return;

@@ -103,7 +103,7 @@ void InitialiseVBE(KDevice *parent) {
 		}
 	}
 
-	KGraphicsTarget *target = (KGraphicsTarget *) KDeviceCreate("VBE", parent, sizeof(KGraphicsTarget), ES_DEVICE_GRAPHICS_TARGET);
+	KGraphicsTarget *target = (KGraphicsTarget *) KDeviceCreate("VBE", parent, sizeof(KGraphicsTarget));
 
 	linearBuffer = (uint8_t *) MMMapPhysical(MMGetKernelSpace(), vbeMode->bufferPhysical, 
 			vbeMode->bytesPerScanlineLinear * vbeMode->heightPixels, MM_REGION_WRITE_COMBINING);
@@ -267,7 +267,7 @@ void InitialiseVGA(KDevice *parent) {
 	ProcessorIn8(VGA_INSTAT_READ);
 	ProcessorOut8(VGA_AC_INDEX, 0x20);
 
-	KGraphicsTarget *target = (KGraphicsTarget *) KDeviceCreate("VGA", parent, sizeof(KGraphicsTarget), ES_DEVICE_GRAPHICS_TARGET);
+	KGraphicsTarget *target = (KGraphicsTarget *) KDeviceCreate("VGA", parent, sizeof(KGraphicsTarget));
 	target->screenWidth = VGA_SCREEN_WIDTH;
 	target->screenHeight = VGA_SCREEN_HEIGHT;
 	target->updateScreen = VGAUpdateScreen;

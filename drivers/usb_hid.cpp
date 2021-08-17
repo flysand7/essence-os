@@ -719,7 +719,7 @@ static void DeviceDestroy(KDevice *_device) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	HIDDevice *device = (HIDDevice *) KDeviceCreate("USB HID", parent, sizeof(HIDDevice), ES_DEVICE_HID);
+	HIDDevice *device = (HIDDevice *) KDeviceCreate("USB HID", parent, sizeof(HIDDevice));
 
 	if (!device) {
 		KernelLog(LOG_ERROR, "USBHID", "allocation failure", "Could not allocate HIDDevice structure.\n");

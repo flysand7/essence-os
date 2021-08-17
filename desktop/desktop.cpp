@@ -162,6 +162,7 @@ struct {
 	Array<InstalledApplication *> installedApplications;
 	Array<ApplicationInstance *> allApplicationInstances;
 	Array<ContainerWindow *> allContainerWindows;
+	Array<EsMessageDevice> connectedDevices;
 	InstalledApplication *fileManager;
 	uint64_t currentDocumentID;
 	HashStore<uint64_t, OpenDocument> openDocuments;
@@ -1910,6 +1911,16 @@ void DesktopMessage(EsMessage *message) {
 
 			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) && instance->processHandle) {
 				EsMessagePostRemote(instance->processHandle, message);
+			}
+		}
+	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
+		desktop.connectedDevices.Add(message->device);
+	} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
+		for (uintptr_t i = 0; i < desktop.connectedDevices.Length(); i++) {
+			if (desktop.connectedDevices[i].id == message->device.id) {
+				EsHandleClose(desktop.connectedDevices[i].handle);
+				desktop.connectedDevices.Delete(i);
+				break;
 			}
 		}
 	} else if (message->type == ES_MSG_SET_SCREEN_RESOLUTION) {

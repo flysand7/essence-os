@@ -433,7 +433,7 @@ void PCIController::EnumerateFunction(int bus, int device, int function, int *bu
 	uint32_t deviceClass = ReadConfig(bus, device, function, 0x08);
 	uint32_t interruptInformation = ReadConfig(bus, device, function, 0x3C);
 
-	KPCIDevice *pciDevice = (KPCIDevice *) KDeviceCreate("PCI function", this, sizeof(KPCIDevice), ES_DEVICE_PCI_FUNCTION);
+	KPCIDevice *pciDevice = (KPCIDevice *) KDeviceCreate("PCI function", this, sizeof(KPCIDevice));
 	if (!pciDevice) return;
 
 	pciDevice->classCode = (deviceClass >> 24) & 0xFF;
@@ -537,7 +537,7 @@ static void DeviceAttach(KDevice *parent) {
 		return;
 	}
 
-	pci = (PCIController *) KDeviceCreate("PCI controller", parent, sizeof(PCIController), ES_DEVICE_CONTROLLER);
+	pci = (PCIController *) KDeviceCreate("PCI controller", parent, sizeof(PCIController));
 
 	if (pci) {
 		pci->Enumerate();

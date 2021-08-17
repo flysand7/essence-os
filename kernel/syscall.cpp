@@ -824,7 +824,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	information.driveType = fileSystem->block->driveType;
 	information.spaceUsed = fileSystem->spaceUsed;
 	information.spaceTotal = fileSystem->spaceTotal;
-	information.id = fileSystem->id;
+	information.id = fileSystem->objectID;
 
 	SYSCALL_WRITE(argument1, &information, sizeof(EsVolumeInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);

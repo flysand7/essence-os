@@ -454,7 +454,7 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("FAT", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
+	Volume *volume = (Volume *) KDeviceCreate("FAT", parent, sizeof(Volume));
 
 	if (!volume || !FSFileSystemInitialise(volume)) {
 		KernelLog(LOG_ERROR, "FAT", "allocate error", "DeviceAttach - Could not initialise volume.\n");

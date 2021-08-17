@@ -225,6 +225,7 @@ enum KernelObjectType : uint32_t {
 	KERNEL_OBJECT_DIRECTORY_MONITOR	= 0x00000100, // Monitors a directory, sending messages to the owner process.
 	KERNEL_OBJECT_EVENT_SINK	= 0x00002000, // An event sink. Events can be forwarded to it, allowing waiting on many objects.
 	KERNEL_OBJECT_CONNECTION	= 0x00004000, // A network connection.
+	KERNEL_OBJECT_DEVICE		= 0x00008000, // A device.
 };
 
 // TODO Rename to KObjectReference and KObjectDereference?
@@ -543,19 +544,20 @@ struct KInstalledDriver {
 struct KDevice {
 	const char *cDebugName;
 
-	KDevice *parent; // The parent device.
+	KDevice *parent;                    // The parent device.
 	Array<KDevice *, K_FIXED> children; // Child devices.
 
-#define K_DEVICE_REMOVED (1 << 0)
+#define K_DEVICE_REMOVED         (1 << 0)
+#define K_DEVICE_VISIBLE_TO_USER (1 << 1)   // A ES_MSG_DEVICE_CONNECTED message was sent to Desktop for this device.
 	uint8_t flags;
-	uint16_t type;
 	uint32_t handles;
+	EsObjectID objectID;
 
-	// These callbacks are called with the deviceTreeMutex locked.
-	void (*shutdown)(KDevice *device); // Called when the computer is about to shutdown. Optional.
-	void (*dumpState)(KDevice *device); // Dump the entire state of the device for debugging. Optional.
-	void (*removed)(KDevice *device); // Called when the device is removed. Called after the children are informed. Optional.
-	void (*destroy)(KDevice *device); // Called just before the device is destroyed.
+	// These callbacks are called with the deviceTreeMutex locked, and are all optional.
+	void (*shutdown)(KDevice *device);  // Called when the computer is about to shutdown.
+	void (*dumpState)(KDevice *device); // Dump the entire state of the device for debugging.
+	void (*removed)(KDevice *device);   // Called when the device is removed. Called after the children are informed.
+	void (*destroy)(KDevice *device);   // Called just before the device is destroyed.
 };
 
 struct KDriver {
@@ -575,18 +577,17 @@ typedef bool KDriverIsImplementorCallback(KInstalledDriver *driver, KDevice *dev
 // 	- It calls KDeviceAttach on the function device.
 // 	- A suitable driver is found, which creates a device with that as its parent.
 bool KDeviceAttach(KDevice *parentDevice, const char *cParentDriver /* match the parent field in the config */, KDriverIsImplementorCallback callback);
-
 // Similar to KDeviceAttach, except it calls `attach` for every driver that matches the parent field.
 void KDeviceAttachAll(KDevice *parentDevice, const char *cParentDriver);
-
 // Similar to KDeviceAttach, except it calls `attach` only for the driver matching the provided name. Returns true if the driver was found.
 bool KDeviceAttachByName(KDevice *parentDevice, const char *cName);
 
-KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes /* must be at least the size of a KDevice */, EsDeviceType type);
+KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes /* must be at least the size of a KDevice */);
 void KDeviceOpenHandle(KDevice *device);
 void KDeviceDestroy(KDevice *device); // Call if initialisation of the device failed. Otherwise use KDeviceCloseHandle.
 void KDeviceCloseHandle(KDevice *device); // The device creator is responsible for one handle after the creating it. The device is destroyed once all handles are closed.
 void KDeviceRemoved(KDevice *device); // Call when a child device is removed. Must be called only once!
+void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type); // Send a message to Desktop to inform it the device was connected.
 
 #include <bin/kernel_config.h>
 
@@ -885,7 +886,6 @@ struct KFileSystem : KDevice {
 	KMutex moveMutex;
 	bool isBootFileSystem, unmounting;
 	volatile uint64_t totalHandleCount;
-	uint64_t id;
 	CCSpace cacheSpace;
 
 	MMObjectCache cachedDirectoryEntries, // Directory entries without a loaded node.

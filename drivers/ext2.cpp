@@ -593,7 +593,7 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("ext2", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
+	Volume *volume = (Volume *) KDeviceCreate("ext2", parent, sizeof(Volume));
 
 	if (!volume || !FSFileSystemInitialise(volume)) {
 		KernelLog(LOG_ERROR, "Ext2", "allocate error", "Could not initialise volume.\n");

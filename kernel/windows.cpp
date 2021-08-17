@@ -12,7 +12,7 @@ struct EmbeddedWindow {
 	void *volatile apiWindow;
 	volatile uint32_t handles;
 	struct Window *container;
-	uint64_t id;
+	EsObjectID id;
 	uint32_t resizeClearColor;
 	bool closed;
 };
@@ -43,7 +43,7 @@ struct Window {
 	void *apiWindow;
 	EmbeddedWindow *embed;
 	volatile uint64_t handles;
-	uint64_t id;
+	EsObjectID id;
 
 	// Location:
 	EsPoint position;
@@ -84,7 +84,7 @@ struct WindowManager {
 	Window *pressedWindow, *activeWindow, *hoverWindow;
 	KMutex mutex;
 	KEvent windowsToCloseEvent;
-	uint64_t currentWindowID;
+	EsObjectID currentWindowID;
 	size_t inspectorWindowCount;
 
 	// Cursor:
@@ -123,7 +123,7 @@ struct WindowManager {
 	KMutex gameControllersMutex;
 	EsGameControllerState gameControllers[ES_GAME_CONTROLLER_MAX_COUNT];
 	size_t gameControllerCount;
-	uint64_t gameControllerID;
+	EsObjectID gameControllerID;
 
 	// Flicker-free resizing:
 
@@ -1292,7 +1292,7 @@ void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount) {
 uint64_t KGameControllerConnect() {
 	KMutexAcquire(&windowManager.gameControllersMutex);
 
-	uint64_t id = ++windowManager.gameControllerID;
+	EsObjectID id = ++windowManager.gameControllerID;
 
 	if (windowManager.gameControllerCount != ES_GAME_CONTROLLER_MAX_COUNT) {
 		windowManager.gameControllers[windowManager.gameControllerCount++].id = id;

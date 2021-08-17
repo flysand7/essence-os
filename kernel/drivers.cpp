@@ -17,7 +17,7 @@ Array<KInstalledDriver, K_FIXED> installedDrivers;
 
 void *ResolveKernelSymbol(const char *name, size_t nameBytes);
 
-KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes, EsDeviceType type) {
+KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes) {
 	if (bytes < sizeof(KDevice)) {
 		KernelPanic("KDeviceCreate - Device structure size is too small (less than KDevice).\n");
 	}
@@ -28,7 +28,9 @@ KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes, Es
 	device->parent = parent;
 	device->cDebugName = cDebugName;
 	device->handles = 2; // One handle for the creator, and another closed when the device is removed (by the parent).
-	device->type = type;
+
+	static EsObjectID previousObjectID = 0;
+	device->objectID = __sync_add_and_fetch(&previousObjectID, 1);
 
 	if (parent) {
 		KMutexAcquire(&deviceTreeMutex);
@@ -112,8 +114,43 @@ void DeviceRemovedRecurse(KDevice *device) {
 		i--;
 	}
 
+	if (device->flags & K_DEVICE_VISIBLE_TO_USER) {
+		EsMessage m;
+		EsMemoryZero(&m, sizeof(m));
+		m.type = ES_MSG_DEVICE_DISCONNECTED;
+		m.device.id = device->objectID;
+		desktopProcess->messageQueue.SendMessage(nullptr, &m);
+	}
+
 	if (device->removed) {
 		device->removed(device);
+	}
+}
+
+void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type) {
+	KMutexAcquire(&deviceTreeMutex);
+
+	if (device->flags & K_DEVICE_VISIBLE_TO_USER) {
+		KernelPanic("KDeviceSendConnectedMessage - Connected message already sent for device %x.\n", device);
+	}
+
+	device->flags |= K_DEVICE_VISIBLE_TO_USER;
+
+	KMutexRelease(&deviceTreeMutex);
+
+	KDeviceOpenHandle(device);
+
+	EsMessage m;
+	EsMemoryZero(&m, sizeof(m));
+	m.type = ES_MSG_DEVICE_CONNECTED;
+	m.device.id = device->objectID;
+	m.device.type = type;
+	m.device.handle = desktopProcess->handleTable.OpenHandle(device, 0, KERNEL_OBJECT_DEVICE);
+
+	if (m.device.handle) {
+		if (!desktopProcess->messageQueue.SendMessage(nullptr, &m)) {
+			desktopProcess->handleTable.CloseHandle(m.device.handle); // This will check that the handle is still valid.
+		}
 	}
 }
 
@@ -255,7 +292,7 @@ bool KDeviceAttachByName(KDevice *parentDevice, const char *cName) {
 void DeviceRootAttach(KDevice *parentDevice) {
 	// Load all the root drivers and create their devices.
 
-	KDeviceAttachAll(KDeviceCreate("root", parentDevice, sizeof(KDevice), ES_DEVICE_OTHER), "Root");
+	KDeviceAttachAll(KDeviceCreate("root", parentDevice, sizeof(KDevice)), "Root");
 
 	// Check we have found the drive from which we booted.
 	// TODO Decide the timeout.

@@ -488,7 +488,7 @@ static void Close(KNode *node) {
 }
 
 static void DeviceAttach(KDevice *parent) {
-	Volume *volume = (Volume *) KDeviceCreate("ISO9660", parent, sizeof(Volume), ES_DEVICE_FILE_SYSTEM);
+	Volume *volume = (Volume *) KDeviceCreate("ISO9660", parent, sizeof(Volume));
 
 	if (!volume || !FSFileSystemInitialise(volume)) {
 		KernelLog(LOG_ERROR, "ISO9660", "allocate error", "DeviceAttach - Could not initialise volume.\n");

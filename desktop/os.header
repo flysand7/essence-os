@@ -28,6 +28,7 @@ type_name uint64_t EsAudioDeviceID;
 type_name uint16_t EsFontFamily;
 type_name uint64_t EsTimer;
 type_name int64_t EsListViewIndex;
+type_name uint64_t EsObjectID;
 
 define ES_SCANCODE_A				(0x04)
 define ES_SCANCODE_B				(0x05)
@@ -957,6 +958,8 @@ enum EsMessageType {
 	ES_MSG_REGISTER_FILE_SYSTEM		= 0x4804
 	ES_MSG_UNREGISTER_FILE_SYSTEM		= 0x4805
 	ES_MSG_DESKTOP	                        = 0x4806
+	ES_MSG_DEVICE_CONNECTED			= 0x4807
+	ES_MSG_DEVICE_DISCONNECTED		= 0x4808
 
 	// Messages sent from Desktop to application instances:
 	ES_MSG_TAB_INSPECT_UI			= 0x4A01
@@ -1148,7 +1151,7 @@ struct EsBatchCall {
 
 struct EsThreadInformation {
 	EsHandle handle;
-	uint64_t tid;
+	EsObjectID tid;
 }
 
 struct EsProcessInformation {
@@ -1206,7 +1209,7 @@ struct EsCrashReason {
 
 struct EsProcessState {
 	EsCrashReason crashReason;
-	uint64_t id;
+	EsObjectID id;
 	uint8_t executableState;
 	uint8_t flags;
 }
@@ -1412,7 +1415,7 @@ struct EsAnalogInput {
 };
 
 struct EsGameControllerState {
-	uint64_t id; 
+	EsObjectID id; 
 	uint8_t buttonCount, analogCount; // Number of buttons and analog inputs.
 	uint8_t directionalPad; // Directions given from 0-7, starting at up, going clockwise. 15 indicates unpressed.
 	uint32_t buttons; // Bitset of pressed buttons.
@@ -1483,7 +1486,7 @@ struct EsVolumeInformation {
 	char label[64];
 	uint8_t labelBytes;
 	uint8_t driveType;
-	uint64_t id;
+	EsObjectID id;
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
 };
@@ -1685,7 +1688,7 @@ struct EsMessageProcessCrash {
 };
 
 struct EsMessageDesktop {
-	uint64_t windowID;
+	EsObjectID windowID;
 	EsHandle buffer;
 	size_t bytes;
 };
@@ -1702,7 +1705,7 @@ struct EsMessageCreateInstance {
 };
 
 struct EsMessageTabOperation {
-	uint64_t id;
+	EsObjectID id;
 	EsHandle handle;
 	union { size_t bytes; bool isSource; };
 	EsError error;
@@ -1720,8 +1723,14 @@ struct EsMessageRegisterFileSystem {
 };
 
 struct EsMessageUnregisterFileSystem {
-	uint64_t id;
+	EsObjectID id;
 	EsMountPoint *mountPoint;
+};
+
+struct EsMessageDevice {
+	EsObjectID id;
+	EsHandle handle;
+	EsDeviceType type;
 };
 
 // Message structure.
@@ -1795,6 +1804,7 @@ struct EsMessage {
 		EsMessageTabOperation tabOperation;
 		EsMessageRegisterFileSystem registerFileSystem;
 		EsMessageUnregisterFileSystem unregisterFileSystem;
+		EsMessageDevice device;
 	};
 }
 
@@ -1810,7 +1820,7 @@ struct EsThreadEventLogEntry {
 	uint8_t expressionBytes;
 	uint8_t event;
 	uint16_t line;
-	uint64_t objectID, threadID;
+	EsObjectID objectID, threadID;
 };
 
 struct EsMemoryStatistics {
@@ -1928,14 +1938,14 @@ function void _EsPathAnnouncePathMoved(EsInstance *instance, STRING oldPath, STR
 
 function EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information); 
 function int EsProcessGetExitStatus(EsHandle process); 
-function uintptr_t EsProcessGetID(EsHandle process); 
+function EsObjectID EsProcessGetID(EsHandle process); 
 function void EsProcessGetState(EsHandle process, EsProcessState *state); 
-function EsHandle EsProcessOpen(uint64_t pid); 
+function EsHandle EsProcessOpen(EsObjectID pid); 
 function void EsProcessPause(EsHandle process, bool resume); 
 function void EsProcessTerminate(EsHandle process, int status); 
 function void EsProcessTerminateCurrent(); 
 function EsError EsThreadCreate(EsThreadEntryFunction entryFunction, EsThreadInformation *information, EsGeneric argument); 
-function uint64_t EsThreadGetID(EsHandle thread); // TODO Make this 64-bit.
+function EsObjectID EsThreadGetID(EsHandle thread); // TODO Make this 64-bit.
 function void EsThreadTerminate(EsHandle thread); 
 
 // Memory.
