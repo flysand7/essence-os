@@ -658,11 +658,13 @@ const EsApplicationStartupInformation *EsInstanceGetStartupInformation(EsInstanc
 	return instance->startupInformation;
 }
 
-void EsInstanceDestroy(EsInstance *_instance) {
-	UndoManagerDestroy(_instance->undoManager);
-	EsAssert(_instance->window->instance == _instance);
-	_instance->window->destroyInstanceAfterClose = true;
-	EsElementDestroy(_instance->window);
+void EsInstanceDestroy(EsInstance *instance) {
+	EsInstance *inspector = ((APIInstance *) instance->_private)->attachedInspector;
+	if (inspector) EsInstanceDestroy(inspector);
+	UndoManagerDestroy(instance->undoManager);
+	EsAssert(instance->window->instance == instance);
+	instance->window->destroyInstanceAfterClose = true;
+	EsElementDestroy(instance->window);
 }
 
 EsInstance *InstanceFromWindowID(uint64_t id) {

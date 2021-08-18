@@ -78,6 +78,8 @@ DEFINE_INTERFACE_STRING(DesktopNoSuchApplication, "The requested application cou
 DEFINE_INTERFACE_STRING(DesktopApplicationStartupError, "The requested application could not be started. Your system may be low on resources, or the application files may have been corrupted.");
 DEFINE_INTERFACE_STRING(DesktopNotResponding, "The application is not responding.\nIf you choose to force quit, any unsaved data may be lost.");
 DEFINE_INTERFACE_STRING(DesktopConfirmShutdown, "Are you sure you want to turn off your computer? All applications will be closed.");
+DEFINE_INTERFACE_STRING(DesktopSettingsApplication, "Settings");
+DEFINE_INTERFACE_STRING(DesktopSettingsTitle, "Settings");
 
 // File operations.
 

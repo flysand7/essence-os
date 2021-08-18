@@ -6664,8 +6664,6 @@ struct InspectorElementEntry {
 struct InspectorWindow : EsInstance {
 	EsInstance *instance;
 
-	EsWindow *window;
-
 	EsListView *elementList;
 	Array<InspectorElementEntry> elements;
 	InspectorElementEntry hoveredElement;

@@ -29,7 +29,6 @@
 // 	- Print screen.
 
 // TODO Only let File Manager read the file_type sections of the system configuration.
-// TODO Maybe extend tab hitbox to top of window when maximised? Might need a visual change too.
 // TODO Restarting Desktop if it crashes.
 // TODO Make sure applications can't delete |Fonts: and |Themes:.
 
@@ -41,12 +40,14 @@
 #define APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION (1 << 3)
 #define APPLICATION_PERMISSION_SHUTDOWN                  (1 << 4)
 
-#define APPLICATION_ID_DESKTOP_BLANK_TAB ((int64_t) 0x8000000000000000L)
+#define APPLICATION_ID_DESKTOP_BLANK_TAB (-1)
+#define APPLICATION_ID_DESKTOP_SETTINGS  (-2)
+#define APPLICATION_ID_DESKTOP_CRASHED   (-3)
 
-#define CRASHED_TAB_FATAL_ERROR        (1)
-#define CRASHED_TAB_PROGRAM_NOT_FOUND  (2)
-#define CRASHED_TAB_INVALID_EXECUTABLE (3)
-#define CRASHED_TAB_NOT_RESPONDING     (4)
+#define CRASHED_TAB_FATAL_ERROR        (0)
+#define CRASHED_TAB_PROGRAM_NOT_FOUND  (1)
+#define CRASHED_TAB_INVALID_EXECUTABLE (2)
+#define CRASHED_TAB_NOT_RESPONDING     (3)
 
 #define INSTALLATION_STATE_NONE      (0)
 #define INSTALLATION_STATE_INSTALLER (1)
@@ -66,6 +67,7 @@ struct ReorderList : EsElement {
 struct WindowTab : ReorderItem {
 	struct ContainerWindow *container;
 	struct ApplicationInstance *applicationInstance;
+	struct ApplicationInstance *notRespondingInstance;
 	EsButton *closeButton;
 };
 
@@ -100,13 +102,14 @@ struct OpenDocument {
 	char *temporarySavePath;
 	size_t temporarySavePathBytes;
 	EsHandle readHandle;
-	uint64_t id;
-	uint64_t currentWriter;
+	EsObjectID id;
+	EsObjectID currentWriter;
 };
 
 struct InstalledApplication {
 	char *cName;
 	char *cExecutable;
+	void (*createInstance)(EsMessage *); // For applications provided by Desktop.
 	int64_t id;
 	uint32_t iconID;
 	bool hidden, useSingleProcess, temporary;
@@ -121,24 +124,24 @@ struct CrashedTabInstance : EsInstance {
 struct BlankTabInstance : EsInstance {
 };
 
-struct ApplicationInstance {
-	WindowTab *tab;
-	EsInstance *localInstance;
-	InstalledApplication *application;
-	uint64_t documentID;
+struct SettingsInstance : EsInstance {
+};
 
+struct ApplicationInstance {
+	// User interface.
+	WindowTab *tab; // nullptr for notRespondingInstance.
+	EsObjectID embeddedWindowID;
+	EsHandle embeddedWindowHandle;
+
+	// Currently loaded application.
+	InstalledApplication *application;
+	EsObjectID documentID, processID;
+	EsHandle processHandle;
+
+	// Tab information.
 	char title[128];
 	size_t titleBytes;
 	uint32_t iconID;
-
-	uint64_t processID;
-	EsHandle processHandle;
-	uint64_t embeddedWindowID;
-	EsHandle embeddedWindowHandle;
-
-	bool notResponding;
-	EsHandle restoreEmbeddedWindowHandle;
-	uint64_t restoreEmbeddedWindowID;
 };
 
 const EsStyle styleNewTabContent = {
@@ -164,8 +167,8 @@ struct {
 	Array<ContainerWindow *> allContainerWindows;
 	Array<EsMessageDevice> connectedDevices;
 	InstalledApplication *fileManager;
-	uint64_t currentDocumentID;
-	HashStore<uint64_t, OpenDocument> openDocuments;
+	EsObjectID currentDocumentID;
+	HashStore<EsObjectID, OpenDocument> openDocuments;
 	TaskBar taskBar;
 	EsWindow *wallpaperWindow;
 	bool shutdownWindowOpen;
@@ -174,11 +177,11 @@ struct {
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
-ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container);
+ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden = false);
 void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance);
 void ApplicationInstanceClose(ApplicationInstance *instance);
-ApplicationInstance *ApplicationInstanceFindByWindowID(uint64_t windowID, bool remove = false);
-void EmbeddedWindowDestroyed(uint64_t id);
+ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove = false);
+void EmbeddedWindowDestroyed(EsObjectID id);
 
 //////////////////////////////////////////////////////
 // Reorder lists:
@@ -388,14 +391,22 @@ int ReorderListMessage(EsElement *_list, EsMessage *message) {
 // Container windows:
 //////////////////////////////////////////////////////
 
-void WindowTabActivate(WindowTab *tab) {
-	if (tab->container->active != tab) {
+void WindowTabClose(WindowTab *tab) {
+	if (tab->notRespondingInstance) {
+		// The application is not responding, so force quit the process.
+		EsProcessTerminate(tab->applicationInstance->processHandle, 1);
+	} else {
+		ApplicationInstanceClose(tab->applicationInstance);
+	}
+}
+
+void WindowTabActivate(WindowTab *tab, bool force = false) {
+	if (tab->container->active != tab || force) {
 		tab->container->active = tab;
 		EsElementRelayout(tab->container->tabBand);
 		tab->container->taskBarButton->Repaint(true);
-
-		// EsPrint("Activating tab %d...\n", tab->tabIndex);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->container->window->handle, (uintptr_t) tab->applicationInstance->embeddedWindowHandle, 0, ES_WINDOW_PROPERTY_EMBED);
+		EsHandle handle = tab->notRespondingInstance ? tab->notRespondingInstance->embeddedWindowHandle : tab->applicationInstance->embeddedWindowHandle;
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->window->handle, handle, 0, ES_WINDOW_PROPERTY_EMBED);
 	}
 }
 
@@ -429,7 +440,7 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 		} else if (ctrlOnly && scancode == ES_SCANCODE_T) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, container);
 		} else if (ctrlOnly && scancode == ES_SCANCODE_W) {
-			ApplicationInstanceClose(container->active->applicationInstance);
+			WindowTabClose(container->active);
 		} else if (ctrlOnly && scancode == ES_SCANCODE_N) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
 		} else if (message->keyboard.modifiers == ES_MODIFIER_FLAG && scancode == ES_SCANCODE_UP_ARROW) {
@@ -471,7 +482,12 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 	WindowTabBand *band = (WindowTabBand *) tab->parent;
 	ApplicationInstance *instance = tab->applicationInstance;
 
-	if (message->type == ES_MSG_PRESSED_START) {
+	if (message->type == ES_MSG_DESTROY) {
+		if (tab->notRespondingInstance) {
+			ApplicationInstanceClose(tab->notRespondingInstance);
+			tab->notRespondingInstance = nullptr;
+		}
+	} else if (message->type == ES_MSG_PRESSED_START) {
 		tab->BringToFront();
 		WindowTabActivate(tab);
 	} else if (message->type == ES_MSG_HIT_TEST) {
@@ -510,11 +526,10 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		EsMenu *menu = EsMenuCreate(tab, ES_FLAGS_DEFAULT);
 
 		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopCloseTab), [] (EsMenu *, EsGeneric context) {
-			ApplicationInstanceClose(((WindowTab *) context.p)->applicationInstance);
+			WindowTabClose((WindowTab *) context.p);
 		}, tab);
 
-		if (EsKeyboardIsShiftHeld() && !instance->localInstance) {
-			EsAssert(instance->processHandle);
+		if (EsKeyboardIsShiftHeld()) {
 			EsMenuAddSeparator(menu);
 
 			EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopInspectUI), [] (EsMenu *, EsGeneric context) {
@@ -528,7 +543,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 
 		EsMenuShow(menu);
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && (element->state & UI_STATE_HOVERED)) {
-		ApplicationInstanceClose(tab->applicationInstance);
+		WindowTabClose(tab);
 	} else if (message->type == ES_MSG_REORDER_ITEM_TEST) {
 	} else {
 		return 0;
@@ -548,7 +563,7 @@ WindowTab *WindowTabCreate(ContainerWindow *container, ApplicationInstance *inst
 	tab->closeButton->userData = tab;
 
 	EsButtonOnCommand(tab->closeButton, [] (EsInstance *, EsElement *element, EsCommand *) {
-		ApplicationInstanceClose(((WindowTab *) element->userData.p)->applicationInstance);
+		WindowTabClose((WindowTab *) element->userData.p);
 	});
 	
 	return tab;
@@ -748,15 +763,21 @@ void ShutdownModalCreate() {
 //////////////////////////////////////////////////////
 
 void InstanceForceQuit(EsInstance *, EsElement *element, EsCommand *) {
-	ApplicationInstance *instance = (ApplicationInstance *) element->userData.p;
-	EsProcessTerminate(instance->processHandle, 1);
+	EsObjectID windowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
+
+	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+		ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+		if (instance->tab && instance->tab->notRespondingInstance && instance->tab->notRespondingInstance->embeddedWindowID == windowID) {
+			EsProcessTerminate(instance->processHandle, 1);
+			break;
+		}
+	}
 }
 
-void InstanceCrashedTabCreate(int reason, ApplicationInstance *_instance) {
-	EsMessage m = {};
-	m.type = ES_MSG_INSTANCE_CREATE;
-	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
-	CrashedTabInstance *instance = (CrashedTabInstance *) _EsInstanceCreate(sizeof(CrashedTabInstance), &m, nullptr);
+void InstanceCrashedTabCreate(EsMessage *message) {
+	CrashedTabInstance *instance = (CrashedTabInstance *) _EsInstanceCreate(sizeof(CrashedTabInstance), message, nullptr);
+	int32_t reason = ((APIInstance *) instance->_private)->startupInformation->data;
 	instance->window->toolbarFillMode = true;
 	if (reason != CRASHED_TAB_NOT_RESPONDING) EsWindowSetIcon(instance->window, ES_ICON_DIALOG_ERROR);
 	EsElement *toolbar = EsWindowGetToolbar(instance->window);
@@ -773,70 +794,68 @@ void InstanceCrashedTabCreate(int reason, ApplicationInstance *_instance) {
 	} else if (reason == CRASHED_TAB_NOT_RESPONDING) {
 		EsTextDisplayCreate(panel, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopNotResponding));
 		EsButton *button = EsButtonCreate(panel, ES_CELL_H_RIGHT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(DesktopForceQuit));
-		button->userData = _instance;
 		EsButtonOnCommand(button, InstanceForceQuit);
 	}
-
-	_instance->embeddedWindowHandle = m.createInstance.window;
-	_instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, m.createInstance.window, 0, 0, 0);
-	_instance->localInstance = instance;
 }
 
-void InstanceBlankTabCreate(ApplicationInstance *_instance) {
-	EsMessage m = {};
-	m.type = ES_MSG_INSTANCE_CREATE;
-	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
-	EsInstance *instance = _EsInstanceCreate(sizeof(BlankTabInstance), &m, nullptr);
+void InstanceBlankTabCreate(EsMessage *message) {
+	EsInstance *instance = _EsInstanceCreate(sizeof(BlankTabInstance), message, nullptr);
 	EsWindowSetTitle(instance->window, INTERFACE_STRING(DesktopNewTabTitle));
 	EsPanel *windowBackground = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
 	EsPanel *content = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *buttonGroup;
 
-	{
-		// Installed applications list.
+	// Installed applications list.
 
-		EsPanel *buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleButtonGroupContainer);
+	buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleButtonGroupContainer);
+	buttonGroup->separatorStylePart = ES_STYLE_BUTTON_GROUP_SEPARATOR;
+	buttonGroup->separatorFlags = ES_CELL_H_FILL;
 
-		buttonGroup->separatorStylePart = ES_STYLE_BUTTON_GROUP_SEPARATOR;
-		buttonGroup->separatorFlags = ES_CELL_H_FILL;
+	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+		InstalledApplication *application = desktop.installedApplications[i];
+		if (application->hidden) continue;
 
-		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-			InstalledApplication *application = desktop.installedApplications[i];
+		EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_BUTTON_NOT_FOCUSABLE, ES_STYLE_BUTTON_GROUP_ITEM, application->cName);
+		EsButtonSetIcon(button, (EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
+		button->userData = application;
 
-			if (application->hidden) {
-				continue;
-			}
-
-			EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_BUTTON_NOT_FOCUSABLE, ES_STYLE_BUTTON_GROUP_ITEM, application->cName);
-
-			button->userData = application;
-			
-			EsButtonSetIcon(button, (EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
-
-			EsButtonOnCommand(button, [] (EsInstance *, EsElement *element, EsCommand *) {
-				uint64_t tabID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
-				ApplicationInstance *instance = ApplicationInstanceFindByWindowID(tabID);
-				ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance);
-				EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, instance->tab->window->handle, (uintptr_t) instance->embeddedWindowHandle, 0, ES_WINDOW_PROPERTY_EMBED);
-				EsInstanceDestroy(element->instance);
-				instance->localInstance = nullptr;
-			});
-		}
+		EsButtonOnCommand(button, [] (EsInstance *, EsElement *element, EsCommand *) {
+			EsObjectID tabID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
+			ApplicationInstance *instance = ApplicationInstanceFindByWindowID(tabID);
+			ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance);
+			WindowTabActivate(instance->tab, true);
+			EsInstanceDestroy(element->instance);
+		});
 	}
+}
 
-	_instance->embeddedWindowHandle = m.createInstance.window;
-	_instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, m.createInstance.window, 0, 0, 0);
-	_instance->localInstance = instance;
+void InstanceSettingsCreate(EsMessage *message) {
+	// TODO.
+
+	EsInstance *instance = _EsInstanceCreate(sizeof(SettingsInstance), message, nullptr);
+	EsWindowSetTitle(instance->window, INTERFACE_STRING(DesktopSettingsTitle));
+	EsWindowSetIcon(instance->window, ES_ICON_PREFERENCES_DESKTOP);
+	EsPanel *windowBackground = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
+	EsPanel *content = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *buttonGroup;
+
+	buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleButtonGroupContainer);
+	buttonGroup->separatorStylePart = ES_STYLE_BUTTON_GROUP_SEPARATOR;
+	buttonGroup->separatorFlags = ES_CELL_H_FILL;
+
+	EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_BUTTON_NOT_FOCUSABLE, ES_STYLE_BUTTON_GROUP_ITEM, "Keyboard");
+	EsButtonSetIcon(button, ES_ICON_PREFERENCES_DESKTOP_KEYBOARD);
 }
 
 //////////////////////////////////////////////////////
 // Application management:
 //////////////////////////////////////////////////////
 
-ApplicationInstance *ApplicationInstanceFindByWindowID(uint64_t windowID, bool remove) {
+ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-		if (instance->embeddedWindowID == windowID || (instance->restoreEmbeddedWindowID == windowID && instance->notResponding)) {
+		if (instance->embeddedWindowID == windowID) {
 			if (remove) {
 				desktop.allApplicationInstances.Delete(i);
 			}
@@ -849,16 +868,10 @@ ApplicationInstance *ApplicationInstanceFindByWindowID(uint64_t windowID, bool r
 }
 
 void ApplicationInstanceClose(ApplicationInstance *instance) {
-	if (!instance->processID) {
-		// This is a Desktop owned instance.
-		if (instance->localInstance) EsInstanceDestroy(instance->localInstance);
-		instance->localInstance = nullptr;
-	} else {
-		// TODO Force closing not responding instances.
-		EsMessage m = { ES_MSG_TAB_CLOSE_REQUEST };
-		m.tabOperation.id = instance->embeddedWindowID;
-		EsMessagePostRemote(instance->processHandle, &m);
-	}
+	// TODO Force closing not responding instances.
+	EsMessage m = { ES_MSG_TAB_CLOSE_REQUEST };
+	m.tabOperation.id = instance->embeddedWindowID;
+	EsMessagePostRemote(instance->processHandle, &m);
 }
 
 void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
@@ -868,14 +881,15 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		startupInformation = &_startupInformation;
 	}
 
-	if (instance->restoreEmbeddedWindowHandle) {
-		EsHandleClose(instance->restoreEmbeddedWindowHandle);
-		instance->restoreEmbeddedWindowHandle = ES_INVALID_HANDLE;
+	if (instance->tab && instance->tab->notRespondingInstance) {
+		ApplicationInstanceClose(instance->tab->notRespondingInstance);
+		instance->tab->notRespondingInstance = nullptr;
 	}
 
-	if (applicationID == APPLICATION_ID_DESKTOP_BLANK_TAB) {
-		InstanceBlankTabCreate(instance);
-		return;
+	if (instance->processHandle) {
+		EsHandleClose(instance->processHandle);
+		instance->processID = 0;
+		instance->processHandle = ES_INVALID_HANDLE;
 	}
 
 	InstalledApplication *application = nullptr;
@@ -887,7 +901,9 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	}
 
 	if (!application) {
-		InstanceCrashedTabCreate(CRASHED_TAB_PROGRAM_NOT_FOUND, instance);
+		EsApplicationStartupInformation s = {};
+		s.data = CRASHED_TAB_PROGRAM_NOT_FOUND;
+		ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 		return;
 	}
 
@@ -905,7 +921,9 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 
 	EsHandle process = application->singleProcessHandle;
 
-	if (!application->useSingleProcess || process == ES_INVALID_HANDLE) {
+	if (application->createInstance) {
+		process = ES_CURRENT_PROCESS;
+	} else if (!application->useSingleProcess || process == ES_INVALID_HANDLE) {
 		EsProcessInformation information;
 		EsProcessCreationArguments arguments = {};
 
@@ -914,7 +932,9 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 				ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND, &executableNode);
 
 		if (ES_CHECK_ERROR(error)) {
-			InstanceCrashedTabCreate(CRASHED_TAB_INVALID_EXECUTABLE, instance);
+			EsApplicationStartupInformation s = {};
+			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
+			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 			return;
 		}
 
@@ -984,7 +1004,9 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			process = information.handle;
 			EsHandleClose(information.mainThread.handle);
 		} else {
-			InstanceCrashedTabCreate(CRASHED_TAB_INVALID_EXECUTABLE, instance);
+			EsApplicationStartupInformation s = {};
+			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
+			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 			return;
 		}
 	}
@@ -1016,7 +1038,7 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		startupInformation->readHandle = EsSyscall(ES_SYSCALL_NODE_SHARE, startupInformation->readHandle, process, 0, 0);
 	}
 
-	if (!application->useSingleProcess) {
+	if (!application->useSingleProcess && !application->createInstance) {
 		startupInformation->flags |= ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS;
 	}
 
@@ -1029,24 +1051,29 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, 0xFF000000 | GetConstantNumber("windowFillColor"), 0, ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR);
 	instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, handle, 0, 0, 0);
 	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, process, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
-	EsMessagePostRemote(process, &m);
 
-	if (!application->useSingleProcess) {
-		EsHandleClose(process);
+	if (application->createInstance) {
+		application->createInstance(&m);
 	} else {
-		application->openInstanceCount++;
+		EsMessagePostRemote(process, &m);
+
+		if (!application->useSingleProcess) {
+			EsHandleClose(process);
+		} else {
+			application->openInstanceCount++;
+		}
 	}
 }
 
-ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container) {
+ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
 	ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
-	WindowTab *tab = WindowTabCreate(container ?: ContainerWindowCreate(), instance);
+	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate(), instance) : nullptr;
 	instance->title[0] = ' ';
 	instance->titleBytes = 1;
-	desktop.allApplicationInstances.Add(instance);
 	instance->tab = tab;
+	desktop.allApplicationInstances.Add(instance);
 	ApplicationInstanceStart(id, startupInformation, instance);
-	WindowTabActivate(tab);
+	if (!hidden) WindowTabActivate(tab);
 	return instance;
 }
 
@@ -1083,27 +1110,9 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-		if (instance->processID != message->crash.pid) {
-			continue;
-		}
-
-		if (instance->notResponding) {
-			instance->notResponding = false;
-			instance->embeddedWindowHandle = instance->restoreEmbeddedWindowHandle;
-			instance->restoreEmbeddedWindowHandle = ES_INVALID_HANDLE;
-			instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, instance->embeddedWindowHandle, 0, 0, 0);
-			EsInstanceDestroy(instance->localInstance);
-			instance->localInstance = nullptr;
-		}
-
-		instance->processID = 0;
-		EsHandleClose(instance->embeddedWindowHandle);
-		InstanceCrashedTabCreate(CRASHED_TAB_FATAL_ERROR, instance);
-
-		ContainerWindow *container = instance->tab->container;
-
-		if (instance->tab == container->active) {
-			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, container->window->handle, (uintptr_t) instance->embeddedWindowHandle, 0, ES_WINDOW_PROPERTY_EMBED);
+		if (instance->processID == message->crash.pid) {
+			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, nullptr, instance);
+			WindowTabActivate(instance->tab, true);
 		}
 	}
 
@@ -1122,21 +1131,12 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 	EsHandleClose(processHandle);
 }
 
-void ApplicationProcessTerminated(uint64_t pid) {
+void ApplicationProcessTerminated(EsObjectID pid) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
 		if (instance->processID != pid) {
 			continue;
-		}
-
-		if (instance->notResponding) {
-			instance->notResponding = false;
-			instance->embeddedWindowHandle = instance->restoreEmbeddedWindowHandle;
-			instance->restoreEmbeddedWindowHandle = ES_INVALID_HANDLE;
-			instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, instance->embeddedWindowHandle, 0, 0, 0);
-			EsInstanceDestroy(instance->localInstance);
-			instance->localInstance = nullptr;
 		}
 
 		EmbeddedWindowDestroyed(instance->embeddedWindowID);
@@ -1160,7 +1160,7 @@ void ApplicationProcessTerminated(uint64_t pid) {
 
 void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInformation) {
 	bool foundDocument = false;
-	uint64_t documentID;
+	EsObjectID documentID;
 
 	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
 		OpenDocument *document = &desktop.openDocuments[i];
@@ -1319,7 +1319,7 @@ void InstanceAnnouncePathMoved(ApplicationInstance *fromInstance, const uint8_t 
 	const char *oldPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2;
 	const char *newPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes;
 
-	uint64_t documentID = 0;
+	EsObjectID documentID = 0;
 
 	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
 		OpenDocument *document = &desktop.openDocuments[i];
@@ -1418,6 +1418,33 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 //////////////////////////////////////////////////////
 
 void ConfigurationLoad() {
+	// Add applications provided by Desktop.
+
+	{
+		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		application->id = APPLICATION_ID_DESKTOP_BLANK_TAB;
+		application->hidden = true;
+		application->createInstance = InstanceBlankTabCreate;
+		desktop.installedApplications.Add(application);
+	}
+
+	{
+		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		application->cName = (char *) interfaceString_DesktopSettingsApplication;
+		application->id = APPLICATION_ID_DESKTOP_SETTINGS;
+		application->iconID = ES_ICON_PREFERENCES_DESKTOP;
+		application->createInstance = InstanceSettingsCreate;
+		desktop.installedApplications.Add(application);
+	}
+
+	{
+		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		application->id = APPLICATION_ID_DESKTOP_CRASHED;
+		application->hidden = true;
+		application->createInstance = InstanceCrashedTabCreate;
+		desktop.installedApplications.Add(application);
+	}
+
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		// Load information about installed applications.
 
@@ -1569,41 +1596,33 @@ void WallpaperLoad(EsGeneric) {
 void CheckForegroundWindowResponding(EsGeneric) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
+		WindowTab *tab = instance->tab;
 
-		if ((~instance->tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) 
-				|| instance->tab->container->active != instance->tab
-				|| !instance->processID || !instance->processHandle) {
+		if (!tab || (~tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) || tab->container->active != instance->tab) {
 			continue;
 		}
 
 		EsProcessState state;
 		EsProcessGetState(instance->processHandle, &state);
 
-		WindowTab *tab = instance->tab;
-
 		if (state.flags & ES_PROCESS_STATE_PINGED) {
-			if (instance->notResponding) {
-				// Tab is already in a non-responding state.
+			if (tab->notRespondingInstance) {
+				// The tab is already not responding.
 			} else {
-				instance->notResponding = true;
-				instance->restoreEmbeddedWindowHandle = instance->embeddedWindowHandle;
-				instance->restoreEmbeddedWindowID = instance->embeddedWindowID;
-				InstanceCrashedTabCreate(CRASHED_TAB_NOT_RESPONDING, instance);
-				EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->container->window->handle, instance->embeddedWindowHandle, 0, ES_WINDOW_PROPERTY_EMBED);
+				// The tab has just stopped not responding.
+				EsApplicationStartupInformation startupInformation = { .data = CRASHED_TAB_NOT_RESPONDING };
+				tab->notRespondingInstance = ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_CRASHED, 
+						&startupInformation, tab->container, true /* hidden */);
+				WindowTabActivate(tab, true);
 			}
 		} else {
-			if (instance->notResponding) {
-				instance->notResponding = false;
-				instance->embeddedWindowHandle = instance->restoreEmbeddedWindowHandle;
-				instance->restoreEmbeddedWindowHandle = ES_INVALID_HANDLE;
-				instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, instance->embeddedWindowHandle, 0, 0, 0);
-				EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->container->window->handle, instance->embeddedWindowHandle, 0, ES_WINDOW_PROPERTY_EMBED);
-				tab->Repaint(true);
-				tab->container->taskBarButton->Repaint(true);
-				EsAssert(instance->localInstance);
-				EsInstanceDestroy(instance->localInstance);
-				instance->localInstance = nullptr;
+			if (tab->notRespondingInstance) {
+				// The tab has started responding.
+				ApplicationInstanceClose(tab->notRespondingInstance);
+				tab->notRespondingInstance = nullptr;
+				WindowTabActivate(tab, true);
 			} else {
+				// Check if the tab is responding.
 				EsMessage m;
 				EsMemoryZero(&m, sizeof(EsMessage));
 				m.type = ES_MSG_PING;
@@ -1825,22 +1844,19 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer) {
 	}
 }
 
-void EmbeddedWindowDestroyed(uint64_t id) {
+void EmbeddedWindowDestroyed(EsObjectID id) {
 	// TODO Close open documents.
 
 	EsMenuCloseAll();
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(id, true /* remove if found */);
 	if (!instance) return;
 
-	ContainerWindow *container = instance->tab->container;
-	if (instance->processID && !instance->notResponding) EsHandleClose(instance->embeddedWindowHandle);
+	EsHandleClose(instance->embeddedWindowHandle);
 	if (instance->processHandle) EsHandleClose(instance->processHandle);
-	if (instance->restoreEmbeddedWindowHandle) EsHandleClose(instance->restoreEmbeddedWindowHandle);
-	instance->embeddedWindowID = 0;
 
 	InstalledApplication *application = instance->application;
 
-	if (application && application->singleProcessHandle && instance->processID) {
+	if (application && application->singleProcessHandle) {
 		EsAssert(application->openInstanceCount);
 		application->openInstanceCount--;
 
@@ -1854,22 +1870,26 @@ void EmbeddedWindowDestroyed(uint64_t id) {
 		}
 	}
 
-	if (container->tabBand->items.Length() == 1) {
-		EsElementDestroy(container->window);
-		EsElementDestroy(container->taskBarButton);
-		desktop.allContainerWindows.FindAndDeleteSwap(container, true);
-	} else {
-		if (container->active == instance->tab) {
-			container->active = nullptr;
+	if (instance->tab) {
+		ContainerWindow *container = instance->tab->container;
 
-			for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
-				if (container->tabBand->items[i] != instance->tab) continue;
-				WindowTabActivate((WindowTab *) container->tabBand->items[i ? (i - 1) : 1]);
-				break;
+		if (container->tabBand->items.Length() == 1) {
+			EsElementDestroy(container->window);
+			EsElementDestroy(container->taskBarButton);
+			desktop.allContainerWindows.FindAndDeleteSwap(container, true);
+		} else {
+			if (container->active == instance->tab) {
+				container->active = nullptr;
+
+				for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
+					if (container->tabBand->items[i] != instance->tab) continue;
+					WindowTabActivate((WindowTab *) container->tabBand->items[i ? (i - 1) : 1]);
+					break;
+				}
 			}
-		}
 
-		EsElementDestroy(instance->tab);
+			EsElementDestroy(instance->tab);
+		}
 	}
 
 	EsHeapFree(instance);

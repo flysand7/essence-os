@@ -1390,6 +1390,7 @@ struct EsApplicationStartupInformation {
 	STRING filePath;
 	EsWindow *targetWindow;
 	uint32_t flags;
+	int32_t data;
 	EsHandle readHandle; // Internal use.
 };
 
