@@ -375,7 +375,7 @@ void Build(bool enableOptimisations, bool compile) {
 #define DEBUG_START (1)
 #define DEBUG_NONE (2)
 
-void Run(int emulator, int cores, int log, int debug) {
+void Run(int emulator, int log, int debug) {
 	LoadOptions();
 
 	switch (emulator) {
@@ -435,7 +435,7 @@ void Run(int emulator, int cores, int log, int debug) {
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
-					cores, audioFlags2, logFlags, usbFlags, usbFlags2);
+					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2);
 		} break;
 
 		case EMULATOR_BOCHS: {
@@ -971,26 +971,15 @@ void AddressToLine(const char *symbolFile) {
 	}
 }
 
-typedef struct BuildType {
-	const char *name, *alias, *emulator;
-	bool optimise, debug, smp, noCompile;
-} BuildType;
+void BuildAndRun(bool optimise, bool compile, bool debug, int emulator) {
+	Build(optimise, compile);
 
-BuildType buildTypes[] = {
-	{ .name = "build", .alias = "b" },
-	{ .name = "build-optimised", .alias = "opt", .optimise = true },
-
-	{ .name = "debug", .alias = "d", .emulator = "qemu", .debug = true },
-	{ .name = "debug-without-compile", .alias = "d3", .emulator = "qemu", .debug = true, .noCompile = true },
-
-	{ .name = "vbox", .alias = "v", .emulator = "vbox", .optimise = true },
-	{ .name = "vbox-without-opt", .alias = "v2", .emulator = "vbox" },
-	{ .name = "vbox-without-compile", .alias = "v3", .emulator = "vbox", .noCompile = true },
-
-	{ .name = "qemu-with-opt", .alias = "t", .emulator = "qemu", .optimise = true },
-	{ .name = "test", .alias = "t2", .emulator = "qemu" },
-	{ .name = "qemu-without-compile", .alias = "t3", .emulator = "qemu", .noCompile = true },
-};
+	if (encounteredErrors) {
+		printf("Errors were encountered during the build.\n");
+	} else if (emulator != -1) {
+		Run(emulator, LOG_NORMAL, debug);
+	}
+}
 
 void DoCommand(const char *l) {
 	while (l && (*l == ' ' || *l == '\t')) l++;
@@ -1008,29 +997,27 @@ void DoCommand(const char *l) {
 		}
 	}
 
-	for (uintptr_t i = 0; i < sizeof(buildTypes) / sizeof(buildTypes[0]); i++) {
-		BuildType *entry = buildTypes + i;
-
-		if (strcmp(entry->name, l) && strcmp(entry->alias, l)) {
-			continue;
-		}
-
-		Build(entry->optimise, !entry->noCompile);
-
-		if (encounteredErrors) {
-			printf("Errors were encountered during the build.\n");
-		} else if (entry->emulator) {
-			Run(entry->emulator[0] == 'q' ? EMULATOR_QEMU : EMULATOR_VIRTUALBOX, entry->smp ? 3 : 1, LOG_NORMAL, entry->debug);
-		}
-
-		return;
-	}
-
-	if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
-		exit(0);
-	} else if (0 == strcmp(l, "reset-config")) {
-		unlink("bin/build_config.ini");
-		printf("Please restart the build system.\n");
+	if (0 == strcmp(l, "b") || 0 == strcmp(l, "build")) {
+		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, -1);
+	} else if (0 == strcmp(l, "opt") || 0 == strcmp(l, "build-optimised")) {
+		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, -1);
+	} else if (0 == strcmp(l, "d") || 0 == strcmp(l, "debug")) {
+		BuildAndRun(false /* optimise */, true /* compile */, true /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "d3") || 0 == strcmp(l, "debug-without-compile")) {
+		BuildAndRun(false /* optimise */, false /* compile */, true /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "v") || 0 == strcmp(l, "vbox")) {
+		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+	} else if (0 == strcmp(l, "v2") || 0 == strcmp(l, "vbox-without-opt")) {
+		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+	} else if (0 == strcmp(l, "v3") || 0 == strcmp(l, "vbox-without-compile")) {
+		BuildAndRun(false /* optimise */, false /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+	} else if (0 == strcmp(l, "t") || 0 == strcmp(l, "qemu-with-opt")) {
+		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "t2") || 0 == strcmp(l, "test")) {
+		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "t3") || 0 == strcmp(l, "qemu-without-compile")) {
+		BuildAndRun(false /* optimise */, false /* compile */, false /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
 		exit(0);
 	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {
 		Compile(COMPILE_FOR_EMULATOR, 1024, NULL);
@@ -1039,11 +1026,6 @@ void DoCommand(const char *l) {
 		SaveConfig();
 		printf("Please restart the build system.\n");
 		exit(0);
-	} else if (0 == strcmp(l, "clean-root")) {
-		forceRebuild = true;
-		CallSystem("rm -rf root");
-		CallSystem("mkdir root root/Applications root/Applications/POSIX root/Applications/POSIX/bin root/Applications/POSIX/lib "
-				"root/Applications/POSIX/include root/Essence root/Essence/Modules root/Essence/Fonts");
 	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
 		BuildUtilities();
 	} else if (0 == strcmp(l, "config")) {
@@ -1066,31 +1048,6 @@ void DoCommand(const char *l) {
 			fscanf(f, "%s %s", a, b);
 			printf("%s -> %s\n", a, b);
 			Replace(a, b, NULL);
-		}
-		fclose(f);
-	} else if (0 == strcmp(l, "find-many")) {
-		forceRebuild = true;
-		printf("Enter the name of the find file: ");
-		char *l2 = NULL;
-		size_t pos;
-		getline(&l2, &pos, stdin);
-		l2[strlen(l2) - 1] = 0;
-		FILE *f = fopen(l2, "r");
-		free(l2);
-		while (!feof(f)) {
-			char a[512];
-			fscanf(f, "%s", a);
-			// Find(a);
-			int t = 0;
-			for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
-				char buffer[256];
-				sprintf(buffer, "grep -nr '%s' -e '%s' | wc -l", folders[i], a);
-				FILE *f = popen(buffer, "r");
-				buffer[fread(buffer, 1, sizeof(buffer), f)] = 0;
-				t += atoi(buffer);
-				fclose(f);
-			}
-			printf("%3d %s\n", t, a);
 		}
 		fclose(f);
 	} else if (0 == strcmp(l, "find")) {
@@ -1201,12 +1158,6 @@ void DoCommand(const char *l) {
 		closedir(directory);
 	} else if (0 == memcmp(l, "do ", 3)) {
 		CallSystem(l + 3);
-	} else if (0 == strcmp(l, "test-gf")) {
-		if (!CallSystem("g++ -g -Wall -o gf util/gf.cpp `wx-config --cxxflags --libs all` " WARNING_FLAGS)) {
-			CallSystem("./gf");
-		}
-	} else if (0 == strcmp(l, "gf")) {
-		CallSystemF("nohup ./gf > /dev/null 2>&1 &");
 	} else if (0 == memcmp(l, "live ", 5)) {
 		if (interactiveMode) {
 			fprintf(stderr, "This command cannot be used in interactive mode. Type \"quit\" and then run \"./start.sh live <...>\".\n");
@@ -1317,26 +1268,81 @@ void DoCommand(const char *l) {
 		printf(ColorNormal);
 	} else if (0 == memcmp(l, "a2l ", 4)) {
 		AddressToLine(l + 3);
+	} else if (0 == memcmp(l, "get-source ", 11)) {
+		if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
+			exit(1);
+		}
+
+		const char *folder = l + 11;
+		const char *url = NULL;
+
+		for (int i = 0; folder[i]; i++) {
+			if (folder[i] == ' ') {
+				url = folder + i + 1;
+				break;
+			}
+		}
+
+		assert(url);
+
+		char name[1024];
+		strcpy(name, "bin/cache/");
+
+		const char *extension = url;
+
+		for (int i = 0; url[i]; i++) {
+			name[i + 10] = isalnum(url[i]) ? url[i] : '_';
+			name[i + 11] = 0;
+			if (url[i] == '.') extension = url + i;
+		}
+
+		char decompressFlag;
+
+		if (0 == strcmp(extension, ".bz2")) {
+			decompressFlag = 'j';
+		} else if (0 == strcmp(extension, ".xz")) {
+			decompressFlag = 'J';
+		} else if (0 == strcmp(extension, ".gz")) {
+			decompressFlag = 'z';
+		} else {
+			fprintf(stderr, "Unknown archive format.\n");
+			exit(1);
+		}
+
+		FILE *f = fopen(name, "rb");
+
+		if (f) {
+			fclose(f);
+		} else if (CallSystemF("curl %s > %s", url, name)) {
+			CallSystemF("rm %s", name); // Remove partially downloaded file.
+			exit(1);
+		}
+
+		if (CallSystemF("tar -vx%cf %s", decompressFlag, name)) exit(1);
+		if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
-		printf("(t2) test - Qemu\n");
-		printf("(b ) build - Unoptimised build\n");
-		printf("(c ) compile - Compile the kernel and applications.\n");
-		printf("(v ) vbox - VirtualBox (optimised)\n");
-		printf("(d ) debug - Qemu (GDB)\n");
-		printf("(  ) do - Run a system() command.\n");
-		printf("(  ) config - Open the local configuration editor.\n");
+		printf("build (b)                         - Build.\n");
+		printf("test  (t2)                        - Build and run in Qemu.\n");
+		printf("vbox  (v)                         - Build (with optimisations enabled) and run in VirtualBox.\n");
+		printf("debug (d)                         - Build and run in Qemu (GDB server enabled).\n");
+		printf("config                            - Open the local configuration editor.\n");
+		printf("exit                              - Exit the build system.\n");
 
-		printf(ColorHighlight "\n=== Other Commands ===\n" ColorNormal);
-		printf("(t ) qemu-with-opt - Qemu\n");
-		printf("(t3) qemu-without-compile - Qemu\n");
-		printf("(x ) exit - Exit the build system.\n");
-		printf("(h ) help - Show the help prompt.\n");
-		printf("(u ) build-utilities - Build utility applications.\n");
-		printf("(v2) vbox-without-opt - VirtualBox (unoptimised)\n");
-		printf("(v3) vbox-without-compile - VirtualBox\n");
-		printf("(  ) find - Search the project's source code.\n");
-		printf("(  ) replace - Replace a word throughout the project.\n");
+		printf(ColorHighlight "\n=== Search and replace ===\n" ColorNormal);
+		printf("find, find-word, find-in          - Search the project's source code.\n");
+		printf("replace-many, replace, replace-in - Replace a word in throughout the source code.\n");
+		printf("fix-replaced-field-name           - Replace usages of a struct field after changing it.\n");
+
+		printf(ColorHighlight "\n=== Special builds ===\n" ColorNormal);
+		printf("build-optional-ports              - Build the applications in ports/.\n");
+		printf("live                              - Create a live USB or CDROM.\n");
+
+		printf(ColorHighlight "\n=== Utilities ===\n" ColorNormal);
+		printf("designer                          - Open the interface style designer.\n");
+		printf("line-count                        - Count lines of code.\n");
+		printf("ascii <string>                    - Convert a string to a list of ASCII codepoints.\n");
+		printf("a2l <executable>                  - Translate addresses to lines.\n");
 	} else {
 		printf("Unrecognised command '%s'. Enter 'help' to get a list of commands.\n", l);
 	}

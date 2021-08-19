@@ -8,37 +8,17 @@ GMP_VERSION=6.2.1
 MPFR_VERSION=4.1.0
 MPC_VERSION=1.2.1
 
-if [ ! -f "bin/binutils-$BINUTILS_VERSION.tar.xz" ]; then
-	curl ftp://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz > bin/binutils-$BINUTILS_VERSION.tar.xz
-fi
-
-if [ ! -f "bin/gcc-$GCC_VERSION.tar.xz" ]; then
-	curl ftp://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz > bin/gcc-$GCC_VERSION.tar.xz
-fi
-
-if [ ! -f "bin/gmp-$GMP_VERSION.tar.xz" ]; then
-	curl ftp://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz > bin/gmp-$GMP_VERSION.tar.xz
-fi
-
-if [ ! -f "bin/mpfr-$MPFR_VERSION.tar.xz" ]; then
-	curl ftp://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.xz > bin/mpfr-$MPFR_VERSION.tar.xz
-fi
-
-if [ ! -f "bin/mpc-$MPC_VERSION.tar.gz" ]; then
-	curl ftp://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.gz > bin/mpc-$MPC_VERSION.tar.gz
-fi
-
-tar -xJf bin/binutils-$BINUTILS_VERSION.tar.xz
-tar -xJf bin/gcc-$GCC_VERSION.tar.xz
-tar -xJf bin/gmp-$GMP_VERSION.tar.xz
-tar -xJf bin/mpfr-$MPFR_VERSION.tar.xz
-tar -xzf bin/mpc-$MPC_VERSION.tar.gz
-
-mv binutils-$BINUTILS_VERSION bin/binutils-src
-mv gcc-$GCC_VERSION bin/gcc-src
-mv gmp-$GMP_VERSION bin/gmp-src
-mv mpfr-$MPFR_VERSION bin/mpfr-src
-mv mpc-$MPC_VERSION bin/mpc-src
+rm -rf bin/gcc-src bin/binutils-src bin/mpc-src bin/gmp-src bin/mpfr-src
+bin/build get-source binutils-$BINUTILS_VERSION ftp://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz
+mv bin/source bin/binutils-src
+bin/build get-source gcc-$GCC_VERSION ftp://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz
+mv bin/source bin/gcc-src
+bin/build get-source gmp-$GMP_VERSION ftp://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz
+mv bin/source bin/gmp-src
+bin/build get-source mpfr-$MPFR_VERSION ftp://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.xz
+mv bin/source bin/mpfr-src
+bin/build get-source mpc-$MPC_VERSION ftp://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.gz
+mv bin/source bin/mpc-src
 
 cp ports/gcc/changes/binutils_bfd_config.bfd bin/binutils-src/bfd/config.bfd
 cp ports/gcc/changes/binutils_config.sub bin/binutils-src/config.sub

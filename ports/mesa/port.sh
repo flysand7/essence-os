@@ -1,11 +1,8 @@
 set -e
 
-if [ ! -f "bin/mesa.tar.xz" ]; then
-	curl https://archive.mesa3d.org//mesa-20.1.8.tar.xz > bin/mesa.tar.xz
-fi
-
-tar -xJf bin/mesa.tar.xz
-mv mesa-20.1.8 bin/mesa
+rm -rf bin/mesa
+bin/build get-source mesa-20.1.8 https://archive.mesa3d.org//mesa-20.1.8.tar.xz
+mv bin/source bin/mesa
 
 echo "" > bin/meson_cross.txt
 echo "[binaries]" >> bin/meson_cross.txt
@@ -34,8 +31,8 @@ cp ports/mesa/changes/src_gallium_targets_osmesa_meson.build bin/mesa/src/galliu
 cd bin/mesa
 meson ../build-mesa --cross-file ../meson_cross.txt \
 	-Dosmesa=gallium \
-	-Ddefault_library=static && \
-	ninja -C ../build-mesa
+	-Ddefault_library=static
+ninja -C ../build-mesa
 cd ../..
 
 cp bin/build-mesa/subprojects/expat-2.2.5/libexpat.a root/Applications/POSIX/lib

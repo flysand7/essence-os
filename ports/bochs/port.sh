@@ -2,15 +2,9 @@ set -e
 
 SYSROOT=`realpath root`
 VERSION=2.6.9
-NAME=bochs
-URL="https://netix.dl.sourceforge.net/project/$NAME/$NAME/$VERSION/$NAME-$VERSION.tar.gz"
-SOURCE="bin/$NAME-$VERSION.tar.gz"
 
-if [ ! -f $SOURCE ]; then curl $URL > $SOURCE; fi
-tar -xzf $SOURCE
-mv $NAME-$VERSION bin/$NAME
-
-cd bin/$NAME
+bin/build get-source bochs-$VERSION https://netix.dl.sourceforge.net/project/bochs/bochs/$VERSION/bochs-$VERSION.tar.gz
+cd bin/source
 
 cp ../../ports/bochs/config.cc .
 cp ../../ports/bochs/config.h.in .
@@ -28,4 +22,4 @@ make -j 4
 make DESTDIR=$SYSROOT install
 
 cd ../..
-rm -r bin/$NAME
+rm -r bin/source

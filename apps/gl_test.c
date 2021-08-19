@@ -68,42 +68,11 @@ static void (*glVertexAttribPointer)(GLuint index, GLint size, GLenum type, GLbo
 
 int CanvasCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT_BACKGROUND) {
-		*response = ES_HANDLED;
-
-		int ox = message->painter->width / 2 - IMAGE_WIDTH / 2;
-		int oy = message->painter->height / 2 - IMAGE_HEIGHT / 2;
-		EsRectangle bounds = { ox, ox + IMAGE_WIDTH, oy, oy + IMAGE_HEIGHT };
+		EsRectangle bounds = EsRectangleCenter(EsPainterBoundsInset(message->painter), ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsDrawBitmap(message->painter, bounds, buffer, IMAGE_WIDTH * 4, ES_DRAW_BITMAP_OPAQUE);
-	
-#if 0
-		EsPainter *painter = message->painter;
-		size_t stride;
-		uint32_t *bits;
-		EsPaintTargetStartDirectAccess(painter->target, &bits, NULL, NULL, &stride);
-		int width = painter->width, height = painter->height;
-		int ox = width / 2 - IMAGE_WIDTH / 2;
-		int oy = height / 2 - IMAGE_HEIGHT / 2;
-		stride /= 4;
-
-		uint32_t *start = bits + painter->offsetX + painter->offsetY * stride;
-
-		for (int i = 0; i < height; i++) {
-			uint32_t *destination = start + i * stride;
-
-			for (int j = 0; j < width; j++, destination++) {
-				int sx = j - ox, sy = i - oy;
-
-				if (sy >= 0 && sy < IMAGE_HEIGHT && sx >= 0 && sx < IMAGE_WIDTH) {
-					*destination = buffer[sy * IMAGE_WIDTH + sx];
-				} else {
-					*destination = 0xFF000000;
-				}
-			}
-		}
-#endif
 	}
 
-	return ES_NOT_HANDLED;
+	return 0;
 }
 #endif
 
@@ -261,22 +230,19 @@ int main(int argc, char **argv) {
 	}
 
 	fclose(out);
-
 	OSMesaDestroyContext(context);
+	free(buffer);
 #else
 	while (true) {
 		EsMessage *message = EsMessageReceive();
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
-			EsInstance *instance = EsInstanceCreate(message, "GL Test");
+			EsInstance *instance = EsInstanceCreate(message, "GL Test", -1);
 			EsWindowSetTitle(instance->window, "GL Test", -1);
-			EsCustomElementCreate(instance->window, ES_CELL_FILL, (EsElementProperties) { .callback = CanvasCallback });
+			EsCustomElementCreate(instance->window, ES_CELL_FILL, 0)->messageUser = (EsUICallbackFunction) CanvasCallback;
 		}
 	}
 #endif
-
-	free(buffer);
-	printf("all done :)\n");
 
 	return 0;
 }
