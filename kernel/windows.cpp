@@ -3,6 +3,11 @@
 // TODO Don't send key released messages if the focused window has changed.
 // TODO Blur clamping is incorrect with minimal repainting!
 
+// Terminology:
+// 	Dynamic resize - flicker-free resizing in container windows with an embedded window owned by a separate process.
+// 	Direct update - paint first onto the video card's framebuffer, then onto the window manager's; used to reduce latency.
+// 	Fast scroll - scrolling by shifting the bits in the window's surface, rather than repainting the entire area.
+
 struct EmbeddedWindow {
 	void Destroy();
 	void Close();

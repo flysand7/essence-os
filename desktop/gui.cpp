@@ -3742,7 +3742,7 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 		style = UIGetDefaultStyleVariant(style, parent);
 	}
 
-	if (style == ES_STYLE_PUSH_BUTTON_NORMAL) {
+	if (style == ES_STYLE_PUSH_BUTTON_NORMAL || style == ES_STYLE_PUSH_BUTTON_DANGEROUS) {
 		flags |= ES_BUTTON_PUSH;
 	} else if (style == ES_STYLE_PUSH_BUTTON_TOOLBAR || style == ES_STYLE_PUSH_BUTTON_TOOLBAR_MEDIUM 
 			|| style == ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG || style == ES_STYLE_PUSH_BUTTON_STATUS_BAR) {

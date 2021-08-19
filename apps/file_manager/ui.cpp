@@ -528,8 +528,20 @@ void ListItemGenerateThumbnailTask(Instance *, Task *task) {
 		return; // There are no longer any list items visible for this file.
 	}
 
+	EsFileInformation information = EsFileOpen(STRING(task->string), ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND);
+
+	if (ES_SUCCESS != information.error) {
+		return; // The file could not be loaded.
+	}
+
+	if (information.size > 64 * 1024 * 1024) {
+		EsHandleClose(information.handle);
+		return; // The file is too large.
+	}
+
 	size_t fileBytes;
-	void *file = EsFileReadAll(STRING(task->string), &fileBytes);
+	void *file = EsFileReadAllFromHandle(information.handle, &fileBytes);
+	EsHandleClose(information.handle);
 
 	if (!file) {
 		return; // The file could not be loaded.
