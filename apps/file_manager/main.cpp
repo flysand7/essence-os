@@ -101,7 +101,7 @@ struct HistoryEntry {
 };
 
 struct Drive {
-	const char *prefix;
+	char *prefix;
 	size_t prefixBytes;
 	EsVolumeInformation information;
 };
@@ -201,18 +201,20 @@ struct Folder {
 	EsArena entryArena;
 
 	Array<Instance *> attachedInstances;
-	Array<Instance *> attachingInstances;
+	uintptr_t referenceCount;
 
 	String path;
 	bool recurse;
 	bool refreshing;
 	bool driveRemoved;
 
+	bool doneInitialEnumeration;
+	EsMutex modifyEntriesMutex;
+
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
 
 	NamespaceHandler *itemHandler, *containerHandler;
-
 	const char *cEmptyMessage;
 };
 
@@ -409,6 +411,25 @@ void ConfigurationSave() {
 #include "commands.cpp"
 #include "ui.cpp"
 
+void DriveRefreshFolders(bool removed, const char *prefix, size_t prefixBytes) {
+	Array<Folder *> foldersToRefresh = {};
+
+	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
+		Folder *folder = loadedFolders[i];
+
+		if (folder->itemHandler->type == NAMESPACE_HANDLER_DRIVES_PAGE || StringStartsWith(folder->path, StringFromLiteralWithSize(prefix, prefixBytes))) {
+			foldersToRefresh.Add(folder);
+		}
+	}
+	
+	for (uintptr_t i = 0; i < foldersToRefresh.Length(); i++) {
+		foldersToRefresh[i]->driveRemoved = removed;
+		FolderRefresh(foldersToRefresh[i]);
+	}
+
+	foldersToRefresh.Free();
+}
+
 void DriveRemove(const char *prefix, size_t prefixBytes) {
 	if (!prefixBytes || prefix[0] == '|') return;
 	EsMutexAcquire(&drivesMutex);
@@ -416,6 +437,7 @@ void DriveRemove(const char *prefix, size_t prefixBytes) {
 
 	for (uintptr_t index = 0; index < drives.Length(); index++) {
 		if (0 == EsStringCompareRaw(prefix, prefixBytes, drives[index].prefix, drives[index].prefixBytes)) {
+			EsHeapFree(drives[index].prefix);
 			drives.Delete(index);
 			found = true;
 
@@ -429,20 +451,7 @@ void DriveRemove(const char *prefix, size_t prefixBytes) {
 
 	EsAssert(found);
 	EsMutexRelease(&drivesMutex);
-
-	EsMutexAcquire(&loadedFoldersMutex);
-
-	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
-		Folder *folder = loadedFolders[i];
-
-		if (folder->itemHandler->type == NAMESPACE_HANDLER_DRIVES_PAGE
-				|| StringStartsWith(folder->path, StringFromLiteralWithSize(prefix, prefixBytes))) {
-			folder->driveRemoved = true;
-			FolderRefresh(folder);
-		}
-	}
-
-	EsMutexRelease(&loadedFoldersMutex);
+	DriveRefreshFolders(true, prefix, prefixBytes);
 }
 
 void DriveAdd(const char *prefix, size_t prefixBytes) {
@@ -451,7 +460,8 @@ void DriveAdd(const char *prefix, size_t prefixBytes) {
 	EsMutexAcquire(&drivesMutex);
 
 	Drive drive = {};
-	drive.prefix = prefix;
+	drive.prefix = (char *) EsHeapAllocate(prefixBytes, false);
+	EsMemoryCopy(drive.prefix, prefix, prefixBytes);
 	drive.prefixBytes = prefixBytes;
 	EsMountPointGetVolumeInformation(prefix, prefixBytes, &drive.information);
 	drives.Add(drive);
@@ -461,13 +471,7 @@ void DriveAdd(const char *prefix, size_t prefixBytes) {
 	}
 
 	EsMutexRelease(&drivesMutex);
-
-	for (uintptr_t i = 0; i < instances.Length(); i++) {
-		if (instances[i]->folder->itemHandler->type == NAMESPACE_HANDLER_DRIVES_PAGE
-				|| StringStartsWith(instances[i]->folder->path, StringFromLiteralWithSize(prefix, prefixBytes))) {
-			FolderRefresh(instances[i]->folder);
-		}
-	}
+	DriveRefreshFolders(false, prefix, prefixBytes);
 }
 
 void LoadSettings() {
@@ -528,7 +532,6 @@ void _start() {
 			InstanceCreateUI(instance);
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			// TODO Cleanup/cancel any unfinished non-blocking tasks before we get here!
-
 			Instance *instance = message->instanceDestroy.instance;
 			InstanceDestroy(instance);
 			instances.FindAndDeleteSwap(instance, true);
@@ -549,15 +552,18 @@ void _start() {
 				EsDirectoryChild information = {};
 
 				if (EsPathQueryInformation(STRING(path), &information)) {
-					EsMutexAcquire(&loadedFoldersMutex);
-
 					for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 						if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;
 						if (EsStringCompareRaw(STRING(loadedFolders[i]->path), STRING(folder))) continue;
-						FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, nullptr, true);
-					}
 
-					EsMutexRelease(&loadedFoldersMutex);
+						EsMutexAcquire(&loadedFolders[i]->modifyEntriesMutex);
+
+						if (loadedFolders[i]->doneInitialEnumeration) {
+							FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, nullptr);
+						}
+
+						EsMutexRelease(&loadedFolders[i]->modifyEntriesMutex);
+					}
 				}
 			}
 

@@ -742,7 +742,7 @@ EsMessage *EsMessageReceive() {
 				elements.Free();
 			}
 
-			instance->commands.Free(false);
+			instance->commands.Free();
 			if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
 			EsHeapFree(instance);
 			EsHeapFree(message.message.instanceDestroy.instance);

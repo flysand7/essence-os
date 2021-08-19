@@ -116,6 +116,7 @@ struct InstalledApplication {
 	uint64_t permissions;
 	size_t openInstanceCount; // Only used if useSingleProcess is true.
 	EsHandle singleProcessHandle; 
+	bool notified; // Temporary flag.
 };
 
 struct CrashedTabInstance : EsInstance {
@@ -2010,18 +2011,30 @@ void DesktopMessage(EsMessage *message) {
 		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 			ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) && instance->processHandle) {
+			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) 
+					&& instance->processHandle && !instance->application->notified) {
 				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_NODE_SHARE, rootDirectory, instance->processHandle, 0, 0);
 				EsMessagePostRemote(instance->processHandle, message);
+				if (instance->application->useSingleProcess) instance->application->notified = true;
 			}
+		}
+
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			desktop.installedApplications[i]->notified = false;
 		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 			ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) && instance->processHandle) {
+			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) 
+					&& instance->processHandle && !instance->application->notified) {
 				EsMessagePostRemote(instance->processHandle, message);
+				if (instance->application->useSingleProcess) instance->application->notified = true;
 			}
+		}
+
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			desktop.installedApplications[i]->notified = false;
 		}
 	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
 		desktop.connectedDevices.Add(message->device);

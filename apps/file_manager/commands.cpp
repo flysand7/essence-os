@@ -64,8 +64,11 @@ void CommandRename(Instance *instance, EsElement *, EsCommand *) {
 
 							EsDirectoryChild information = {};
 							EsPathQueryInformation(newPath, newPathBytes, &information);
+							EsMutexAcquire(&folder->modifyEntriesMutex);
+							EsAssert(folder->doneInitialEnumeration);
 							uint64_t id = FolderRemoveEntryAndUpdateInstances(folder, STRING(task->string2));
-							FolderAddEntryAndUpdateInstances(folder, STRING(task->string), &information, instance, false, id);
+							FolderAddEntryAndUpdateInstances(folder, STRING(task->string), &information, instance, id);
+							EsMutexRelease(&folder->modifyEntriesMutex);
 
 							EsHeapFree(oldPath);
 							EsHeapFree(newPath);
@@ -102,7 +105,10 @@ void CommandNewFolder(Instance *instance, EsElement *, EsCommand *) {
 				Folder *folder = instance->folder;
 				EsDirectoryChild information = {};
 				information.type = ES_NODE_DIRECTORY;
-				FolderAddEntryAndUpdateInstances(folder, STRING(task->string), &information, instance, false);
+				EsMutexAcquire(&folder->modifyEntriesMutex);
+				EsAssert(folder->doneInitialEnumeration);
+				FolderAddEntryAndUpdateInstances(folder, STRING(task->string), &information, instance);
+				EsMutexRelease(&folder->modifyEntriesMutex);
 				CommandRename(instance, nullptr, nullptr);
 			}
 
@@ -136,9 +142,7 @@ void InstanceRegisterCommands(Instance *instance) {
 	}, stableCommandID++, "Alt+Up");
 
 	EsCommandRegister(&instance->commandRefresh, instance, [] (Instance *instance, EsElement *, EsCommand *) {
-		EsMutexAcquire(&loadedFoldersMutex);
 		FolderRefresh(instance->folder);
-		EsMutexRelease(&loadedFoldersMutex);
 	}, stableCommandID++, "F5");
 
 	EsCommandRegister(&instance->commandNewFolder, instance, CommandNewFolder, stableCommandID++, "Ctrl+Shift+N");

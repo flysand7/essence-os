@@ -23,37 +23,46 @@ void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder) {
 }
 
 bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, int historyMode) {
-	// Check if the path hasn't changed.
-
 	if (instance->folder && !instance->folder->refreshing && StringEquals(path, instance->folder->path)) {
+		// The path hasn't changed; ignore.
 		StringDestroy(&path);
 		return true;
 	}
 
+	InstanceRemoveContents(instance);
+	FolderAttachInstance(instance, path, false);
+	StringDestroy(&path);
+
 	Task task = {};
-	
 	task.context = historyMode;
-	task.string = path;
 	task.cDescription = interfaceString_FileManagerOpenFolderTask;
 
-	task.callback = [] (Instance *instance, Task *task) {
-		Folder *newFolder = nullptr;
-		task->result = FolderAttachInstance(instance, task->string, false, &newFolder);
-		task->context2 = newFolder;
-		StringDestroy(&task->string);
+	task.callback = [] (Instance *instance, Task *) {
+		Folder *folder = instance->folder;
+		EsMutexAcquire(&folder->modifyEntriesMutex);
+
+		if (!folder->doneInitialEnumeration) {
+			folder->itemHandler->enumerate(folder);
+
+			if (folder->containerHandler->getTotalSize) {
+				folder->containerHandler->getTotalSize(folder);
+			}
+
+			folder->driveRemoved = false;
+			folder->refreshing = false;
+			folder->doneInitialEnumeration = true;
+		}
+
+		EsMutexRelease(&folder->modifyEntriesMutex);
 	};
 
 	task.then = [] (Instance *instance, Task *task) {
-		if (ES_CHECK_ERROR(task->result)) {
-			EsTextboxSelectAll(instance->breadcrumbBar);
-			EsTextboxInsert(instance->breadcrumbBar, STRING(instance->path));
-			InstanceReportError(instance, ERROR_LOAD_FOLDER, task->result);
-			return;
-		}
+		// TODO Check if folder was marked for refresh.
 
 		int historyMode = task->context.i & 0xFF;
 		int flags = task->context.i;
-		Folder *folder = (Folder *) task->context2.p;
+		Folder *folder = instance->folder;
+		folder->attachedInstances.Add(instance);
 
 		// Add the path to the history array.
 
@@ -92,13 +101,6 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 		EsCommandSetDisabled(&instance->commandRename, true);
 		EsCommandSetDisabled(&instance->commandRefresh, false);
 
-		// Detach from the old folder.
-
-		EsMutexAcquire(&loadedFoldersMutex);
-
-		InstanceRemoveContents(instance);
-		FolderDetachInstance(instance);
-
 		// Load the view settings for the folder.
 
 		bool foundViewSettings = false;
@@ -129,24 +131,13 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 
 		InstanceRefreshViewType(instance);
 
-		// Attach to the new folder.
-
-		folder->attachingInstances.FindAndDeleteSwap(instance, true);
-		instance->folder = folder;
-		folder->attachedInstances.Add(instance);
+		// Update the user interface.
 
 		EsListViewSetEmptyMessage(instance->list, folder->cEmptyMessage);
 		InstanceAddContents(instance, &folder->entries);
-
-		EsMutexRelease(&loadedFoldersMutex);
-
 		InstanceFolderPathChanged(instance, true);
-
-		if (~flags & LOAD_FOLDER_NO_FOCUS) {
-			EsElementFocus(instance->list);
-		}
-
 		EsListViewInvalidateAll(instance->placesView);
+		if (~flags & LOAD_FOLDER_NO_FOCUS) EsElementFocus(instance->list);
 	};
 
 	BlockingTaskQueue(instance, task);
@@ -277,7 +268,7 @@ void InstanceUpdateStatusString(Instance *instance) {
 }
 
 void InstanceAddSingle(Instance *instance, ListEntry entry) {
-	// Call with loadedFoldersMutex and message mutex.
+	// Call with the message mutex acquired.
 
 	if (!InstanceAddInternal(instance, &entry)) {
 		return; // Filtered out.
@@ -326,7 +317,7 @@ ES_MACRO_SORT(InstanceSortListContents, ListEntry, {
 }, uint16_t);
 
 void InstanceAddContents(Instance *instance, HashTable *newEntries) {
-	// Call with loadedFoldersMutex and message mutex.
+	// Call with the message mutex acquired.
 
 	size_t oldListEntryCount = instance->listContents.Length();
 

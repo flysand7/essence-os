@@ -3,10 +3,11 @@
 #define NAMESPACE_HANDLER_ROOT (3) // Acts as a container handler where needed.
 #define NAMESPACE_HANDLER_INVALID (4) // For when a folder does not exist.
 
-EsMutex loadedFoldersMutex;
 Array<Folder *> loadedFolders;
 
-#define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (20)
+// #define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (20)
+// TODO Temporary.
+#define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (0)
 Array<Folder *> foldersWithNoAttachedInstances;
 
 /////////////////////////////////
@@ -68,15 +69,16 @@ EsError FSDirEnumerate(Folder *folder) {
 	EsDirectoryChild *buffer = nullptr;
 	ptrdiff_t _entryCount = EsDirectoryEnumerateChildren(STRING(folder->path), &buffer);
 
-	if (ES_CHECK_ERROR(_entryCount)) {
-		EsHeapFree(buffer);
-		return (EsError) _entryCount;
+	if (!ES_CHECK_ERROR(_entryCount)) {
+		for (intptr_t i = 0; i < _entryCount; i++) {
+			FolderAddEntry(folder, buffer[i].name, buffer[i].nameBytes, &buffer[i]);
+		}
+
+		_entryCount = ES_SUCCESS;
 	}
 
-	FolderAddEntries(folder, buffer, _entryCount);
 	EsHeapFree(buffer);
-
-	return ES_SUCCESS;
+	return (EsError) _entryCount;
 }
 
 void FSDirGetTotalSize(Folder *folder) {
@@ -252,6 +254,8 @@ void NamespaceFindHandlersForPath(NamespaceHandler **itemHandler, NamespaceHandl
 			}
 		}
 	}
+
+	EsAssert(*itemHandler && *containerHandler); // NAMESPACE_HANDLER_INVALID should handle failure cases.
 }
 
 uint32_t NamespaceGetIcon(String path) {
@@ -327,6 +331,10 @@ void FolderDestroy(Folder *folder) {
 		}
 	}
 
+	StringDestroy(&folder->path);
+	folder->attachedInstances.Free();
+	HashTableFree(&folder->entries, false);
+	EsMutexDestroy(&folder->modifyEntriesMutex);
 	EsHeapFree(folder);
 }
 
@@ -335,8 +343,10 @@ void FolderDetachInstance(Instance *instance) {
 	if (!folder) return;
 	instance->folder = nullptr;
 	folder->attachedInstances.FindAndDeleteSwap(instance, true);
+	folder->referenceCount--;
 
-	if (!folder->attachedInstances.Length() && !folder->attachingInstances.Length()) {
+	if (!folder->referenceCount) {
+		EsAssert(!folder->attachedInstances.Length());
 		foldersWithNoAttachedInstances.Add(folder);
 
 		if (foldersWithNoAttachedInstances.Length() > MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES) {
@@ -391,16 +401,8 @@ FolderEntry *FolderAddEntry(Folder *folder, const char *_name, size_t nameBytes,
 	return entry;
 }
 
-void FolderAddEntries(Folder *folder, EsDirectoryChild *buffer, size_t entryCount) {
-	for (uintptr_t i = 0; i < entryCount; i++) {
-		FolderAddEntry(folder, buffer[i].name, buffer[i].nameBytes, &buffer[i]);
-	}
-}
-
 void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t nameBytes, 
-		EsDirectoryChild *information, Instance *selectItem, bool mutexAlreadyAcquired, uint64_t id = 0) {
-	if (!mutexAlreadyAcquired) EsMutexAcquire(&loadedFoldersMutex);
-
+		EsDirectoryChild *information, Instance *selectItem, uint64_t id = 0) {
 	if (folder->containerHandler->getTotalSize) {
 		folder->containerHandler->getTotalSize(folder);
 	}
@@ -414,13 +416,9 @@ void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t n
 		InstanceAddSingle(instance, listEntry);
 		InstanceUpdateStatusString(instance);
 	}
-
-	if (!mutexAlreadyAcquired) EsMutexRelease(&loadedFoldersMutex);
 }
 
 uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, size_t nameBytes) {
-	EsMutexAcquire(&loadedFoldersMutex);
-
 	FolderEntry *entry = (FolderEntry *) HashTableGetLong(&folder->entries, name, nameBytes);
 	uint64_t id = 0;
 
@@ -434,14 +432,11 @@ uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, s
 		FolderEntryCloseHandle(folder, entry);
 	}
 
-	EsMutexRelease(&loadedFoldersMutex);
 	return id;
 }
 
 void FolderPathMoved(Instance *instance, String oldPath, String newPath) {
 	_EsPathAnnouncePathMoved(instance, STRING(oldPath), STRING(newPath));
-
-	EsMutexAcquire(&loadedFoldersMutex);
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 		Folder *folder = loadedFolders[i];
@@ -452,8 +447,6 @@ void FolderPathMoved(Instance *instance, String oldPath, String newPath) {
 			}
 		}
 	}
-
-	EsMutexRelease(&loadedFoldersMutex);
 
 	for (uintptr_t i = 0; i < bookmarks.Length(); i++) {
 		PathReplacePrefix(&bookmarks[i], oldPath, newPath);
@@ -502,20 +495,11 @@ void FolderPathMoved(Instance *instance, String oldPath, String newPath) {
 	ConfigurationSave();
 }
 
-EsError FolderAttachInstance(Instance *instance, String path, bool recurse, Folder **newFolder) {
-	// TODO Don't modify attachedInstances/attachingInstances/loadedFolders without the message mutex!
-	// 	And then we can remove loadedFoldersMutex.
-
-	// (Called on the blocking task thread.)
-	
+void FolderAttachInstance(Instance *instance, String path, bool recurse) {
 	Folder *folder = nullptr;
-	NamespaceHandler *itemHandler = nullptr, *containerHandler = nullptr;
-	EsError error;
 	bool driveRemoved = false;
 
 	// Check if we've already loaded the folder.
-
-	EsMutexAcquire(&loadedFoldersMutex);
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 		if (StringEquals(loadedFolders[i]->path, path) && loadedFolders[i]->recurse == recurse) {
@@ -528,70 +512,39 @@ EsError FolderAttachInstance(Instance *instance, String path, bool recurse, Fold
 		}
 	}
 
-	EsMutexRelease(&loadedFoldersMutex);
-
-	// Find the handler for the path.
-
-	NamespaceFindHandlersForPath(&itemHandler, &containerHandler, path);
-
-	if (!itemHandler || !containerHandler) {
-		return ES_ERROR_FILE_DOES_NOT_EXIST;
-	}
-
-	// Load a new folder.
-
 	folder = (Folder *) EsHeapAllocate(sizeof(Folder), true);
-
 	folder->path = StringDuplicate(path);
 	folder->recurse = recurse;
-	folder->itemHandler = itemHandler;
-	folder->containerHandler = containerHandler;
+	NamespaceFindHandlersForPath(&folder->itemHandler, &folder->containerHandler, path);
 	folder->cEmptyMessage = interfaceString_FileManagerEmptyFolderView;
 	folder->driveRemoved = driveRemoved;
-
 	EsArenaInitialise(&folder->entryArena, 1048576, sizeof(FolderEntry));
-
-	// TODO Make this asynchronous for some folder providers, or recursive requests 
-	// 	(that is, immediately present to the user while streaming data in).
-	error = itemHandler->enumerate(folder);
-
-	folder->driveRemoved = false;
-	folder->refreshing = false;
-
-	if (error != ES_SUCCESS) {
-		StringDestroy(&folder->path);
-		EsHeapFree(folder);
-		return error;
-	}
-
-	if (containerHandler->getTotalSize) {
-		containerHandler->getTotalSize(folder);
-	}
-
-	EsMutexAcquire(&loadedFoldersMutex);
 	loadedFolders.Add(folder);
 
 	success:;
 
 	foldersWithNoAttachedInstances.FindAndDeleteSwap(folder, false);
-	folder->attachingInstances.Add(instance);
-
-	EsMutexRelease(&loadedFoldersMutex);
-
-	*newFolder = folder;
-	return ES_SUCCESS;
+	folder->referenceCount++;
+	FolderDetachInstance(instance);
+	instance->folder = folder;
 }
 
 void FolderRefresh(Folder *folder) {
-	// EsMutexAssertLocked(&loadedFoldersMutex);
-
 	if (folder->refreshing) {
 		return;
 	}
 
 	folder->refreshing = true;
 
+	Array<Instance *> instancesToRefresh = {};
+
 	for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
-		InstanceLoadFolder(folder->attachedInstances[i], StringDuplicate(folder->path), LOAD_FOLDER_REFRESH);
+		instancesToRefresh.Add(folder->attachedInstances[i]);
 	}
+
+	for (uintptr_t i = 0; i < instancesToRefresh.Length(); i++) {
+		InstanceLoadFolder(instancesToRefresh[i], StringDuplicate(folder->path), LOAD_FOLDER_REFRESH);
+	}
+
+	instancesToRefresh.Free();
 }

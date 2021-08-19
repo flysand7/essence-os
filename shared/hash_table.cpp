@@ -349,7 +349,7 @@ bool HashStoreDelete(HashTable *table, HashStoreOptions *options, const void *ke
 
 //////////////////////////////////////////
 
-template <class K /* set to char * for long keys */, class V>
+template <class K /* set to char for long keys */, class V>
 struct HashStore {
 	HashTable table;
 
@@ -393,8 +393,8 @@ struct HashStore {
 		return HashStoreDelete(&table, &options, k, bytes);
 	}
 
-	inline void Free(bool variableLengthKeys) {
-		HashTableFree(&table, variableLengthKeys);
+	inline void Free() {
+		HashTableFree(&table, sizeof(K) == 1);
 	}
 };
 
