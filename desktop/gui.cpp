@@ -6569,8 +6569,6 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		}
 
 		UIRefreshPrimaryClipboard(window);
-	} else if (message->type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
-		UIRefreshPrimaryClipboard(window);
 	}
 
 	skipInputMessage:;

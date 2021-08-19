@@ -304,7 +304,9 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 	inline void *Write(const void *source, size_t writeBytes) { return EsBufferWrite(this, source, writeBytes); }
 #endif
 
-#define ES_POSIX_SYSCALL_GET_POSIX_FD_PATH 	(0x10000)
+#define ES_POSIX_SYSCALL_GET_POSIX_FD_PATH (0x10000)
+
+#define DESKTOP_MESSAGE_SIZE_LIMIT (0x4000)
 
 #endif
 

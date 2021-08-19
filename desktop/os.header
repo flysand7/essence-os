@@ -323,7 +323,6 @@ define ES_ERROR_LOST_IP_ADDRESS			(-66)
 define ES_ERROR_CONNECTION_RESET		(-67)
 define ES_ERROR_CONNECTION_REFUSED		(-68)
 define ES_ERROR_ILLEGAL_PATH			(-69)
-define ES_ERROR_INVALID_CLIPBOARD		(-70)
 define ES_ERROR_NODE_NOT_LOADED			(-71)
 define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
 
@@ -812,10 +811,6 @@ enum EsSyscallType {
 
 	ES_SYSCALL_MESSAGE_DESKTOP
 
-	ES_SYSCALL_CLIPBOARD_ADD
-	ES_SYSCALL_CLIPBOARD_HAS
-	ES_SYSCALL_CLIPBOARD_READ
-
 	// IO.
 
 	ES_SYSCALL_NODE_OPEN
@@ -886,7 +881,6 @@ enum EsMessageType {
 	ES_MSG_KEY_DOWN				= 0x100E	// Propagates to ancestors if unhandled.
 	ES_MSG_KEY_UP				= 0x100F
 	ES_MSG_UPDATE_WINDOW			= 0x1010
-	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x1011
 	ES_MSG_WM_END				= 0x13FF
 
 	// Internal GUI messages:				// None of these should be sent directly.
@@ -967,6 +961,7 @@ enum EsMessageType {
 	ES_MSG_INSTANCE_SAVE_RESPONSE		= 0x4A03	// Sent by Desktop after an application requested to save its document.
 	ES_MSG_INSTANCE_DOCUMENT_RENAMED	= 0x4A04
 	ES_MSG_INSTANCE_DOCUMENT_UPDATED	= 0x4A05
+	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x4A06
 
 	// Debugger messages:
 	ES_MSG_APPLICATION_CRASH		= 0x4C00
@@ -1689,8 +1684,8 @@ struct EsMessageProcessCrash {
 };
 
 struct EsMessageDesktop {
-	EsObjectID windowID;
-	EsHandle buffer;
+	EsObjectID windowID, processID;
+	EsHandle buffer, pipe;
 	size_t bytes;
 };
 
@@ -1917,6 +1912,7 @@ function EsFileOffset EsFileGetSize(EsHandle handle);
 function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer);
 function EsError EsFileResize(EsHandle file, EsFileOffset newSize);
 function size_t EsFileWriteSync(EsHandle file, EsFileOffset offset, size_t size, const void *buffer);
+function EsError EsFileDelete(EsHandle file);
 
 function EsError EsPathDelete(STRING path);
 function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes);
@@ -2094,6 +2090,12 @@ function bool EsMouseIsLeftHeld();
 function bool EsMouseIsRightHeld();
 function bool EsMouseIsMiddleHeld();
 
+// Pipes.
+
+function EsHandle EsPipeCreate();
+function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes);
+function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
+
 // Synchronisation and timing.
 
 function EsHandle EsEventCreate(bool autoReset); 
@@ -2198,7 +2200,7 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format,
 
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasText(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes);
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes); // Free with EsHeapFree.
 
 function void EsUndoClear(EsUndoManager *manager);
 function void EsUndoContinueGroup(EsUndoManager *manager);

@@ -56,6 +56,9 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_RUN_TEMPORARY_APPLICATION (7)
 #define DESKTOP_MSG_REQUEST_SHUTDOWN          (8)
 #define DESKTOP_MSG_START_APPLICATION         (9)
+#define DESKTOP_MSG_CREATE_CLIPBOARD_FILE     (10)
+#define DESKTOP_MSG_CLIPBOARD_PUT             (11)
+#define DESKTOP_MSG_CLIPBOARD_GET             (12)
 
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 
@@ -860,6 +863,9 @@ EsMessage *EsMessageReceive() {
 			} else {
 				EsHandleClose(message.message.tabOperation.handle);
 			}
+		} else if (type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
+			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
+			if (instance) UIRefreshPrimaryClipboard(instance->window);
 		} else if (type == ES_MSG_REGISTER_FILE_SYSTEM) {
 			EsMessageRegisterFileSystem *m = &message.message.registerFileSystem;
 

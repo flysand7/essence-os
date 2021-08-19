@@ -3050,7 +3050,7 @@ void TextboxEndEdit(EsTextbox *textbox, bool reject) {
 	}
 }
 
-void TextboxUpdateCommands(EsTextbox *textbox, bool caretsMovedOnly) {
+void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 	if (~textbox->state & UI_STATE_FOCUSED) {
 		return;
 	}
@@ -3106,17 +3106,17 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool caretsMovedOnly) {
 		EsTextboxInsert(textbox, "", 0, true);
 	});
 
-	if (!caretsMovedOnly) {
-		EsInstanceSetActiveUndoManager(textbox->instance, textbox->undo);
+	EsInstanceSetActiveUndoManager(textbox->instance, textbox->undo);
 
-		command = EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL);
-		command->data = textbox;
-		EsCommandSetDisabled(command, !(textbox->lines.Length() > 1 || textbox->lines[0].lengthBytes));
+	command = EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL);
+	command->data = textbox;
+	EsCommandSetDisabled(command, !(textbox->lines.Length() > 1 || textbox->lines[0].lengthBytes));
 
-		EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
-			EsTextboxSelectAll((EsTextbox *) command->data.p);
-		});
+	EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
+		EsTextboxSelectAll((EsTextbox *) command->data.p);
+	});
 
+	if (!noClipboard) {
 		command = EsCommandByID(textbox->instance, ES_COMMAND_PASTE);
 		command->data = textbox;
 		EsCommandSetDisabled(command, !EsClipboardHasText(ES_CLIPBOARD_PRIMARY));
@@ -3128,6 +3128,7 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool caretsMovedOnly) {
 			char *text = EsClipboardReadText(ES_CLIPBOARD_PRIMARY, &textBytes);
 			EsTextboxInsert(textbox, text, textBytes, true);
 			EsTextboxEnsureCaretVisible(textbox);
+			EsHeapFree(text);
 		});
 	}
 }
@@ -3811,7 +3812,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 	// EsPrint("EsTextboxInsert in %Fms (%Fms measuring new lines).\n", time * 1000, measureLineTime * 1000);
 
 	textbox->scroll.Refresh();
-	TextboxUpdateCommands(textbox, false);
+	TextboxUpdateCommands(textbox, true);
 }
 
 char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {

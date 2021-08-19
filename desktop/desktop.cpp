@@ -166,14 +166,23 @@ struct {
 	Array<ApplicationInstance *> allApplicationInstances;
 	Array<ContainerWindow *> allContainerWindows;
 	Array<EsMessageDevice> connectedDevices;
+
 	InstalledApplication *fileManager;
+
 	EsObjectID currentDocumentID;
 	HashStore<EsObjectID, OpenDocument> openDocuments;
+
 	TaskBar taskBar;
 	EsWindow *wallpaperWindow;
+
 	bool shutdownWindowOpen;
 	bool setupDesktopUIComplete;
 	int installationState;
+
+	EsHandle nextClipboardFile;
+	EsObjectID nextClipboardProcessID;
+	EsHandle clipboardFile;
+	ClipboardInformation clipboardInformation;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -1202,6 +1211,35 @@ void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInforma
 	}
 }
 
+EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes) {
+	char temporaryFileName[32];
+
+	for (uintptr_t i = 0; i < sizeof(temporaryFileName); i++) {
+		temporaryFileName[i] = (EsRandomU8() % 26) + 'a';
+	}
+
+	size_t temporaryFolderBytes;
+	char *temporaryFolder = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("temporary_path"), &temporaryFolderBytes);
+	char *temporaryFilePath = (char *) EsHeapAllocate(temporaryFolderBytes + 1 + sizeof(temporaryFileName), false);
+	size_t temporaryFilePathBytes = EsStringFormat(temporaryFilePath, ES_STRING_FORMAT_ENOUGH_SPACE, "%s/%s", 
+			temporaryFolderBytes, temporaryFolder, sizeof(temporaryFileName), temporaryFileName);
+
+	EsFileInformation file = EsFileOpen(temporaryFilePath, temporaryFilePathBytes, 
+			ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FAIL_IF_FOUND | ES_NODE_CREATE_DIRECTORIES);
+
+	EsHeapFree(temporaryFolder);
+
+	if (file.error != ES_SUCCESS) {
+		EsHeapFree(temporaryFilePath);
+	} else {
+		*path = temporaryFilePath;
+		*pathBytes = temporaryFilePathBytes;
+		*handle = file.handle;
+	}
+
+	return file.error;
+}
+
 void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *newName, size_t newNameBytes) {
 	if (!instance->processHandle) return;
 	
@@ -1271,33 +1309,13 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	if (document->currentWriter) {
 		m.tabOperation.error = ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE;
 	} else {
-		char temporaryFileName[32];
+		EsHandle fileHandle;
+		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes);
 
-		for (uintptr_t i = 0; i < sizeof(temporaryFileName); i++) {
-			temporaryFileName[i] = (EsRandomU8() % 26) + 'a';
-		}
-
-		size_t temporaryFolderBytes;
-		char *temporaryFolder = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("temporary_path"), &temporaryFolderBytes);
-		char *temporaryFilePath = (char *) EsHeapAllocate(temporaryFolderBytes + 1 + sizeof(temporaryFileName), false);
-		size_t temporaryFilePathBytes = EsStringFormat(temporaryFilePath, ES_STRING_FORMAT_ENOUGH_SPACE, "%s/%s", 
-				temporaryFolderBytes, temporaryFolder, sizeof(temporaryFileName), temporaryFileName);
-
-		EsFileInformation file = EsFileOpen(temporaryFilePath, temporaryFilePathBytes, 
-				ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FAIL_IF_FOUND | ES_NODE_CREATE_DIRECTORIES);
-
-		EsHeapFree(temporaryFolder);
-
-		if (file.error != ES_SUCCESS) {
-			m.tabOperation.error = file.error;
-			EsHeapFree(temporaryFilePath);
-		} else {
-			m.tabOperation.handle = EsSyscall(ES_SYSCALL_NODE_SHARE, file.handle, instance->processHandle, 0, 0);
-			m.tabOperation.error = ES_SUCCESS;
+		if (m.tabOperation.error == ES_SUCCESS) {
 			document->currentWriter = instance->embeddedWindowID;
-			document->temporarySavePath = temporaryFilePath;
-			document->temporarySavePathBytes = temporaryFilePathBytes;
-			EsHandleClose(file.handle);
+			m.tabOperation.handle = EsSyscall(ES_SYSCALL_NODE_SHARE, fileHandle, instance->processHandle, 0, 0);
+			EsHandleClose(fileHandle);
 		}
 	}
 
@@ -1593,47 +1611,53 @@ void WallpaperLoad(EsGeneric) {
 // General Desktop:
 //////////////////////////////////////////////////////
 
-void CheckForegroundWindowResponding(EsGeneric) {
+ApplicationInstance *ApplicationInstanceFindForeground() {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 		WindowTab *tab = instance->tab;
 
-		if (!tab || (~tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) || tab->container->active != instance->tab) {
-			continue;
+		if (tab && (tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) && tab->container->active == instance->tab) {
+			return instance;
 		}
-
-		EsProcessState state;
-		EsProcessGetState(instance->processHandle, &state);
-
-		if (state.flags & ES_PROCESS_STATE_PINGED) {
-			if (tab->notRespondingInstance) {
-				// The tab is already not responding.
-			} else {
-				// The tab has just stopped not responding.
-				EsApplicationStartupInformation startupInformation = { .data = CRASHED_TAB_NOT_RESPONDING };
-				tab->notRespondingInstance = ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_CRASHED, 
-						&startupInformation, tab->container, true /* hidden */);
-				WindowTabActivate(tab, true);
-			}
-		} else {
-			if (tab->notRespondingInstance) {
-				// The tab has started responding.
-				ApplicationInstanceClose(tab->notRespondingInstance);
-				tab->notRespondingInstance = nullptr;
-				WindowTabActivate(tab, true);
-			} else {
-				// Check if the tab is responding.
-				EsMessage m;
-				EsMemoryZero(&m, sizeof(EsMessage));
-				m.type = ES_MSG_PING;
-				EsMessagePostRemote(instance->processHandle, &m); 
-			}
-		}
-
-		break;
 	}
 
+	return nullptr;
+}
+
+void CheckForegroundWindowResponding(EsGeneric) {
+	ApplicationInstance *instance = ApplicationInstanceFindForeground();
 	EsTimerSet(2500, CheckForegroundWindowResponding, 0); 
+	if (!instance) return;
+
+	WindowTab *tab = instance->tab;
+
+	EsProcessState state;
+	EsProcessGetState(instance->processHandle, &state);
+
+	if (state.flags & ES_PROCESS_STATE_PINGED) {
+		if (tab->notRespondingInstance) {
+			// The tab is already not responding.
+		} else {
+			// The tab has just stopped not responding.
+			EsApplicationStartupInformation startupInformation = { .data = CRASHED_TAB_NOT_RESPONDING };
+			tab->notRespondingInstance = ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_CRASHED, 
+					&startupInformation, tab->container, true /* hidden */);
+			WindowTabActivate(tab, true);
+		}
+	} else {
+		if (tab->notRespondingInstance) {
+			// The tab has started responding.
+			ApplicationInstanceClose(tab->notRespondingInstance);
+			tab->notRespondingInstance = nullptr;
+			WindowTabActivate(tab, true);
+		} else {
+			// Check if the tab is responding.
+			EsMessage m;
+			EsMemoryZero(&m, sizeof(EsMessage));
+			m.type = ES_MSG_PING;
+			EsMessagePostRemote(instance->processHandle, &m); 
+		}
+	}
 }
 
 void DesktopSetup() {
@@ -1726,7 +1750,7 @@ void DesktopSetup() {
 
 		if (firstApplication && firstApplication[0]) {
 			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-				if (0 == EsCRTstrcmp(desktop.installedApplications[i]->cName, firstApplication)) {
+				if (desktop.installedApplications[i]->cName && 0 == EsCRTstrcmp(desktop.installedApplications[i]->cName, firstApplication)) {
 					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
 				}
 			}
@@ -1782,6 +1806,71 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer) {
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
 		EsApplicationStartupInformation *information = ApplicationStartupInformationParse(buffer + 1, message->desktop.bytes - 1);
 		if (information) OpenDocumentWithApplication(information);
+	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && message->desktop.pipe) {
+		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
+
+		if (processHandle) {
+			EsHandle handle;
+			char *path;
+			size_t pathBytes;
+			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes);
+
+			if (error == ES_SUCCESS) {
+				if (desktop.nextClipboardFile) {
+					EsHandleClose(desktop.nextClipboardFile);
+				}
+
+				desktop.nextClipboardFile = handle;
+				desktop.nextClipboardProcessID = message->desktop.processID;
+
+				handle = EsSyscall(ES_SYSCALL_NODE_SHARE, handle, processHandle, 0, 0);
+
+				EsHeapFree(path);
+			} else {
+				handle = ES_INVALID_HANDLE;
+			}
+
+			EsPipeWrite(message->desktop.pipe, &handle, sizeof(handle));
+			EsPipeWrite(message->desktop.pipe, &error, sizeof(error));
+
+			EsHandleClose(processHandle);
+		}
+	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_PUT && message->desktop.bytes == sizeof(ClipboardInformation)
+			&& desktop.nextClipboardFile && desktop.nextClipboardProcessID == message->desktop.processID) {
+		ClipboardInformation *information = (ClipboardInformation *) buffer;
+
+		if (information->error == ES_SUCCESS) {
+			if (desktop.clipboardFile) {
+				EsFileDelete(desktop.clipboardFile);
+				EsHandleClose(desktop.clipboardFile);
+			}
+
+			desktop.clipboardFile = desktop.nextClipboardFile;
+			desktop.clipboardInformation = *information;
+
+			ApplicationInstance *foreground = ApplicationInstanceFindForeground();
+
+			if (foreground && foreground->processHandle) {
+				EsMessage m = { ES_MSG_PRIMARY_CLIPBOARD_UPDATED };
+				m.tabOperation.id = foreground->embeddedWindowID;
+				EsMessagePostRemote(foreground->processHandle, &m);
+			}
+		} else {
+			EsHandleClose(desktop.nextClipboardFile);
+		}
+
+		desktop.nextClipboardFile = ES_INVALID_HANDLE;
+		desktop.nextClipboardProcessID = 0;
+	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_GET && message->desktop.pipe) {
+		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
+
+		if (processHandle) {
+			EsHandle fileHandle = desktop.clipboardFile 
+				? EsSyscall(ES_SYSCALL_NODE_SHARE, desktop.clipboardFile, processHandle, 0, 1 /* ES_FILE_READ_SHARED */) : ES_INVALID_HANDLE;
+			EsPipeWrite(message->desktop.pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
+			EsPipeWrite(message->desktop.pipe, &fileHandle, sizeof(fileHandle));
+			EsHandleClose(processHandle);
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
@@ -1901,15 +1990,16 @@ void DesktopMessage(EsMessage *message) {
 	} else if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
 		EmbeddedWindowDestroyed(message->desktop.windowID);
 	} else if (message->type == ES_MSG_DESKTOP) {
-		if (message->desktop.bytes <= 0x4000) {
-			uint8_t *buffer = (uint8_t *) EsHeapAllocate(message->desktop.bytes, false);
-			if (!buffer) return;
+		uint8_t *buffer = (uint8_t *) EsHeapAllocate(message->desktop.bytes, false);
+
+		if (buffer) {
 			EsConstantBufferRead(message->desktop.buffer, buffer);
 			DesktopMessage2(message, buffer);
 			EsHeapFree(buffer);
 		}
 
 		EsHandleClose(message->desktop.buffer);
+		if (message->desktop.pipe) EsHandleClose(message->desktop.pipe);
 	} else if (message->type == ES_MSG_APPLICATION_CRASH) {
 		ApplicationInstanceCrashed(message);
 	} else if (message->type == ES_MSG_PROCESS_TERMINATED) {

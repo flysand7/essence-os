@@ -139,24 +139,7 @@ struct WindowManager {
 			 // when set, the old surface bits are copied on resize, so that if the resize times out the result will be reasonable.
 };
 
-struct ClipboardItem {
-	uint64_t format;
-	ConstantBuffer *buffer;
-};
-
-struct Clipboard {
-	KMutex mutex;
-#define CLIPBOARD_ITEM_COUNT (1)
-	ClipboardItem items[CLIPBOARD_ITEM_COUNT];
-
-#define CLIPBOARD_ITEM_SIZE_LIMIT (64 * 1024 * 1024)
-	EsError Add(uint64_t format, K_USER_BUFFER const void *data, size_t dataBytes);
-	bool Has(uint64_t format);
-	EsHandle Read(uint64_t format, K_USER_BUFFER size_t *bytes, Process *process);
-};
-
 WindowManager windowManager;
-Clipboard primaryClipboard;
 
 void SendMessageToWindow(Window *window, EsMessage *message);
 
@@ -247,7 +230,7 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		// 	By sending the message to both processes, two threads will wake up,
 		// 	which could increase latency of handling the message.
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
-	} else if (message->type == ES_MSG_MOUSE_EXIT || message->type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
+	} else if (message->type == ES_MSG_MOUSE_EXIT) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
 	} else {
@@ -1337,72 +1320,6 @@ void KGameControllerUpdateState(EsGameControllerState *state) {
 	}
 
 	KMutexRelease(&windowManager.gameControllersMutex);
-}
-
-EsError Clipboard::Add(uint64_t format, const void *data, size_t dataBytes) {
-	if (dataBytes > CLIPBOARD_ITEM_SIZE_LIMIT) {
-		return ES_ERROR_INSUFFICIENT_RESOURCES;
-	}
-
-	ClipboardItem item = {};
-	item.buffer = MakeConstantBuffer(data, dataBytes);
-	item.format = format;
-
-	if (!item.buffer) {
-		return ES_ERROR_INSUFFICIENT_RESOURCES;
-	}
-
-	KMutexAcquire(&mutex);
-
-	if (items[CLIPBOARD_ITEM_COUNT - 1].buffer) {
-		CloseHandleToObject(items[CLIPBOARD_ITEM_COUNT - 1].buffer, KERNEL_OBJECT_CONSTANT_BUFFER);
-	}
-
-	EsMemoryMove(items, items + CLIPBOARD_ITEM_COUNT - 1, sizeof(ClipboardItem), false);
-	items[0] = item;
-
-	KMutexRelease(&mutex);
-
-	if (this == &primaryClipboard) {
-		KMutexAcquire(&windowManager.mutex);
-
-		if (windowManager.activeWindow) {
-			EsMessage m;
-			EsMemoryZero(&m, sizeof(EsMessage));
-			m.type = ES_MSG_PRIMARY_CLIPBOARD_UPDATED;
-			SendMessageToWindow(windowManager.activeWindow, &m);
-		}
-
-		KMutexRelease(&windowManager.mutex);
-	}
-
-	return ES_SUCCESS;
-}
-
-bool Clipboard::Has(uint64_t format) {
-	KMutexAcquire(&mutex);
-	bool result = items[0].format == format;
-	KMutexRelease(&mutex);
-	return result;
-}
-
-EsHandle Clipboard::Read(uint64_t format, K_USER_BUFFER size_t *_bytes, Process *process) {
-	ConstantBuffer *buffer = nullptr;
-	KMutexAcquire(&mutex);
-
-	if (items[0].format == format) {
-		buffer = items[0].buffer;
-		OpenHandleToObject(buffer, KERNEL_OBJECT_CONSTANT_BUFFER);
-	}
-
-	KMutexRelease(&mutex);
-
-	if (buffer) {
-		*_bytes = buffer->bytes;
-		return process->handleTable.OpenHandle(buffer, 0, KERNEL_OBJECT_CONSTANT_BUFFER);
-	} else {
-		return ES_INVALID_HANDLE;
-	}
 }
 
 #endif

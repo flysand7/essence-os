@@ -598,39 +598,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_ADD) {
-	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
-
-	if (argument0 != ES_CLIPBOARD_PRIMARY) {
-		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
-	}
-
-	EsError error = primaryClipboard.Add((uintptr_t) argument1, (const void *) argument2, argument3);
-	SYSCALL_RETURN(error, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_HAS) {
-	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
-
-	if (argument0 != ES_CLIPBOARD_PRIMARY) {
-		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
-	}
-
-	bool result = primaryClipboard.Has((uintptr_t) argument1);
-	SYSCALL_RETURN(result, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_CLIPBOARD_READ) {
-	SYSCALL_PERMISSION(ES_PERMISSION_WINDOW_MANAGER);
-
-	if (argument0 != ES_CLIPBOARD_PRIMARY) {
-		SYSCALL_RETURN(ES_ERROR_INVALID_CLIPBOARD, false);
-	}
-
-	EsHandle handle = primaryClipboard.Read((uintptr_t) argument1, (size_t *) argument3, currentProcess);
-	SYSCALL_RETURN(handle, false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_CREATE) {
 	KEvent *event = (KEvent *) EsHeapAllocate(sizeof(KEvent), true, K_FIXED);
 	if (!event) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
@@ -793,19 +760,21 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_SHARE) {
 	SYSCALL_RETURN(process->handleTable.OpenHandle(region, argument2, KERNEL_OBJECT_SHMEM), false);
 }
 
-#define SYSCALL_SHARE_OBJECT(syscallName, objectType) \
+#define SYSCALL_SHARE_OBJECT(syscallName, objectType, _sharedFlags) \
 SYSCALL_IMPLEMENT(syscallName) { \
 	KObject share(currentProcess, argument0, objectType); \
 	CHECK_OBJECT(share); \
 	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS); \
 	CHECK_OBJECT(_process); \
 	Process *process = (Process *) _process.object; \
-	OpenHandleToObject(share.object, objectType, share.flags);  \
-	SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, share.flags, objectType), false); \
+	uint32_t sharedFlags = _sharedFlags; \
+	if (!OpenHandleToObject(share.object, objectType, sharedFlags)) return ES_ERROR_FILE_PERMISSION_NOT_GRANTED; \
+	SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, sharedFlags, objectType), false); \
 }
 
-SYSCALL_SHARE_OBJECT(ES_SYSCALL_PROCESS_SHARE, KERNEL_OBJECT_PROCESS);
-SYSCALL_SHARE_OBJECT(ES_SYSCALL_NODE_SHARE, KERNEL_OBJECT_NODE);
+SYSCALL_SHARE_OBJECT(ES_SYSCALL_PROCESS_SHARE, KERNEL_OBJECT_PROCESS, share.flags);
+SYSCALL_SHARE_OBJECT(ES_SYSCALL_NODE_SHARE, KERNEL_OBJECT_NODE, 
+		(argument3 & 1) && (share.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) ? ES_FILE_READ_SHARED : share.flags);
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	if (~currentProcess->permissions & ES_PERMISSION_GET_VOLUME_INFORMATION) {
@@ -1530,23 +1499,38 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_WORK_AREA_GET) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 	char *buffer;
-	if (argument1 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	if (argument1 > DESKTOP_MESSAGE_SIZE_LIMIT) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	SYSCALL_READ_HEAP(buffer, argument0, argument1);
 
 	KObject _window(currentProcess, argument2, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE);
 	CHECK_OBJECT(_window);
 
+	KObject _pipe(currentProcess, argument3, KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE);
+	CHECK_OBJECT(_pipe);
+
 	EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
+	Pipe *pipe = (Pipe *) _pipe.object;
+
+	if (pipe && (~_pipe.flags & PIPE_WRITER)) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+	}
 
 	if (!scheduler.shutdown) {
+		if (pipe) {
+			OpenHandleToObject(pipe, KERNEL_OBJECT_PIPE, PIPE_WRITER);
+		}
+
 		_EsMessageWithObject m = {};
 		m.message.type = ES_MSG_DESKTOP;
 		m.message.desktop.buffer = MakeConstantBufferForDesktop(buffer, argument1);
 		m.message.desktop.bytes = argument1;
 		m.message.desktop.windowID = window ? window->id : 0;
+		m.message.desktop.processID = currentProcess->id;
+		m.message.desktop.pipe = pipe ? desktopProcess->handleTable.OpenHandle(pipe, PIPE_WRITER, KERNEL_OBJECT_PIPE) : ES_INVALID_HANDLE;
 
-		if (!desktopProcess->messageQueue.SendMessage(&m)) {
-			desktopProcess->handleTable.CloseHandle(m.message.desktop.buffer); // This will check that the handle is still valid.
+		if (!m.message.desktop.buffer || !desktopProcess->messageQueue.SendMessage(&m)) {
+			desktopProcess->handleTable.CloseHandle(m.message.desktop.buffer); 
+			desktopProcess->handleTable.CloseHandle(m.message.desktop.pipe); 
 		}
 	}
 

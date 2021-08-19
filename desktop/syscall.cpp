@@ -410,6 +410,10 @@ EsError EsPathDelete(const char *path, ptrdiff_t pathBytes) {
 	return error;
 }
 
+EsError EsFileDelete(EsHandle handle) {
+	return EsSyscall(ES_SYSCALL_NODE_DELETE, handle, 0, 0, 0);
+}
+
 void *EsFileMap(const char *path, ptrdiff_t pathBytes, size_t *fileSize, uint32_t flags) {
 	EsFileInformation information = EsFileOpen(path, pathBytes, 
 			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE_EXCLUSIVE : ES_FILE_READ));
@@ -630,29 +634,78 @@ size_t EsGameControllerStatePoll(EsGameControllerState *buffer) {
 	return EsSyscall(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL, (uintptr_t) buffer, 0, 0, 0);
 }
 
-#define CLIPBOARD_FORMAT_TEXT (1)
+struct ClipboardInformation {
+	uint8_t desktopMessageTag;
+	intptr_t error;
+	bool isText;
+};
 
 EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t textBytes) {
-	EsMessageMutexCheck();
-
-	if (textBytes == -1) {
-		textBytes = EsCStringLength(text);
-	}
-
-	return EsSyscall(ES_SYSCALL_CLIPBOARD_ADD, clipboard, CLIPBOARD_FORMAT_TEXT, (uintptr_t) text, textBytes);
+	(void) clipboard;
+	uint8_t m = DESKTOP_MSG_CREATE_CLIPBOARD_FILE;
+	EsHandle pipe = EsPipeCreate(), file;
+	EsError error;
+	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
+	EsPipeRead(pipe, &file, sizeof(file));
+	EsPipeRead(pipe, &error, sizeof(error));
+	EsHandleClose(pipe);
+	if (error != ES_SUCCESS) return error;
+	error = EsFileWriteAllFromHandle(file, text, textBytes); 
+	EsHandleClose(file);
+	ClipboardInformation information = {};
+	information.desktopMessageTag = DESKTOP_MSG_CLIPBOARD_PUT;
+	information.error = error;
+	information.isText = true;
+	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &information, sizeof(information), 0, 0);
+	return error;
 }
 
 bool EsClipboardHasText(EsClipboard clipboard) {
-	return EsSyscall(ES_SYSCALL_CLIPBOARD_HAS, clipboard, CLIPBOARD_FORMAT_TEXT, 0, 0);
+	(void) clipboard;
+	uint8_t m = DESKTOP_MSG_CLIPBOARD_GET;
+	EsHandle pipe = EsPipeCreate(), file;
+	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
+	ClipboardInformation information = {};
+	EsPipeRead(pipe, &information, sizeof(information));
+	EsPipeRead(pipe, &file, sizeof(file));
+	EsHandleClose(pipe);
+	if (file) EsHandleClose(file);
+	return information.error == ES_SUCCESS && information.isText;
 }
 
 char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
+	(void) clipboard;
+
+	char *result = nullptr;
 	*bytes = 0;
-	EsHandle handle = EsSyscall(ES_SYSCALL_CLIPBOARD_READ, clipboard, CLIPBOARD_FORMAT_TEXT, 0, (uintptr_t) bytes);
-	if (handle == ES_INVALID_HANDLE) return nullptr;
-	char *buffer = (char *) EsHeapAllocate(*bytes, false);
-	if (!buffer) return nullptr;
-	EsConstantBufferRead(handle, buffer);
-	EsHandleClose(handle);
-	return buffer;
+
+	uint8_t m = DESKTOP_MSG_CLIPBOARD_GET;
+	EsHandle pipe = EsPipeCreate(), file;
+	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
+	ClipboardInformation information = {};
+	EsPipeRead(pipe, &information, sizeof(information));
+	EsPipeRead(pipe, &file, sizeof(file));
+	EsHandleClose(pipe);
+
+	if (file) {
+		if (information.isText) {
+			result = (char *) EsFileReadAllFromHandle(file, bytes);
+		}
+
+		EsHandleClose(file);
+	}
+
+	return result;
+}
+
+EsHandle EsPipeCreate() {
+	return EsSyscall(ES_SYSCALL_PIPE_CREATE, 0, 0, 0, 0);
+}
+
+size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes) {
+	return EsSyscall(ES_SYSCALL_PIPE_READ, pipe, (uintptr_t) buffer, bytes, 0);
+}
+
+size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes) {
+	return EsSyscall(ES_SYSCALL_PIPE_WRITE, pipe, (uintptr_t) buffer, bytes, 0);
 }
