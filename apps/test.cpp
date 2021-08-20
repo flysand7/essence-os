@@ -146,6 +146,7 @@ void InitialiseInstance(EsInstance *instance) {
 	// Test();
 
 	EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, &stylePanel);
+	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash"), [] (EsInstance *, EsElement *, EsCommand *) { EsAssert(false); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Hang"), [] (EsInstance *, EsElement *, EsCommand *) { while (true); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); });

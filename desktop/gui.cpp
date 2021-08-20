@@ -3691,6 +3691,8 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 
 		if (button->flags & ES_BUTTON_MENU_ITEM) {
 			button->window->Destroy();
+		} else {
+			button->MaybeRefreshStyle();
 		}
 	} else if (message->type == ES_MSG_RADIO_GROUP_UPDATED && (button->flags & ES_BUTTON_RADIOBOX)) {
 		EsButtonSetCheck(button, ES_CHECK_UNCHECKED);
