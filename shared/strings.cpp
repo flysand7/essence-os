@@ -78,8 +78,36 @@ DEFINE_INTERFACE_STRING(DesktopNoSuchApplication, "The requested application cou
 DEFINE_INTERFACE_STRING(DesktopApplicationStartupError, "The requested application could not be started. Your system may be low on resources, or the application files may have been corrupted.");
 DEFINE_INTERFACE_STRING(DesktopNotResponding, "The application is not responding.\nIf you choose to force quit, any unsaved data may be lost.");
 DEFINE_INTERFACE_STRING(DesktopConfirmShutdown, "Are you sure you want to turn off your computer? All applications will be closed.");
+
 DEFINE_INTERFACE_STRING(DesktopSettingsApplication, "Settings");
 DEFINE_INTERFACE_STRING(DesktopSettingsTitle, "Settings");
+DEFINE_INTERFACE_STRING(DesktopSettingsBackButton, "All settings");
+DEFINE_INTERFACE_STRING(DesktopSettingsUndoButton, "Undo changes");
+DEFINE_INTERFACE_STRING(DesktopSettingsAccessibility, "Accessibility");
+DEFINE_INTERFACE_STRING(DesktopSettingsApplications, "Applications");
+DEFINE_INTERFACE_STRING(DesktopSettingsDateAndTime, "Date and time");
+DEFINE_INTERFACE_STRING(DesktopSettingsDevices, "Devices");
+DEFINE_INTERFACE_STRING(DesktopSettingsDisplay, "Display");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboard, "Keyboard");
+DEFINE_INTERFACE_STRING(DesktopSettingsLocalisation, "Localisation");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouse, "Mouse");
+DEFINE_INTERFACE_STRING(DesktopSettingsNetwork, "Network");
+DEFINE_INTERFACE_STRING(DesktopSettingsPower, "Power");
+DEFINE_INTERFACE_STRING(DesktopSettingsSound, "Sound");
+DEFINE_INTERFACE_STRING(DesktopSettingsTheme, "Theme");
+
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay, "Key repeat delay:");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate, "Key repeat rate:");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate, "Caret blink rate:");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction, "Try out the settings in the textbox below:");
+
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed, "Double-click speed:");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeed, "Cursor movement speed:");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrails, "Cursor trail count:");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch, "Lines to scroll per wheel notch:");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons, "Swap left and right buttons");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseShowShadow, "Show shadow below cursor");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl, "Show cursor location when Ctrl is pressed");
 
 // File operations.
 

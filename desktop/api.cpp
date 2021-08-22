@@ -361,7 +361,7 @@ uint8_t *ApplicationStartupInformationToBuffer(const EsApplicationStartupInforma
 void EsApplicationStart(const EsApplicationStartupInformation *information) {
 	size_t bufferBytes;
 	uint8_t *buffer = ApplicationStartupInformationToBuffer(information, &bufferBytes);
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, bufferBytes, 0, 0);
+	MessageDesktop(buffer, bufferBytes);
 }
 
 EsApplicationStartupInformation *ApplicationStartupInformationParse(const void *data, size_t dataBytes) {
@@ -490,7 +490,7 @@ void _EsPathAnnouncePathMoved(EsInstance *instance, const char *oldPath, ptrdiff
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t), &newPathBytes, sizeof(uintptr_t));
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, bufferBytes, instance->window->handle, 0);
+	MessageDesktop(buffer, bufferBytes, instance->window->handle);
 	EsHeapFree(buffer);
 }
 
@@ -499,13 +499,13 @@ void EsApplicationRunTemporary(EsInstance *instance, const char *path, ptrdiff_t
 	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
 	buffer[0] = DESKTOP_MSG_RUN_TEMPORARY_APPLICATION;
 	EsMemoryCopy(buffer + 1, path, pathBytes);
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, pathBytes + 1, instance->window->handle, 0);
+	MessageDesktop(buffer, pathBytes + 1, instance->window->handle);
 	EsHeapFree(buffer);
 }
 
 void EsSystemShowShutdownDialog(EsInstance *instance) {
 	uint8_t message = DESKTOP_MSG_REQUEST_SHUTDOWN;
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &message, 1, instance->window->handle, 0);
+	MessageDesktop(&message, 1, instance->window->handle);
 }
 
 void InstanceSave(EsInstance *_instance) {
@@ -515,7 +515,7 @@ void InstanceSave(EsInstance *_instance) {
 	char *buffer = (char *) EsHeapAllocate(bufferBytes, false);
 	buffer[0] = DESKTOP_MSG_REQUEST_SAVE;
 	EsMemoryCopy(buffer + 1, instance->editorSettings.newDocumentFileName, instance->editorSettings.newDocumentFileNameBytes);
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, bufferBytes, _instance->window->handle, 0);
+	MessageDesktop(buffer, bufferBytes, _instance->window->handle);
 	EsHeapFree(buffer);
 }
 
@@ -604,7 +604,7 @@ APIInstance *InstanceSetup(EsInstance *instance) {
 	EsCommandSetCallback(&apiInstance->commandShowInFileManager, [] (EsInstance *instance, EsElement *, EsCommand *) {
 		char buffer[1];
 		buffer[0] = DESKTOP_MSG_SHOW_IN_FILE_MANAGER;
-		EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, 1, instance->window->handle, 0);
+		MessageDesktop(buffer, 1, instance->window->handle);
 	});
 
 	return apiInstance;
@@ -973,7 +973,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 	if (instance) {
 		char buffer[1];
 		buffer[0] = DESKTOP_MSG_COMPLETE_SAVE;
-		EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, 1, instance->window->handle, 0);
+		MessageDesktop(buffer, 1, instance->window->handle);
 
 		if (success) {
 			EsCommandSetDisabled(EsCommandByID(instance, ES_COMMAND_SAVE), true);

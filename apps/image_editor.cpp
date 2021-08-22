@@ -255,8 +255,8 @@ int BrushSizeMessage(EsElement *element, EsMessage *message) {
 
 		if (newValue < 1) {
 			newValue = 1;
-		} else if (newValue > 1000) {
-			newValue = 1000;
+		} else if (newValue > 200) {
+			newValue = 200;
 		}
 
 		char result[64];

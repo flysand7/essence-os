@@ -2539,6 +2539,18 @@ const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) {
 	}
 }
 
+bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) {
+	const void *source = EsBufferRead(buffer, readBytes);
+
+	if (source) {
+		EsMemoryCopy(destination, source, readBytes);
+		return true;
+	} else {
+		EsMemoryZero(destination, readBytes);
+		return false;
+	}
+}
+
 const void *EsBufferReadMany(EsBuffer *buffer, size_t a, size_t b) {
 	size_t c;
 

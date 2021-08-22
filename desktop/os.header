@@ -327,14 +327,12 @@ define ES_ERROR_NODE_NOT_LOADED			(-71)
 define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
 
 define ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND (0)
-define ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS		   (1)
-define ES_SYSTEM_CONSTANT_RIGHT_TO_LEFT		    	   (2)
-define ES_SYSTEM_CONSTANT_WINDOW_INSET 		    	   (3)
-define ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT        (4)
-define ES_SYSTEM_CONSTANT_UI_SCALE                         (5)
-define ES_SYSTEM_CONSTANT_BORDER_THICKNESS                 (6)
-define ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT  (7)
-define ES_SYSTEM_CONSTANT_COUNT (8)
+define ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT  (1)
+define ES_SYSTEM_CONSTANT_WINDOW_INSET 		    	   (2)
+define ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT        (3)
+define ES_SYSTEM_CONSTANT_UI_SCALE                         (4)
+define ES_SYSTEM_CONSTANT_BORDER_THICKNESS                 (5)
+define ES_SYSTEM_CONSTANT_COUNT (6)
 
 define ES_INVALID_HANDLE 		((EsHandle) (0))
 define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
@@ -437,11 +435,12 @@ define ES_ELEMENT_NO_HOVER			((_EsLongConstant) (1) << 37) // For z-stacked elem
 define ES_ELEMENT_NO_HOVER_DESCENDENTS		((_EsLongConstant) (1) << 38) // Prevent hovering over any descendents.
 define ES_ELEMENT_BLOCK_FOCUS			((_EsLongConstant) (1) << 39) // This element and descendents cannot take focus.
 define ES_ELEMENT_NOT_TAB_TRAVERSABLE		((_EsLongConstant) (1) << 40) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
-define ES_ELEMENT_CENTER_ACCESS_KEY_HINT	((_EsLongConstant) (1) << 41) // TODO Make this more customizable with a message perhaps?
-define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 42) // Hint for autoCorners and autoBorders.
-define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 43) // Hint for autoCorners and autoBorders; and tab traversal.
-define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 44) // Don't exit access key mode after using the access key.
-define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 45) 
+define ES_ELEMENT_NO_FOCUS_ON_CLICK		((_EsLongConstant) (1) << 41) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
+define ES_ELEMENT_CENTER_ACCESS_KEY_HINT 	((_EsLongConstant) (1) << 42)
+define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 43) // Hint for autoCorners and autoBorders.
+define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 44) // Hint for autoCorners and autoBorders; and tab traversal.
+define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 45) // Don't exit access key mode after using the access key.
+define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 46) 
 
 // For children of splitters:
 define ES_CELL_COLLAPSABLE	((_EsLongConstant) (1) << 51)
@@ -924,6 +923,7 @@ enum EsMessageType {
 								// This will NOT be sent if the element did not handle LEFT_DOWN.
 	ES_MSG_MOUSE_RIGHT_DRAG			= 0x2027	// Similar to LEFT_DRAG above, but for the right button. 
 	ES_MSG_MOUSE_MIDDLE_DRAG		= 0x2028	// Similar to LEFT_DRAG above, but for the middle button. 
+	ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS	= 0x2029	// Get the bounds to display an access key hint.
 
 	// State change messages: (causes a style refresh)
 	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
@@ -1110,7 +1110,9 @@ enum EsDeviceType {
 	ES_DEVICE_GRAPHICS_TARGET
 	ES_DEVICE_BLOCK
 	ES_DEVICE_AUDIO
-	ES_DEVICE_HID
+	ES_DEVICE_KEYBOARD
+	ES_DEVICE_MOUSE
+	ES_DEVICE_GAME_CONTROLLER
 	ES_DEVICE_NETWORK_CARD
 	ES_DEVICE_USB
 	ES_DEVICE_PCI_FUNCTION
@@ -1752,14 +1754,15 @@ struct EsMessage {
 		EsMessageLayout layout;
 		EsMessageMeasure measure;
 		EsMessageHitTest hitTest;
-		EsPainter *painter;
-		EsElement *child;
-		EsCursorStyle cursorStyle;
 		EsMessageZOrder zOrder;
 		EsMessageBeforeZOrder beforeZOrder;
 		EsMessageItemToString itemToString;
 		EsMessageFocus focus;
 		const EsStyle *childStyleVariant;
+		EsRectangle *accessKeyHintBounds;
+		EsPainter *painter;
+		EsElement *child;
+		EsCursorStyle cursorStyle;
 
 		// List view messages:
 		EsMessageIterateIndex iterateIndex;
@@ -1952,6 +1955,7 @@ function void EsArenaFree(EsArena *arena, void *pointer); // Not thread-safe.
 function void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSize);
 
 function const void *EsBufferRead(struct EsBuffer *buffer, size_t readBytes);
+function bool EsBufferReadInto(struct EsBuffer *buffer, void *destination, size_t readBytes);
 function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
 function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
@@ -2092,7 +2096,7 @@ function bool EsMouseIsMiddleHeld();
 
 // Pipes.
 
-function EsHandle EsPipeCreate();
+function void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd);
 function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes);
 function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
 
@@ -2262,7 +2266,7 @@ function EsElement *EsElementGetLayoutParent(EsElement *element);
 function void EsElementDestroy(EsElement *element);
 function void EsElementDestroyContents(EsElement *element);
 function bool EsElementStartAnimating(EsElement *element); // Returns false if the element was already animating.
-function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, uint32_t timeMs = 150); // TODO More customization.
+function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization.
 function void EsElementInsertAfter(EsElement *element); // The next element created will be inserted after this element. They must have the same parent. Or, if this is the parent of the next element created, then it will be inserted at the start of the parent.
 function void EsElementUpdateContentSize(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
 function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style);
@@ -2343,8 +2347,8 @@ function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCoun
 function void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column = ES_NULL, EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
 
-function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, uint32_t timeMs = 150); // TODO More customization of transitions?
-function void EsPanelStartMovementAnimation(EsPanel *panel, uint32_t timeMs = 150); // TODO More customization.
+function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
+function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
 
 // Static displays.
 

@@ -1375,7 +1375,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
 	systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] = timeStampTicksPerMs / 1000;
 	systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET] = WINDOW_INSET;
 	systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT] = CONTAINER_TAB_BAND_HEIGHT;
-	systemConstants[ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS] = graphics.target ? graphics.target->reducedColors : false;
 	systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] = UI_SCALE;
 	systemConstants[ES_SYSTEM_CONSTANT_BORDER_THICKNESS] = BORDER_THICKNESS;
 	systemConstants[ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT] = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
@@ -1579,7 +1578,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_CREATE) {
 	if (!pipe) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	pipe->writers = pipe->readers = 1;
 	KEventSet(&pipe->canWrite);
-	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(pipe, PIPE_READER | PIPE_WRITER, KERNEL_OBJECT_PIPE), false);
+	EsHandle readEnd  = currentProcess->handleTable.OpenHandle(pipe, PIPE_READER, KERNEL_OBJECT_PIPE);
+	EsHandle writeEnd = currentProcess->handleTable.OpenHandle(pipe, PIPE_WRITER, KERNEL_OBJECT_PIPE);
+	SYSCALL_WRITE(argument0, &readEnd, sizeof(EsHandle));
+	SYSCALL_WRITE(argument1, &writeEnd, sizeof(EsHandle));
+	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {

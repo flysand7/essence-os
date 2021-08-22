@@ -113,6 +113,8 @@ struct InstalledApplication {
 	int64_t id;
 	uint32_t iconID;
 	bool hidden, useSingleProcess, temporary;
+	bool useSingleInstance;
+	struct ApplicationInstance *singleInstance;
 	uint64_t permissions;
 	size_t openInstanceCount; // Only used if useSingleProcess is true.
 	EsHandle singleProcessHandle; 
@@ -123,9 +125,6 @@ struct CrashedTabInstance : EsInstance {
 };
 
 struct BlankTabInstance : EsInstance {
-};
-
-struct SettingsInstance : EsInstance {
 };
 
 struct ApplicationInstance {
@@ -149,7 +148,7 @@ const EsStyle styleNewTabContent = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
 		.insets = ES_RECT_4(50, 50, 50, 50),
-		.gapMajor = 30,
+		.gapMajor = 25,
 	},
 };
 
@@ -188,10 +187,12 @@ struct {
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
 ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden = false);
-void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance);
+bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance);
 void ApplicationInstanceClose(ApplicationInstance *instance);
 ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove = false);
 void EmbeddedWindowDestroyed(EsObjectID id);
+
+#include "settings.cpp"
 
 //////////////////////////////////////////////////////
 // Reorder lists:
@@ -825,36 +826,20 @@ void InstanceBlankTabCreate(EsMessage *message) {
 		InstalledApplication *application = desktop.installedApplications[i];
 		if (application->hidden) continue;
 
-		EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_BUTTON_NOT_FOCUSABLE, ES_STYLE_BUTTON_GROUP_ITEM, application->cName);
+		EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_ELEMENT_NO_FOCUS_ON_CLICK, ES_STYLE_BUTTON_GROUP_ITEM, application->cName);
 		EsButtonSetIcon(button, (EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
 		button->userData = application;
 
 		EsButtonOnCommand(button, [] (EsInstance *, EsElement *element, EsCommand *) {
 			EsObjectID tabID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
 			ApplicationInstance *instance = ApplicationInstanceFindByWindowID(tabID);
-			ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance);
-			WindowTabActivate(instance->tab, true);
-			EsInstanceDestroy(element->instance);
+
+			if (ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance)) {
+				WindowTabActivate(instance->tab, true);
+				EsInstanceDestroy(element->instance);
+			}
 		});
 	}
-}
-
-void InstanceSettingsCreate(EsMessage *message) {
-	// TODO.
-
-	EsInstance *instance = _EsInstanceCreate(sizeof(SettingsInstance), message, nullptr);
-	EsWindowSetTitle(instance->window, INTERFACE_STRING(DesktopSettingsTitle));
-	EsWindowSetIcon(instance->window, ES_ICON_PREFERENCES_DESKTOP);
-	EsPanel *windowBackground = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-	EsPanel *content = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *buttonGroup;
-
-	buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleButtonGroupContainer);
-	buttonGroup->separatorStylePart = ES_STYLE_BUTTON_GROUP_SEPARATOR;
-	buttonGroup->separatorFlags = ES_CELL_H_FILL;
-
-	EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_BUTTON_NOT_FOCUSABLE, ES_STYLE_BUTTON_GROUP_ITEM, "Keyboard");
-	EsButtonSetIcon(button, ES_ICON_PREFERENCES_DESKTOP_KEYBOARD);
 }
 
 //////////////////////////////////////////////////////
@@ -884,7 +869,27 @@ void ApplicationInstanceClose(ApplicationInstance *instance) {
 	EsMessagePostRemote(instance->processHandle, &m);
 }
 
-void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
+bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
+	InstalledApplication *application = nullptr;
+
+	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+		if (desktop.installedApplications[i]->id == applicationID) {
+			application = desktop.installedApplications[i];
+		}
+	}
+
+	if (application && application->useSingleInstance && application->singleInstance) {
+		WindowTabActivate(application->singleInstance->tab);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, application->singleInstance->tab->window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
+		return false;
+	}
+
+	if (!application) {
+		EsApplicationStartupInformation s = {};
+		s.data = CRASHED_TAB_PROGRAM_NOT_FOUND;
+		return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
+	}
+
 	EsApplicationStartupInformation _startupInformation = {};
 	
 	if (!startupInformation) {
@@ -900,21 +905,6 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		EsHandleClose(instance->processHandle);
 		instance->processID = 0;
 		instance->processHandle = ES_INVALID_HANDLE;
-	}
-
-	InstalledApplication *application = nullptr;
-
-	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-		if (desktop.installedApplications[i]->id == applicationID) {
-			application = desktop.installedApplications[i];
-		}
-	}
-
-	if (!application) {
-		EsApplicationStartupInformation s = {};
-		s.data = CRASHED_TAB_PROGRAM_NOT_FOUND;
-		ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
-		return;
 	}
 
 	instance->application = application;
@@ -944,8 +934,7 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		if (ES_CHECK_ERROR(error)) {
 			EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
-			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
-			return;
+			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 		}
 
 		arguments.executable = executableNode.handle;
@@ -1016,8 +1005,7 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		} else {
 			EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
-			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
-			return;
+			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 		}
 	}
 
@@ -1073,6 +1061,12 @@ void ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			application->openInstanceCount++;
 		}
 	}
+
+	if (application->useSingleInstance) {
+		application->singleInstance = instance;
+	}
+
+	return true;
 }
 
 ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
@@ -1131,6 +1125,7 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 				&& EsProcessGetID(desktop.installedApplications[i]->singleProcessHandle) == message->crash.pid) {
 			EsHandleClose(desktop.installedApplications[i]->singleProcessHandle);
 			desktop.installedApplications[i]->singleProcessHandle = ES_INVALID_HANDLE;
+			desktop.installedApplications[i]->singleInstance = nullptr;
 			desktop.installedApplications[i]->openInstanceCount = 0;
 			ApplicationTemporaryDestroy(desktop.installedApplications[i]);
 			break;
@@ -1157,6 +1152,7 @@ void ApplicationProcessTerminated(EsObjectID pid) {
 				&& EsProcessGetID(desktop.installedApplications[i]->singleProcessHandle) == pid) {
 			EsHandleClose(desktop.installedApplications[i]->singleProcessHandle);
 			desktop.installedApplications[i]->singleProcessHandle = ES_INVALID_HANDLE;
+			desktop.installedApplications[i]->singleInstance = nullptr;
 			desktop.installedApplications[i]->openInstanceCount = 0;
 			ApplicationTemporaryDestroy(desktop.installedApplications[i]);
 			break;
@@ -1453,6 +1449,7 @@ void ConfigurationLoad() {
 		application->id = APPLICATION_ID_DESKTOP_SETTINGS;
 		application->iconID = ES_ICON_PREFERENCES_DESKTOP;
 		application->createInstance = InstanceSettingsCreate;
+		application->useSingleInstance = true;
 		desktop.installedApplications.Add(application);
 	}
 
@@ -1801,13 +1798,13 @@ void DesktopSetup() {
 	desktop.setupDesktopUIComplete = true;
 }
 
-void DesktopMessage2(EsMessage *message, uint8_t *buffer) {
+void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(message->desktop.windowID);
 
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
 		EsApplicationStartupInformation *information = ApplicationStartupInformationParse(buffer + 1, message->desktop.bytes - 1);
 		if (information) OpenDocumentWithApplication(information);
-	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && message->desktop.pipe) {
+	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && pipe) {
 		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
 
 		if (processHandle) {
@@ -1831,8 +1828,8 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer) {
 				handle = ES_INVALID_HANDLE;
 			}
 
-			EsPipeWrite(message->desktop.pipe, &handle, sizeof(handle));
-			EsPipeWrite(message->desktop.pipe, &error, sizeof(error));
+			EsBufferWrite(pipe, &handle, sizeof(handle));
+			EsBufferWrite(pipe, &error, sizeof(error));
 
 			EsHandleClose(processHandle);
 		}
@@ -1862,14 +1859,14 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer) {
 
 		desktop.nextClipboardFile = ES_INVALID_HANDLE;
 		desktop.nextClipboardProcessID = 0;
-	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_GET && message->desktop.pipe) {
+	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_GET && pipe) {
 		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
 
 		if (processHandle) {
 			EsHandle fileHandle = desktop.clipboardFile 
 				? EsSyscall(ES_SYSCALL_NODE_SHARE, desktop.clipboardFile, processHandle, 0, 1 /* ES_FILE_READ_SHARED */) : ES_INVALID_HANDLE;
-			EsPipeWrite(message->desktop.pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
-			EsPipeWrite(message->desktop.pipe, &fileHandle, sizeof(fileHandle));
+			EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
+			EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 			EsHandleClose(processHandle);
 		}
 	} else if (!instance) {
@@ -1946,6 +1943,10 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 
 	InstalledApplication *application = instance->application;
 
+	if (application && application->singleInstance) {
+		application->singleInstance = nullptr;
+	}
+
 	if (application && application->singleProcessHandle) {
 		EsAssert(application->openInstanceCount);
 		application->openInstanceCount--;
@@ -1995,7 +1996,10 @@ void DesktopMessage(EsMessage *message) {
 
 		if (buffer) {
 			EsConstantBufferRead(message->desktop.buffer, buffer);
-			DesktopMessage2(message, buffer);
+			EsBuffer pipe = { .canGrow = true };
+			DesktopMessage2(message, buffer, &pipe);
+			if (message->desktop.pipe) EsPipeWrite(message->desktop.pipe, pipe.out, pipe.position);
+			EsHeapFree(pipe.out);
 			EsHeapFree(buffer);
 		}
 

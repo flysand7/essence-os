@@ -27,7 +27,7 @@ struct AccessKeyEntry {
 	char character;
 	int number;
 	EsElement *element;
-	int x, y;
+	EsRectangle bounds;
 };
 
 struct {
@@ -1310,8 +1310,8 @@ void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, Es
 	EsDrawPaintTarget(painter, sourceSurface, destinationRegion, sourceRegion, alpha);
 }
 
-void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags, uint32_t durationMs) {
-	durationMs *= ANIMATION_TIME_SCALE;
+void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags, float timeMultiplier) {
+	uint32_t durationMs = timeMultiplier * GetConstantNumber("transitionTime");
 
 	if (!durationMs) {
 		return;
@@ -3400,10 +3400,11 @@ void EsPanelTableSetChildCells(EsPanel *panel) {
 	}
 }
 
-void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags, uint32_t timeMs) {
+void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags, float timeMultiplier) {
 	EsMessageMutexCheck();
+	EsAssert(targetChild->parent == panel);
 	EsAssert(panel->flags & ES_PANEL_SWITCHER); // Cannot switch element for a non-switcher panel.
-	timeMs *= ANIMATION_TIME_SCALE;
+	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime");
 
 	if (targetChild == panel->switchedTo) {
 		return;
@@ -3441,10 +3442,10 @@ void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType tr
 	EsElementRelayout(panel);
 }
 
-void EsPanelStartMovementAnimation(EsPanel *panel, uint32_t timeMs) {
+void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier) {
 	// TODO Custom smoothing functions.
 
-	timeMs *= ANIMATION_TIME_SCALE;
+	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime");
 	if (!timeMs) return;
 	EsMessageMutexCheck();
 	EsAssert(~panel->flags & ES_PANEL_SWITCHER); // Use EsPanelSwitchTo!
@@ -5126,7 +5127,7 @@ void EsWindowSetIcon(EsWindow *window, uint32_t iconID) {
 	char buffer[5];
 	buffer[0] = DESKTOP_MSG_SET_ICON;
 	EsMemoryCopy(buffer + 1, &iconID, sizeof(uint32_t));
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, sizeof(buffer), window->handle, 0);
+	MessageDesktop(buffer, sizeof(buffer), window->handle);
 }
 
 void EsWindowSetTitle(EsWindow *window, const char *title, ptrdiff_t titleBytes) {
@@ -5150,7 +5151,7 @@ void EsWindowSetTitle(EsWindow *window, const char *title, ptrdiff_t titleBytes)
 
 	char buffer[4096];
 	size_t bytes = EsStringFormat(buffer, 4096, "%c%s%s", DESKTOP_MSG_SET_TITLE, titleBytes, title, applicationNameBytes, applicationName);
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) buffer, bytes, window->handle, 0);
+	MessageDesktop(buffer, bytes, window->handle);
 }
 
 void EsMouseSetPosition(EsWindow *relativeWindow, int x, int y) {
@@ -5882,15 +5883,44 @@ void AccessKeysGather(EsElement *element) {
 	entry.number = gui.accessKeys.numbers[entry.character - 'A'];
 	entry.element = element;
 
+	if (entry.number >= 10) return;
+
+	UIStyle *style = gui.accessKeys.hintStyle;
+
+	int x, y;
+
 	if (element->flags & ES_ELEMENT_CENTER_ACCESS_KEY_HINT) {
-		entry.x = (bounds.l + bounds.r) / 2;
-		entry.y = (bounds.t + bounds.b) / 2;
+		x = (bounds.l + bounds.r) / 2;
+		y = (bounds.t + bounds.b) / 2 - style->preferredHeight / 4;
 	} else {
-		entry.x = (bounds.l + bounds.r) / 2;
-		entry.y = bounds.b;
+		x = (bounds.l + bounds.r) / 2;
+		y = bounds.b;
 	}
 
-	if (entry.number >= 10) return;
+	EsRectangle hintBounds = ES_RECT_4(x - style->preferredWidth / 2, x + style->preferredWidth / 2, 
+			y - style->preferredHeight / 4, y + 3 * style->preferredHeight / 4);
+
+	if (hintBounds.r > (int32_t) gui.accessKeys.window->windowWidth) {
+		hintBounds.l = gui.accessKeys.window->windowWidth - style->preferredWidth;
+		hintBounds.r = hintBounds.l + style->preferredWidth;
+	}
+
+	if (hintBounds.l < 0) {
+		hintBounds.l = 0;
+		hintBounds.r = hintBounds.l + style->preferredWidth;
+	}
+
+	if (hintBounds.b > (int32_t) gui.accessKeys.window->windowHeight) {
+		hintBounds.t = gui.accessKeys.window->windowHeight - style->preferredHeight;
+		hintBounds.b = hintBounds.t + style->preferredHeight;
+	}
+
+	if (hintBounds.t < 0) {
+		hintBounds.t = 0;
+		hintBounds.b = hintBounds.t + style->preferredHeight;
+	}
+
+	entry.bounds = hintBounds;
 
 	gui.accessKeys.entries.Add(entry);
 	gui.accessKeys.numbers[entry.character - 'A']++;
@@ -5905,41 +5935,9 @@ void AccessKeyHintsShow(EsPainter *painter) {
 			continue;
 		}
 
-		EsRectangle bounds = ES_RECT_4(
-					entry->x - style->preferredWidth / 2, 
-					entry->x + style->preferredWidth / 2, 
-					entry->y - style->preferredHeight / 4, 
-					entry->y + 3 * style->preferredHeight / 4);
-
-		if (entry->element->flags & ES_ELEMENT_CENTER_ACCESS_KEY_HINT) {
-			bounds.t -= style->preferredHeight / 4;
-			bounds.b -= style->preferredHeight / 4;
-		}
-
-		if (bounds.r > (int32_t) gui.accessKeys.window->windowWidth) {
-			bounds.l = gui.accessKeys.window->windowWidth - style->preferredWidth;
-			bounds.r = bounds.l + style->preferredWidth;
-		}
-
-		if (bounds.l < 0) {
-			bounds.l = 0;
-			bounds.r = bounds.l + style->preferredWidth;
-		}
-
-		if (bounds.b > (int32_t) gui.accessKeys.window->windowHeight) {
-			bounds.t = gui.accessKeys.window->windowHeight - style->preferredHeight;
-			bounds.b = bounds.t + style->preferredHeight;
-		}
-
-		if (bounds.t < 0) {
-			bounds.t = 0;
-			bounds.b = bounds.t + style->preferredHeight;
-		}
-
-		style->PaintLayers(painter, bounds, 0, THEME_LAYER_MODE_BACKGROUND);
-
+		style->PaintLayers(painter, entry->bounds, 0, THEME_LAYER_MODE_BACKGROUND);
 		char c = gui.accessKeys.typedCharacter ? entry->number + '0' : entry->character;
-		style->PaintText(painter, nullptr, bounds, &c, 1, 0, ES_FLAGS_DEFAULT);
+		style->PaintText(painter, nullptr, entry->bounds, &c, 1, 0, ES_FLAGS_DEFAULT);
 	}
 }
 
@@ -5956,12 +5954,13 @@ void AccessKeyModeEnter(EsWindow *window) {
 		return;
 	}
 
-	gui.accessKeyMode = true;
-	AccessKeysGather(window);
-
 	if (!gui.accessKeys.hintStyle) {
 		gui.accessKeys.hintStyle = GetStyle(MakeStyleKey(ES_STYLE_ACCESS_KEY_HINT, 0), false);
 	}
+
+	gui.accessKeyMode = true;
+	gui.accessKeys.window = window; 
+	AccessKeysGather(window);
 
 	for (uintptr_t i = 0; i < gui.accessKeys.entries.Length(); i++) {
 		if (gui.accessKeys.numbers[gui.accessKeys.entries[i].character - 'A'] == 1) {
@@ -5969,7 +5968,6 @@ void AccessKeyModeEnter(EsWindow *window) {
 		}
 	}
 
-	gui.accessKeys.window = window; 
 	window->Repaint(true);
 }
 
@@ -5987,6 +5985,10 @@ void AccessKeyModeExit() {
 }
 
 void AccessKeyModeHandleKeyPress(EsMessage *message) {
+	if (message->type == ES_MSG_KEY_UP) {
+		return;
+	}
+
 	int ic, isc;
 	ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, false, false);
 	ic = EsCRTtoupper(ic);
@@ -6090,13 +6092,9 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		// TODO Up/down to traverse menu.
 		// TODO Enter to open submenu/invoke item.
 		return;
-	} else if (gui.accessKeyMode) {
-		if (gui.accessKeys.window != window) {
-			AccessKeyModeExit();
-		} else {
-			AccessKeyModeHandleKeyPress(message);
-			return;
-		}
+	} else if (gui.accessKeyMode && gui.accessKeys.window == window) {
+		AccessKeyModeHandleKeyPress(message);
+		return;
 	}
 
 	if (window->pressed) {
@@ -6425,7 +6423,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			message->mouseDown.positionY -= bounds.t;
 
 			if (ES_REJECTED != UIMessageSendPropagateToAncestors(element, message, &window->dragged)) {
-				if (window->dragged) {
+				if (window->dragged && (~window->dragged->flags & ES_ELEMENT_NO_FOCUS_ON_CLICK)) {
 					EsElementFocus(window->dragged, false);
 				}
 			}
@@ -6499,6 +6497,10 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		gui.clickChainStartMs = 0;
 
 		window->receivedFirstResize = true;
+
+		if (!window->width || !window->height) {
+			UIRefreshPrimaryClipboard(window); // Embedded window activated.
+		}
 
 		window->width = window->windowWidth = message->windowResized.content.r;
 		window->height = window->windowHeight = message->windowResized.content.b;

@@ -634,6 +634,46 @@ size_t EsGameControllerStatePoll(EsGameControllerState *buffer) {
 	return EsSyscall(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL, (uintptr_t) buffer, 0, 0, 0);
 }
 
+void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe);
+
+void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow = ES_INVALID_HANDLE, EsBuffer *responseBuffer = nullptr) {
+	if (api.startupInformation->isDesktop) {
+		// HACK This assumes the response from DesktopMessage2 will not exceed the size of the pipe's buffer.
+		EsMessage m = {};
+		m.type = ES_MSG_DESKTOP;
+		m.desktop.windowID = embeddedWindow ? EsSyscall(ES_SYSCALL_WINDOW_GET_ID, embeddedWindow, 0, 0, 0) : 0;
+		m.desktop.processID = EsProcessGetID(ES_CURRENT_PROCESS);
+		m.desktop.bytes = messageBytes;
+		DesktopMessage2(&m, (uint8_t *) message, responseBuffer);
+	} else {
+		EsHandle pipeRead = ES_INVALID_HANDLE, pipeWrite = ES_INVALID_HANDLE;
+
+		if (responseBuffer) {
+			EsPipeCreate(&pipeRead, &pipeWrite);
+		}
+
+		EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) message, messageBytes, embeddedWindow, pipeWrite);
+
+		if (responseBuffer) {
+			char buffer[4096];
+			EsHandleClose(pipeWrite);
+
+			while (true) {
+				size_t bytesRead = EsPipeRead(pipeRead, buffer, sizeof(buffer));
+				if (!bytesRead) break;
+				EsBufferWrite(responseBuffer, buffer, bytesRead);
+			}
+
+			EsHandleClose(pipeRead);
+		}
+	}
+
+	if (responseBuffer) {
+		responseBuffer->bytes = responseBuffer->position;
+		responseBuffer->position = 0;
+	}
+}
+
 struct ClipboardInformation {
 	uint8_t desktopMessageTag;
 	intptr_t error;
@@ -643,12 +683,13 @@ struct ClipboardInformation {
 EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t textBytes) {
 	(void) clipboard;
 	uint8_t m = DESKTOP_MSG_CREATE_CLIPBOARD_FILE;
-	EsHandle pipe = EsPipeCreate(), file;
+	EsBuffer buffer = { .canGrow = true };
+	EsHandle file;
 	EsError error;
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
-	EsPipeRead(pipe, &file, sizeof(file));
-	EsPipeRead(pipe, &error, sizeof(error));
-	EsHandleClose(pipe);
+	MessageDesktop(&m, 1, ES_INVALID_HANDLE, &buffer);
+	EsBufferReadInto(&buffer, &file, sizeof(file));
+	EsBufferReadInto(&buffer, &error, sizeof(error));
+	EsHeapFree(buffer.out);
 	if (error != ES_SUCCESS) return error;
 	error = EsFileWriteAllFromHandle(file, text, textBytes); 
 	EsHandleClose(file);
@@ -656,19 +697,24 @@ EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t te
 	information.desktopMessageTag = DESKTOP_MSG_CLIPBOARD_PUT;
 	information.error = error;
 	information.isText = true;
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &information, sizeof(information), 0, 0);
+	MessageDesktop(&information, sizeof(information));
 	return error;
+}
+
+void ClipboardGetInformation(EsHandle *file, ClipboardInformation *information) {
+	uint8_t m = DESKTOP_MSG_CLIPBOARD_GET;
+	EsBuffer buffer = { .canGrow = true };
+	MessageDesktop(&m, 1, ES_INVALID_HANDLE, &buffer);
+	EsBufferReadInto(&buffer, information, sizeof(*information));
+	EsBufferReadInto(&buffer, file, sizeof(file));
+	EsHeapFree(buffer.out);
 }
 
 bool EsClipboardHasText(EsClipboard clipboard) {
 	(void) clipboard;
-	uint8_t m = DESKTOP_MSG_CLIPBOARD_GET;
-	EsHandle pipe = EsPipeCreate(), file;
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
-	ClipboardInformation information = {};
-	EsPipeRead(pipe, &information, sizeof(information));
-	EsPipeRead(pipe, &file, sizeof(file));
-	EsHandleClose(pipe);
+	EsHandle file;
+	ClipboardInformation information;
+	ClipboardGetInformation(&file, &information);
 	if (file) EsHandleClose(file);
 	return information.error == ES_SUCCESS && information.isText;
 }
@@ -679,13 +725,9 @@ char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
 	char *result = nullptr;
 	*bytes = 0;
 
-	uint8_t m = DESKTOP_MSG_CLIPBOARD_GET;
-	EsHandle pipe = EsPipeCreate(), file;
-	EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) &m, 1, 0, pipe);
-	ClipboardInformation information = {};
-	EsPipeRead(pipe, &information, sizeof(information));
-	EsPipeRead(pipe, &file, sizeof(file));
-	EsHandleClose(pipe);
+	EsHandle file;
+	ClipboardInformation information;
+	ClipboardGetInformation(&file, &information);
 
 	if (file) {
 		if (information.isText) {
@@ -698,8 +740,9 @@ char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
 	return result;
 }
 
-EsHandle EsPipeCreate() {
-	return EsSyscall(ES_SYSCALL_PIPE_CREATE, 0, 0, 0, 0);
+void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd) {
+	*readEnd = *writeEnd = ES_INVALID_HANDLE;
+	EsSyscall(ES_SYSCALL_PIPE_CREATE, (uintptr_t) readEnd, (uintptr_t) writeEnd, 0, 0);
 }
 
 size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes) {

@@ -655,18 +655,20 @@ void NewProcess() {
 bool Process::Start(char *imagePath, size_t imagePathLength) {
 	uint64_t flags = ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND;
 	KNodeInformation node = FSNodeOpen(imagePath, imagePathLength, flags);
+	bool result = false;
 
-	if (ES_CHECK_ERROR(node.error)) {
-		return false;
-	}
+	if (!ES_CHECK_ERROR(node.error)) {
+		if (node.node->directoryEntry->type == ES_NODE_FILE) {
+			result = StartWithNode(node.node);
+		}
 
-	if (node.node->directoryEntry->type != ES_NODE_FILE) {
 		CloseHandleToObject(node.node, KERNEL_OBJECT_NODE, flags);
-		return false;
 	}
 
-	bool result = StartWithNode(node.node);
-	CloseHandleToObject(node.node, KERNEL_OBJECT_NODE, flags);
+	if (!result && type == PROCESS_DESKTOP) {
+		KernelPanic("Process::Start - Could not load the desktop executable.\n");
+	}
+
 	return result;
 }
 

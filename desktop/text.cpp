@@ -1062,7 +1062,8 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 	*type = (EsBufferReadInt(&iconManagement.pack) == 1) ? CHARACTER_RECOLOR : CHARACTER_IMAGE;
 	iconManagement.pack.position = start;
 
-	bool rtl = api.systemConstants[ES_SYSTEM_CONSTANT_RIGHT_TO_LEFT];
+	// bool rtl = api.systemConstants[ES_SYSTEM_CONSTANT_RIGHT_TO_LEFT];
+	bool rtl = false;
 	bool found = false;
 	uint32_t variant = 0;
 
@@ -1289,7 +1290,7 @@ bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle r
 		cacheEntry->data = (uint8_t *) EsHeapAllocate(cacheEntry->dataBytes, true);
 		RegisterGlyphCacheEntry(key, cacheEntry);
 		IconPackImage *image = IconPackReadImage(id, size, &cacheEntry->type);
-		DrawIcon(size, size, cacheEntry->data, image, size * 4, 0, 0, (float) size / image->width, (float) size / image->height);
+		if (image) DrawIcon(size, size, cacheEntry->data, image, size * 4, 0, 0, (float) size / image->width, (float) size / image->height);
 		EsHeapFree(iconManagement.buffer);
 	}
 
@@ -2252,6 +2253,9 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		    positionY = ((glyphPositions[i].y_offset + FREETYPE_UNIT_SCALE / 2) / FREETYPE_UNIT_SCALE + cursorY);
 		uint32_t color = plan->currentTextStyle->color;
 
+		// bool mono = api.systemConstants[ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS];
+		bool mono = false;
+
 		GlyphCacheKey key = {};
 		key.glyphIndex = codepoint;
 		key.size = plan->currentTextStyle->size;
@@ -2273,7 +2277,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		entry = LookupGlyphCacheEntry(key);
 
 		if (!entry->data) {
-			if (!FontRenderGlyph(api.systemConstants[ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS], key, entry)) {
+			if (!FontRenderGlyph(mono, key, entry)) {
 				EsHeapFree(entry);
 				goto nextCharacter;
 			} else {
@@ -2293,7 +2297,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 				ES_POINT(positionX, positionY + line->ascent / FREETYPE_UNIT_SCALE), 
 				painter->clip, painter->target, 
 				plan->currentTextStyle->blur, 
-				api.systemConstants[ES_SYSTEM_CONSTANT_NO_FANCY_GRAPHICS] ? CHARACTER_MONO : CHARACTER_SUBPIXEL, 
+				mono ? CHARACTER_MONO : CHARACTER_SUBPIXEL, 
 				false, entry->data, 
 				color, 0, -1, painter->target->fullAlpha);
 

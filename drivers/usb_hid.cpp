@@ -681,6 +681,20 @@ void HIDDevice::Initialise() {
 		return;
 	}
 
+	// Work out if this is a keyboard or mouse.
+
+	for (uintptr_t i = 0; i < reportItems.Length(); i++) {
+		ReportItem *item = &reportItems[i];
+
+		if (item->application == HID_APPLICATION_KEYBOARD && item->usage == HID_USAGE_KEYCODES) {
+			KDeviceSendConnectedMessage(this, ES_DEVICE_KEYBOARD);
+			break;
+		} else if (item->application == HID_APPLICATION_MOUSE) {
+			KDeviceSendConnectedMessage(this, ES_DEVICE_MOUSE);
+			break;
+		}
+	}
+
 	// If this is a game controller, tell the window manager it's been connected.
 
 	{
