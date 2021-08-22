@@ -83,6 +83,7 @@ void UIMaybeRemoveFocusedElement(EsWindow *window);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int offsetY, EsPoint position);
 const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent);
+void AccessKeysCenterHint(EsElement *element, EsMessage *message);
 
 void InspectorSetup(EsWindow *window);
 void InspectorNotifyElementEvent(EsElement *element, const char *cCategory, const char *cFormat, ...);
@@ -3695,6 +3696,11 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 		} else {
 			button->MaybeRefreshStyle();
 		}
+	} else if (message->type == ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS && (button->flags & (ES_BUTTON_RADIOBOX | ES_BUTTON_CHECKBOX))) {
+		EsRectangle bounds = element->GetWindowBounds();
+		int width = Width(*message->accessKeyHintBounds), height = Height(*message->accessKeyHintBounds);
+		int x = bounds.l - 3 * width / 4, y = (bounds.t + bounds.b) / 2 - height / 4;
+		*message->accessKeyHintBounds = ES_RECT_4(x - width / 2, x + width / 2, y - height / 4, y + 3 * height / 4);
 	} else if (message->type == ES_MSG_RADIO_GROUP_UPDATED && (button->flags & ES_BUTTON_RADIOBOX)) {
 		EsButtonSetCheck(button, ES_CHECK_UNCHECKED);
 	} else if (message->type == ES_MSG_FOCUSED_START) {
@@ -4591,6 +4597,8 @@ int ProcessSplitBarMessage(EsElement *element, EsMessage *message) {
 		} else {
 			return 0;
 		}
+	} else if (message->type == ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS) {
+		AccessKeysCenterHint(element, message);
 	} else {
 		return 0;
 	}
@@ -4765,7 +4773,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 		splitter->addingSplitBar = true;
 		SplitBar *bar = (SplitBar *) EsHeapAllocate(sizeof(SplitBar), true);
 
-		bar->Initialise(splitter, ES_ELEMENT_FOCUSABLE | ES_ELEMENT_NOT_TAB_TRAVERSABLE | ES_ELEMENT_CENTER_ACCESS_KEY_HINT | ES_CELL_EXPAND, 
+		bar->Initialise(splitter, ES_ELEMENT_FOCUSABLE | ES_ELEMENT_NOT_TAB_TRAVERSABLE | ES_CELL_EXPAND, 
 				ProcessSplitBarMessage, splitter->horizontal ? ES_STYLE_SPLIT_BAR_VERTICAL : ES_STYLE_SPLIT_BAR_HORIZONTAL);
 
 		bar->cName = "split bar";
@@ -5863,6 +5871,14 @@ void UIInitialiseKeyboardShortcutNamesTable() {
 	ADD_KEYBOARD_SHORTCUT_NAME(ES_SCANCODE_PERIOD, ".");
 }
 
+void AccessKeysCenterHint(EsElement *element, EsMessage *message) {
+	EsRectangle bounds = element->GetWindowBounds();
+	UIStyle *style = gui.accessKeys.hintStyle;
+	int x = (bounds.l + bounds.r) / 2, y = (bounds.t + bounds.b) / 2 - style->preferredHeight / 4;
+	*message->accessKeyHintBounds = ES_RECT_4(x - style->preferredWidth / 2, x + style->preferredWidth / 2, 
+			y - style->preferredHeight / 4, y + 3 * style->preferredHeight / 4);
+}
+
 void AccessKeysGather(EsElement *element) {
 	if (element->flags & ES_ELEMENT_BLOCK_FOCUS) return;
 	if (element->state & UI_STATE_BLOCK_INTERACTION) return;
@@ -5876,8 +5892,6 @@ void AccessKeysGather(EsElement *element) {
 	if (element->state & UI_STATE_DESTROYING) return;
 	if (element->flags & ES_ELEMENT_DISABLED) return;
 
-	EsRectangle bounds = element->GetWindowBounds();
-
 	AccessKeyEntry entry = {};
 	entry.character = element->accessKey;
 	entry.number = gui.accessKeys.numbers[entry.character - 'A'];
@@ -5885,20 +5899,16 @@ void AccessKeysGather(EsElement *element) {
 
 	if (entry.number >= 10) return;
 
+	EsRectangle bounds = element->GetWindowBounds();
 	UIStyle *style = gui.accessKeys.hintStyle;
-
-	int x, y;
-
-	if (element->flags & ES_ELEMENT_CENTER_ACCESS_KEY_HINT) {
-		x = (bounds.l + bounds.r) / 2;
-		y = (bounds.t + bounds.b) / 2 - style->preferredHeight / 4;
-	} else {
-		x = (bounds.l + bounds.r) / 2;
-		y = bounds.b;
-	}
-
+	int x = (bounds.l + bounds.r) / 2, y = bounds.b;
 	EsRectangle hintBounds = ES_RECT_4(x - style->preferredWidth / 2, x + style->preferredWidth / 2, 
 			y - style->preferredHeight / 4, y + 3 * style->preferredHeight / 4);
+
+	EsMessage m = {};
+	m.type = ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS;
+	m.accessKeyHintBounds = &hintBounds;
+	EsMessageSend(element, &m);
 
 	if (hintBounds.r > (int32_t) gui.accessKeys.window->windowWidth) {
 		hintBounds.l = gui.accessKeys.window->windowWidth - style->preferredWidth;

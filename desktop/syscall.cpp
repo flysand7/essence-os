@@ -638,7 +638,6 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe);
 
 void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow = ES_INVALID_HANDLE, EsBuffer *responseBuffer = nullptr) {
 	if (api.startupInformation->isDesktop) {
-		// HACK This assumes the response from DesktopMessage2 will not exceed the size of the pipe's buffer.
 		EsMessage m = {};
 		m.type = ES_MSG_DESKTOP;
 		m.desktop.windowID = embeddedWindow ? EsSyscall(ES_SYSCALL_WINDOW_GET_ID, embeddedWindow, 0, 0, 0) : 0;

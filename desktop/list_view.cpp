@@ -1801,6 +1801,8 @@ struct EsListView : EsElement {
 			}
 		} else if (message->type == ES_MSG_AFTER_Z_ORDER) {
 			zOrderItems.Free();
+		} else if (message->type == ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS) {
+			AccessKeysCenterHint(this, message);
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			uintptr_t index = message->getContent.index;
 			EsAssert(index < fixedItems.Length());
@@ -1939,7 +1941,7 @@ EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 	view->primaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_PRIMARY_CELL, 0), false);
 	view->secondaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SECONDARY_CELL, 0), false);
 
-	view->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE | ES_ELEMENT_CENTER_ACCESS_KEY_HINT, ListViewProcessMessage, style ?: ES_STYLE_LIST_VIEW);
+	view->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ListViewProcessMessage, style ?: ES_STYLE_LIST_VIEW);
 	view->cName = "list view";
 
 	view->fixedItemSelection = -1;

@@ -436,7 +436,6 @@ define ES_ELEMENT_NO_HOVER_DESCENDENTS		((_EsLongConstant) (1) << 38) // Prevent
 define ES_ELEMENT_BLOCK_FOCUS			((_EsLongConstant) (1) << 39) // This element and descendents cannot take focus.
 define ES_ELEMENT_NOT_TAB_TRAVERSABLE		((_EsLongConstant) (1) << 40) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
 define ES_ELEMENT_NO_FOCUS_ON_CLICK		((_EsLongConstant) (1) << 41) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
-define ES_ELEMENT_CENTER_ACCESS_KEY_HINT 	((_EsLongConstant) (1) << 42)
 define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 43) // Hint for autoCorners and autoBorders.
 define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 44) // Hint for autoCorners and autoBorders; and tab traversal.
 define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 45) // Don't exit access key mode after using the access key.

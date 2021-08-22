@@ -732,7 +732,7 @@ void OutputOdinVariable(Entry *entry, bool expandStrings, const char *nameSuffix
 			FilePrintFormat(output, "%s%s : string", entry->name, nameSuffix);
 		}
 	} else {
-		FilePrintFormat(output, "%s%s : ", entry->name, nameSuffix);
+		FilePrintFormat(output, "%s%s : ", 0 == strcmp(entry->name, "in") ? "In" : entry->name, nameSuffix);
 		OutputOdinType(entry);
 	}
 }
@@ -878,7 +878,13 @@ void OutputOdin(Entry *root) {
 		Entry *entry = root->children + i;
 
 		if (entry->type == ENTRY_DEFINE) {
-			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), OdinReplaceTypes(entry->define.value, false));
+			const char *styleCast = strstr(entry->define.value, "STYLE_CAST(");
+
+			if (styleCast) {
+				FilePrintFormat(output, "%s :: (^Style)(uintptr(%d));\n", TrimPrefix(entry->name), atoi(styleCast + 11));
+			} else {
+				FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), OdinReplaceTypes(entry->define.value, false));
+			}
 		} else if (entry->type == ENTRY_STRUCT) {
 			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
 			OutputOdinRecord(entry, 0);
