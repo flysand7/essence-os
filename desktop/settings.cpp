@@ -72,8 +72,8 @@ const EsStyle styleSettingsTable = {
 const EsStyle styleSettingsCheckboxGroup = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
-		.gapMajor = 3,
-		.gapMinor = 3,
+		.gapMajor = 0,
+		.gapMinor = 0,
 	},
 };
 
@@ -328,7 +328,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', 
 			"general", "swap_left_and_right_buttons", &api.global->swapLeftAndRightButtons);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', 
-			"general", "show_cursor_shadow", nullptr); // TODO.
+			"general", "show_cursor_shadow", &api.global->showCursorShadow);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', 
 			"general", "locate_cursor_on_ctrl", nullptr);
 

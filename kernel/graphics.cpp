@@ -1,5 +1,7 @@
 #ifndef IMPLEMENTATION
 
+#define CURSOR_SHADOW_OFFSET (1)
+
 struct Surface : EsPaintTarget {
 	bool Resize(size_t newResX, size_t newResY, uint32_t clearColor = 0, bool copyOldBits = false);
 	void Copy(Surface *source, EsPoint destinationPoint, EsRectangle sourceRegion, bool addToModifiedRegion); 
@@ -8,6 +10,7 @@ struct Surface : EsPaintTarget {
 	void Blur(EsRectangle region, EsRectangle clip);
 	void SetBits(K_USER_BUFFER const void *bits, uintptr_t stride, EsRectangle region);
 	void Scroll(EsRectangle region, ptrdiff_t delta, bool vertical);
+	void CreateCursorShadow(Surface *source);
 
 	EsRectangle modifiedRegion;
 };
@@ -230,7 +233,7 @@ void Surface::Scroll(EsRectangle region, ptrdiff_t delta, bool vertical) {
 #define C3(p) ((p & 0xFF000000) >> 0x18)
 
 __attribute__((optimize("-O2"))) 
-void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint16_t *kernel, uintptr_t repeat) {
+void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint16_t *k, uintptr_t repeat) {
 	if (width <= 3 || height <= 3) {
 		return;
 	}
@@ -243,12 +246,9 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint1
 
 			for (int i = 0; i < width; i++, u++, v++) {
 				if (i + 3 < width) g = *v;
-				*u = 	  (((C0(a) * kernel[0] + C0(b) * kernel[1] + C0(c) * kernel[2] + C0(d) * kernel[3] + C0(e) 
-								* kernel[4] + C0(f) * kernel[5] + C0(g) * kernel[6]) >> 8) << 0x00)
-					+ (((C1(a) * kernel[0] + C1(b) * kernel[1] + C1(c) * kernel[2] + C1(d) * kernel[3] + C1(e) 
-									* kernel[4] + C1(f) * kernel[5] + C1(g) * kernel[6]) >> 8) << 0x08)
-					+ (((C2(a) * kernel[0] + C2(b) * kernel[1] + C2(c) * kernel[2] + C2(d) * kernel[3] + C2(e) 
-									* kernel[4] + C2(f) * kernel[5] + C2(g) * kernel[6]) >> 8) << 0x10)
+				*u =      (((C0(a) * k[0] + C0(b) * k[1] + C0(c) * k[2] + C0(d) * k[3] + C0(e) * k[4] + C0(f) * k[5] + C0(g) * k[6]) >> 8) << 0x00)
+					+ (((C1(a) * k[0] + C1(b) * k[1] + C1(c) * k[2] + C1(d) * k[3] + C1(e) * k[4] + C1(f) * k[5] + C1(g) * k[6]) >> 8) << 0x08)
+					+ (((C2(a) * k[0] + C2(b) * k[1] + C2(c) * k[2] + C2(d) * k[3] + C2(e) * k[4] + C2(f) * k[5] + C2(g) * k[6]) >> 8) << 0x10)
 					+ (C3(d) << 0x18);
 				a = b, b = c, c = d, d = e, e = f, f = g;
 			}
@@ -263,12 +263,9 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint1
 
 			for (int i = 0; i < height; i++, u += stride, v += stride) {
 				if (i + 3 < height) g = *v;
-				*u = 	  (((C0(a) * kernel[0] + C0(b) * kernel[1] + C0(c) * kernel[2] + C0(d) * kernel[3] + C0(e) 
-								* kernel[4] + C0(f) * kernel[5] + C0(g) * kernel[6]) >> 8) << 0x00)
-					+ (((C1(a) * kernel[0] + C1(b) * kernel[1] + C1(c) * kernel[2] + C1(d) * kernel[3] + C1(e) 
-								* kernel[4] + C1(f) * kernel[5] + C1(g) * kernel[6]) >> 8) << 0x08)
-					+ (((C2(a) * kernel[0] + C2(b) * kernel[1] + C2(c) * kernel[2] + C2(d) * kernel[3] + C2(e) 
-								* kernel[4] + C2(f) * kernel[5] + C2(g) * kernel[6]) >> 8) << 0x10)
+				*u =      (((C0(a) * k[0] + C0(b) * k[1] + C0(c) * k[2] + C0(d) * k[3] + C0(e) * k[4] + C0(f) * k[5] + C0(g) * k[6]) >> 8) << 0x00)
+					+ (((C1(a) * k[0] + C1(b) * k[1] + C1(c) * k[2] + C1(d) * k[3] + C1(e) * k[4] + C1(f) * k[5] + C1(g) * k[6]) >> 8) << 0x08)
+					+ (((C2(a) * k[0] + C2(b) * k[1] + C2(c) * k[2] + C2(d) * k[3] + C2(e) * k[4] + C2(f) * k[5] + C2(g) * k[6]) >> 8) << 0x10)
 					+ (C3(d) << 0x18);
 				a = b, b = c, c = d, d = e, e = f, f = g;
 			}
@@ -470,6 +467,45 @@ void Surface::Draw(Surface *source, EsRectangle destinationRegion, int sourceX, 
 	painter.target = this;
 	uint8_t *sourceBits = (uint8_t *) source->bits + source->stride * sourceY + 4 * sourceX;
 	EsDrawBitmap(&painter, destinationRegion, (uint32_t *) sourceBits, source->stride, alpha);
+}
+
+void Surface::CreateCursorShadow(Surface *temporary) {
+	const uint32_t kernel[] = { 14, 43, 82, 43, 14 };
+	uint32_t *bits1 = (uint32_t *) bits;
+	uint32_t *bits2 = (uint32_t *) temporary->bits;
+
+	for (int32_t i = 0; i < (int32_t) height; i++) {
+		for (int32_t j = 0; j < (int32_t) width; j++) {
+			uint32_t s = 0;
+
+			for (int32_t k = 0; k < 5; k++) {
+				int32_t l = j + k - 2;
+
+				if (l >= 0 && l < (int32_t) width) {
+					s += ((bits1[i * stride / 4 + l] & 0xFF000000) >> 24) * kernel[k];
+				}
+			}
+
+			bits2[i * temporary->stride / 4 + j] = s;
+		}
+	}
+
+	for (int32_t i = 0; i < (int32_t) height - CURSOR_SHADOW_OFFSET; i++) {
+		for (int32_t j = 0; j < (int32_t) width - CURSOR_SHADOW_OFFSET; j++) {
+			uint32_t s = 0;
+
+			for (int32_t k = 0; k < 5; k++) {
+				int32_t l = i + k - 2;
+
+				if (l >= 0 && l < (int32_t) height) {
+					s += bits2[l * temporary->stride / 4 + j] * kernel[k];
+				}
+			}
+
+			uint32_t *out = &bits1[(i + CURSOR_SHADOW_OFFSET) * stride / 4 + (j + CURSOR_SHADOW_OFFSET)];
+			*out = EsColorBlend((s >> 16) << 24, *out, true);
+		}
+	}
 }
 
 void GraphicsUpdateScreen32(K_USER_BUFFER const uint8_t *_source, uint32_t sourceWidth, uint32_t sourceHeight, uint32_t sourceStride, 

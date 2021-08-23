@@ -87,6 +87,7 @@ struct EsFileStore {
 struct GlobalData {
 	int32_t clickChainTimeoutMs;
 	bool swapLeftAndRightButtons;
+	bool showCursorShadow;
 };
 
 struct ThreadLocalStorage {
@@ -1131,6 +1132,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 		api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
+		api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
 	} else {
 		EsHandle initialMountPointsBuffer = EsSyscall(ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT, ES_CURRENT_PROCESS, CREATION_ARGUMENT_INITIAL_MOUNT_POINTS, 0, 0);
 		size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);

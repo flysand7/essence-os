@@ -1070,17 +1070,26 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 	}
 
 	bool changedCursor = false;
+	bool different = argument1 != windowManager.cursorID || windowManager.cursorShadow != !!(argument3 & (1 << 30));
 
-	if (!window->closed && argument1 != windowManager.cursorID && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
+	if (!window->closed && different && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
 		windowManager.cursorID = argument1;
 		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF);
 		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
-		windowManager.cursorXOR = argument3 >> 31;
+		windowManager.cursorXOR = argument3 & (1 << 31);
+		windowManager.cursorShadow = argument3 & (1 << 30);
 
-		if (windowManager.cursorSurface.Resize(imageWidth, imageHeight)) {
-			windowManager.cursorSwap.Resize(imageWidth, imageHeight);
-			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, 
-					ES_RECT_4(0, windowManager.cursorSurface.width, 0, windowManager.cursorSurface.height));
+		int width = imageWidth + CURSOR_SHADOW_OFFSET;
+		int height = imageHeight + CURSOR_SHADOW_OFFSET;
+
+		if (windowManager.cursorSurface.Resize(width, height)
+				&& windowManager.cursorSwap.Resize(width, height)
+				&& windowManager.cursorTemporary.Resize(width, height)) {
+			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, ES_RECT_2S(imageWidth, imageHeight));
+
+			if (windowManager.cursorShadow) {
+				windowManager.cursorSurface.CreateCursorShadow(&windowManager.cursorTemporary);
+			}
 		}
 
 		windowManager.changedCursorImage = true;

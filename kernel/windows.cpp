@@ -99,10 +99,10 @@ struct WindowManager {
 	int cursorXPrecise, cursorYPrecise; // Scaled up by a factor of 10.
 	unsigned lastButtons;
 
-	Surface cursorSurface, cursorSwap;
+	Surface cursorSurface, cursorSwap, cursorTemporary;
 	int cursorImageOffsetX, cursorImageOffsetY;
 	uintptr_t cursorID;
-	bool cursorXOR;
+	bool cursorXOR, cursorShadow;
 	bool changedCursorImage;
 
 	// Keyboard:
