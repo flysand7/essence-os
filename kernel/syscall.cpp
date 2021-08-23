@@ -1190,6 +1190,21 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD) {
+	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_window);
+	_EsMessageWithObject m;
+	EsMemoryZero(&m, sizeof(_EsMessageWithObject));
+	KMutexAcquire(&windowManager.mutex);
+	Window *window = (Window *) _window.object;
+	m.object = window->apiWindow;
+	EsMemoryCopy(&m.message, &window->lastEmbedKeyboardMessage, sizeof(EsMessage));
+	window->lastEmbedKeyboardMessage.type = ES_MSG_INVALID;
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_WRITE(argument1, &m, sizeof(_EsMessageWithObject));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_PAUSE) {
 	KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
 	CHECK_OBJECT(_process);

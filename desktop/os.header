@@ -803,6 +803,7 @@ enum EsSyscallType {
 	ES_SYSCALL_WINDOW_MOVE
 	ES_SYSCALL_WINDOW_GET_ID
 	ES_SYSCALL_WINDOW_GET_BOUNDS
+	ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD
 	ES_SYSCALL_WINDOW_SET_BITS
 	ES_SYSCALL_WINDOW_SET_CURSOR
 	ES_SYSCALL_WINDOW_SET_PROPERTY
@@ -860,6 +861,8 @@ enum EsSyscallType {
 }
 
 enum EsMessageType {
+	ES_MSG_INVALID				= 0x0000
+		
 	// Window manager messages (don't rearrange; see SendMessageToWindow in kernel/window_manager.cpp):
 	ES_MSG_WM_START				= 0x1000
 	ES_MSG_MOUSE_MOVED 			= 0x1001

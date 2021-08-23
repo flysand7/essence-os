@@ -61,6 +61,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_CLIPBOARD_GET             (12)
 #define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET  (13)
 #define DESKTOP_MSG_FILE_TYPES_GET            (14)
+#define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
 
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 

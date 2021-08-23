@@ -6068,9 +6068,13 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT && gui.unhandledAltPress) {
 			AccessKeyModeEnter(window);
+		} else if (window->focused) {
+			EsMessageSend(window->focused, message);
+		} else if (window->windowStyle == ES_WINDOW_NORMAL) {
+			uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
+			MessageDesktop(&m, 1, window->handle);
 		}
 
-		if (window->focused) EsMessageSend(window->focused, message);
 		return;
 	}
 
@@ -6156,9 +6160,11 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (window->enterButton && message->keyboard.scancode == ES_SCANCODE_ENTER && !message->keyboard.modifiers
 			&& window->enterButton->onCommand && (~window->enterButton->flags & ES_ELEMENT_DISABLED)) {
 		window->enterButton->onCommand(window->instance, window->enterButton, window->enterButton->command);
+		return;
 	} else if (window->escapeButton && message->keyboard.scancode == ES_SCANCODE_ESCAPE && !message->keyboard.modifiers
 			&& window->escapeButton->onCommand && (~window->escapeButton->flags & ES_ELEMENT_DISABLED)) {
 		window->escapeButton->onCommand(window->instance, window->escapeButton, window->escapeButton->command);
+		return;
 	}
 
 	if (!window->hasDialog) {
@@ -6197,6 +6203,12 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 				}
 			}
 		}
+	}
+
+	if (window->windowStyle == ES_WINDOW_NORMAL) {
+		uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
+		MessageDesktop(&m, 1, window->handle);
+		return;
 	}
 }
 

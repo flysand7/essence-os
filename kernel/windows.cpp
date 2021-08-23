@@ -36,6 +36,7 @@ struct Window {
 	EsRectangle solidInsets;
 	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, queuedScrollUpdate, activationClick, noBringToFront;
 	volatile bool closed;
+	EsMessage lastEmbedKeyboardMessage; // The most recent keyboard message sent to the embedded window.
 
 	// Appearance:
 	Surface surface;
@@ -180,6 +181,8 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		return;
 	}
 
+	window->lastEmbedKeyboardMessage.type = ES_MSG_INVALID;
+
 	if (message->type == ES_MSG_WINDOW_RESIZED) {
 		message->windowResized.content = ES_RECT_4(0, window->width, 0, window->height);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
@@ -229,12 +232,12 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 			window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN || message->type == ES_MSG_KEY_UP) {
-		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
+		// If the embedded window doesn't handle the key event,
+		// then the container window can get it from here.
+		// See DESKTOP_MSG_UNHANDLED_KEY_EVENT and ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD.
+		EsMemoryCopy(&window->lastEmbedKeyboardMessage, message, sizeof(EsMessage));
 
-		// TODO Better method of handling keyboard shortcuts that Desktop needs to process?
-		// 	By sending the message to both processes, two threads will wake up,
-		// 	which could increase latency of handling the message.
-		window->owner->messageQueue.SendMessage(window->apiWindow, message);
+		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 	} else if (message->type == ES_MSG_MOUSE_EXIT) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
