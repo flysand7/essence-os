@@ -497,6 +497,7 @@ typedef struct FileType {
 	const char *name;
 	const char *icon;
 	int id, openID;
+	bool hasThumbnailGenerator;
 } FileType;
 
 typedef struct Handler {
@@ -719,6 +720,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 			INI_READ_STRING_PTR(extension, fileType->extension);
 			INI_READ_STRING_PTR(name, fileType->name);
 			INI_READ_STRING_PTR(icon, fileType->icon);
+			INI_READ_BOOL(has_thumbnail_generator, fileType->hasThumbnailGenerator);
 		} else if (0 == strcmp(s.section, "embed") && s.key[0] != ';' && s.value[0]) {
 			BundleInput input = { 0 };
 			input.path = s.value;
@@ -821,6 +823,7 @@ void OutputSystemConfiguration() {
 			FilePrintFormat(file, "name=%s\n", applications[i].fileTypes[j].name);
 			FilePrintFormat(file, "icon=%s\n", applications[i].fileTypes[j].icon);
 			FilePrintFormat(file, "open=%d\n", applications[i].fileTypes[j].openID);
+			FilePrintFormat(file, "has_thumbnail_generator=%d\n", applications[i].fileTypes[j].hasThumbnailGenerator);
 		}
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].handlers); j++) {

@@ -1,6 +1,8 @@
 struct FileType {
 	char *name;
 	size_t nameBytes;
+	char *extension;
+	size_t extensionBytes;
 	uint32_t iconID;
 	int64_t openHandler;
 
@@ -16,6 +18,9 @@ void AddKnownFileTypes() {
 	{ \
 		FileType type = {}; \
 		type.name = (char *) _name; \
+		type.nameBytes = EsCStringLength(_name); \
+		type.extension = (char *) _extension; \
+		type.extensionBytes = EsCStringLength(_extension); \
 		type.iconID = _iconID; \
 		uintptr_t index = knownFileTypes.Length(); \
 		knownFileTypes.Add(type); \
@@ -37,39 +42,31 @@ void AddKnownFileTypes() {
 #define KNOWN_FILE_TYPE_DRIVES_PAGE (6)
 	ADD_FILE_TYPE("", interfaceString_FileManagerDrivesPage, ES_ICON_COMPUTER_LAPTOP);
 
-	size_t groupCount;
-	EsSystemConfigurationGroup *groups = EsSystemConfigurationReadAll(&groupCount); 
-
-	for (uintptr_t i = 0; i < groupCount; i++) {
-		EsSystemConfigurationGroup *group = groups + i;
-
-		if (EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("file_type"))) {
-			continue;
-		}
-
-		FileType type = {};
-
-		type.name = EsSystemConfigurationGroupReadString(group, "name", -1, &type.nameBytes);
-		type.openHandler = EsSystemConfigurationGroupReadInteger(group, "open", -1);
-
-		char *iconName = EsSystemConfigurationGroupReadString(group, "icon", -1);
-
-		if (iconName) {
-			type.iconID = EsIconIDFromString(iconName);
-			EsHeapFree(iconName);
-		}
-
-		char *extension = EsSystemConfigurationGroupReadString(group, "extension", -1);
-
-		// TODO Proper thumbnail generator registrations.
-
-		if (0 == EsCRTstrcmp(extension, "jpg") || 0 == EsCRTstrcmp(extension, "png") || 0 == EsCRTstrcmp(extension, "bmp")) {
+	EsBuffer buffer = { .canGrow = true };
+	EsSystemConfigurationReadFileTypes(&buffer);
+	EsINIState s = { .buffer = (char *) buffer.out, .bytes = buffer.bytes };
+	FileType type = {};
+	
+	while (EsINIParse(&s)) {
+		if (0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("name"))) {
+			type.name = s.value, type.nameBytes = s.valueBytes;
+		} else if (0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("extension"))) {
+			type.extension = s.value, type.extensionBytes = s.valueBytes;
+		} else if (0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("open"))) {
+			type.openHandler = EsIntegerParse(s.value, s.valueBytes);
+		} else if (0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("icon"))) {
+			type.iconID = EsIconIDFromString(s.value, s.valueBytes);
+		} else if (0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("has_thumbnail_generator")) && EsIntegerParse(s.value, s.valueBytes)) {
+			// TODO Proper thumbnail generator registrations.
 			type.hasThumbnailGenerator = true;
 		}
 
-		uintptr_t index = knownFileTypes.Length();
-		knownFileTypes.Add(type);
-		*knownFileTypesByExtension.Put(extension, EsCStringLength(extension)) = index;
+		if (!EsINIPeek(&s) || !s.keyBytes) {
+			uintptr_t index = knownFileTypes.Length();
+			knownFileTypes.Add(type);
+			*knownFileTypesByExtension.Put(type.extension, type.extensionBytes) = index;
+			EsMemoryZero(&type, sizeof(type));
+		}
 	}
 }
 

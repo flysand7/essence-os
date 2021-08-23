@@ -1586,6 +1586,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_CREATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
+	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
 	Pipe *pipe;
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
 	SYSCALL_BUFFER(argument1, argument2, 2, false);
@@ -1593,57 +1594,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {
+	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
 	Pipe *pipe;
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
 	SYSCALL_BUFFER(argument1, argument2, 2, true /* write */);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, true, true), false);
-}
-
-KMutex systemConfigurationMutex;
-ConstantBuffer *systemConfiguration;
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_CONFIGURATION_WRITE) {
-	SYSCALL_PERMISSION(ES_PERMISSION_SYSTEM_CONFIGURATION_WRITE);
-
-	// TODO Broadcast message?
-
-	if (argument1 > SYSCALL_BUFFER_LIMIT) {
-		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-	}
-
-	ConstantBuffer *buffer = (ConstantBuffer *) EsHeapAllocate(sizeof(ConstantBuffer) + argument1, false, K_PAGED);
-	if (!buffer) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	EsMemoryZero(buffer, sizeof(ConstantBuffer));
-	buffer->handles = 1;
-	buffer->bytes = argument1;
-	buffer->isPaged = true;
-	EsDefer(CloseHandleToObject(buffer, KERNEL_OBJECT_CONSTANT_BUFFER));
-	SYSCALL_READ(buffer + 1, argument0, argument1);
-
-	KMutexAcquire(&systemConfigurationMutex);
-	if (systemConfiguration) CloseHandleToObject(systemConfiguration, KERNEL_OBJECT_CONSTANT_BUFFER);
-	OpenHandleToObject(buffer, KERNEL_OBJECT_CONSTANT_BUFFER);
-	systemConfiguration = buffer;
-	KMutexRelease(&systemConfigurationMutex);
-
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_CONFIGURATION_READ) {
-	EsHandle handle = ES_INVALID_HANDLE;
-	size_t bytes = 0;
-
-	KMutexAcquire(&systemConfigurationMutex);
-
-	if (systemConfiguration && OpenHandleToObject(systemConfiguration, KERNEL_OBJECT_CONSTANT_BUFFER)) {
-		bytes = systemConfiguration->bytes;
-		handle = currentProcess->handleTable.OpenHandle(systemConfiguration, 0, KERNEL_OBJECT_CONSTANT_BUFFER);
-	}
-
-	KMutexRelease(&systemConfigurationMutex);
-
-	SYSCALL_WRITE(argument2, &bytes, sizeof(bytes));
-	SYSCALL_RETURN(handle, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_CREATE) {

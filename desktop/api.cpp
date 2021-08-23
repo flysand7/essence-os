@@ -59,6 +59,8 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_CREATE_CLIPBOARD_FILE     (10)
 #define DESKTOP_MSG_CLIPBOARD_PUT             (11)
 #define DESKTOP_MSG_CLIPBOARD_GET             (12)
+#define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET  (13)
+#define DESKTOP_MSG_FILE_TYPES_GET            (14)
 
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 
@@ -108,6 +110,7 @@ EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInfo
 
 struct {
 	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
+	EsMutex systemConfigurationMutex;
 	Array<MountPoint> mountPoints;
 	bool foundBootFileSystem;
 	EsProcessStartupInformation *startupInformation;
@@ -279,7 +282,7 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	return nullptr;
 }
 
-char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
+char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr) {
 	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	if (valueBytes) *valueBytes = item->valueBytes;
@@ -289,19 +292,23 @@ char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, co
 	return copy;
 }
 
-int64_t EsSystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
+int64_t EsSystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0) {
 	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) return defaultValue;
 	return EsIntegerParse(item->value, item->valueBytes); 
 }
 
 char *EsSystemConfigurationReadString(const char *section, ptrdiff_t sectionBytes, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
+	EsMutexAcquire(&api.systemConfigurationMutex);
+	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	return EsSystemConfigurationGroupReadString(group, key, keyBytes, valueBytes);
 }
 
 int64_t EsSystemConfigurationReadInteger(const char *section, ptrdiff_t sectionBytes, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
+	EsMutexAcquire(&api.systemConfigurationMutex);
+	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) return defaultValue;
 	return EsSystemConfigurationGroupReadInteger(group, key, keyBytes, defaultValue);
@@ -338,12 +345,6 @@ void SystemConfigurationLoad(char *file, size_t fileBytes) {
 	}
 
 	EsHeapFree(file);
-}
-
-EsSystemConfigurationGroup *EsSystemConfigurationReadAll(size_t *groupCount) {
-	EsMessageMutexCheck();
-	*groupCount = api.systemConfigurationGroups.Length();
-	return api.systemConfigurationGroups.array;
 }
 
 uint8_t *ApplicationStartupInformationToBuffer(const EsApplicationStartupInformation *information, size_t *dataBytes = nullptr) {
@@ -503,9 +504,14 @@ void EsApplicationRunTemporary(EsInstance *instance, const char *path, ptrdiff_t
 	EsHeapFree(buffer);
 }
 
-void EsSystemShowShutdownDialog(EsInstance *instance) {
+void EsSystemShowShutdownDialog() {
 	uint8_t message = DESKTOP_MSG_REQUEST_SHUTDOWN;
-	MessageDesktop(&message, 1, instance->window->handle);
+	MessageDesktop(&message, 1);
+}
+
+void EsSystemConfigurationReadFileTypes(EsBuffer *buffer) {
+	uint8_t m = DESKTOP_MSG_FILE_TYPES_GET;
+	MessageDesktop(&m, 1, ES_INVALID_HANDLE, buffer);
 }
 
 void InstanceSave(EsInstance *_instance) {
@@ -1120,13 +1126,10 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		EsHeapFree(initialMountPoints);
 		EsHandleClose(initialMountPointsBuffer);
 
-		size_t bytes;
-		EsHandle handle = EsSyscall(ES_SYSCALL_SYSTEM_CONFIGURATION_READ, 0, 0, (uintptr_t) &bytes, 0);
-		EsAssert(handle);
-		char *buffer = (char *) EsHeapAllocate(bytes, false);
-		EsConstantBufferRead(handle, buffer);
-		EsHandleClose(handle);
-		SystemConfigurationLoad(buffer, bytes);
+		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
+		EsBuffer responseBuffer = { .canGrow = true };
+		MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
+		SystemConfigurationLoad((char *) responseBuffer.in, responseBuffer.bytes);
 	}
 
 	if (uiProcess) {

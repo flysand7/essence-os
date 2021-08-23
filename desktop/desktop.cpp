@@ -39,6 +39,7 @@
 #define APPLICATION_PERMISSION_POSIX_SUBSYSTEM           (1 << 2)
 #define APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION (1 << 3)
 #define APPLICATION_PERMISSION_SHUTDOWN                  (1 << 4)
+#define APPLICATION_PERMISSION_VIEW_FILE_TYPES           (1 << 5)
 
 #define APPLICATION_ID_DESKTOP_BLANK_TAB (-1)
 #define APPLICATION_ID_DESKTOP_SETTINGS  (-2)
@@ -1136,6 +1137,18 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 	EsHandleClose(processHandle);
 }
 
+InstalledApplication *ApplicationFindByPID(EsObjectID pid) {
+	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+		ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+		if (instance->processID == pid) {
+			return instance->application;
+		}
+	}
+
+	return nullptr;
+}
+
 void ApplicationProcessTerminated(EsObjectID pid) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
@@ -1432,7 +1445,7 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 // Configuration file management:
 //////////////////////////////////////////////////////
 
-void ConfigurationLoad() {
+void ConfigurationLoadApplications() {
 	// Add applications provided by Desktop.
 
 	{
@@ -1460,6 +1473,8 @@ void ConfigurationLoad() {
 		application->createInstance = InstanceCrashedTabCreate;
 		desktop.installedApplications.Add(application);
 	}
+
+	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		// Load information about installed applications.
@@ -1492,6 +1507,7 @@ void ConfigurationLoad() {
 		READ_PERMISSION("permission_posix_subsystem", APPLICATION_PERMISSION_POSIX_SUBSYSTEM);
 		READ_PERMISSION("permission_run_temporary_application", APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION);
 		READ_PERMISSION("permission_shutdown", APPLICATION_PERMISSION_SHUTDOWN);
+		READ_PERMISSION("permission_view_file_types", APPLICATION_PERMISSION_VIEW_FILE_TYPES);
 
 		desktop.installedApplications.Add(application);
 
@@ -1500,34 +1516,33 @@ void ConfigurationLoad() {
 		}
 	}
 
+	EsMutexRelease(&api.systemConfigurationMutex);
+
 	EsSort(desktop.installedApplications.array, desktop.installedApplications.Length(), 
 			sizeof(InstalledApplication *), [] (const void *_left, const void *_right, EsGeneric) {
 		InstalledApplication *left = *(InstalledApplication **) _left;
 		InstalledApplication *right = *(InstalledApplication **) _right;
 		return EsStringCompare(left->cName, EsCStringLength(left->cName), right->cName, EsCStringLength(right->cName));
 	}, 0);
+}
 
-	// Set the system configuration for other applications to read.
-
-	// TODO Enforce a limit of 4MB on the size of the system configuration.
-	// TODO Alternatively, replace this with a growable EsBuffer.
-	const size_t bufferSize = 4194304;
-	char *buffer = (char *) EsHeapAllocate(bufferSize, false);
-	size_t position = 0;
+void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *section, EsBuffer *pipe) {
+	char buffer[4096];
+	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		EsSystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
 
-		if (EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("font"))
-				&& EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("file_type"))
-				&& EsStringCompareRaw(group->section, group->sectionBytes, EsLiteral("ui"))) {
+		if ((sectionClass && EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, sectionClass, -1))
+				|| (section && EsStringCompareRaw(group->section, group->sectionBytes, section, -1))) {
 			continue;
 		}
 
 		EsINIState s = {};
 		s.sectionClass = group->sectionClass, s.sectionClassBytes = group->sectionClassBytes;
 		s.section = group->section, s.sectionBytes = group->sectionBytes;
-		position += EsINIFormat(&s, buffer + position, bufferSize - position);
+		size_t bytes = EsINIFormat(&s, buffer, sizeof(buffer));
+		EsBufferWrite(pipe, buffer, bytes);
 
 		for (uintptr_t i = 0; i < group->itemCount; i++) {
 			EsSystemConfigurationItem *item = group->items + i;
@@ -1538,12 +1553,12 @@ void ConfigurationLoad() {
 
 			s.key = item->key, s.keyBytes = item->keyBytes;
 			s.value = item->value, s.valueBytes = item->valueBytes;
-			position += EsINIFormat(&s, buffer + position, bufferSize - position);
+			size_t bytes = EsINIFormat(&s, buffer, sizeof(buffer));
+			EsBufferWrite(pipe, buffer, bytes);
 		}
 	}
 
-	EsSyscall(ES_SYSCALL_SYSTEM_CONFIGURATION_WRITE, (uintptr_t) buffer, position, 0, 0);
-	EsHeapFree(buffer);
+	EsMutexRelease(&api.systemConfigurationMutex);
 }
 
 //////////////////////////////////////////////////////
@@ -1869,6 +1884,21 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 			EsHandleClose(processHandle);
 		}
+	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
+		ConfigurationWriteSectionsToBuffer("font", nullptr, pipe);
+		ConfigurationWriteSectionsToBuffer(nullptr, "ui", pipe);
+	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_SHUTDOWN)) {
+			ShutdownModalCreate();
+		}
+	} else if (buffer[0] == DESKTOP_MSG_FILE_TYPES_GET && pipe) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES)) {
+			ConfigurationWriteSectionsToBuffer("file_type", nullptr, pipe);
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
@@ -1923,10 +1953,6 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			application->cName[0] = '_', application->cName[31] = 0;
 			desktop.installedApplications.Add(application);
 			ApplicationInstanceCreate(application->id, nullptr, nullptr);
-		}
-	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
-		if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_SHUTDOWN)) {
-			ShutdownModalCreate();
 		}
 	}
 }
@@ -2062,7 +2088,7 @@ void DesktopMessage(EsMessage *message) {
 }
 
 void DesktopEntry() {
-	ConfigurationLoad();
+	ConfigurationLoadApplications();
 
 	EsMessage m = { MSG_SETUP_DESKTOP_UI };
 	EsMessagePost(nullptr, &m);

@@ -356,7 +356,7 @@ void AddListView(EsListView **pointer, EsElement *switcher, EsUICallbackFunction
 void TerminateProcess(Instance *instance, EsElement *, EsCommand *) {
 	if (selectedPID == 0 /* Kernel */) {
 		// Terminating the kernel process is a meaningless action; the closest equivalent is shutting down.
-		EsSystemShowShutdownDialog(instance);
+		EsSystemShowShutdownDialog();
 		return;
 	}
 

@@ -457,6 +457,8 @@ void FontInitialise() {
 	FontDatabaseEntry nullFont = {};
 	fontManagement.database.Add(nullFont);
 
+	EsMutexAcquire(&api.systemConfigurationMutex);
+
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		EsSystemConfigurationGroup *g = &api.systemConfigurationGroups[i];
 
@@ -511,6 +513,8 @@ void FontInitialise() {
 			fontManagement.database.Add(entry);
 		}
 	}
+
+	EsMutexRelease(&api.systemConfigurationMutex);
 }
 
 EsFontFamily FontGetStandardFamily(EsFontFamily family) {

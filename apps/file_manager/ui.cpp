@@ -700,7 +700,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 			EsBufferFormat(message->getContent.buffer, "%s", name.bytes, name.text);
 			message->getContent.icon = fileType->iconID;
 		} else if (column == COLUMN_TYPE) {
-			EsBufferFormat(message->getContent.buffer, "%z", fileType->name);
+			EsBufferFormat(message->getContent.buffer, "%s", fileType->nameBytes, fileType->name);
 		} else if (column == COLUMN_SIZE) {
 			if (!entry->sizeUnknown) {
 				EsBufferFormat(message->getContent.buffer, "%D", entry->size);
@@ -713,7 +713,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		FolderEntry *entry = listEntry->entry;
 		FileType *fileType = FolderEntryGetType(instance->folder, entry);
 		String name = entry->GetName();
-		EsBufferFormat(message->getContent.buffer, "%s\n\a2]%z " HYPHENATION_POINT " %D", name.bytes, name.text, fileType->name, entry->size);
+		EsBufferFormat(message->getContent.buffer, "%s\n\a2]%s " HYPHENATION_POINT " %D", name.bytes, name.text, fileType->nameBytes, fileType->name, entry->size);
 		message->getContent.icon = fileType->iconID;
 		message->getContent.richText = true;
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT_RANGE) {
