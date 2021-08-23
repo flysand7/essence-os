@@ -5073,6 +5073,10 @@ bool EsElement::InternalDestroy() {
 		window->checkVisible.FindAndDeleteSwap(this, true);
 	}
 
+	if (flags & ES_ELEMENT_FREE_USER_DATA) {
+		EsHeapFree(userData.p);
+	}
+
 	if (currentStyle) currentStyle->CloseReference();
 	if (previousTransitionFrame) EsPaintTargetDestroy(previousTransitionFrame);
 	ThemeAnimationDestroy(&animation);
@@ -6351,6 +6355,13 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	// Process input message.
 
 	if (timing) timing->startLogic = EsTimeStampMs();
+
+	if (api.global->swapLeftAndRightButtons) {
+		if      (message->type == ES_MSG_MOUSE_LEFT_DOWN ) message->type = ES_MSG_MOUSE_RIGHT_DOWN;
+		else if (message->type == ES_MSG_MOUSE_RIGHT_DOWN) message->type = ES_MSG_MOUSE_LEFT_DOWN;
+		else if (message->type == ES_MSG_MOUSE_LEFT_UP   ) message->type = ES_MSG_MOUSE_RIGHT_UP;
+		else if (message->type == ES_MSG_MOUSE_RIGHT_UP  ) message->type = ES_MSG_MOUSE_LEFT_UP;
+	}
 
 	if (message->type == ES_MSG_MOUSE_MOVED) {
 		window->mousePosition.x = message->mouseMoved.newPositionX;

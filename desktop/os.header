@@ -439,6 +439,7 @@ define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 43) // Hint f
 define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 44) // Hint for autoCorners and autoBorders; and tab traversal.
 define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 45) // Don't exit access key mode after using the access key.
 define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 46) 
+define ES_ELEMENT_FREE_USER_DATA		((_EsLongConstant) (1) << 47) // Call EsHeapFree on userData when destroying the element.
 
 // For children of splitters:
 define ES_CELL_COLLAPSABLE	((_EsLongConstant) (1) << 51)

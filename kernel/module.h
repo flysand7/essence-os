@@ -126,6 +126,7 @@ void KRegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, bool ne
 
 #ifdef K_IN_CORE_KERNEL
 #define SHARED_COMMON_WANT_ALL
+#include <shared/strings.cpp>
 #include <shared/common.cpp>
 #endif
 

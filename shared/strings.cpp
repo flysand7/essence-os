@@ -63,6 +63,14 @@ DEFINE_INTERFACE_STRING(CommonAnnouncementTextCopied, "Text copied");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorResources, "There's not enough space to copy this");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorOther, "Could not copy");
 
+DEFINE_INTERFACE_STRING(CommonEmpty, "empty");
+
+DEFINE_INTERFACE_STRING(CommonUnitBytes, " B");
+DEFINE_INTERFACE_STRING(CommonUnitKilobytes, " KB");
+DEFINE_INTERFACE_STRING(CommonUnitMegabytes, " MB");
+DEFINE_INTERFACE_STRING(CommonUnitGigabytes, " GB");
+DEFINE_INTERFACE_STRING(CommonUnitMilliseconds, " ms");
+
 // Desktop.
 
 DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
@@ -99,15 +107,16 @@ DEFINE_INTERFACE_STRING(DesktopSettingsTheme, "Theme");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay, "Key repeat delay:");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate, "Key repeat rate:");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate, "Caret blink rate:");
-DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction, "Try out the settings in the textbox below:");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction, "Try your settings in the textbox below:");
 
-DEFINE_INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed, "Double-click speed:");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed, "Double click time:");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeed, "Cursor movement speed:");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrails, "Cursor trail count:");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch, "Lines to scroll per wheel notch:");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons, "Swap left and right buttons");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseShowShadow, "Show shadow below cursor");
-DEFINE_INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl, "Show cursor location when Ctrl is pressed");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl, "Highlight cursor location when Ctrl is pressed");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseTestDoubleClickIntroduction, "Double click the circle below to try your setting. If it does not change color, increase the double click time.");
 
 // File operations.
 

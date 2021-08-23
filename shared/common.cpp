@@ -590,25 +590,25 @@ void _StringFormat(FormatCallback callback, void *callbackData, const char *form
 					long value = va_arg(arguments, long);
 
 					if (value == 0) {
-						WriteCStringToCallback(callback, callbackData, "empty");
+						WriteCStringToCallback(callback, callbackData, interfaceString_CommonEmpty);
 					} else if (value < 1000) {
 						_FormatInteger(callback, callbackData, value, pad);
-						WriteCStringToCallback(callback, callbackData, " B");
+						WriteCStringToCallback(callback, callbackData, interfaceString_CommonUnitBytes);
 					} else if (value < 1000000) {
 						_FormatInteger(callback, callbackData, value / 1000, pad);
 						callback('.', callbackData);
 						_FormatInteger(callback, callbackData, (value / 100) % 10, pad);
-						WriteCStringToCallback(callback, callbackData, " KB");
+						WriteCStringToCallback(callback, callbackData, interfaceString_CommonUnitKilobytes);
 					} else if (value < 1000000000) {
 						_FormatInteger(callback, callbackData, value / 1000000, pad);
 						callback('.', callbackData);
 						_FormatInteger(callback, callbackData, (value / 100000) % 10, pad);
-						WriteCStringToCallback(callback, callbackData, " MB");
+						WriteCStringToCallback(callback, callbackData, interfaceString_CommonUnitMegabytes);
 					} else {
 						_FormatInteger(callback, callbackData, value / 1000000000, pad);
 						callback('.', callbackData);
 						_FormatInteger(callback, callbackData, (value / 100000000) % 10, pad);
-						WriteCStringToCallback(callback, callbackData, " GB");
+						WriteCStringToCallback(callback, callbackData, interfaceString_CommonUnitGigabytes);
 					}
 				} break;
 
