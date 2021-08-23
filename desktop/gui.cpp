@@ -449,7 +449,7 @@ struct EsWindow : EsElement {
 	EsElement *source; // Menu source.
 	EsWindow *targetMenu; // The menu that keyboard events should be sent to.
 
-	int32_t announcementBaseY;
+	EsPoint announcementBase;
 	double announcementTimeMs;
 };
 
@@ -3582,7 +3582,6 @@ int AnnouncementMessage(EsElement *element, EsMessage *message) {
 		double progress = window->announcementTimeMs / GetConstantNumber("announcementDuration");
 
 		if (progress > 1) {
-			progress = 1;
 			EsElementDestroy(window);
 			return 0;
 		}
@@ -3595,7 +3594,7 @@ int AnnouncementMessage(EsElement *element, EsMessage *message) {
 
 		EsRectangle bounds = EsWindowGetBounds(window);
 		int32_t height = Height(bounds);
-		bounds.t = window->announcementBaseY - inOnly * GetConstantNumber("announcementMovement");
+		bounds.t = window->announcementBase.y - inOnly * GetConstantNumber("announcementMovement");
 		bounds.b = bounds.t + height;
 
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0xFF * inOut, 0, ES_WINDOW_PROPERTY_ALPHA);
@@ -3619,11 +3618,12 @@ void EsAnnouncementShow(EsWindow *parent, uint64_t flags, int32_t x, int32_t y, 
 	int32_t width = display->GetWidth(0);
 	int32_t height = display->GetHeight(width);
 
-	EsRectangle parentBounds = EsWindowGetBounds(parent);
+	EsRectangle parentBounds = {};
+       	if (parent) parentBounds = EsWindowGetBounds(parent);
 	EsRectangle bounds = ES_RECT_4PD(x - width / 2 + parentBounds.l, y - height + parentBounds.t, width, height);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0x00, 0, ES_WINDOW_PROPERTY_ALPHA);
 	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN | ES_WINDOW_MOVE_ALWAYS_ON_TOP);
-	window->announcementBaseY = EsWindowGetBounds(window).t;
+	window->announcementBase.y = EsWindowGetBounds(window).t;
 	window->StartAnimating();
 }
 
@@ -6003,11 +6003,14 @@ void AccessKeyModeHandleKeyPress(EsMessage *message) {
 		return;
 	}
 
+	EsWindow *window = gui.accessKeys.window;
+
 	int ic, isc;
 	ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, false, false);
 	ic = EsCRTtoupper(ic);
 
 	bool keepAccessKeyModeActive = false;
+	bool regatherKeys = false;
 
 	if (ic >= 'A' && ic <= 'Z' && !gui.accessKeys.typedCharacter) {
 		if (gui.accessKeys.numbers[ic - 'A'] > 1) {
@@ -6023,6 +6026,7 @@ void AccessKeyModeHandleKeyPress(EsMessage *message) {
 					EsElementFocus(entry->element, ES_ELEMENT_FOCUS_ENSURE_VISIBLE | ES_ELEMENT_FOCUS_FROM_KEYBOARD);
 
 					keepAccessKeyModeActive = entry->element->flags & ES_ELEMENT_STICKY_ACCESS_KEY;
+					regatherKeys = true;
 				}
 			}
 		}
@@ -6036,14 +6040,19 @@ void AccessKeyModeHandleKeyPress(EsMessage *message) {
 				EsElementFocus(entry->element, ES_ELEMENT_FOCUS_ENSURE_VISIBLE | ES_ELEMENT_FOCUS_FROM_KEYBOARD);
 
 				keepAccessKeyModeActive = entry->element->flags & ES_ELEMENT_STICKY_ACCESS_KEY;
+				regatherKeys = true;
 			}
 		}
 	}
 
 	if (!keepAccessKeyModeActive) {
 		AccessKeyModeExit();
+	} else if (regatherKeys) {
+		AccessKeyModeExit();
+		window->InternalMove(window->width, window->height, 0, 0);
+		AccessKeyModeEnter(window);
 	} else {
-		gui.accessKeys.window->Repaint(true);
+		window->Repaint(true);
 	}
 }
 

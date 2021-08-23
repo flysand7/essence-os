@@ -121,8 +121,8 @@ void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
 	EsTextboxInsert(textbox, buffer, bytes);
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1); // TODO Create if needed.
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1); // TODO Create if needed.
+	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
+	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
 	int32_t oldValue = EsIntegerParse(item->value, item->valueBytes);
 	EsHeapFree(item->value);
 	item->value = (char *) EsHeapAllocate(65, true);
@@ -162,7 +162,7 @@ void SettingsAddTitle(EsElement *container, SettingsPage *page) {
 
 void SettingsAddUndoButton(EsElement *stack) {
 	EsPanel *overlay = EsPanelCreate(stack, ES_CELL_H_RIGHT | ES_CELL_V_TOP, &styleSettingsOverlayPanel);
-	EsButton *undoButton = EsButtonCreate(overlay, ES_BUTTON_TOOLBAR, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
+	EsButton *undoButton = EsButtonCreate(overlay, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
 	undoButton->accessKey = 'U';
 	((SettingsInstance *) stack->instance)->undoButton = undoButton;
 	EsButtonSetIcon(undoButton, ES_ICON_EDIT_UNDO_SYMBOLIC);
@@ -184,8 +184,8 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 	bool newValue = EsButtonGetCheck(button) == ES_CHECK_CHECKED;
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1); // TODO Create if needed.
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1); // TODO Create if needed.
+	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
+	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
 	bool oldValue = EsIntegerParse(item->value, item->valueBytes);
 	EsHeapFree(item->value);
 	item->value = (char *) EsHeapAllocate(2, true);
@@ -209,7 +209,7 @@ void SettingsAddCheckbox(EsElement *table, const char *string, ptrdiff_t stringB
 	control->globalPointerBool = globalPointerBool;
 	control->originalValueBool = EsSystemConfigurationReadInteger(control->cConfigurationSection, -1, control->cConfigurationKey, -1);
 
-	EsButton *button = EsButtonCreate(table, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX | ES_ELEMENT_FREE_USER_DATA, 0, string, stringBytes);
+	EsButton *button = EsButtonCreate(table, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX | ES_ELEMENT_FREE_USER_DATA | ES_ELEMENT_STICKY_ACCESS_KEY, 0, string, stringBytes);
 	button->userData = control;
 	button->accessKey = accessKey;
 	if (control->originalValueBool) EsButtonSetCheck(button, ES_CHECK_CHECKED, false);
@@ -327,8 +327,10 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', 
 			"general", "swap_left_and_right_buttons", &api.global->swapLeftAndRightButtons);
-	EsButtonCreate(table, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX, 0, INTERFACE_STRING(DesktopSettingsMouseShowShadow))->accessKey = 'W'; // TODO.
-	EsButtonCreate(table, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX, 0, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl))->accessKey = 'L'; // TODO.
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', 
+			"general", "show_cursor_shadow", nullptr); // TODO.
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', 
+			"general", "locate_cursor_on_ctrl", nullptr);
 
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
 
@@ -407,7 +409,7 @@ void SettingsButtonPressed(EsInstance *_instance, EsElement *element, EsCommand 
 
 	{
 		EsPanel *overlay = EsPanelCreate(stack, ES_CELL_H_LEFT | ES_CELL_V_TOP, &styleSettingsOverlayPanel);
-		EsButton *backButton = EsButtonCreate(overlay, ES_CELL_H_LEFT | ES_BUTTON_TOOLBAR, 0, INTERFACE_STRING(DesktopSettingsBackButton));
+		EsButton *backButton = EsButtonCreate(overlay, ES_CELL_H_LEFT | ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsBackButton));
 		backButton->accessKey = 'A';
 		EsButtonSetIcon(backButton, ES_ICON_GO_HOME_SYMBOLIC);
 		EsButtonOnCommand(backButton, SettingsBackButton);
@@ -443,7 +445,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 		}, nullptr);
 
 		for (uintptr_t i = 0; i < sizeof(settingsPages) / sizeof(settingsPages[0]); i++) {
-			EsButton *button = EsButtonCreate(container, ES_ELEMENT_NO_FOCUS_ON_CLICK | ES_CELL_H_FILL, 
+			EsButton *button = EsButtonCreate(container, ES_ELEMENT_NO_FOCUS_ON_CLICK | ES_CELL_H_FILL | ES_ELEMENT_STICKY_ACCESS_KEY, 
 					&styleSettingsButton, settingsPages[i].string, settingsPages[i].stringBytes);
 			button->userData = &settingsPages[i];
 			button->accessKey = settingsPages[i].accessKey;

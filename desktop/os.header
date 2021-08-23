@@ -954,6 +954,7 @@ enum EsMessageType {
 	ES_MSG_DESKTOP	                        = 0x4806
 	ES_MSG_DEVICE_CONNECTED			= 0x4807
 	ES_MSG_DEVICE_DISCONNECTED		= 0x4808
+	ES_MSG_SINGLE_CTRL_PRESS		= 0x4809
 
 	// Messages sent from Desktop to application instances:
 	ES_MSG_TAB_INSPECT_UI			= 0x4A01

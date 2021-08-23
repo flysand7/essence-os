@@ -260,7 +260,7 @@ EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInfo
 	return EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, flags, (uintptr_t) node);
 }
 
-EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes) {
+EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false) {
 	if (keyBytes == -1) keyBytes = EsCStringLength(key);
 
 	for (uintptr_t i = 0; i < group->itemCount; i++) {
@@ -269,16 +269,37 @@ EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup
 		}
 	}
 
+	if (createIfNeeded) {
+		EsSystemConfigurationItem item = {};
+		item.key = (char *) EsHeapAllocate(keyBytes, false);
+		item.keyBytes = keyBytes;
+		EsMemoryCopy(item.key, key, keyBytes);
+
+		Array<EsSystemConfigurationItem> items = { group->items };
+		EsSystemConfigurationItem *_item = items.Add(item);
+		group->items = items.array;
+		group->itemCount++;
+		return _item;
+	}
+
 	return nullptr;
 }
 
-EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes) {
+EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false) {
 	if (sectionBytes == -1) sectionBytes = EsCStringLength(section);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		if (0 == EsStringCompareRaw(section, sectionBytes, api.systemConfigurationGroups[i].section, api.systemConfigurationGroups[i].sectionBytes)) {
 			return &api.systemConfigurationGroups[i];
 		}
+	}
+
+	if (createIfNeeded) {
+		EsSystemConfigurationGroup group = {};
+		group.section = (char *) EsHeapAllocate(sectionBytes, false);
+		group.sectionBytes = sectionBytes;
+		EsMemoryCopy(group.section, section, sectionBytes);
+		return api.systemConfigurationGroups.Add(group);
 	}
 
 	return nullptr;
@@ -791,7 +812,7 @@ EsMessage *EsMessageReceive() {
 			EsMessageSend((EsElement *) message.object, &message.message);
 		} else if (type == ES_MSG_TIMER) {
 			((EsTimerCallbackFunction) message.message.user.context1.p)(message.message.user.context2);
-		} else if (type >= ES_MSG_WM_START && type <= ES_MSG_WM_END) {
+		} else if (type >= ES_MSG_WM_START && type <= ES_MSG_WM_END && message.object) {
 #if 0
 			ProcessMessageTiming timing = {};
 			double start = EsTimeStampMs();
@@ -802,11 +823,9 @@ EsMessage *EsMessageReceive() {
 					timing.endLayout - timing.startLayout,
 					timing.endPaint - timing.startPaint,
 					timing.endUpdate - timing.startUpdate);
+#else
+			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
 #endif
-			
-			if (message.object) {
-				UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
-			}
 		} else if (type == ES_MSG_TAB_INSPECT_UI) {
 			EsInstance *_instance = InstanceFromWindowID(message.message.tabOperation.id);
 

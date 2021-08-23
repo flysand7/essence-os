@@ -123,6 +123,7 @@ struct WindowManager {
 	// Miscellaneous:
 
 	EsRectangle workArea;
+	bool inSingleCtrlPress;
 
 	// Game controllers:
 
@@ -180,8 +181,6 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		return;
 	}
-
-	window->lastEmbedKeyboardMessage.type = ES_MSG_INVALID;
 
 	if (message->type == ES_MSG_WINDOW_RESIZED) {
 		message->windowResized.content = ES_RECT_4(0, window->width, 0, window->height);
@@ -307,6 +306,17 @@ void WindowManager::PressKey(unsigned scancode) {
 
 	if (scancode == ES_SCANCODE_NUM_DIVIDE) {
 		KernelPanic("WindowManager::PressKey - Panic key pressed.\n");
+	}
+
+	if (scancode == ES_SCANCODE_LEFT_CTRL) {
+		inSingleCtrlPress = true;
+	} else if (scancode == (ES_SCANCODE_LEFT_CTRL | K_SCANCODE_KEY_RELEASED) && inSingleCtrlPress) {
+		EsMessage m;
+		EsMemoryZero(&m, sizeof(EsMessage));
+		m.type = ES_MSG_SINGLE_CTRL_PRESS;
+		desktopProcess->messageQueue.SendMessage(nullptr, &m); 
+	} else {
+		inSingleCtrlPress = false;
 	}
 
 	if (eyedropping) {
