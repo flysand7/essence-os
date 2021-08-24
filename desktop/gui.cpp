@@ -4946,6 +4946,101 @@ EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags, const EsSt
 	return display;
 }
 
+// --------------------------------- Sliders.
+
+struct EsSlider : EsElement {
+	EsElement *point;
+	double value;
+	uint32_t steps;
+	int32_t dragOffset;
+	bool inDrag, endDrag;
+};
+
+int ProcessSliderPointMessage(EsElement *element, EsMessage *message) {
+	EsSlider *slider = (EsSlider *) EsElementGetLayoutParent(element);
+
+	if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
+		double range = slider->width - slider->point->currentStyle->preferredWidth;
+		slider->inDrag = true;
+		EsSliderSetValue(slider, (message->mouseDragged.newPositionX + element->offsetX - slider->dragOffset) / range);
+	} else if (message->type == ES_MSG_MOUSE_LEFT_UP && slider->inDrag) {
+		slider->inDrag = false;
+		slider->endDrag = true; // Force sending the update message.
+		EsSliderSetValue(slider, slider->value);
+		slider->endDrag = false;
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+		slider->dragOffset = message->mouseDown.positionX;
+		EsElementFocus(slider);
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
+int ProcessSliderMessage(EsElement *element, EsMessage *message) {
+	EsSlider *slider = (EsSlider *) element;
+
+	if (message->type == ES_MSG_LAYOUT) {
+		int pointWidth = slider->point->currentStyle->preferredWidth;
+		int pointHeight = slider->point->currentStyle->preferredHeight;
+		slider->point->InternalMove(pointWidth, pointHeight, (slider->width - pointWidth) * slider->value, (slider->height - pointHeight) / 2);
+	} else if (message->type == ES_MSG_FOCUSED_START) {
+		slider->point->customStyleState |= THEME_STATE_FOCUSED_ITEM;
+		slider->point->MaybeRefreshStyle();
+	} else if (message->type == ES_MSG_FOCUSED_END) {
+		slider->point->customStyleState &= ~THEME_STATE_FOCUSED_ITEM;
+		slider->point->MaybeRefreshStyle();
+	} else if (message->type == ES_MSG_KEY_TYPED && message->keyboard.scancode == ES_SCANCODE_LEFT_ARROW) {
+		EsSliderSetValue(slider, slider->value - (slider->steps ? 1.0 / slider->steps : 0.02));
+	} else if (message->type == ES_MSG_KEY_TYPED && message->keyboard.scancode == ES_SCANCODE_RIGHT_ARROW) {
+		EsSliderSetValue(slider, slider->value + (slider->steps ? 1.0 / slider->steps : 0.02));
+	} else if (message->type == ES_MSG_KEY_TYPED && message->keyboard.scancode == ES_SCANCODE_HOME) {
+		EsSliderSetValue(slider, 0.0);
+	} else if (message->type == ES_MSG_KEY_TYPED && message->keyboard.scancode == ES_SCANCODE_END) {
+		EsSliderSetValue(slider, 1.0);
+	} else if (message->type == ES_MSG_PAINT) {
+		// TODO Draw ticks.
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
+double EsSliderGetValue(EsSlider *slider) {
+	return slider->value;
+}
+
+void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage) {
+	newValue = ClampDouble(0.0, 1.0, newValue);
+
+	if (slider->steps) {
+		newValue = EsCRTfloor((slider->steps - 1) * newValue + 0.5) / (slider->steps - 1);
+	}
+
+	double previous = slider->value;
+	if (previous == newValue && !slider->endDrag) return;
+	slider->value = newValue;
+	EsElementRelayout(slider);
+
+	if (sendUpdatedMessage) {
+		EsMessage m = { ES_MSG_SLIDER_MOVED, .sliderMoved = { .value = newValue, .previous = previous, .inDrag = slider->inDrag } };
+		EsMessageSend(slider, &m);
+	}
+}
+
+EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, const EsStyle *style, double value, uint32_t steps) {
+	EsSlider *slider = (EsSlider *) EsHeapAllocate(sizeof(EsSlider), true);
+	slider->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ProcessSliderMessage, style ?: ES_STYLE_SLIDER_TRACK);
+	slider->cName = "slider";
+	slider->point = EsCustomElementCreate(slider, ES_FLAGS_DEFAULT, ES_STYLE_SLIDER_POINT);
+	slider->point->messageUser = ProcessSliderPointMessage;
+	slider->steps = steps;
+	EsSliderSetValue(slider, value, false);
+	return slider;
+}
+
 // --------------------------------- Message loop and core UI infrastructure.
 
 void EsElement::PrintTree(int depth) {

@@ -13,6 +13,7 @@ opaque_type EsSplitter         EsElement;
 opaque_type EsImageDisplay     EsElement;
 opaque_type EsListDisplay      EsElement;
 opaque_type EsCanvasPane       EsElement;
+opaque_type EsSlider           EsElement;
 opaque_type EsTextPlan         none;
 opaque_type EsPaintTarget      none;
 opaque_type EsUndoManager      none;
@@ -945,6 +946,7 @@ enum EsMessageType {
 	ES_MSG_COLOR_CHANGED			= 0x3003	// Color well's color has changed. See message->colorChanged.
 	ES_MSG_LIST_DISPLAY_GET_MARKER		= 0x3004	// Get the string for a marker in an EsListDisplay. See message->getContent.
 	ES_MSG_REORDER_ITEM_TEST		= 0x3005
+	ES_MSG_SLIDER_MOVED			= 0x3006	// The slider has been moved.
 
 	// Desktop messages: 
 	ES_MSG_POWER_BUTTON_PRESSED		= 0x4801
@@ -1637,6 +1639,11 @@ struct EsMessageScrollbarMoved {
 	int scroll, previous;
 };
 
+struct EsMessageSliderMoved {
+	double value, previous;
+	bool inDrag;
+};
+
 struct EsMessageColorChanged {
 	uint32_t newColor;
 	bool pickerClosed;
@@ -1782,6 +1789,7 @@ struct EsMessage {
 
 		// Specific element messages:
 		EsMessageScrollbarMoved scrollbarMoved;
+		EsMessageSliderMoved sliderMoved;
 		EsMessageColorChanged colorChanged;
 		EsMessageNumberDragDelta numberDragDelta;
 		EsMessageNumberUpdated numberUpdated;
@@ -2315,7 +2323,6 @@ function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public pro
 // Textboxes.
 
 function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-
 function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT); // Result will be zero-terminated; free with EsHeapFree.
@@ -2335,6 +2342,12 @@ function void EsTextboxGetTextStyle(EsTextbox *textbox, EsTextStyle *textStyle);
 function void EsTextboxSetTextStyle(EsTextbox *textbox, const EsTextStyle *textStyle);
 function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
 function void EsTextboxStartEdit(EsTextbox *textbox);
+
+// Sliders.
+
+function EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, double value = 0, uint32_t steps = 0);
+function double EsSliderGetValue(EsSlider *slider);
+function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage = true);
 
 // Panels, spacers and splitters.
 
