@@ -1,4 +1,5 @@
 // TODO Save system configuration file on closing the instance or going back to all settings.
+// TODO Undo button overlapped slightly when scrollbar shown.
 
 struct SettingsInstance : EsInstance {
 	EsPanel *switcher;
@@ -18,10 +19,12 @@ struct SettingsPage {
 struct SettingsControl {
 #define SETTINGS_CONTROL_CHECKBOX (1)
 #define SETTINGS_CONTROL_NUMBER (2)
+#define SETTINGS_CONTROL_SLIDER (3)
 	uint8_t type;
 	bool originalValueBool;
 	int32_t originalValueInt;
 	int32_t minimumValue, maximumValue;
+	uint32_t steps;
 	double dragSpeed, dragValue;
 	const char *suffix;
 	size_t suffixBytes;
@@ -101,6 +104,14 @@ const EsStyle styleSettingsButton = {
 	},
 };
 
+const EsStyle styleSliderRow = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_INSETS,
+		.insets = ES_RECT_4(0, 0, 3, 0),
+		.gapMajor = 6,
+	},
+};
+
 void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
@@ -155,10 +166,11 @@ void SettingsUndoButton(EsInstance *_instance, EsElement *, EsCommand *) {
 		SettingsControl *control = instance->controls[i];
 
 		if (control->type == SETTINGS_CONTROL_CHECKBOX) {
-			EsButton *button = (EsButton *) control->element;
-			EsButtonSetCheck(button, control->originalValueBool ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, true);
+			EsButtonSetCheck((EsButton *) control->element, control->originalValueBool ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, true);
 		} else if (control->type == SETTINGS_CONTROL_NUMBER) {
 			SettingsNumberBoxSetValue(control->element, control->originalValueInt);
+		} else if (control->type == SETTINGS_CONTROL_SLIDER) {
+			EsSliderSetValue((EsSlider *) control->element, LinearMap(control->minimumValue, control->maximumValue, 0, 1, control->originalValueInt), true);
 		}
 	}
 
@@ -297,6 +309,61 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	instance->controls.Add(control);
 }
 
+int SettingsSliderMessage(EsElement *element, EsMessage *message) {
+	EsSlider *slider = (EsSlider *) element;
+	SettingsInstance *instance = (SettingsInstance *) slider->instance;
+	SettingsControl *control = (SettingsControl *) slider->userData.p;
+
+	if (message->type == ES_MSG_SLIDER_MOVED && !message->sliderMoved.inDrag) {
+		EsMutexAcquire(&api.systemConfigurationMutex);
+		EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
+		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
+		int32_t newValue = LinearMap(0, 1, control->minimumValue, control->maximumValue, EsSliderGetValue(slider));
+		int32_t oldValue = EsIntegerParse(item->value, item->valueBytes);
+		EsHeapFree(item->value);
+		item->value = (char *) EsHeapAllocate(65, true);
+		item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
+		EsMutexRelease(&api.systemConfigurationMutex);
+
+		if (oldValue != newValue) {
+			SettingsUpdateGlobalAndWindowManager();
+			EsElementSetDisabled(instance->undoButton, false);
+		}
+	}
+
+	return 0;
+}
+
+void SettingsAddSlider(EsElement *table, const char *string, ptrdiff_t stringBytes, char accessKey, 
+		const char *cConfigurationSection, const char *cConfigurationKey,
+		int32_t minimumValue, int32_t maximumValue, uint32_t steps,
+		const char *lowString, ptrdiff_t lowStringBytes, const char *highString, ptrdiff_t highStringBytes) {
+	SettingsInstance *instance = (SettingsInstance *) table->instance;
+
+	SettingsControl *control = (SettingsControl *) EsHeapAllocate(sizeof(SettingsControl), true);
+	control->type = SETTINGS_CONTROL_SLIDER;
+	control->cConfigurationSection = cConfigurationSection;
+	control->cConfigurationKey = cConfigurationKey;
+	control->originalValueInt = EsSystemConfigurationReadInteger(control->cConfigurationSection, -1, control->cConfigurationKey, -1);
+	control->minimumValue = minimumValue;
+	control->maximumValue = maximumValue;
+	control->steps = steps;
+
+	EsPanel *stack = EsPanelCreate(table, ES_CELL_H_FILL);
+	EsTextDisplayCreate(stack, ES_CELL_H_LEFT, 0, string, stringBytes); 
+	EsPanel *row = EsPanelCreate(stack, ES_PANEL_HORIZONTAL | ES_CELL_H_CENTER, &styleSliderRow);
+	EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, lowString, lowStringBytes); 
+	EsSlider *slider = EsSliderCreate(row, ES_ELEMENT_FREE_USER_DATA, 0, 
+			LinearMap(control->minimumValue, control->maximumValue, 0, 1, control->originalValueInt), steps);
+	EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, highString, highStringBytes); 
+	slider->userData = control;
+	slider->accessKey = accessKey;
+	slider->messageUser = SettingsSliderMessage;
+
+	control->element = slider;
+	instance->controls.Add(control);
+}
+
 int SettingsDoubleClickTestMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 		if (message->mouseDown.clickChainCount >= 2) {
@@ -318,11 +385,8 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsPanel *table;
 	EsTextbox *textbox;
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
-	EsPanelSetBands(table, 2);
-
-	// TODO Use a slider instead?
-	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseSpeed), 'M', "general", "cursor_speed", -20, 20, nullptr, 0, 0.05);
+	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseSpeed), 'M', "general", "cursor_speed", -20, 20, 41, 
+			INTERFACE_STRING(DesktopSettingsMouseSpeedSlow), INTERFACE_STRING(DesktopSettingsMouseSpeedFast));
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseUseAcceleration), 'C', "general", "use_cursor_acceleration");

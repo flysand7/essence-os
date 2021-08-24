@@ -119,6 +119,8 @@ DEFINE_INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl, "Highlight curso
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseTestDoubleClickIntroduction, "Double click the circle below to try your setting. If it does not change color, increase the double click time.");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseUseAcceleration, "Move cursor faster when mouse is moved quickly");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSlowOnAlt, "Move cursor slower when Alt is held");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedSlow, "Slow");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedFast, "Fast");
 
 // File operations.
 
