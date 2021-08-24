@@ -33,6 +33,12 @@ inline int ClampInteger(int low, int high, int integer) {
 	return integer;
 }
 
+inline double ClampDouble(double low, double high, double x) {
+	if (x < low) return low;
+	if (x > high) return high;
+	return x;
+}
+
 inline intptr_t ClampIntptr(intptr_t low, intptr_t high, intptr_t integer) {
 	if (integer < low) return low;
 	if (integer > high) return high;

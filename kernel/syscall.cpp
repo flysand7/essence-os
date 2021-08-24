@@ -1144,8 +1144,16 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_SET) {
 	KMutexAcquire(&windowManager.mutex);
 	windowManager.cursorX = argument0;
 	windowManager.cursorY = argument1;
-	windowManager.cursorXPrecise = argument0 * 10;
-	windowManager.cursorYPrecise = argument1 * 10;
+	windowManager.cursorXPrecise = argument0 * K_CURSOR_MOVEMENT_SCALE;
+	windowManager.cursorYPrecise = argument1 * K_CURSOR_MOVEMENT_SCALE;
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_PROPERTIES_SET) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SCREEN_MODIFY);
+	KMutexAcquire(&windowManager.mutex);
+	windowManager.cursorProperties = argument0;
 	KMutexRelease(&windowManager.mutex);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }

@@ -365,9 +365,10 @@ void KTimerRemove(KTimer *timer); // Timers with callbacks cannot be removed (it
 // Window manager.
 // ---------------------------------------------------------------------------------------------------------------
 
-void KCursorUpdate(int xMovement, int yMovement, unsigned buttons);
+#define K_CURSOR_MOVEMENT_SCALE (0x100)
+void KCursorUpdate(int32_t xMovement, int32_t yMovement, uint32_t buttons);
 void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount);
-void KKeyPress(unsigned scancode);
+void KKeyPress(uint32_t scancode);
 
 uint64_t KGameControllerConnect();
 void KGameControllerDisconnect(uint64_t id);

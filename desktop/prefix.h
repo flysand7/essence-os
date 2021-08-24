@@ -291,6 +291,10 @@ struct BundleFile {
 #define WINDOW_SET_BITS_SCROLL_VERTICAL (2)
 #define WINDOW_SET_BITS_AFTER_RESIZE (3)
 
+#define CURSOR_USE_ACCELERATION (1 << 0)
+#define CURSOR_USE_ALT_SLOW (1 << 1)
+#define CURSOR_SPEED(x) ((x) >> 16)
+
 #define SHUTDOWN_ACTION_POWER_OFF (1)
 #define SHUTDOWN_ACTION_RESTART (2)
 

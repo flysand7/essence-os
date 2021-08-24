@@ -20,10 +20,9 @@ struct SettingsControl {
 #define SETTINGS_CONTROL_NUMBER (2)
 	uint8_t type;
 	bool originalValueBool;
-	bool *globalPointerBool;
 	int32_t originalValueInt;
-	int32_t *globalPointerInt;
 	int32_t minimumValue, maximumValue;
+	double dragSpeed, dragValue;
 	const char *suffix;
 	size_t suffixBytes;
 	const char *cConfigurationSection; 
@@ -102,6 +101,20 @@ const EsStyle styleSettingsButton = {
 	},
 };
 
+void SettingsUpdateGlobalAndWindowManager() {
+	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
+	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
+	api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
+
+	uint32_t cursorProperties = 0;
+	if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_cursor_acceleration"))) cursorProperties |= CURSOR_USE_ACCELERATION;
+	if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_cursor_alt_slow")))     cursorProperties |= CURSOR_USE_ALT_SLOW;
+	int32_t cursorSpeed = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("cursor_speed"));
+	double cursorSpeedFactor = EsCRTexp2(0.25 * cursorSpeed /* -20 to 20, 0 is default */) /* 1/32 to 32, 1 is default */;
+	cursorProperties |= (uint32_t) (cursorSpeedFactor * 0x100) << 16; // Speed.
+	EsSyscall(ES_SYSCALL_CURSOR_PROPERTIES_SET, cursorProperties, 0, 0, 0);
+}
+
 void SettingsBackButton(EsInstance *_instance, EsElement *, EsCommand *) {
 	SettingsInstance *instance = (SettingsInstance *) _instance;
 	instance->undoButton = nullptr;
@@ -116,7 +129,7 @@ void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
 
 	newValue = ClampInteger(control->minimumValue, control->maximumValue, newValue);
 	char buffer[64];
-	size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%d%s", newValue, control->suffixBytes, control->suffix);
+	size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%i%s", newValue, control->suffixBytes, control->suffix);
 	EsTextboxSelectAll(textbox);
 	EsTextboxInsert(textbox, buffer, bytes);
 
@@ -130,7 +143,7 @@ void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
 	EsMutexRelease(&api.systemConfigurationMutex);
 
 	if (oldValue != newValue) {
-		if (control->globalPointerInt) *control->globalPointerInt = newValue;
+		SettingsUpdateGlobalAndWindowManager();
 		EsElementSetDisabled(instance->undoButton, false);
 	}
 }
@@ -194,19 +207,18 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 	EsMutexRelease(&api.systemConfigurationMutex);
 
 	if (oldValue == newValue) return;
-	if (control->globalPointerBool) *control->globalPointerBool = newValue;
+	SettingsUpdateGlobalAndWindowManager();
 	EsElementSetDisabled(instance->undoButton, false);
 }
 
 void SettingsAddCheckbox(EsElement *table, const char *string, ptrdiff_t stringBytes, char accessKey,
-		const char *cConfigurationSection, const char *cConfigurationKey, bool *globalPointerBool) {
+		const char *cConfigurationSection, const char *cConfigurationKey) {
 	SettingsInstance *instance = (SettingsInstance *) table->instance;
 
 	SettingsControl *control = (SettingsControl *) EsHeapAllocate(sizeof(SettingsControl), true);
 	control->type = SETTINGS_CONTROL_CHECKBOX;
 	control->cConfigurationSection = cConfigurationSection;
 	control->cConfigurationKey = cConfigurationKey;
-	control->globalPointerBool = globalPointerBool;
 	control->originalValueBool = EsSystemConfigurationReadInteger(control->cConfigurationSection, -1, control->cConfigurationKey, -1);
 
 	EsButton *button = EsButtonCreate(table, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX | ES_ELEMENT_FREE_USER_DATA | ES_ELEMENT_STICKY_ACCESS_KEY, 0, string, stringBytes);
@@ -234,11 +246,14 @@ int SettingsNumberBoxMessage(EsElement *element, EsMessage *message) {
 		} else {
 			return ES_REJECTED;
 		}
+	} else if (message->type == ES_MSG_TEXTBOX_NUMBER_DRAG_START) {
+		control->dragValue = EsTextboxGetContentsAsDouble(textbox);
 	} else if (message->type == ES_MSG_TEXTBOX_NUMBER_DRAG_DELTA) {
-		int oldValue = EsTextboxGetContentsAsDouble(textbox); 
-		int newValue = ClampInteger(control->minimumValue, control->maximumValue, oldValue + message->numberDragDelta.delta * (message->numberDragDelta.fast ? 10 : 1));
+		double newValue = ClampDouble(control->minimumValue, control->maximumValue, 
+				control->dragValue + message->numberDragDelta.delta * (message->numberDragDelta.fast ? 10.0 : 1.0) * control->dragSpeed);
+		control->dragValue = newValue;
 		char buffer[64];
-		size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%d%s", newValue, control->suffixBytes, control->suffix);
+		size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%i%s", (int32_t) newValue, control->suffixBytes, control->suffix);
 		EsTextboxSelectAll(textbox);
 		EsTextboxInsert(textbox, buffer, bytes);
 		return ES_HANDLED;
@@ -248,8 +263,8 @@ int SettingsNumberBoxMessage(EsElement *element, EsMessage *message) {
 }
 
 void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t stringBytes, char accessKey, 
-		const char *cConfigurationSection, const char *cConfigurationKey, int32_t *globalPointer,
-		int32_t minimumValue, int32_t maximumValue, const char *suffix, ptrdiff_t suffixBytes) {
+		const char *cConfigurationSection, const char *cConfigurationKey,
+		int32_t minimumValue, int32_t maximumValue, const char *suffix, ptrdiff_t suffixBytes, double dragSpeed) {
 	if (suffixBytes == -1) {
 		suffixBytes = EsCStringLength(suffix);
 	}
@@ -260,12 +275,12 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	control->type = SETTINGS_CONTROL_NUMBER;
 	control->cConfigurationSection = cConfigurationSection;
 	control->cConfigurationKey = cConfigurationKey;
-	control->globalPointerInt = globalPointer;
 	control->originalValueInt = EsSystemConfigurationReadInteger(control->cConfigurationSection, -1, control->cConfigurationKey, -1);
 	control->suffix = suffix;
 	control->suffixBytes = suffixBytes;
 	control->minimumValue = minimumValue;
 	control->maximumValue = maximumValue;
+	control->dragSpeed = dragSpeed;
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, string, stringBytes); 
 	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, &styleSettingsNumberTextbox);
@@ -275,7 +290,7 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	textbox->messageUser = SettingsNumberBoxMessage;
 
 	char buffer[64];
-	size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%d%s", control->originalValueInt, suffixBytes, suffix);
+	size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%i%s", control->originalValueInt, suffixBytes, suffix);
 	EsTextboxInsert(textbox, buffer, bytes);
 
 	control->element = textbox;
@@ -306,40 +321,37 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseSpeed)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
-	textbox->accessKey = 'M';
-	EsTextboxUseNumberOverlay(textbox, false);
-	EsTextboxInsert(textbox, "50%");
+	// TODO Use a slider instead?
+	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseSpeed), 'M', "general", "cursor_speed", -20, 20, nullptr, 0, 0.05);
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseCursorTrails)); // TODO.
+	// TODO Mouse trails.
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseCursorTrails));
 	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
 	textbox->accessKey = 'T';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "0");
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch)); // TODO.
+	// TODO Scroll wheel.
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch));
 	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
 	textbox->accessKey = 'S';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "3");
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
-	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', 
-			"general", "swap_left_and_right_buttons", &api.global->swapLeftAndRightButtons);
-	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', 
-			"general", "show_cursor_shadow", &api.global->showCursorShadow);
-	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', 
-			"general", "locate_cursor_on_ctrl", nullptr);
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', "general", "swap_left_and_right_buttons");
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', "general", "show_cursor_shadow");
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', "general", "locate_cursor_on_ctrl");
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseUseAcceleration), 'C', "general", "use_cursor_acceleration");
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSlowOnAlt), 'O', "general", "use_cursor_alt_slow");
 
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
 
-	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed), 'D', 
-			"general", "click_chain_timeout_ms", &api.global->clickChainTimeoutMs,
-			100, 1500, INTERFACE_STRING(CommonUnitMilliseconds));
+	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed), 'D', "general", "click_chain_timeout_ms", 
+			100, 1500, INTERFACE_STRING(CommonUnitMilliseconds), 1.0);
 
 	EsPanel *testBox = EsPanelCreate(container, ES_CELL_H_FILL);
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsMouseTestDoubleClickIntroduction));

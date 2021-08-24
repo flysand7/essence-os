@@ -63,7 +63,7 @@ struct WindowManager {
 
 	void Initialise();
 
-	void MoveCursor(int xMovement, int yMovement);
+	void MoveCursor(int64_t xMovement, int64_t yMovement);
 	void ClickCursor(unsigned buttons);
 	void UpdateCursor(int xMovement, int yMovement, unsigned buttons);
 	void PressKey(unsigned scancode);
@@ -96,14 +96,16 @@ struct WindowManager {
 	// Cursor:
 
 	int cursorX, cursorY;
-	int cursorXPrecise, cursorYPrecise; // Scaled up by a factor of 10.
-	unsigned lastButtons;
+	int cursorXPrecise, cursorYPrecise; // Scaled up by a factor of K_CURSOR_MOVEMENT_SCALE.
+	uint32_t lastButtons;
 
 	Surface cursorSurface, cursorSwap, cursorTemporary;
 	int cursorImageOffsetX, cursorImageOffsetY;
 	uintptr_t cursorID;
 	bool cursorXOR, cursorShadow;
 	bool changedCursorImage;
+
+	uint32_t cursorProperties; 
 
 	// Keyboard:
 
@@ -597,41 +599,29 @@ void WindowManager::ClickCursor(unsigned buttons) {
 	KMutexRelease(&mutex);
 }
 
-void WindowManager::MoveCursor(int xMovement, int yMovement) {
+void WindowManager::MoveCursor(int64_t xMovement, int64_t yMovement) {
 	KMutexAssertLocked(&mutex);
 
-	xMovement *= alt ? 2 : 10;
-	yMovement *= alt ? 2 : 10;
+	if ((xMovement * xMovement + yMovement * yMovement > 50 * K_CURSOR_MOVEMENT_SCALE * K_CURSOR_MOVEMENT_SCALE) && (cursorProperties & CURSOR_USE_ACCELERATION)) {
+		// Apply cursor acceleration.
+		xMovement *= 2;
+		yMovement *= 2;
+	}
 
-	int oldCursorX = cursorXPrecise;
-	int oldCursorY = cursorYPrecise;
-	int _cursorX = oldCursorX + xMovement;
-	int _cursorY = oldCursorY + yMovement;
+	// Apply cursor speed. Introduces another factor of K_CURSOR_MOVEMENT_SCALE.
+	xMovement *= CURSOR_SPEED(cursorProperties);
+	yMovement *= CURSOR_SPEED(cursorProperties);
 
-	// if (!lastButtons) {
-		if (_cursorX < 0) {
-			_cursorX = 0;
-		}
+	if (alt && (cursorProperties & CURSOR_USE_ALT_SLOW)) {
+		// Apply cursor slowdown.
+		xMovement /= 5, yMovement /= 5;
+	}
 
-		if (_cursorY < 0) {
-			_cursorY = 0;
-		}
-
-		if (_cursorX >= (int) graphics.width * 10) {
-			_cursorX = graphics.width * 10 - 1;
-		}
-
-		if (_cursorY >= (int) graphics.height * 10) {
-			_cursorY = graphics.height * 10 - 1;
-		}
-	// }
-
-	cursorXPrecise = _cursorX;
-	cursorYPrecise = _cursorY;
-	cursorX = _cursorX / 10;
-	cursorY = _cursorY / 10;
-	oldCursorX /= 10;
-	oldCursorY /= 10;
+	// Update cursor position.
+	cursorXPrecise = ClampInteger(0, graphics.width * K_CURSOR_MOVEMENT_SCALE - 1, cursorXPrecise + xMovement / K_CURSOR_MOVEMENT_SCALE);
+	cursorYPrecise = ClampInteger(0, graphics.height * K_CURSOR_MOVEMENT_SCALE - 1, cursorYPrecise + yMovement / K_CURSOR_MOVEMENT_SCALE);
+	cursorX = cursorXPrecise / K_CURSOR_MOVEMENT_SCALE;
+	cursorY = cursorYPrecise / K_CURSOR_MOVEMENT_SCALE;
 
 	if (eyedropping) {
 		EsMessage m = { ES_MSG_EYEDROP_REPORT };
@@ -713,10 +703,11 @@ void _CloseWindows(uintptr_t) {
 }
 
 void WindowManager::Initialise() {
-	windowManager.windowsToCloseEvent.autoReset = true;
+	windowsToCloseEvent.autoReset = true;
+	cursorProperties = K_CURSOR_MOVEMENT_SCALE << 16;
 	KThreadCreate("CloseWindows", _CloseWindows);
 	KMutexAcquire(&mutex);
-	MoveCursor(graphics.width / 2, graphics.height / 2);
+	MoveCursor(graphics.width / 2 * K_CURSOR_MOVEMENT_SCALE, graphics.height / 2 * K_CURSOR_MOVEMENT_SCALE);
 	GraphicsUpdateScreen();
 	initialised = true;
 	KMutexRelease(&mutex);

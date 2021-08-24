@@ -559,7 +559,7 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 		}
 	}
 
-	if (mouseEvent) KCursorUpdate(mouseXMovement, mouseYMovement, mouseButtons);
+	if (mouseEvent) KCursorUpdate(mouseXMovement * K_CURSOR_MOVEMENT_SCALE, mouseYMovement * K_CURSOR_MOVEMENT_SCALE, mouseButtons);
 	if (keyboardEvent) KKeyboardUpdate(keysDown, keysDownCount);
 	if (gameControllerEvent) KGameControllerUpdateState(&controllerState);
 
