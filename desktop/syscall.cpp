@@ -171,7 +171,7 @@ EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_
 		offset += sizes[i];
 	}
 
-	error = EsFileControl(handle, ES_FILE_CONTROL_NOTIFY_MONITORS | ES_FILE_CONTROL_FLUSH);
+	error = EsFileControl(handle, ES_FILE_CONTROL_FLUSH);
 	return error;
 }
 

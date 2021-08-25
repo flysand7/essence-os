@@ -987,8 +987,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 	}
 
 	if (success) {
-		message->instanceSave.file->error = EsFileControl(message->instanceSave.file->handle, 
-				ES_FILE_CONTROL_NOTIFY_MONITORS | ES_FILE_CONTROL_FLUSH);
+		message->instanceSave.file->error = EsFileControl(message->instanceSave.file->handle, ES_FILE_CONTROL_FLUSH);
 
 		if (message->instanceSave.file->error != ES_SUCCESS) {
 			success = false;

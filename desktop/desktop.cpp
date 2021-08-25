@@ -5,8 +5,6 @@
 //	- New tab page - search; recent files.
 // 	- Right click menu.
 // 	- Duplicate tabs.
-// 	- If a process exits, its tabs won't close because Desktop has a handle.
-// 		- Also clear any OpenDocument currentWriter fields it owns.
 
 // TODO Graphical issues:
 // 	- New tab button isn't flush with right border when tab band full.
@@ -31,6 +29,7 @@
 // TODO Only let File Manager read the file_type sections of the system configuration.
 // TODO Restarting Desktop if it crashes.
 // TODO Make sure applications can't delete |Fonts: and |Themes:.
+// TODO Handle open document deletion.
 
 #define MSG_SETUP_DESKTOP_UI ((EsMessageType) (ES_MSG_USER_START + 1))
 
@@ -105,6 +104,7 @@ struct OpenDocument {
 	EsHandle readHandle;
 	EsObjectID id;
 	EsObjectID currentWriter;
+	uintptr_t referenceCount;
 };
 
 struct InstalledApplication {
@@ -122,10 +122,14 @@ struct InstalledApplication {
 	bool notified; // Temporary flag.
 };
 
-struct CrashedTabInstance : EsInstance {
+struct CommonDesktopInstance : EsInstance {
+	void (*destroy)(EsInstance *);
 };
 
-struct BlankTabInstance : EsInstance {
+struct CrashedTabInstance : CommonDesktopInstance {
+};
+
+struct BlankTabInstance : CommonDesktopInstance {
 };
 
 struct ApplicationInstance {
@@ -184,6 +188,8 @@ struct {
 	EsObjectID nextClipboardProcessID;
 	EsHandle clipboardFile;
 	ClipboardInformation clipboardInformation;
+
+	bool configurationModified;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -192,6 +198,9 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 void ApplicationInstanceClose(ApplicationInstance *instance);
 ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove = false);
 void EmbeddedWindowDestroyed(EsObjectID id);
+void ConfigurationWriteToFile();
+void OpenDocumentOpenReference(EsObjectID id);
+void OpenDocumentCloseReference(EsObjectID id);
 
 #include "settings.cpp"
 
@@ -908,6 +917,11 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		instance->processHandle = ES_INVALID_HANDLE;
 	}
 
+	if (instance->documentID) {
+		OpenDocumentCloseReference(instance->documentID);
+		instance->documentID = 0;
+	}
+
 	instance->application = application;
 
 	if (application->useSingleProcess && application->singleProcessHandle) {
@@ -1017,6 +1031,11 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	instance->processID = EsProcessGetID(process);
 	instance->processHandle = EsSyscall(ES_SYSCALL_PROCESS_SHARE, process, ES_CURRENT_PROCESS, 0, 0);
 
+	if (startupInformation->documentID) {
+		instance->documentID = startupInformation->documentID;
+		OpenDocumentOpenReference(instance->documentID);
+	}
+
 	EsMessage m = { ES_MSG_INSTANCE_CREATE };
 
 	if (~startupInformation->flags & ES_APPLICATION_STARTUP_MANUAL_PATH) {
@@ -1077,9 +1096,16 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupI
 	instance->titleBytes = 1;
 	instance->tab = tab;
 	desktop.allApplicationInstances.Add(instance);
-	ApplicationInstanceStart(id, startupInformation, instance);
-	if (!hidden) WindowTabActivate(tab);
-	return instance;
+
+	if (ApplicationInstanceStart(id, startupInformation, instance)) {
+		if (!hidden) WindowTabActivate(tab);
+		return instance;
+	} else {
+		// TODO Destroy the tab/container window.
+		// 	Or, we probably didn't want to create them in the first place.
+		EsHeapFree(instance);
+		return nullptr;
+	}
 }
 
 void ApplicationTemporaryDestroy(InstalledApplication *application) {
@@ -1171,15 +1197,39 @@ void ApplicationProcessTerminated(EsObjectID pid) {
 			break;
 		}
 	}
+
+	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+		OpenDocument *document = &desktop.openDocuments[i];
+
+		if (document->currentWriter == pid) {
+			document->currentWriter = 0;
+		}
+	}
 }
 
 //////////////////////////////////////////////////////
 // Document management:
 //////////////////////////////////////////////////////
 
+void OpenDocumentCloseReference(EsObjectID id) {
+	OpenDocument *document = desktop.openDocuments.Get(&id);
+	EsAssert(document->referenceCount && document->referenceCount < 0x10000000 /* sanity check */);
+	document->referenceCount--;
+	if (document->referenceCount) return;
+	EsHeapFree(document->path);
+	EsHeapFree(document->temporarySavePath);
+	EsHandleClose(document->readHandle);
+	desktop.openDocuments.Delete(&id);
+}
+
+void OpenDocumentOpenReference(EsObjectID id) {
+	OpenDocument *document = desktop.openDocuments.Get(&id);
+	EsAssert(document->referenceCount && document->referenceCount < 0x10000000 /* sanity check */);
+	document->referenceCount++;
+}
+
 void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInformation) {
 	bool foundDocument = false;
-	EsObjectID documentID;
 
 	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
 		OpenDocument *document = &desktop.openDocuments[i];
@@ -1188,7 +1238,8 @@ void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInforma
 				&& 0 == EsMemoryCompare(document->path, startupInformation->filePath, document->pathBytes)) {
 			foundDocument = true;
 			startupInformation->readHandle = document->readHandle;
-			documentID = document->id;
+			startupInformation->documentID = document->id;
+			document->referenceCount++;
 			break;
 		}
 	}
@@ -1207,18 +1258,16 @@ void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInforma
 		document.pathBytes = startupInformation->filePathBytes;
 		document.readHandle = file.handle;
 		document.id = ++desktop.currentDocumentID;
-		documentID = document.id;
+		document.referenceCount = 1;
 		EsMemoryCopy(document.path, startupInformation->filePath, startupInformation->filePathBytes);
 		*desktop.openDocuments.Put(&document.id) = document;
 
 		startupInformation->readHandle = document.readHandle;
+		startupInformation->documentID = document.id;
 	}
 
-	ApplicationInstance *instance = ApplicationInstanceCreate(startupInformation->id, startupInformation, nullptr);
-
-	if (instance) {
-		instance->documentID = documentID;
-	}
+	ApplicationInstanceCreate(startupInformation->id, startupInformation, nullptr);
+	OpenDocumentCloseReference(startupInformation->documentID);
 }
 
 EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes) {
@@ -1319,6 +1368,9 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	if (document->currentWriter) {
 		m.tabOperation.error = ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE;
 	} else {
+		EsHeapFree(document->temporarySavePath);
+		document->temporarySavePath = nullptr;
+
 		EsHandle fileHandle;
 		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes);
 
@@ -1526,7 +1578,7 @@ void ConfigurationLoadApplications() {
 	}, 0);
 }
 
-void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *section, EsBuffer *pipe) {
+void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *section, bool includeComments, EsBuffer *pipe) {
 	char buffer[4096];
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
@@ -1547,7 +1599,7 @@ void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *se
 		for (uintptr_t i = 0; i < group->itemCount; i++) {
 			EsSystemConfigurationItem *item = group->items + i;
 
-			if (!item->keyBytes || item->key[0] == ';') {
+			if ((!item->keyBytes || item->key[0] == ';') && !includeComments) {
 				continue;
 			}
 
@@ -1559,6 +1611,37 @@ void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *se
 	}
 
 	EsMutexRelease(&api.systemConfigurationMutex);
+}
+
+void ConfigurationWriteToFile() {
+	if (!desktop.configurationModified) {
+		return;
+	}
+
+	EsBuffer buffer = { .canGrow = true };
+	ConfigurationWriteSectionsToBuffer(nullptr, nullptr, true /* include comments */, &buffer);
+
+	if (!buffer.error) {
+		if (ES_SUCCESS == EsFileWriteAll(EsLiteral(K_SYSTEM_CONFIGURATION "_"), buffer.out, buffer.position)) {
+			// TODO Atomic delete and move.
+			if (ES_SUCCESS == EsPathDelete(EsLiteral(K_SYSTEM_CONFIGURATION))) {
+				if (ES_SUCCESS == EsPathMove(EsLiteral(K_SYSTEM_CONFIGURATION "_"), EsLiteral(K_SYSTEM_CONFIGURATION))) {
+					EsPrint("ConfigurationWriteToFile - New configuration successfully written.\n");
+					desktop.configurationModified = true;
+				} else {
+					EsPrint("ConfigurationWriteToFile - Error while moving to final path.\n");
+				}
+			} else {
+				EsPrint("ConfigurationWriteToFile - Error while deleting old file.\n");
+			}
+		} else {
+			EsPrint("ConfigurationWriteToFile - Error while writing to file.\n");
+		}
+	} else {
+		EsPrint("ConfigurationWriteToFile - Error while writing to buffer.\n");
+	}
+
+	EsHeapFree(buffer.out);
 }
 
 //////////////////////////////////////////////////////
@@ -1885,8 +1968,8 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsHandleClose(processHandle);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
-		ConfigurationWriteSectionsToBuffer("font", nullptr, pipe);
-		ConfigurationWriteSectionsToBuffer(nullptr, "ui", pipe);
+		ConfigurationWriteSectionsToBuffer("font", nullptr, false, pipe);
+		ConfigurationWriteSectionsToBuffer(nullptr, "ui", false, pipe);
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
@@ -1897,7 +1980,7 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
 		if (application && (application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES)) {
-			ConfigurationWriteSectionsToBuffer("file_type", nullptr, pipe);
+			ConfigurationWriteSectionsToBuffer("file_type", nullptr, false, pipe);
 		}
 	} else if (!instance) {
 		// -------------------------------------------------
@@ -1965,14 +2048,16 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 }
 
 void EmbeddedWindowDestroyed(EsObjectID id) {
-	// TODO Close open documents.
-
 	EsMenuCloseAll();
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(id, true /* remove if found */);
 	if (!instance) return;
 
 	EsHandleClose(instance->embeddedWindowHandle);
 	if (instance->processHandle) EsHandleClose(instance->processHandle);
+
+	if (instance->documentID) {
+		OpenDocumentCloseReference(instance->documentID);
+	}
 
 	InstalledApplication *application = instance->application;
 
@@ -2125,6 +2210,12 @@ void DesktopMessage(EsMessage *message) {
 			EsRectangle bounds = ES_RECT_4PD(position.x - width / 2, position.y - height / 2, width, height);
 			EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
 			wrapper->StartAnimating();
+		}
+	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		CommonDesktopInstance *instance = (CommonDesktopInstance *) message->instanceDestroy.instance;
+
+		if (instance->destroy) {
+			instance->destroy(instance);
 		}
 	} else if (message->type == MSG_SETUP_DESKTOP_UI) {
 		DesktopSetup();

@@ -654,8 +654,7 @@ define ES_ECHO_REQUEST_MAX_LENGTH (48)
 
 define ES_CONNECTION_OPEN_WAIT (1 << 0)
 
-define ES_FILE_CONTROL_NOTIFY_MONITORS (1 << 0)
-define ES_FILE_CONTROL_FLUSH           (1 << 1)
+define ES_FILE_CONTROL_FLUSH (1 << 0)
 
 define ES_ELEMENT_UPDATE_CONTENT_WIDTH  (1 << 0)
 define ES_ELEMENT_UPDATE_CONTENT_HEIGHT (1 << 1)
@@ -1392,7 +1391,10 @@ struct EsApplicationStartupInformation {
 	EsWindow *targetWindow;
 	uint32_t flags;
 	int32_t data;
-	EsHandle readHandle; // Internal use.
+
+	// Internal use only.
+	EsHandle readHandle; 
+	EsObjectID documentID;
 };
 
 struct EsINIState {

@@ -1,7 +1,6 @@
-// TODO Save system configuration file on closing the instance or going back to all settings.
 // TODO Undo button overlapped slightly when scrollbar shown.
 
-struct SettingsInstance : EsInstance {
+struct SettingsInstance : CommonDesktopInstance {
 	EsPanel *switcher;
 	EsPanel *mainPage;
 	EsButton *undoButton;
@@ -131,6 +130,7 @@ void SettingsBackButton(EsInstance *_instance, EsElement *, EsCommand *) {
 	instance->undoButton = nullptr;
 	instance->controls.Free();
 	EsPanelSwitchTo(instance->switcher, instance->mainPage, ES_TRANSITION_ZOOM_OUT, ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION, 1.0f);
+	ConfigurationWriteToFile();
 }
 
 void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
@@ -156,6 +156,7 @@ void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
 	if (oldValue != newValue) {
 		SettingsUpdateGlobalAndWindowManager();
 		EsElementSetDisabled(instance->undoButton, false);
+		desktop.configurationModified = true;
 	}
 }
 
@@ -221,6 +222,7 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 	if (oldValue == newValue) return;
 	SettingsUpdateGlobalAndWindowManager();
 	EsElementSetDisabled(instance->undoButton, false);
+	desktop.configurationModified = true;
 }
 
 void SettingsAddCheckbox(EsElement *table, const char *string, ptrdiff_t stringBytes, char accessKey,
@@ -328,6 +330,7 @@ int SettingsSliderMessage(EsElement *element, EsMessage *message) {
 		if (oldValue != newValue) {
 			SettingsUpdateGlobalAndWindowManager();
 			EsElementSetDisabled(instance->undoButton, false);
+			desktop.configurationModified = true;
 		}
 	}
 
@@ -536,4 +539,8 @@ void InstanceSettingsCreate(EsMessage *message) {
 			EsButtonOnCommand(button, SettingsButtonPressed);
 		}
 	}
+
+	instance->destroy = [] (EsInstance *) {
+		ConfigurationWriteToFile();
+	};
 }
