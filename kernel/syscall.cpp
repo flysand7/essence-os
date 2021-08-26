@@ -2006,24 +2006,4 @@ uintptr_t DoSyscall(EsSyscallType index,
 	return returnValue;
 }
 
-bool KCopyToUser(K_USER_BUFFER void *destination, const void *source, size_t length) {
-	__sync_synchronize();
-	Thread *currentThread = GetCurrentThread();
-	MMRegion *region = MMFindAndPinRegion(currentThread->process->vmm, (uintptr_t) destination, length); 
-	if (!region) return false;
-	EsMemoryCopy(destination, source, length);
-	MMUnpinRegion(currentThread->process->vmm, region);
-	return true;
-}
-
-bool KCopyFromUser(void *destination, K_USER_BUFFER const void *source, size_t length) {
-	__sync_synchronize();
-	Thread *currentThread = GetCurrentThread();
-	MMRegion *region = MMFindAndPinRegion(currentThread->process->vmm, (uintptr_t) source, length); 
-	if (!region) return false;
-	EsMemoryCopy(destination, source, length);
-	MMUnpinRegion(currentThread->process->vmm, region);
-	return true;
-}
-
 #endif

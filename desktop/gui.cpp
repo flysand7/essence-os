@@ -74,6 +74,7 @@ struct TableCell {
 
 // Miscellanous forward declarations.
 void UIWindowPaintNow(EsWindow *window, ProcessMessageTiming *timing, bool afterResize);
+void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing);
 EsElement *WindowGetMainPanel(EsWindow *window);
 int AccessKeyLayerMessage(EsElement *element, EsMessage *message);
 void AccessKeyModeExit();
@@ -99,7 +100,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_DESTROYING_CHILD	(1 <<  5)
 
 #define UI_STATE_HOVERED		(1 <<  6)
-#define UI_STATE_PRESSED		(1 <<  7)
+#define UI_STATE_LEFT_PRESSED		(1 <<  7)
 #define UI_STATE_STRONG_PRESSED		(1 <<  8)
 #define UI_STATE_FOCUS_WITHIN		(1 <<  9)
 #define UI_STATE_FOCUSED		(1 << 10)
@@ -293,6 +294,7 @@ struct ScrollPane {
 	double position[2];
 	int64_t limit[2];
 	int32_t fixedViewport[2];
+	bool autoScrollbars[2];
 	bool dragScrolling;
 
 #define SCROLL_MODE_NONE    (0)      // No scrolling takes place on this axis.
@@ -1716,9 +1718,10 @@ bool EsElement::RefreshStyleState() {
 	if (flags & ES_ELEMENT_DISABLED) {
 		styleStateFlags |= THEME_PRIMARY_STATE_DISABLED;
 	} else {
-		if (((state & UI_STATE_PRESSED) && ((state & UI_STATE_HOVERED) || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) || (state & UI_STATE_MENU_SOURCE)) {
+		if (((state & UI_STATE_LEFT_PRESSED) && ((state & UI_STATE_HOVERED) || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) 
+				|| (state & UI_STATE_MENU_SOURCE)) {
 			styleStateFlags |= THEME_PRIMARY_STATE_PRESSED;
-		} else if (((state & UI_STATE_HOVERED) && !window->pressed) || (state & UI_STATE_PRESSED)) {
+		} else if (((state & UI_STATE_HOVERED) && !window->pressed) || (window && window->pressed == this)) {
 			styleStateFlags |= THEME_PRIMARY_STATE_HOVERED;
 		} else {
 			styleStateFlags |= THEME_PRIMARY_STATE_IDLE;
@@ -2860,7 +2863,7 @@ bool ScrollPane::RefreshLimit(int axis, int64_t *contentSize) {
 		EsMessageSend(parent, &m);
 
 		*contentSize = axis ? m.measure.height : m.measure.width;
-		limit[axis] = *contentSize - (axis ? bounds.b : bounds.r) + fixedViewport[axis];
+		limit[axis] = *contentSize - (axis ? bounds.b : bounds.r);
 		if (limit[axis] < 0) limit[axis] = 0;
 
 		if (parent->state & UI_STATE_INSPECTING) {
@@ -2906,11 +2909,13 @@ void ScrollPane::Refresh() {
 	if (bar[0]) {
 		bar[0]->InternalMove(parent->width - parent->internalOffsetRight, bar[0]->currentStyle->preferredHeight, 
 				0, parent->height - parent->internalOffsetBottom);
+		autoScrollbars[0] = ~bar[0]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (bar[1]) {
 		bar[1]->InternalMove(bar[1]->currentStyle->preferredWidth, parent->height - parent->internalOffsetBottom, 
 				parent->width - parent->internalOffsetRight, 0);
+		autoScrollbars[1] = ~bar[1]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (pad) {
@@ -5854,7 +5859,7 @@ void UIMousePressReleased(EsWindow *window, EsMessage *message, bool sendClick) 
 			UIMessageSendPropagateToAncestors(pressed, &m);
 		}
 
-		pressed->state &= ~UI_STATE_PRESSED;
+		pressed->state &= ~UI_STATE_LEFT_PRESSED;
 		EsMessage m = { ES_MSG_PRESSED_END };
 		EsMessageSend(pressed, &m);
 
@@ -6144,7 +6149,7 @@ void AccessKeyModeHandleKeyPress(EsMessage *message) {
 		AccessKeyModeExit();
 	} else if (regatherKeys) {
 		AccessKeyModeExit();
-		window->InternalMove(window->width, window->height, 0, 0);
+		UIWindowLayoutNow(window, nullptr);
 		AccessKeyModeEnter(window);
 	} else {
 		window->Repaint(true);
@@ -6372,6 +6377,47 @@ void UIWindowPaintNow(EsWindow *window, ProcessMessageTiming *timing, bool after
 	window->updateRegion = ES_RECT_4(window->windowWidth, 0, window->windowHeight, 0);
 }
 
+void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing) {
+	if (timing) timing->startLayout = EsTimeStampMs();
+
+	window->InternalMove(window->width, window->height, 0, 0);
+
+	if (window->ensureVisible) {
+		EsElement *child = window->ensureVisible, *e = window->ensureVisible;
+
+		while (e->parent) {
+			EsMessage m = { ES_MSG_ENSURE_VISIBLE };
+			m.child = child;
+			e = e->parent;
+
+			if (ES_HANDLED == EsMessageSend(e, &m)) {
+				child = e;
+			}
+		}
+
+		window->ensureVisible = nullptr;
+	}
+
+	if (window->processCheckVisible) {
+		for (uintptr_t i = 0; i < window->checkVisible.Length(); i++) {
+			EsElement *element = window->checkVisible[i];
+			EsAssert(element->state & UI_STATE_CHECK_VISIBLE);
+			EsRectangle bounds = element->GetWindowBounds();
+			bool offScreen = bounds.r < 0 || bounds.b < 0 || bounds.l >= element->window->width || bounds.t >= element->window->height;
+			if (!offScreen) continue;
+			element->state &= ~UI_STATE_CHECK_VISIBLE;
+			window->checkVisible.Delete(i);
+			i--;
+			EsMessage m = { ES_MSG_NOT_VISIBLE };
+			EsMessageSend(element, &m);
+		}
+
+		window->processCheckVisible = false;
+	}
+
+	if (timing) timing->endLayout = EsTimeStampMs();
+}
+
 bool UISetCursor(EsWindow *window) {
 	EsCursorStyle cursorStyle = ES_CURSOR_NORMAL;
 	EsElement *element = window->pressed ?: window->hovered;
@@ -6551,7 +6597,10 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			// window->hovered will be set to nullptr, so save the element here.
 			EsElement *element = window->hovered;
 
-			element->state |= UI_STATE_PRESSED;
+			if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+				element->state |= UI_STATE_LEFT_PRESSED;
+			}
+
 			window->pressed = element;
 			EsMessage m = { ES_MSG_PRESSED_START };
 			EsMessageSend(element, &m);
@@ -6729,44 +6778,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	bool changedCursor = UISetCursor(window);
 
 	if (window->receivedFirstResize || window->windowStyle != ES_WINDOW_NORMAL) {
-		if (timing) timing->startLayout = EsTimeStampMs();
-
-		window->InternalMove(window->width, window->height, 0, 0);
-
-		if (window->ensureVisible) {
-			EsElement *child = window->ensureVisible, *e = window->ensureVisible;
-
-			while (e->parent) {
-				EsMessage m = { ES_MSG_ENSURE_VISIBLE };
-				m.child = child;
-				e = e->parent;
-
-				if (ES_HANDLED == EsMessageSend(e, &m)) {
-					child = e;
-				}
-			}
-
-			window->ensureVisible = nullptr;
-		}
-
-		if (window->processCheckVisible) {
-			for (uintptr_t i = 0; i < window->checkVisible.Length(); i++) {
-				EsElement *element = window->checkVisible[i];
-				EsAssert(element->state & UI_STATE_CHECK_VISIBLE);
-				EsRectangle bounds = element->GetWindowBounds();
-				bool offScreen = bounds.r < 0 || bounds.b < 0 || bounds.l >= element->window->width || bounds.t >= element->window->height;
-				if (!offScreen) continue;
-				element->state &= ~UI_STATE_CHECK_VISIBLE;
-				window->checkVisible.Delete(i);
-				i--;
-				EsMessage m = { ES_MSG_NOT_VISIBLE };
-				EsMessageSend(element, &m);
-			}
-
-			window->processCheckVisible = false;
-		}
-
-		if (timing) timing->endLayout = EsTimeStampMs();
+		UIWindowLayoutNow(window, timing);
 	}
 
 	if (THEME_RECT_VALID(window->updateRegion) && window->width == (int) window->windowWidth && window->height == (int) window->windowHeight) {
@@ -7036,7 +7048,7 @@ void InspectorNotifyElementEvent(EsElement *element, const char *cCategory, cons
 	if (cCategory) EsBufferFormat(&buffer, "%z: ", cCategory);
 	EsBufferFormatV(&buffer, cFormat, arguments); 
 	va_end(arguments);
-	EsListViewInsertFixedItem(inspector->listEvents, _buffer, buffer.position);
+	EsListViewFixedItemInsert(inspector->listEvents, _buffer, buffer.position);
 	EsListViewScrollToEnd(inspector->listEvents);
 }
 

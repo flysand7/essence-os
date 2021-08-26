@@ -120,6 +120,7 @@ struct InstalledApplication {
 	size_t openInstanceCount; // Only used if useSingleProcess is true.
 	EsHandle singleProcessHandle; 
 	bool notified; // Temporary flag.
+	EsFileOffset totalSize; // 0 if uncalculated.
 };
 
 struct CommonDesktopInstance : EsInstance {

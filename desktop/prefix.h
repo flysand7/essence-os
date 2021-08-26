@@ -294,6 +294,7 @@ struct BundleFile {
 #define CURSOR_USE_ACCELERATION (1 << 0)
 #define CURSOR_USE_ALT_SLOW (1 << 1)
 #define CURSOR_SPEED(x) ((x) >> 16)
+#define CURSOR_TRAILS(x) (((x) >> 13) & 7)
 
 #define SHUTDOWN_ACTION_POWER_OFF (1)
 #define SHUTDOWN_ACTION_RESTART (2)

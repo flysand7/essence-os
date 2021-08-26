@@ -121,6 +121,10 @@ DEFINE_INTERFACE_STRING(DesktopSettingsMouseUseAcceleration, "Move cursor faster
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSlowOnAlt, "Move cursor slower when Alt is held");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedSlow, "Slow");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedFast, "Fast");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone, "None");
+DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany, "Many");
+
+DEFINE_INTERFACE_STRING(DesktopSettingsApplicationSelectItem, "Select an application:");
 
 // File operations.
 

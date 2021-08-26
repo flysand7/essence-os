@@ -124,19 +124,19 @@ void FormatPopupCreate(Instance *instance) {
 
 		for (uintptr_t i = 0; i < sizeof(presetSizes) / sizeof(presetSizes[0]); i++) {
 			char buffer[64];
-			EsListViewInsertFixedItem(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetSizes[i]), presetSizes[i]);
+			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetSizes[i]), presetSizes[i]);
 		}
 
 		EsTextStyle textStyle = {};
 		EsTextboxGetTextStyle(instance->textboxDocument, &textStyle);
-		EsListViewSelectFixedItem(list, textStyle.size);
+		EsListViewFixedItemSelect(list, textStyle.size);
 
 		list->messageUser = [] (EsElement *element, EsMessage *message) {
 			if (message->type == ES_MSG_LIST_VIEW_SELECT) {
 				Instance *instance = element->instance;
 				EsGeneric newSize;
 
-				if (EsListViewGetSelectedFixedItem(((EsListView *) element), &newSize)) {
+				if (EsListViewFixedItemGetSelected(((EsListView *) element), &newSize)) {
 					EsTextStyle textStyle = {};
 					EsTextboxGetTextStyle(instance->textboxDocument, &textStyle);
 					textStyle.size = newSize.u;
@@ -152,17 +152,17 @@ void FormatPopupCreate(Instance *instance) {
 		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, &styleFormatPopupColumn);
 		EsTextDisplayCreate(column, ES_CELL_H_EXPAND, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(CommonFormatLanguage));
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
-		EsListViewInsertFixedItem(list, INTERFACE_STRING(CommonFormatPlainText), 0);
-		EsListViewInsertFixedItem(list, "C/C++", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
-		EsListViewInsertFixedItem(list, "Ini file", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
-		EsListViewSelectFixedItem(list, instance->syntaxHighlightingLanguage);
+		EsListViewFixedItemInsert(list, INTERFACE_STRING(CommonFormatPlainText), 0);
+		EsListViewFixedItemInsert(list, "C/C++", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
+		EsListViewFixedItemInsert(list, "Ini file", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
+		EsListViewFixedItemSelect(list, instance->syntaxHighlightingLanguage);
 
 		list->messageUser = [] (EsElement *element, EsMessage *message) {
 			if (message->type == ES_MSG_LIST_VIEW_SELECT) {
 				Instance *instance = element->instance;
 				EsGeneric newLanguage;
 
-				if (EsListViewGetSelectedFixedItem(((EsListView *) element), &newLanguage)) {
+				if (EsListViewFixedItemGetSelected(((EsListView *) element), &newLanguage)) {
 					SetLanguage(instance, newLanguage.u);
 				}
 			}

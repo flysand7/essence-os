@@ -692,8 +692,9 @@ const EsApplicationStartupInformation *EsInstanceGetStartupInformation(EsInstanc
 }
 
 void EsInstanceDestroy(EsInstance *instance) {
-	EsInstance *inspector = ((APIInstance *) instance->_private)->attachedInspector;
-	if (inspector) EsInstanceDestroy(inspector);
+	InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
+	if (*inspector) EsInstanceDestroy(*inspector);
+	*inspector = nullptr;
 	UndoManagerDestroy(instance->undoManager);
 	EsAssert(instance->window->instance == instance);
 	instance->window->destroyInstanceAfterClose = true;

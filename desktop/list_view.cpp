@@ -26,10 +26,16 @@ struct ListViewGroup {
 	bool initialised;
 };
 
-struct ListViewFixedItem {
+struct ListViewFixedString {
 	char *string;
-	size_t stringBytes;
+	size_t bytes;
+};
+
+struct ListViewFixedItem {
+	ListViewFixedString firstColumn;
+	Array<ListViewFixedString> otherColumns;
 	EsGeneric data;
+	uint32_t iconID;
 };
 
 int ListViewProcessItemMessage(EsElement *element, EsMessage *message);
@@ -635,16 +641,13 @@ struct EsListView : EsElement {
 						position + contentBounds.l, 
 						currentStyle->insets.t - this->scroll.position[1] + visibleItem->indent * currentStyle->gapWrap + contentBounds.t);
 					position += visibleItem->element->width;
-				} else if (flags & ES_LIST_VIEW_COLUMNS) {
+				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.autoScrollbars[0]))) {
 					int indent = visibleItem->indent * currentStyle->gapWrap;
 					int firstColumn = columns[0].width + secondaryCellStyle->gapMajor;
 					visibleItem->startAtSecondColumn = indent > firstColumn;
 					if (indent > firstColumn) indent = firstColumn;
-					visibleItem->element->InternalMove(
-						totalColumnWidth - indent,
-						visibleItem->size, 
-						indent - this->scroll.position[0] + contentBounds.l + currentStyle->insets.l, 
-						position + contentBounds.t);
+					visibleItem->element->InternalMove(totalColumnWidth - indent, visibleItem->size, 
+						indent - this->scroll.position[0] + contentBounds.l + currentStyle->insets.l, position + contentBounds.t);
 					position += visibleItem->element->height;
 				} else {
 					int indent = visibleItem->indent * currentStyle->gapWrap + currentStyle->insets.l;
@@ -1142,7 +1145,8 @@ struct EsListView : EsElement {
 
 					if (EsRectangleClip(drawBounds, message->painter->clip, nullptr) 
 							&& ES_HANDLED == EsMessageSend(this, &m)) {
-						UIStyle *style = i ? secondaryCellStyle : primaryCellStyle;
+						UIStyle *style = (flags & ES_LIST_VIEW_CHOICE_SELECT) ? ((UIStyle *) message->painter->style) 
+							: i ? secondaryCellStyle : primaryCellStyle;
 
 						uint8_t previousTextAlign = style->textAlign;
 
@@ -1576,6 +1580,7 @@ struct EsListView : EsElement {
 
 				if (flags & ES_LIST_VIEW_COLUMNS) {
 					message->measure.width = totalColumnWidth + currentStyle->insets.l + currentStyle->insets.r;
+					message->measure.height += columnHeader->currentStyle->preferredHeight;
 				}
 			}
 		} else if (message->type == ES_MSG_LAYOUT) {
@@ -1621,7 +1626,12 @@ struct EsListView : EsElement {
 			}
 
 			for (uintptr_t i = 0; i < fixedItems.Length(); i++) {
-				EsHeapFree(fixedItems[i].string);
+				for (uintptr_t j = 0; j < fixedItems[i].otherColumns.Length(); j++) {
+					EsHeapFree(fixedItems[i].otherColumns[j].string);
+				}
+
+				EsHeapFree(fixedItems[i].firstColumn.string);
+				fixedItems[i].otherColumns.Free();
 			}
 
 			primaryCellStyle->CloseReference();
@@ -1806,7 +1816,12 @@ struct EsListView : EsElement {
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			uintptr_t index = message->getContent.index;
 			EsAssert(index < fixedItems.Length());
-			EsBufferFormat(message->getContent.buffer, "%s", fixedItems[index].stringBytes, fixedItems[index].string);
+			ListViewFixedString emptyString = {};
+			ListViewFixedItem *item = &fixedItems[index];
+			ListViewFixedString *string = message->getContent.column == 0 ? &item->firstColumn 
+				: message->getContent.column <= item->otherColumns.Length() ? &item->otherColumns[message->getContent.column - 1] : &emptyString;
+			EsBufferFormat(message->getContent.buffer, "%s", string->bytes, string->string);
+			if (message->getContent.column == 0) message->getContent.icon = item->iconID;
 		} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			message->selectItem.isSelected = message->selectItem.index == fixedItemSelection;
 		} else {
@@ -2321,7 +2336,7 @@ void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsList
 	}
 }
 
-void EsListViewInsertFixedItem(EsListView *view, const char *string, ptrdiff_t stringBytes, EsGeneric data, EsListViewIndex index) {
+EsListViewIndex EsListViewFixedItemInsert(EsListView *view, const char *string, ptrdiff_t stringBytes, EsGeneric data, EsListViewIndex index, uint32_t iconID) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 
 	if (stringBytes == -1) {
@@ -2339,20 +2354,33 @@ void EsListViewInsertFixedItem(EsListView *view, const char *string, ptrdiff_t s
 	EsAssert(index >= 0 && index <= (intptr_t) view->fixedItems.Length());
 	ListViewFixedItem item = {};
 	item.data = data;
-	HeapDuplicate((void **) &item.string, string, stringBytes);
-	item.stringBytes = stringBytes;
+	item.iconID = iconID;
+	HeapDuplicate((void **) &item.firstColumn.string, string, stringBytes);
+	item.firstColumn.bytes = stringBytes;
 	view->fixedItems.Insert(item, index);
 
 	EsListViewInsert(view, 0, index, 1);
+	return index;
 }
 
-bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data) {
+void EsListViewFixedItemAddString(EsListView *view, EsListViewIndex index, const char *string, ptrdiff_t stringBytes) {
+	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
+	EsMessageMutexCheck();
+	EsAssert(index >= 0 && index < (intptr_t) view->fixedItems.Length());
+	ListViewFixedString fixedString = {};
+	fixedString.bytes = stringBytes == -1 ? EsCStringLength(string) : stringBytes;
+	HeapDuplicate((void **) &fixedString, string, fixedString.bytes);
+	view->fixedItems[index].otherColumns.Add(fixedString);
+	EsListViewInvalidateContent(view, 0, index);
+}
+
+bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 	EsMessageMutexCheck();
 
 	for (uintptr_t i = 0; i < view->fixedItems.Length(); i++) {
 		if (view->fixedItems[i].data == data) {
-			EsListViewSelect(view, 0, i);
+			*index = i;
 			return true;
 		}
 	}
@@ -2360,7 +2388,16 @@ bool EsListViewSelectFixedItem(EsListView *view, EsGeneric data) {
 	return false;
 }
 
-bool EsListViewGetSelectedFixedItem(EsListView *view, EsGeneric *data) {
+bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data) {
+	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
+	EsMessageMutexCheck();
+	EsListViewIndex index;
+	bool found = EsListViewFixedItemFindIndex(view, data, &index);
+	if (found) EsListViewSelect(view, 0, index);
+	return found;
+}
+
+bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 	EsMessageMutexCheck();
 

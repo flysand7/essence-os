@@ -759,7 +759,7 @@ void OutputOdinRecord(Entry *record, int indent) {
 	}
 }
 
-void OutputOdinFunction(Entry *entry) {
+void OutputOdinFunction(Entry *entry, Entry *root) {
 	bool hasReturnValue = strcmp(entry->children[0].variable.type, "void") || entry->children[0].variable.pointer;
 
 	for (int i = 0; i < arrlen(entry->children); i++) {
@@ -809,7 +809,18 @@ void OutputOdinFunction(Entry *entry) {
 				initialValue = "\"\"";
 			}
 
-			FilePrintFormat(output, " = %s", initialValue);
+			bool needLeadingDot = false;
+
+			for (int i = 0; i < arrlen(root->children); i++) {
+				Entry *entry = root->children + i;
+
+				if (entry->type == ENTRY_ENUM && 0 == strcmp(variable->variable.type, entry->name)) {
+					needLeadingDot = true;
+					break;
+				}
+			}
+
+			FilePrintFormat(output, " = %c%s", needLeadingDot ? '.' : ' ', initialValue);
 		}
 	}
 
@@ -871,6 +882,20 @@ void OutputOdinFunction(Entry *entry) {
 void OutputOdin(Entry *root) {
 	FilePrintFormat(output, "package es\n");
 
+	// HACK Workaround for Odin issue #854.
+
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = root->children + i;
+
+		if (entry->type == ENTRY_STRUCT && 0 == strcmp(entry->name, "EsElementPublic")) {
+			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
+			OutputOdinRecord(entry, 0);
+			FilePrintFormat(output, "}\n");
+			arrdel(root->children, i);
+			break;
+		}
+	}
+
 	FilePrintFormat(output, "Generic :: rawptr;\n");
 	FilePrintFormat(output, "INSTANCE_TYPE :: Instance;\n");
 
@@ -890,7 +915,7 @@ void OutputOdin(Entry *root) {
 			OutputOdinRecord(entry, 0);
 			FilePrintFormat(output, "}\n");
 		} else if (entry->type == ENTRY_ENUM) {
-			FilePrintFormat(output, "using %s :: enum i32 {\n", TrimPrefix(entry->name));
+			FilePrintFormat(output, "%s :: enum i32 {\n", TrimPrefix(entry->name));
 
 			for (int i = 0; i < arrlen(entry->children); i++) {
 				if (entry->children[i].define.value) {
@@ -905,7 +930,7 @@ void OutputOdin(Entry *root) {
 			bool hasParent = 0 != strcmp(entry->apiType.parent, "none");
 			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), hasParent ? TrimPrefix(entry->apiType.parent) : "rawptr");
 		} else if (entry->type == ENTRY_FUNCTION) {
-			OutputOdinFunction(entry);
+			OutputOdinFunction(entry, root);
 		} else if (entry->type == ENTRY_TYPE_NAME) {
 			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), TrimPrefix(OdinReplaceTypes(entry->oldTypeName, true)));
 		}

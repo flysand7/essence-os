@@ -178,9 +178,6 @@ extern "C" uint64_t ProcessorReadMXCSR();
 
 extern "C" uint64_t KGetTimeInMs(); // Scheduler time.
 
-bool KCopyToUser(K_USER_BUFFER void *destination, const void *source, size_t bytes);
-bool KCopyFromUser(void *destination, K_USER_BUFFER const void *source, size_t bytes);
-
 void *KGetRSDP();
 size_t KGetCPUCount();
 CPULocalStorage *KGetCPULocal(uintptr_t index);

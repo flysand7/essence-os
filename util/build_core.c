@@ -559,7 +559,7 @@ void BuildApplication(Application *application) {
 #ifdef OS_ESSENCE
 		// TODO.
 #else
-		system(application->customCompileCommand);
+		application->error = system(application->customCompileCommand);
 #endif
 	} else {
 		char symbolFile[256];

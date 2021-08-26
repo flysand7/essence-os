@@ -1,10 +1,17 @@
 // TODO Undo button overlapped slightly when scrollbar shown.
+// 	Maybe we should use a toolbar for these buttons?
+// 	Need to make an animation for showing/hiding the toolbar.
 
 struct SettingsInstance : CommonDesktopInstance {
 	EsPanel *switcher;
 	EsPanel *mainPage;
-	EsButton *undoButton;
+	EsButton *undoButton, *backButton;
 	Array<struct SettingsControl *> controls;
+
+	// Applications page:
+	EsHandle workerThread;
+	EsListView *applicationsList;
+	volatile bool workerStop;
 };
 
 struct SettingsPage {
@@ -49,6 +56,17 @@ const EsStyle styleSettingsGroupContainer2 = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
 		.insets = ES_RECT_1(15),
 		.preferredWidth = 400,
+		.gapMajor = 15,
+	},
+};
+
+const EsStyle styleSettingsGroupContainer3 = {
+	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.insets = ES_RECT_1(15),
+		.preferredWidth = 600,
 		.gapMajor = 15,
 	},
 };
@@ -111,6 +129,20 @@ const EsStyle styleSliderRow = {
 	},
 };
 
+const EsStyle styleApplicationsList = {
+	.inherit = ES_STYLE_LIST_CHOICE_BORDERED,
+	
+	.metrics = {
+		.mask = ES_THEME_METRICS_PREFERRED_HEIGHT,
+		.preferredHeight = 0,
+	},
+};
+
+EsListViewColumn settingsApplicationListColumns[] = {
+	{ INTERFACE_STRING(FileManagerColumnName), ES_FLAGS_DEFAULT, 150 },
+	{ INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 100 },
+};
+
 void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
@@ -122,13 +154,27 @@ void SettingsUpdateGlobalAndWindowManager() {
 	int32_t cursorSpeed = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("cursor_speed"));
 	double cursorSpeedFactor = EsCRTexp2(0.25 * cursorSpeed /* -20 to 20, 0 is default */) /* 1/32 to 32, 1 is default */;
 	cursorProperties |= (uint32_t) (cursorSpeedFactor * 0x100) << 16; // Speed.
+	cursorProperties |= (uint32_t) EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("cursor_trails")) << 13; // Trail count.
 	EsSyscall(ES_SYSCALL_CURSOR_PROPERTIES_SET, cursorProperties, 0, 0, 0);
 }
 
 void SettingsBackButton(EsInstance *_instance, EsElement *, EsCommand *) {
 	SettingsInstance *instance = (SettingsInstance *) _instance;
-	instance->undoButton = nullptr;
+
+	EsElementSetDisabled(instance->undoButton, true);
+	EsElementSetHidden(instance->undoButton, true);
+	EsElementSetDisabled(instance->backButton, true);
+
 	instance->controls.Free();
+
+	if (instance->workerThread) {
+		instance->workerStop = true;
+		EsWaitSingle(instance->workerThread);
+		EsHandleClose(instance->workerThread);
+		instance->workerThread = ES_INVALID_HANDLE;
+		instance->workerStop = false;
+	}
+
 	EsPanelSwitchTo(instance->switcher, instance->mainPage, ES_TRANSITION_ZOOM_OUT, ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION, 1.0f);
 	ConfigurationWriteToFile();
 }
@@ -184,16 +230,6 @@ void SettingsAddTitle(EsElement *container, SettingsPage *page) {
 	EsSpacerCreate(row, ES_FLAGS_DEFAULT, 0, 10, 0);
 	EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING2, page->string, page->stringBytes);
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
-}
-
-void SettingsAddUndoButton(EsElement *stack) {
-	EsPanel *overlay = EsPanelCreate(stack, ES_CELL_H_RIGHT | ES_CELL_V_TOP, &styleSettingsOverlayPanel);
-	EsButton *undoButton = EsButtonCreate(overlay, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
-	undoButton->accessKey = 'U';
-	((SettingsInstance *) stack->instance)->undoButton = undoButton;
-	EsButtonSetIcon(undoButton, ES_ICON_EDIT_UNDO_SYMBOLIC);
-	EsButtonOnCommand(undoButton, SettingsUndoButton);
-	EsElementSetDisabled(undoButton, true);
 }
 
 void SettingsPageUnimplemented(EsElement *element, SettingsPage *page) {
@@ -354,11 +390,11 @@ void SettingsAddSlider(EsElement *table, const char *string, ptrdiff_t stringByt
 
 	EsPanel *stack = EsPanelCreate(table, ES_CELL_H_FILL);
 	EsTextDisplayCreate(stack, ES_CELL_H_LEFT, 0, string, stringBytes); 
-	EsPanel *row = EsPanelCreate(stack, ES_PANEL_HORIZONTAL | ES_CELL_H_CENTER, &styleSliderRow);
-	EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, lowString, lowStringBytes); 
+	EsPanel *row = EsPanelCreate(stack, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, &styleSliderRow);
+	EsTextDisplayCreate(row, ES_CELL_H_PUSH | ES_CELL_H_RIGHT, 0, lowString, lowStringBytes); 
 	EsSlider *slider = EsSliderCreate(row, ES_ELEMENT_FREE_USER_DATA, 0, 
 			LinearMap(control->minimumValue, control->maximumValue, 0, 1, control->originalValueInt), steps);
-	EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, highString, highStringBytes); 
+	EsTextDisplayCreate(row, ES_CELL_H_PUSH | ES_CELL_H_LEFT, 0, highString, highStringBytes); 
 	slider->userData = control;
 	slider->accessKey = accessKey;
 	slider->messageUser = SettingsSliderMessage;
@@ -381,12 +417,13 @@ int SettingsDoubleClickTestMessage(EsElement *element, EsMessage *message) {
 }
 
 void SettingsPageMouse(EsElement *element, SettingsPage *page) {
+	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
+
 	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
 	EsPanel *table;
-	EsTextbox *textbox;
 
 	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseSpeed), 'M', "general", "cursor_speed", -20, 20, 41, 
 			INTERFACE_STRING(DesktopSettingsMouseSpeedSlow), INTERFACE_STRING(DesktopSettingsMouseSpeedFast));
@@ -397,22 +434,14 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
 
+	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseCursorTrails), 'T', "general", "cursor_trails", 0, 7, 8, 
+			INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone), INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany));
+
 	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
 
-	// TODO Mouse trails.
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseCursorTrails));
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
-	textbox->accessKey = 'T';
-	EsTextboxUseNumberOverlay(textbox, false);
-	EsTextboxInsert(textbox, "0");
-
-	// TODO Scroll wheel.
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch));
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
-	textbox->accessKey = 'S';
-	EsTextboxUseNumberOverlay(textbox, false);
-	EsTextboxInsert(textbox, "3");
+	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch), 'S', "general", "scroll_lines_per_notch", 
+			1, 100, nullptr, 0, 0.04);
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', "general", "swap_left_and_right_buttons");
@@ -431,11 +460,11 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsMouseTestDoubleClickIntroduction));
 	EsSpacerCreate(testBox, ES_FLAGS_DEFAULT, 0, 0, 5);
 	EsCustomElementCreate(testBox, ES_FLAGS_DEFAULT, ES_STYLE_DOUBLE_CLICK_TEST)->messageUser = SettingsDoubleClickTestMessage;
-
-	SettingsAddUndoButton(element);
 }
 
 void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
+	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
+
 	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
@@ -467,23 +496,104 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction));
 	EsSpacerCreate(testBox, ES_FLAGS_DEFAULT, 0, 0, 5);
 	EsTextboxCreate(testBox, ES_CELL_H_LEFT)->accessKey = 'T';
+}
 
-	SettingsAddUndoButton(element);
+void SettingsPageApplicationsWorkerThread(EsGeneric context) {
+	SettingsInstance *instance = (SettingsInstance *) context.p;
+	EsListViewIndex index;
+	char buffer[64];
+	EsDirectoryChild information;
+
+	while (!instance->workerStop) {
+		// Find an application that we need to calculate the size of.
+
+		EsMessageMutexAcquire();
+
+		InstalledApplication *application = nullptr;
+
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			application = desktop.installedApplications[i];
+
+			if (!application->totalSize && EsListViewFixedItemFindIndex(instance->applicationsList, application, &index)) {
+				break;
+			} else {
+				application = nullptr;
+			}
+		}
+
+		EsMessageMutexRelease();
+
+		if (!application) {
+			break; // All applications have had their sizes calculated.
+		}
+
+		// TODO What happens if the application is uninstalled here?
+		// TODO Include settings and cached data.
+
+		if (!EsPathQueryInformation(application->cExecutable, -1, &information)) {
+			continue;
+		}
+
+		EsMessageMutexAcquire();
+
+		application->totalSize = information.fileSize;
+
+		if (EsListViewFixedItemFindIndex(instance->applicationsList, application, &index)) {
+			EsListViewFixedItemAddString(instance->applicationsList, index, buffer, EsStringFormat(buffer, sizeof(buffer), "%D", application->totalSize));
+		}
+
+		EsMessageMutexRelease();
+	}
+}
+
+void SettingsPageApplications(EsElement *element, SettingsPage *page) {
+	SettingsInstance *instance = (SettingsInstance *) element->instance;
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer3);
+	SettingsAddTitle(container, page);
+
+	EsTextDisplayCreate(container, ES_CELL_H_FILL, 0, INTERFACE_STRING(DesktopSettingsApplicationSelectItem));
+	uint64_t listFlags = ES_CELL_H_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS | ES_LIST_VIEW_COLUMNS;
+	EsListView *list = EsListViewCreate(container, listFlags, &styleApplicationsList);
+	instance->applicationsList = list;
+	EsListViewSetColumns(list, settingsApplicationListColumns, sizeof(settingsApplicationListColumns) / sizeof(settingsApplicationListColumns[0]));
+	list->accessKey = 'L';
+
+	// TODO Insets/gaps on the choice style items is incorrect.
+	// TODO Sorting.
+	// TODO Operations on the application.
+
+	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+		InstalledApplication *application = desktop.installedApplications[i];
+
+		if (!application->temporary && !application->createInstance && application->cExecutable) {
+			EsListViewIndex index = EsListViewFixedItemInsert(list, application->cName, -1, application, -1, 
+					(EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
+
+			if (application->totalSize) {
+				char buffer[64];
+				EsListViewFixedItemAddString(list, index, buffer, EsStringFormat(buffer, sizeof(buffer), "%D", application->totalSize));
+			}
+		}
+	}
+
+	EsThreadInformation thread;
+	EsThreadCreate(SettingsPageApplicationsWorkerThread, &thread, instance);
+	instance->workerThread = thread.handle;
 }
 
 SettingsPage settingsPages[] = {
 	{ INTERFACE_STRING(DesktopSettingsAccessibility), ES_ICON_PREFERENCES_DESKTOP_ACCESSIBILITY, SettingsPageUnimplemented, 'A' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsApplications), ES_ICON_APPLICATIONS_OTHER, SettingsPageUnimplemented, 'A' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'D' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsDevices), ES_ICON_COMPUTER_LAPTOP, SettingsPageUnimplemented, 'D' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsApplications), ES_ICON_APPLICATIONS_OTHER, SettingsPageApplications, 'B' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'C' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDisplay), ES_ICON_PREFERENCES_DESKTOP_DISPLAY, SettingsPageUnimplemented, 'D' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsKeyboard), ES_ICON_INPUT_KEYBOARD, SettingsPageKeyboard, 'K' },
-	{ INTERFACE_STRING(DesktopSettingsLocalisation), ES_ICON_PREFERENCES_DESKTOP_LOCALE, SettingsPageUnimplemented, 'L' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsMouse), ES_ICON_INPUT_MOUSE, SettingsPageMouse, 'M' },
-	{ INTERFACE_STRING(DesktopSettingsNetwork), ES_ICON_PREFERENCES_SYSTEM_NETWORK, SettingsPageUnimplemented, 'N' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsPower), ES_ICON_PREFERENCES_SYSTEM_POWER, SettingsPageUnimplemented, 'P' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsSound), ES_ICON_PREFERENCES_DESKTOP_SOUND, SettingsPageUnimplemented, 'S' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsTheme), ES_ICON_APPLICATIONS_INTERFACEDESIGN, SettingsPageUnimplemented, 'T' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsKeyboard), ES_ICON_INPUT_KEYBOARD, SettingsPageKeyboard, 'E' },
+	{ INTERFACE_STRING(DesktopSettingsLocalisation), ES_ICON_PREFERENCES_DESKTOP_LOCALE, SettingsPageUnimplemented, 'F' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsMouse), ES_ICON_INPUT_MOUSE, SettingsPageMouse, 'G' },
+	{ INTERFACE_STRING(DesktopSettingsNetwork), ES_ICON_PREFERENCES_SYSTEM_NETWORK, SettingsPageUnimplemented, 'H' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsPower), ES_ICON_PREFERENCES_SYSTEM_POWER, SettingsPageUnimplemented, 'J' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsSound), ES_ICON_PREFERENCES_DESKTOP_SOUND, SettingsPageUnimplemented, 'K' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsTheme), ES_ICON_APPLICATIONS_INTERFACEDESIGN, SettingsPageUnimplemented, 'M' }, // TODO.
 };
 
 void SettingsButtonPressed(EsInstance *_instance, EsElement *element, EsCommand *) {
@@ -493,15 +603,8 @@ void SettingsButtonPressed(EsInstance *_instance, EsElement *element, EsCommand 
 	EsPanel *stack = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_Z_STACK);
 	page->create(stack, page);
 
-	{
-		EsPanel *overlay = EsPanelCreate(stack, ES_CELL_H_LEFT | ES_CELL_V_TOP, &styleSettingsOverlayPanel);
-		EsButton *backButton = EsButtonCreate(overlay, ES_CELL_H_LEFT | ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsBackButton));
-		backButton->accessKey = 'A';
-		EsButtonSetIcon(backButton, ES_ICON_GO_HOME_SYMBOLIC);
-		EsButtonOnCommand(backButton, SettingsBackButton);
-	}
-
 	EsPanelSwitchTo(instance->switcher, stack, ES_TRANSITION_ZOOM_IN, ES_FLAGS_DEFAULT, 1.0f);
+	EsElementSetDisabled(instance->backButton, false);
 }
 
 void InstanceSettingsCreate(EsMessage *message) {
@@ -513,6 +616,27 @@ void InstanceSettingsCreate(EsMessage *message) {
 	EsPanel *content = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
 	instance->mainPage = content;
 	EsPanelSwitchTo(instance->switcher, content, ES_TRANSITION_NONE);
+
+	{
+		EsElement *toolbar = EsWindowGetToolbar(instance->window);
+
+		EsButton *backButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsBackButton));
+		instance->backButton = backButton;
+		backButton->accessKey = 'A';
+		EsButtonSetIcon(backButton, ES_ICON_GO_HOME_SYMBOLIC);
+		EsButtonOnCommand(backButton, SettingsBackButton);
+		EsElementSetDisabled(backButton, true);
+
+		EsSpacerCreate(toolbar, ES_CELL_FILL);
+
+		EsButton *undoButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
+		instance->undoButton = undoButton;
+		undoButton->accessKey = 'U';
+		EsButtonSetIcon(undoButton, ES_ICON_EDIT_UNDO_SYMBOLIC);
+		EsButtonOnCommand(undoButton, SettingsUndoButton);
+		EsElementSetDisabled(undoButton, true);
+		EsElementSetHidden(undoButton, true);
+	}
 
 	{
 		EsPanel *row = EsPanelCreate(content, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL);
@@ -531,11 +655,12 @@ void InstanceSettingsCreate(EsMessage *message) {
 		}, nullptr);
 
 		for (uintptr_t i = 0; i < sizeof(settingsPages) / sizeof(settingsPages[0]); i++) {
+			SettingsPage *page = &settingsPages[i];
 			EsButton *button = EsButtonCreate(container, ES_ELEMENT_NO_FOCUS_ON_CLICK | ES_CELL_H_FILL | ES_ELEMENT_STICKY_ACCESS_KEY, 
-					&styleSettingsButton, settingsPages[i].string, settingsPages[i].stringBytes);
-			button->userData = &settingsPages[i];
-			button->accessKey = settingsPages[i].accessKey;
-			EsButtonSetIcon(button, settingsPages[i].iconID);
+					&styleSettingsButton, page->string, page->stringBytes);
+			button->userData = page;
+			button->accessKey = EsCRTisalpha(page->string[0]) ? page->string[0] : page->accessKey;
+			EsButtonSetIcon(button, page->iconID);
 			EsButtonOnCommand(button, SettingsButtonPressed);
 		}
 	}

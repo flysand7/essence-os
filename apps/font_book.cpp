@@ -235,32 +235,32 @@ void VariantsPopupCreate(Instance *instance, EsElement *element, EsCommand *) {
 	EsPanel *panel = EsPanelCreate(menu, ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_POPUP);
 
 	EsListView *list = EsListViewCreate(panel, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal100),  1);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal200),  2);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal300),  3);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal400),  4);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal500),  5);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal600),  6);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal700),  7);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal800),  8);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantNormal900),  9);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic100), 11);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic200), 12);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic300), 13);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic400), 14);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic500), 15);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic600), 16);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic700), 17);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic800), 18);
-	EsListViewInsertFixedItem(list, INTERFACE_STRING(FontBookVariantItalic900), 19);
-	EsListViewSelectFixedItem(list, instance->fontVariant);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal100),  1);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal200),  2);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal300),  3);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal400),  4);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal500),  5);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal600),  6);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal700),  7);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal800),  8);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantNormal900),  9);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic100), 11);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic200), 12);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic300), 13);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic400), 14);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic500), 15);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic600), 16);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic700), 17);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic800), 18);
+	EsListViewFixedItemInsert(list, INTERFACE_STRING(FontBookVariantItalic900), 19);
+	EsListViewFixedItemSelect(list, instance->fontVariant);
 
 	list->messageUser = [] (EsElement *element, EsMessage *message) {
 		if (message->type == ES_MSG_LIST_VIEW_SELECT) {
 			Instance *instance = element->instance;
 			EsGeneric selected;
 
-			if (EsListViewGetSelectedFixedItem(((EsListView *) element), &selected)) {
+			if (EsListViewFixedItemGetSelected(((EsListView *) element), &selected)) {
 				instance->fontVariant = selected.i;
 				EsListViewInvalidateAll(element->instance->fontList);
 			}
