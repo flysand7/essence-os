@@ -1,6 +1,5 @@
-// TODO Undo button overlapped slightly when scrollbar shown.
-// 	Maybe we should use a toolbar for these buttons?
-// 	Need to make an animation for showing/hiding the toolbar.
+// TODO We can't wait for the worker thread if we have the message mutex, or it'll cause deadlock!
+// TODO Waiting for the worker thread to exit when destroying instance.
 
 struct SettingsInstance : CommonDesktopInstance {
 	EsPanel *switcher;
@@ -11,6 +10,7 @@ struct SettingsInstance : CommonDesktopInstance {
 	// Applications page:
 	EsHandle workerThread;
 	EsListView *applicationsList;
+	EsPanel *applicationInspector;
 	volatile bool workerStop;
 };
 
@@ -129,12 +129,18 @@ const EsStyle styleSliderRow = {
 	},
 };
 
-const EsStyle styleApplicationsList = {
-	.inherit = ES_STYLE_LIST_CHOICE_BORDERED,
-	
+const EsStyle styleSettingsApplicationsPage = {
 	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_HEIGHT,
-		.preferredHeight = 0,
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.insets = ES_RECT_1(10),
+		.gapMajor = 10,
+	},
+};
+
+const EsStyle styleSettingsApplicationsPage2 = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_GAP_MAJOR,
+		.gapMajor = 10,
 	},
 };
 
@@ -236,7 +242,10 @@ void SettingsPageUnimplemented(EsElement *element, SettingsPage *page) {
 	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
-	EsTextDisplayCreate(container, ES_CELL_H_CENTER, 0, "Work in progress" ELLIPSIS);
+
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
+	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 }
 
 void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsCommand *) {
@@ -469,6 +478,10 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
+	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
+
 	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
 
@@ -496,6 +509,11 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction));
 	EsSpacerCreate(testBox, ES_FLAGS_DEFAULT, 0, 0, 5);
 	EsTextboxCreate(testBox, ES_CELL_H_LEFT)->accessKey = 'T';
+}
+
+void SettingsPageApplicationsRefresh(SettingsInstance *instance) {
+	EsElementDestroyContents(instance->applicationInspector);
+	EsTextDisplayCreate(instance->applicationInspector, ES_CELL_H_FILL, 0, INTERFACE_STRING(DesktopSettingsApplicationSelectItem));
 }
 
 void SettingsPageApplicationsWorkerThread(EsGeneric context) {
@@ -540,21 +558,24 @@ void SettingsPageApplicationsWorkerThread(EsGeneric context) {
 
 		if (EsListViewFixedItemFindIndex(instance->applicationsList, application, &index)) {
 			EsListViewFixedItemAddString(instance->applicationsList, index, buffer, EsStringFormat(buffer, sizeof(buffer), "%D", application->totalSize));
+
+			EsGeneric selected;
+
+			if (EsListViewFixedItemGetSelected(instance->applicationsList, &selected) && selected.p == application) {
+				SettingsPageApplicationsRefresh(instance);
+			}
 		}
 
 		EsMessageMutexRelease();
 	}
 }
-
-void SettingsPageApplications(EsElement *element, SettingsPage *page) {
+	
+void SettingsPageApplications(EsElement *element, SettingsPage *) {
 	SettingsInstance *instance = (SettingsInstance *) element->instance;
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer3);
-	SettingsAddTitle(container, page);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_HORIZONTAL, &styleSettingsApplicationsPage);
 
-	EsTextDisplayCreate(container, ES_CELL_H_FILL, 0, INTERFACE_STRING(DesktopSettingsApplicationSelectItem));
-	uint64_t listFlags = ES_CELL_H_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS | ES_LIST_VIEW_COLUMNS;
-	EsListView *list = EsListViewCreate(container, listFlags, &styleApplicationsList);
+	uint64_t listFlags = ES_CELL_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS | ES_LIST_VIEW_COLUMNS;
+	EsListView *list = EsListViewCreate(content, listFlags, ES_STYLE_LIST_CHOICE_BORDERED);
 	instance->applicationsList = list;
 	EsListViewSetColumns(list, settingsApplicationListColumns, sizeof(settingsApplicationListColumns) / sizeof(settingsApplicationListColumns[0]));
 	list->accessKey = 'L';
@@ -580,6 +601,18 @@ void SettingsPageApplications(EsElement *element, SettingsPage *page) {
 	EsThreadInformation thread;
 	EsThreadCreate(SettingsPageApplicationsWorkerThread, &thread, instance);
 	instance->workerThread = thread.handle;
+
+	list->messageUser = [] (EsElement *element, EsMessage *message) {
+		if (message->type == ES_MSG_LIST_VIEW_SELECT) {
+			SettingsInstance *instance = (SettingsInstance *) element->instance;
+			SettingsPageApplicationsRefresh(instance);
+		}
+
+		return 0;
+	};
+
+	instance->applicationInspector = EsPanelCreate(content, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleSettingsApplicationsPage2);
+	SettingsPageApplicationsRefresh(instance);
 }
 
 SettingsPage settingsPages[] = {

@@ -55,6 +55,7 @@ struct EsListView : EsElement {
 	// TODO Updating these when the style changes.
 	UIStyle *primaryCellStyle;
 	UIStyle *secondaryCellStyle;
+	UIStyle *selectedCellStyle;
 
 	bool hasFocusedItem;
 	EsListViewIndex focusedItemGroup;
@@ -1145,8 +1146,8 @@ struct EsListView : EsElement {
 
 					if (EsRectangleClip(drawBounds, message->painter->clip, nullptr) 
 							&& ES_HANDLED == EsMessageSend(this, &m)) {
-						UIStyle *style = (flags & ES_LIST_VIEW_CHOICE_SELECT) ? ((UIStyle *) message->painter->style) 
-							: i ? secondaryCellStyle : primaryCellStyle;
+						bool useSelectedCellStyle = (item->element->customStyleState & THEME_STATE_SELECTED) && (flags & ES_LIST_VIEW_CHOICE_SELECT);
+						UIStyle *style = useSelectedCellStyle ? selectedCellStyle : i ? secondaryCellStyle : primaryCellStyle;
 
 						uint8_t previousTextAlign = style->textAlign;
 
@@ -1636,6 +1637,7 @@ struct EsListView : EsElement {
 
 			primaryCellStyle->CloseReference();
 			secondaryCellStyle->CloseReference();
+			selectedCellStyle->CloseReference();
 			fixedItems.Free();
 			visibleItems.Free();
 			groups.Free();
@@ -1955,6 +1957,7 @@ EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 
 	view->primaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_PRIMARY_CELL, 0), false);
 	view->secondaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SECONDARY_CELL, 0), false);
+	view->selectedCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SELECTED_CHOICE_CELL, 0), false); // Only used for choice list views.
 
 	view->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ListViewProcessMessage, style ?: ES_STYLE_LIST_VIEW);
 	view->cName = "list view";

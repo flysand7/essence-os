@@ -513,10 +513,8 @@ typedef struct DependencyFile {
 
 typedef struct Application {
 	const char *name; 
-	const char *icon;
-	const char **permissions;
+	EsINIState *properties;
 	int id;
-	bool useSingleProcess, hidden;
 
 	FileType *fileTypes;
 	Handler *handlers;
@@ -691,15 +689,8 @@ void ParseApplicationManifest(const char *manifestPath) {
 			INI_READ_STRING_PTR(require, require);
 		} else if (0 == strcmp(s.section, "general")) {
 			INI_READ_STRING_PTR(name, application.name);
-			INI_READ_STRING_PTR(icon, application.icon);
-			INI_READ_BOOL(use_single_process, application.useSingleProcess);
-			INI_READ_BOOL(hidden, application.hidden);
-			INI_READ_STRING_PTR(name, application.name);
-			INI_READ_BOOL(disabled, disabled);
-
-			if (0 == memcmp("permission_", s.key, 11) && atoi(s.value)) {
-				arrput(application.permissions, s.key);
-			}
+			else INI_READ_BOOL(disabled, disabled);
+			else if (s.keyBytes && s.valueBytes) arrput(application.properties, s);
 		} else if (0 == strcmp(s.sectionClass, "handler")) {
 			if (!s.keyBytes) {
 				Handler _handler = {};
@@ -807,14 +798,11 @@ void OutputSystemConfiguration() {
 
 		FilePrintFormat(file, "\n[@application %d]\n", applications[i].id);
 		FilePrintFormat(file, "name=%s\n", applications[i].name);
-		FilePrintFormat(file, "icon=%s\n", applications[i].icon);
-		FilePrintFormat(file, "use_single_process=%d\n", applications[i].useSingleProcess);
-		FilePrintFormat(file, "hidden=%d\n", applications[i].hidden);
 		FilePrintFormat(file, "executable=0:/Applications/%s.esx\n", applications[i].name);
 		FilePrintFormat(file, "is_file_manager=%d\n", 0 == strcmp(applications[i].name, "File Manager") ? 1 : 0);
 
-		for (uintptr_t j = 0; j < arrlenu(applications[i].permissions); j++) {
-			FilePrintFormat(file, "%s=1\n", applications[i].permissions[j]);
+		for (uintptr_t j = 0; j < arrlenu(applications[i].properties); j++) {
+			FilePrintFormat(file, "%s=%s\n", applications[i].properties[j].key, applications[i].properties[j].value);
 		}
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].fileTypes); j++) {

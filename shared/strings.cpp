@@ -124,7 +124,7 @@ DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedFast, "Fast");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone, "None");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany, "Many");
 
-DEFINE_INTERFACE_STRING(DesktopSettingsApplicationSelectItem, "Select an application:");
+DEFINE_INTERFACE_STRING(DesktopSettingsApplicationSelectItem, "Select an application to view its information or manage it.");
 
 // File operations.
 

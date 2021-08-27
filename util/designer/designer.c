@@ -3655,7 +3655,8 @@ int StylesTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 				}
 			}
 
-			SetSelectedItems(MOD_CONTEXT(stylesInList[index], keepExistingLayer ? selected.layer : NULL, NULL, NULL));
+			SetSelectedItems(MOD_CONTEXT(stylesInList[index], keepExistingLayer ? selected.layer 
+						: LayerLookup(stylesInList[index]->layers[0]), NULL, NULL));
 			UIElementRefresh(&stylesTable->e);
 		}
 	}
