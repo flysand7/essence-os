@@ -429,7 +429,7 @@ typedef struct BundleInput {
 	uint64_t alignment;
 } BundleInput;
 
-bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFileCount) {
+bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFileCount, uint64_t mapAddress) {
 	File output = FileOpen(outputFile, 'w');
 	
 	if (output.error) {
@@ -445,7 +445,6 @@ bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFil
 	FileWrite(output, sizeof(uint32_t), &fileCount);
 	uint32_t zero = 0;
 	FileWrite(output, sizeof(uint32_t), &zero);
-	uint64_t mapAddress = 0;
 	FileWrite(output, sizeof(uint64_t), &mapAddress);
 
 	for (uintptr_t i = 0; i < fileCount; i++) {
@@ -540,16 +539,37 @@ int nextID = 1;
 Application *applications;
 const char **kernelModules;
 
+#define ADD_BUNDLE_INPUT(_path, _name, _alignment) do { \
+	BundleInput bundleInputFile = {}; \
+	bundleInputFile.path = _path; \
+	bundleInputFile.name = _name; \
+	bundleInputFile.alignment = _alignment; \
+	arrput(application->bundleInputFiles, bundleInputFile); \
+} while (0)
+
 void BuildDesktop(Application *application) {
 	ExecuteForApp(application, toolchainNasm, "-felf64", "desktop/api.s", "-MD", "bin/api1.d", "-o", "bin/api1.o", "-Fdwarf");
-
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/posix.cpp", "-o", "bin/api3.o", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/crti.o", "bin/crtbegin.o", 
 			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/crtend.o", "bin/crtn.o", 
 			ArgString(apiLinkFlags1), ArgString(apiLinkFlags2), ArgString(apiLinkFlags3));
+	ExecuteForApp(application, toolchainStrip, "-o", "bin/Desktop.no_symbols", "--strip-all", "bin/Desktop");
 
-	ExecuteForApp(application, toolchainStrip, "-o", "root/Essence/Desktop.esx", "--strip-all", "bin/Desktop");
+	for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
+		if (fontLines[i].key[0] == '.' || 0 == strcmp(fontLines[i].key, "license")) {
+			char buffer[4096];
+			snprintf(buffer, sizeof(buffer), "res/Fonts/%s", fontLines[i].value);
+			ADD_BUNDLE_INPUT(strdup(buffer), fontLines[i].value, 16);
+		}
+	}
+
+	ADD_BUNDLE_INPUT("res/Themes/Theme.dat", "Theme.dat", 16);
+	ADD_BUNDLE_INPUT("res/Themes/elementary Icons.dat", "Icons.dat", 16);
+	ADD_BUNDLE_INPUT("res/Themes/elementary Icons License.txt", "Icons License.txt", 16);
+	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "Executable (x86_64)", 0x1000);
+
+	MakeBundle("root/Essence/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 }
 
 void BuildApplication(Application *application) {
@@ -610,11 +630,7 @@ void BuildApplication(Application *application) {
 				ArgString(applicationLinkFlags), "-T", linkerScript);
 		ExecuteForApp(application, toolchainStrip, "-o", strippedFile, "--strip-all", symbolFile);
 
-		BundleInput bundleInputFile = {};
-		bundleInputFile.path = strippedFile;
-		bundleInputFile.name = "Executable (x86_64)";
-		bundleInputFile.alignment = 0x1000;
-		arrput(application->bundleInputFiles, bundleInputFile);
+		ADD_BUNDLE_INPUT(strippedFile, "Executable (x86_64)", 0x1000);
 
 		// Convert any files for the bundle marked with a '!'.
 
@@ -638,7 +654,7 @@ void BuildApplication(Application *application) {
 			}
 		}
 
-		MakeBundle(executable, application->bundleInputFiles, arrlenu(application->bundleInputFiles));
+		MakeBundle(executable, application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 	}
 }
 
@@ -836,7 +852,7 @@ void OutputSystemConfiguration() {
 				FilePrintFormat(file, "%s=|Fonts:/%.*s.dat\n", fontLines[i].key, (int) fontLines[i].valueBytes - 4, fontLines[i].value);
 #endif
 			} else {
-				FilePrintFormat(file, "%s=|Fonts:/%s\n", fontLines[i].key, fontLines[i].value);
+				FilePrintFormat(file, "%s=:%s\n", fontLines[i].key, fontLines[i].value);
 			}
 		} else {
 			size_t bytes = EsINIFormat(fontLines + i, buffer, sizeof(buffer));
@@ -859,6 +875,7 @@ void BuildModule(Application *application) {
 	if (!application->builtin) {
 		char target[4096];
 		snprintf(target, sizeof(target), "root/Essence/Modules/%s.ekm", application->name);
+		MakeDirectory("root/Essence/Modules");
 		MoveFile(output, target);
 	}
 }
@@ -1139,8 +1156,15 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 
 	ImportNode root = {};
 	CreateImportNode("root", &root);
-	CreateImportNode("res/Themes", ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Themes"));
-	CreateImportNode("res/Media", ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Media"));
+	CreateImportNode("res/Sample Images", ImportNodeMakeDirectory(&root, "Sample Images"));
+
+	{
+		ImportNode child = {};
+		child.isFile = true;
+		child.name = "A Study in Scarlet.txt";
+		child.path = "res/A Study in Scarlet.txt";
+		arrput(root.children, child);
+	}
 
 	if (convertFonts) {
 		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Fonts");
@@ -1153,8 +1177,6 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 				ImportNodeAddFile(fontsFolder, strdup(destination), strdup(source));
 			}
 		}
-	} else {
-		CreateImportNode("res/Fonts", ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Fonts"));
 	}
 
 	MountVolume();
@@ -1389,7 +1411,6 @@ int main(int argc, char **argv) {
 		MakeDirectory("root/Applications/POSIX/tmp");
 		MakeDirectory("root/Applications/POSIX/lib/linker");
 		MakeDirectory("root/Essence");
-		MakeDirectory("root/Essence/Modules");
 
 		if (!skipHeaderGeneration) {
 			HeaderGeneratorMain(1, NULL);

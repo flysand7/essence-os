@@ -109,7 +109,7 @@ void Draw(Texture *texture,
 
 void CreateTexture(Texture *texture, const char *cName) {
 	size_t dataBytes;
-	const void *data = EsEmbeddedFileGet(cName, &dataBytes);
+	const void *data = EsEmbeddedFileGet(cName, -1, &dataBytes);
 	texture->bits = (uint32_t *) EsImageLoad(data, dataBytes, &texture->width, &texture->height, 4);
 	EsAssert(texture->bits);
 }
@@ -277,7 +277,7 @@ void LoadRoom() {
 	UpdateRoomName();
 	
 	roomName[6] = '_';
-	const uint8_t *buffer = (const uint8_t *) EsEmbeddedFileGet(roomName);
+	const uint8_t *buffer = (const uint8_t *) EsEmbeddedFileGet(roomName, -1);
 	
 	for (int i = 0; i < MAX_ENTITIES; i++) {
 		if (!state.entities[i].isUsed || state.entities[i].isDestroyed) continue;

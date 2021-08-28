@@ -290,6 +290,14 @@ void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) {
 		return EsFileReadAllFromHandle(file->handle, fileSize, &file->error);
 	} else if (file->type == FILE_STORE_PATH) {
 		return EsFileReadAll(file->path, file->pathBytes, fileSize, &file->error);
+	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
+		size_t _fileSize;
+		const void *data = EsEmbeddedFileGet(file->path, file->pathBytes, &_fileSize);
+		void *copy = EsHeapAllocate(_fileSize, false);
+		if (!copy) return nullptr;
+		if (fileSize) *fileSize = _fileSize;
+		EsMemoryCopy(copy, data, _fileSize);
+		return copy;
 	} else {
 		EsAssert(false);
 		return nullptr;
@@ -321,6 +329,10 @@ EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file) {
 		} else {
 			return -1;
 		}
+	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
+		size_t size;
+		EsEmbeddedFileGet(file->path, file->pathBytes, &size);
+		return size;
 	} else {
 		EsAssert(false);
 		return 0;
@@ -335,6 +347,8 @@ void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) {
 		return EsObjectMap(file->handle, 0, size, flags); 
 	} else if (file->type == FILE_STORE_PATH) {
 		return EsFileMap(file->path, file->pathBytes, fileSize, flags);
+	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
+		return (void *) EsEmbeddedFileGet(file->path, file->pathBytes, fileSize);
 	} else {
 		EsAssert(false);
 		return nullptr;

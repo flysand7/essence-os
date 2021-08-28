@@ -574,6 +574,7 @@ void NewProcess() {
 			"New process %d %x, '%z'.\n", thisProcess->id, thisProcess, thisProcess->cExecutableName);
 
 	KLoadedExecutable api = {};
+	api.isDesktop = true;
 	EsError loadError = ES_SUCCESS;
 
 	{
@@ -621,6 +622,7 @@ void NewProcess() {
 			success = false;
 		} else {
 			startupInformation->isDesktop = thisProcess == desktopProcess;
+			startupInformation->isBundle = application.isBundle;
 			startupInformation->applicationStartAddress = application.startAddress;
 			startupInformation->tlsImageStart = application.tlsImageStart;
 			startupInformation->tlsImageBytes = application.tlsImageBytes;

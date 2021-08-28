@@ -1370,7 +1370,7 @@ const char *GetConstantString(const char *cKey) {
 	return !value || !byteCount || value[byteCount - 1] ? nullptr : value; 
 }
 
-bool ThemeLoadData(void *buffer, size_t byteCount) {
+bool ThemeLoadData(const void *buffer, size_t byteCount) {
 	EsBuffer data = {};
 	data.in = (const uint8_t *) buffer;
 	data.bytes = byteCount;

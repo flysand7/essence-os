@@ -506,7 +506,12 @@ void FontInitialise() {
 					}
 
 					size_t fileIndex = weight - 1 + italic * 9;
-					entry.files[fileIndex] = FileStoreCreateFromPath(item->value, item->valueBytes);
+
+					if (item->valueBytes && item->value[0] == ':') {
+						entry.files[fileIndex] = FileStoreCreateFromEmbeddedFile(item->value + 1, item->valueBytes - 1);
+					} else {
+						entry.files[fileIndex] = FileStoreCreateFromPath(item->value, item->valueBytes);
+					}
 				}
 			}
 
@@ -1255,13 +1260,6 @@ bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle r
 	if (!id) return false;
 	id--;
 	
-	if (!iconManagement.standardPack) {
-		size_t pathBytes;
-		char *path = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("icon_pack"), &pathBytes);
-		iconManagement.standardPack = (uint8_t *) EsFileMap(path, pathBytes, &iconManagement.standardPackSize, ES_MAP_OBJECT_READ_ONLY);
-		EsHeapFree(path);
-	}
-
 	{
 		// Center the icon.
 

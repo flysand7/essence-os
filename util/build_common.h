@@ -41,6 +41,7 @@ typedef struct FontFile {
 
 typedef struct BuildFont {
 	const char *name;
+	const char *license;
 	const char *category;
 	const char *scripts;
 	FontFile *files;

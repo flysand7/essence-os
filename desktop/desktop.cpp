@@ -28,7 +28,7 @@
 
 // TODO Only let File Manager read the file_type sections of the system configuration.
 // TODO Restarting Desktop if it crashes.
-// TODO Make sure applications can't delete |Fonts: and |Themes:.
+// TODO Make sure applications can't delete |Fonts:.
 // TODO Handle open document deletion.
 
 #define MSG_SETUP_DESKTOP_UI ((EsMessageType) (ES_MSG_USER_START + 1))
@@ -983,7 +983,6 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 
 			arguments.permissions |= ES_PERMISSION_GET_VOLUME_INFORMATION;
 		} else {
-			initialMountPoints.Add(*NodeFindMountPoint(EsLiteral("|Themes:")));
 			initialMountPoints.Add(*NodeFindMountPoint(EsLiteral("|Fonts:")));
 		}
 
@@ -2038,7 +2037,7 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			desktop.installedApplications.Add(application);
 			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_UNHANDLED_KEY_EVENT) {
+	} else if (buffer[0] == DESKTOP_MSG_UNHANDLED_KEY_EVENT && instance->tab) {
 		_EsMessageWithObject message;
 		EsSyscall(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD, instance->tab->window->handle, (uintptr_t) &message, 0, 0);
 

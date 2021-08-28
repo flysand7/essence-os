@@ -1907,7 +1907,7 @@ function void EsINIZeroTerminate(EsINIState *s);
 
 // File systems.
 
-function const void *EsEmbeddedFileGet(const char *cName, size_t *byteCount = ES_NULL);
+function const void *EsEmbeddedFileGet(STRING name, size_t *byteCount = ES_NULL);
 
 function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer); // Free buffer with EsHeapFree. Returns number of children.
 

@@ -237,7 +237,7 @@ ES_EXTERN_C void _start();
 #if defined(ES_API) || defined(KERNEL)
 
 struct EsProcessStartupInformation {
-	bool isDesktop;
+	bool isDesktop, isBundle;
 	uintptr_t applicationStartAddress;
 	uintptr_t tlsImageStart;
 	uintptr_t tlsImageBytes;
@@ -255,6 +255,7 @@ struct _EsPOSIXSyscall {
 
 #ifdef ARCH_X86_64
 #define BUNDLE_FILE_MAP_ADDRESS (0x100000000UL)
+#define BUNDLE_FILE_DESKTOP_MAP_ADDRESS (0xF0000000UL)
 #endif
 
 struct BundleHeader {

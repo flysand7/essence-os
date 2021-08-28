@@ -66,8 +66,9 @@ struct EnumString { const char *cName; int value; };
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 
 struct EsFileStore {
-#define FILE_STORE_HANDLE (1)
-#define FILE_STORE_PATH   (2)
+#define FILE_STORE_HANDLE        (1)
+#define FILE_STORE_PATH          (2)
+#define FILE_STORE_EMBEDDED_FILE (3)
 	uint8_t type;
 
 	bool operationComplete;
@@ -148,6 +149,7 @@ void UndoManagerDestroy(EsUndoManager *manager);
 int TextGetStringWidth(const EsTextStyle *style, const char *string, size_t stringBytes);
 struct APIInstance *InstanceSetup(EsInstance *instance);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
+EsFileStore *FileStoreCreateFromEmbeddedFile(const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
 
 struct ProcessMessageTiming {
@@ -561,7 +563,7 @@ void FileStoreCloseHandle(EsFileStore *fileStore) {
 		if (fileStore->handle) {
 			EsHandleClose(fileStore->handle);
 		}
-	} else if (fileStore->type == FILE_STORE_PATH) {
+	} else if (fileStore->type == FILE_STORE_PATH || fileStore->type == FILE_STORE_EMBEDDED_FILE) {
 		// The path is stored after the file store allocation.
 	}
 
@@ -577,6 +579,18 @@ EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes) {
 	fileStore->path = (char *) (fileStore + 1);
 	fileStore->pathBytes = pathBytes;
 	EsMemoryCopy(fileStore->path, path, pathBytes);
+	return fileStore;
+}
+
+EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes) {
+	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + nameBytes, false);
+	EsMemoryZero(fileStore, sizeof(EsFileStore));
+	fileStore->type = FILE_STORE_EMBEDDED_FILE;
+	fileStore->handles = 1;
+	fileStore->error = ES_SUCCESS;
+	fileStore->path = (char *) (fileStore + 1);
+	fileStore->pathBytes = nameBytes;
+	EsMemoryCopy(fileStore->path, name, nameBytes);
 	return fileStore;
 }
 
@@ -1098,12 +1112,10 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 				0, sizeof(GlobalData), desktop ? ES_MAP_OBJECT_READ_WRITE : ES_MAP_OBJECT_READ_ONLY);
 	}
 
-	bool uiProcess = false;
+	bool uiProcess = true; // TODO Determine this properly.
 
 	if (desktop) {
 		EsPrint("Reached Desktop process.\n");
-
-		uiProcess = true;
 
 		// Process messages until we find the boot file system.
 
@@ -1121,13 +1133,8 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		char *path;
 
 		path = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("fonts_path"));
-		NodeOpen(path, EsCStringLength(path), ES_FLAGS_DEFAULT, &node);
+		NodeOpen(path, EsCStringLength(path), ES_NODE_DIRECTORY, &node);
 		NodeAddMountPoint(EsLiteral("|Fonts:"), node.handle, false);
-		EsHeapFree(path);
-
-		path = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("themes_path"));
-		NodeOpen(path, EsCStringLength(path), ES_FLAGS_DEFAULT, &node);
-		NodeAddMountPoint(EsLiteral("|Themes:"), node.handle, false);
 		EsHeapFree(path);
 
 		SettingsUpdateGlobalAndWindowManager();
@@ -1139,10 +1146,6 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		for (uintptr_t i = 0; i < initialMountPointCount; i++) {
 			NodeAddMountPoint(initialMountPoints[i].prefix, initialMountPoints[i].prefixBytes, initialMountPoints[i].base, true);
-
-			if (0 == EsStringCompareRaw(initialMountPoints[i].prefix, initialMountPoints[i].prefixBytes, EsLiteral("|Themes:"))) {
-				uiProcess = true;
-			}
 		}
 
 		EsHeapFree(initialMountPoints);
@@ -1159,11 +1162,11 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		theming.scale = api.systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] / 100.0f;
 
-		size_t pathBytes, fileBytes;
-		char *path = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("theme"), &pathBytes);
-		void *file = EsFileMap(path, pathBytes, &fileBytes, ES_MAP_OBJECT_READ_ONLY);
+		size_t fileBytes;
+		const void *file = EsEmbeddedFileGet(EsLiteral("Theme.dat"), &fileBytes);
 		EsAssert(ThemeLoadData(file, fileBytes));
-		EsHeapFree(path);
+
+		iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("Icons.dat"), &iconManagement.standardPackSize);
 
 		theming.cursors.width = ES_THEME_CURSORS_WIDTH;
 		theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
@@ -1490,23 +1493,31 @@ void EsInstanceSetActiveUndoManager(EsInstance *_instance, EsUndoManager *manage
 	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
 }
 
-const void *EsEmbeddedFileGet(const char *cName, size_t *byteCount) {
-	uint64_t name = CalculateCRC64(cName, EsCStringLength(cName));
+const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *byteCount) {
+	// TODO It's probably a bad idea to let applications load embedded files from Desktop.
+		
+	uint64_t name = CalculateCRC64(_name, nameBytes == -1 ? EsCStringLength(_name) : nameBytes);
 
-	const BundleHeader *header = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS;
-	const BundleFile *files = (const BundleFile *) (header + 1);
+	for (uintptr_t i = 0; i < 2; i++) {
+		if (i == 0 && (api.startupInformation->isDesktop || !api.startupInformation->isBundle)) {
+			continue;
+		}
 
-	if (header->signature != BUNDLE_SIGNATURE) {
-		return nullptr;
-	}
+		const BundleHeader *header = (const BundleHeader *) (i ? BUNDLE_FILE_DESKTOP_MAP_ADDRESS : BUNDLE_FILE_MAP_ADDRESS);
+		const BundleFile *files = (const BundleFile *) (header + 1);
 
-	for (uintptr_t i = 0; i < header->fileCount; i++) {
-		if (files[i].nameCRC64 == name) {
-			if (byteCount) {
-				*byteCount = files[i].bytes;
+		if (header->signature != BUNDLE_SIGNATURE) {
+			return nullptr;
+		}
+
+		for (uintptr_t i = 0; i < header->fileCount; i++) {
+			if (files[i].nameCRC64 == name) {
+				if (byteCount) {
+					*byteCount = files[i].bytes;
+				}
+
+				return (const uint8_t *) header + files[i].offset;
 			}
-
-			return (const uint8_t *) header + files[i].offset;
 		}
 	}
 

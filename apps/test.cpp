@@ -129,7 +129,7 @@ const EsStyle stylePanel = {
 int TestCanvasMessage(EsElement *, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT) {
 		size_t dataBytes;
-		const void *data = EsEmbeddedFileGet("test", &dataBytes);
+		const void *data = EsEmbeddedFileGet("test", -1, &dataBytes);
 		if (data) EsDrawVectorFile(message->painter, EsPainterBoundsClient(message->painter), data, dataBytes);
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = 256;

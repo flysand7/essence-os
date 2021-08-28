@@ -43,7 +43,7 @@ char **argv;
 #include "build_common.h"
 
 BuildFont fonts[] = {
-	{ "Inter", "Sans", "Latn,Grek,Cyrl", (FontFile []) {
+	{ "Inter", "Inter License.txt", "Sans", "Latn,Grek,Cyrl", (FontFile []) {
 		{ "1", "Inter Thin.otf" },
 		{ "1i", "Inter Thin Italic.otf" },
 		{ "2", "Inter Extra Light.otf" },
@@ -65,7 +65,7 @@ BuildFont fonts[] = {
 		{},
 	} },
 
-	{ "Hack", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
+	{ "Hack", "Hack License.md", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
 		{ "4", "Hack Regular.ttf" },
 		{ "4i", "Hack Regular Italic.ttf" },
 		{ "7", "Hack Bold.ttf" },
@@ -241,7 +241,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 
 	while (fonts[fontIndex].files) {
 		BuildFont *font = fonts + fontIndex;
-		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\n", font->name, font->category, font->scripts);
+		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
 		uintptr_t fileIndex = 0;
 
 		while (font->files[fileIndex].path) {
@@ -336,7 +336,7 @@ void Build(bool enableOptimisations, bool compile) {
 	srand(time(NULL));
 	printf("Build started...\n");
 	CallSystem("mkdir -p root root/Applications root/Applications/POSIX root/Applications/POSIX/bin "
-			"root/Applications/POSIX/lib root/Applications/POSIX/include root/Essence/Modules");
+			"root/Applications/POSIX/lib root/Applications/POSIX/include ");
 
 #if 0
 	if (_installationIdentifier) {

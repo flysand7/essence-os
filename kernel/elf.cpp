@@ -132,7 +132,11 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 				&& header.fileCount < 0x100000
 				&& header.fileCount * sizeof(BundleFile) + sizeof(BundleHeader) < fileSize) {
 			if (!header.mapAddress) {
-				header.mapAddress = BUNDLE_FILE_MAP_ADDRESS;
+				if (executable->isDesktop) {
+					header.mapAddress = BUNDLE_FILE_DESKTOP_MAP_ADDRESS;
+				} else {
+					header.mapAddress = BUNDLE_FILE_MAP_ADDRESS;
+				}
 			}
 
 #ifdef ARCH_X86_64
@@ -177,6 +181,8 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			if (executableOffset >= fileSize || !found) {
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
+
+			executable->isBundle = true;
 		}
 	}
 

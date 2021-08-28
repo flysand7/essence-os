@@ -251,6 +251,8 @@ struct KLoadedExecutable {
 	uintptr_t tlsImageStart;
 	uintptr_t tlsImageBytes;
 	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
+
+	bool isDesktop, isBundle;
 };
 
 EsError KLoadELF(struct KNode *node, KLoadedExecutable *executable); 
