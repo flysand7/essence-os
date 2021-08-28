@@ -1,17 +1,8 @@
-// TODO We can't wait for the worker thread if we have the message mutex, or it'll cause deadlock!
-// TODO Waiting for the worker thread to exit when destroying instance.
-
 struct SettingsInstance : CommonDesktopInstance {
 	EsPanel *switcher;
 	EsPanel *mainPage;
 	EsButton *undoButton, *backButton;
 	Array<struct SettingsControl *> controls;
-
-	// Applications page:
-	EsHandle workerThread;
-	EsListView *applicationsList;
-	EsPanel *applicationInspector;
-	volatile bool workerStop;
 };
 
 struct SettingsPage {
@@ -129,26 +120,6 @@ const EsStyle styleSliderRow = {
 	},
 };
 
-const EsStyle styleSettingsApplicationsPage = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
-		.insets = ES_RECT_1(10),
-		.gapMajor = 10,
-	},
-};
-
-const EsStyle styleSettingsApplicationsPage2 = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR,
-		.gapMajor = 10,
-	},
-};
-
-EsListViewColumn settingsApplicationListColumns[] = {
-	{ INTERFACE_STRING(FileManagerColumnName), ES_FLAGS_DEFAULT, 150 },
-	{ INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 100 },
-};
-
 void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
@@ -172,14 +143,6 @@ void SettingsBackButton(EsInstance *_instance, EsElement *, EsCommand *) {
 	EsElementSetDisabled(instance->backButton, true);
 
 	instance->controls.Free();
-
-	if (instance->workerThread) {
-		instance->workerStop = true;
-		EsWaitSingle(instance->workerThread);
-		EsHandleClose(instance->workerThread);
-		instance->workerThread = ES_INVALID_HANDLE;
-		instance->workerStop = false;
-	}
 
 	EsPanelSwitchTo(instance->switcher, instance->mainPage, ES_TRANSITION_ZOOM_OUT, ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION, 1.0f);
 	ConfigurationWriteToFile();
@@ -511,113 +474,8 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsTextboxCreate(testBox, ES_CELL_H_LEFT)->accessKey = 'T';
 }
 
-void SettingsPageApplicationsRefresh(SettingsInstance *instance) {
-	EsElementDestroyContents(instance->applicationInspector);
-	EsTextDisplayCreate(instance->applicationInspector, ES_CELL_H_FILL, 0, INTERFACE_STRING(DesktopSettingsApplicationSelectItem));
-}
-
-void SettingsPageApplicationsWorkerThread(EsGeneric context) {
-	SettingsInstance *instance = (SettingsInstance *) context.p;
-	EsListViewIndex index;
-	char buffer[64];
-	EsDirectoryChild information;
-
-	while (!instance->workerStop) {
-		// Find an application that we need to calculate the size of.
-
-		EsMessageMutexAcquire();
-
-		InstalledApplication *application = nullptr;
-
-		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-			application = desktop.installedApplications[i];
-
-			if (!application->totalSize && EsListViewFixedItemFindIndex(instance->applicationsList, application, &index)) {
-				break;
-			} else {
-				application = nullptr;
-			}
-		}
-
-		EsMessageMutexRelease();
-
-		if (!application) {
-			break; // All applications have had their sizes calculated.
-		}
-
-		// TODO What happens if the application is uninstalled here?
-		// TODO Include settings and cached data.
-
-		if (!EsPathQueryInformation(application->cExecutable, -1, &information)) {
-			continue;
-		}
-
-		EsMessageMutexAcquire();
-
-		application->totalSize = information.fileSize;
-
-		if (EsListViewFixedItemFindIndex(instance->applicationsList, application, &index)) {
-			EsListViewFixedItemAddString(instance->applicationsList, index, buffer, EsStringFormat(buffer, sizeof(buffer), "%D", application->totalSize));
-
-			EsGeneric selected;
-
-			if (EsListViewFixedItemGetSelected(instance->applicationsList, &selected) && selected.p == application) {
-				SettingsPageApplicationsRefresh(instance);
-			}
-		}
-
-		EsMessageMutexRelease();
-	}
-}
-	
-void SettingsPageApplications(EsElement *element, SettingsPage *) {
-	SettingsInstance *instance = (SettingsInstance *) element->instance;
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_HORIZONTAL, &styleSettingsApplicationsPage);
-
-	uint64_t listFlags = ES_CELL_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS | ES_LIST_VIEW_COLUMNS;
-	EsListView *list = EsListViewCreate(content, listFlags, ES_STYLE_LIST_CHOICE_BORDERED);
-	instance->applicationsList = list;
-	EsListViewSetColumns(list, settingsApplicationListColumns, sizeof(settingsApplicationListColumns) / sizeof(settingsApplicationListColumns[0]));
-	list->accessKey = 'L';
-
-	// TODO Insets/gaps on the choice style items is incorrect.
-	// TODO Sorting.
-	// TODO Operations on the application.
-
-	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-		InstalledApplication *application = desktop.installedApplications[i];
-
-		if (!application->temporary && !application->createInstance && application->cExecutable) {
-			EsListViewIndex index = EsListViewFixedItemInsert(list, application->cName, -1, application, -1, 
-					(EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
-
-			if (application->totalSize) {
-				char buffer[64];
-				EsListViewFixedItemAddString(list, index, buffer, EsStringFormat(buffer, sizeof(buffer), "%D", application->totalSize));
-			}
-		}
-	}
-
-	EsThreadInformation thread;
-	EsThreadCreate(SettingsPageApplicationsWorkerThread, &thread, instance);
-	instance->workerThread = thread.handle;
-
-	list->messageUser = [] (EsElement *element, EsMessage *message) {
-		if (message->type == ES_MSG_LIST_VIEW_SELECT) {
-			SettingsInstance *instance = (SettingsInstance *) element->instance;
-			SettingsPageApplicationsRefresh(instance);
-		}
-
-		return 0;
-	};
-
-	instance->applicationInspector = EsPanelCreate(content, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleSettingsApplicationsPage2);
-	SettingsPageApplicationsRefresh(instance);
-}
-
 SettingsPage settingsPages[] = {
 	{ INTERFACE_STRING(DesktopSettingsAccessibility), ES_ICON_PREFERENCES_DESKTOP_ACCESSIBILITY, SettingsPageUnimplemented, 'A' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsApplications), ES_ICON_APPLICATIONS_OTHER, SettingsPageApplications, 'B' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'C' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDisplay), ES_ICON_PREFERENCES_DESKTOP_DISPLAY, SettingsPageUnimplemented, 'D' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsKeyboard), ES_ICON_INPUT_KEYBOARD, SettingsPageKeyboard, 'E' },
