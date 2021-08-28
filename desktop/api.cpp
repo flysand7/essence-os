@@ -136,6 +136,8 @@ struct {
 #define PERFORMANCE_TIMER_STACK_SIZE (100)
 	uint64_t performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
 	uintptr_t performanceTimerStackCount;
+
+	ThreadLocalStorage firstThreadLocalStorage;
 } api;
 
 ptrdiff_t tlsStorageOffset;
@@ -1074,11 +1076,8 @@ uint64_t EsSystemGetConstant(uintptr_t index) {
 	return api.systemConstants[index];
 }
 
-void ThreadInitialise() {
-	// TODO Memory leak: this structure is never freed.
-	// 	Perhaps the kernel should send a message when a user thread is terminated to its owner process?
-
-	ThreadLocalStorage *local = (ThreadLocalStorage *) EsHeapAllocate(sizeof(ThreadLocalStorage), true);
+void ThreadInitialise(ThreadLocalStorage *local) {
+	EsMemoryZero(local, sizeof(ThreadLocalStorage));
 	local->id = EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_THREAD, 0, 0, 0);
 	local->self = local;
 	EsSyscall(ES_SYSCALL_PROCESS_SET_TLS, (uintptr_t) local - tlsStorageOffset, 0, 0, 0);
@@ -1105,7 +1104,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		_init();
 		EsSyscall(ES_SYSCALL_SYSTEM_GET_CONSTANTS, (uintptr_t) api.systemConstants, 0, 0, 0);
 		EsRandomSeed(EsTimeStamp());
-		ThreadInitialise();
+		ThreadInitialise(&api.firstThreadLocalStorage);
 		EsMessageMutexAcquire();
 
 		api.global = (GlobalData *) EsObjectMap(EsMemoryOpen(sizeof(GlobalData), EsLiteral("Desktop.Global"), ES_FLAGS_DEFAULT), 

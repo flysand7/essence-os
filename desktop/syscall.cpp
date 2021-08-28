@@ -105,10 +105,11 @@ int EsProcessGetExitStatus(EsHandle process) {
 	return EsSyscall(ES_SYSCALL_PROCESS_GET_STATUS, process, 0, 0, 0);
 }
 
-void ThreadInitialise();
+void ThreadInitialise(ThreadLocalStorage *local);
 
 void ThreadEntry(EsGeneric argument, EsThreadEntryFunction entryFunction) {
-	ThreadInitialise();
+	ThreadLocalStorage local;
+	ThreadInitialise(&local);
 	entryFunction(argument);
 	EsThreadTerminate(ES_CURRENT_THREAD);
 }
