@@ -40,9 +40,9 @@
 #define APPLICATION_PERMISSION_SHUTDOWN                  (1 << 4)
 #define APPLICATION_PERMISSION_VIEW_FILE_TYPES           (1 << 5)
 
-#define APPLICATION_ID_DESKTOP_BLANK_TAB (-1)
-#define APPLICATION_ID_DESKTOP_SETTINGS  (-2)
-#define APPLICATION_ID_DESKTOP_CRASHED   (-3)
+#define APPLICATION_ID_DESKTOP_BLANK_TAB (-0x70000000)
+#define APPLICATION_ID_DESKTOP_SETTINGS  (-0x70000001)
+#define APPLICATION_ID_DESKTOP_CRASHED   (-0x70000002)
 
 #define CRASHED_TAB_FATAL_ERROR        (0)
 #define CRASHED_TAB_PROGRAM_NOT_FOUND  (1)
@@ -110,6 +110,8 @@ struct OpenDocument {
 struct InstalledApplication {
 	char *cName;
 	char *cExecutable;
+	char *settingsPath;
+	size_t settingsPathBytes;
 	void (*createInstance)(EsMessage *); // For applications provided by Desktop.
 	int64_t id;
 	uint32_t iconID;
@@ -987,12 +989,8 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		}
 
 		{
-			size_t settingsPathBytes, settingsFolderBytes;
-			char *settingsFolder = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("settings_path"), &settingsFolderBytes);
-			char *settingsPath = EsStringAllocateAndFormat(&settingsPathBytes, "%s/%z", settingsFolderBytes, settingsFolder, application->cName);
-			error = NodeOpen(settingsPath, settingsPathBytes, ES_NODE_DIRECTORY | ES_NODE_CREATE_DIRECTORIES | _ES_NODE_DIRECTORY_WRITE, &settingsNode);
-			EsHeapFree(settingsPath);
-			EsHeapFree(settingsFolder);
+			error = NodeOpen(application->settingsPath, application->settingsPathBytes, 
+					ES_NODE_DIRECTORY | ES_NODE_CREATE_DIRECTORIES | _ES_NODE_DIRECTORY_WRITE, &settingsNode);
 
 			if (error == ES_SUCCESS) {
 				EsMountPoint settings = {};
@@ -1117,6 +1115,7 @@ void ApplicationTemporaryDestroy(InstalledApplication *application) {
 			desktop.installedApplications.Delete(i);
 			EsHeapFree(application->cName);
 			EsHeapFree(application->cExecutable);
+			EsHeapFree(application->settingsPath);
 			EsHeapFree(application);
 			// TODO Delete the settings folder.
 			return;
@@ -1270,7 +1269,7 @@ void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInforma
 	OpenDocumentCloseReference(startupInformation->documentID);
 }
 
-EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes) {
+EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes, uint32_t additionalFlags) {
 	char temporaryFileName[32];
 
 	for (uintptr_t i = 0; i < sizeof(temporaryFileName); i++) {
@@ -1284,7 +1283,7 @@ EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes) {
 			temporaryFolderBytes, temporaryFolder, sizeof(temporaryFileName), temporaryFileName);
 
 	EsFileInformation file = EsFileOpen(temporaryFilePath, temporaryFilePathBytes, 
-			ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FAIL_IF_FOUND | ES_NODE_CREATE_DIRECTORIES);
+			ES_NODE_FAIL_IF_FOUND | ES_NODE_CREATE_DIRECTORIES | additionalFlags);
 
 	EsHeapFree(temporaryFolder);
 
@@ -1372,7 +1371,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		document->temporarySavePath = nullptr;
 
 		EsHandle fileHandle;
-		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes);
+		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes, ES_FILE_WRITE_EXCLUSIVE);
 
 		if (m.tabOperation.error == ES_SUCCESS) {
 			document->currentWriter = instance->embeddedWindowID;
@@ -1540,15 +1539,11 @@ void ConfigurationLoadApplications() {
 		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
 
 		application->cName = EsSystemConfigurationGroupReadString(group, EsLiteral("name"));
-		size_t executableBytes = 0;
+		application->cExecutable = EsSystemConfigurationGroupReadString(group, EsLiteral("executable"));
+		application->settingsPath = EsSystemConfigurationGroupReadString(group, EsLiteral("settings_path"), &application->settingsPathBytes);
 		char *icon = EsSystemConfigurationGroupReadString(group, EsLiteral("icon"));
 		application->iconID = EsIconIDFromString(icon);
 		EsHeapFree(icon);
-		char *executable = EsSystemConfigurationGroupReadString(group, EsLiteral("executable"), &executableBytes);
-		application->cExecutable = (char *) EsHeapAllocate(executableBytes + 1, false);
-		EsMemoryCopy(application->cExecutable, executable, executableBytes);
-		application->cExecutable[executableBytes] = 0;
-		EsHeapFree(executable);
 		application->useSingleProcess = EsSystemConfigurationGroupReadInteger(group, EsLiteral("use_single_process"), true);
 		application->hidden = EsSystemConfigurationGroupReadInteger(group, EsLiteral("hidden"), false);
 		application->id = EsIntegerParse(group->section, group->sectionBytes);
@@ -1909,7 +1904,7 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsHandle handle;
 			char *path;
 			size_t pathBytes;
-			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes);
+			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes, ES_FILE_WRITE_EXCLUSIVE);
 
 			if (error == ES_SUCCESS) {
 				if (desktop.nextClipboardFile) {
@@ -2034,6 +2029,9 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			application->cName = (char *) EsHeapAllocate(32, false);
 			for (int i = 1; i < 31; i++) application->cName[i] = (EsRandomU8() % 26) + 'a';
 			application->cName[0] = '_', application->cName[31] = 0;
+			EsHandle handle;
+			EsError error = TemporaryFileCreate(&handle, &application->settingsPath, &application->settingsPathBytes, ES_NODE_DIRECTORY);
+			if (error == ES_SUCCESS) EsHandleClose(handle);
 			desktop.installedApplications.Add(application);
 			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}

@@ -250,7 +250,7 @@ EsFileInformation EsFileOpen(const char *path, ptrdiff_t pathLength, uint32_t fl
 	_EsNodeInformation node;
 	EsError result = NodeOpen(path, pathLength, flags, &node);
 
-	if (result == ES_SUCCESS && node.type == ES_NODE_DIRECTORY) {
+	if (result == ES_SUCCESS && node.type == ES_NODE_DIRECTORY && (~flags & ES_NODE_DIRECTORY /* for internal use only */)) {
 		result = ES_ERROR_INCORRECT_NODE_TYPE;
 		EsHandleClose(node.handle);
 	}

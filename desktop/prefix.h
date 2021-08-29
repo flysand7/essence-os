@@ -281,7 +281,7 @@ struct BundleFile {
 
 #define K_OS_FOLDER K_BOOT_DRIVE "/Essence"
 #define K_DESKTOP_EXECUTABLE K_OS_FOLDER "/Desktop.esx"
-#define K_SYSTEM_CONFIGURATION K_OS_FOLDER "/System Configuration.ini"
+#define K_SYSTEM_CONFIGURATION K_OS_FOLDER "/Default.ini"
 
 #define CREATION_ARGUMENT_MAIN (0)
 #define CREATION_ARGUMENT_ENVIRONMENT (1)
