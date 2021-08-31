@@ -178,8 +178,10 @@ int FontListMessage(EsElement *element, EsMessage *message) {
 				font->categoryBytes, font->category, variants, variants == 1 ? "" : "s"); 
 		EsTextDisplayCreate(row, ES_CELL_H_FILL | ES_CELL_V_BOTTOM, ES_STYLE_TEXT_LABEL_SECONDARY, description, descriptionBytes);
 
+#if 0
 		EsButton *openButton = EsButtonCreate(row, ES_BUTTON_NOT_FOCUSABLE);
 		EsButtonSetIcon(openButton, ES_ICON_GO_NEXT_SYMBOLIC);
+#endif
 	}
 
 	return 0;

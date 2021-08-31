@@ -787,7 +787,7 @@ void NVMeController::Initialise() {
 			uint64_t sectorBytes = 1 << sectorBytesExponent;
 			uint64_t capacity = *(uint64_t *) (identifyData + 4096 + 8) * sectorBytes;
 
-			bool readOnly = identifyData[99] & (1 << 0);
+			bool readOnly = identifyData[4096 + 99] & (1 << 0);
 
 			KernelLog(LOG_INFO, "NVMe", "namespace identified", "Identifier namespace %d with sectors of size %D, and a capacity of %D.%z\n",
 					nsid, sectorBytes, capacity, readOnly ? " The namespace is read-only." : "");

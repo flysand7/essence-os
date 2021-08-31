@@ -168,7 +168,14 @@ void InstanceRefreshViewType(Instance *instance) {
 }
 
 void InstanceUpdateItemSelectionCountCommands(Instance *instance) {
-	EsCommandSetDisabled(&instance->commandRename, instance->selectedItemCount != 1 || !instance->folder->itemHandler->renameItem);
+	EsCommandSetEnabled(&instance->commandRename, instance->selectedItemCount == 1 && instance->folder->itemHandler->renameItem);
+
+#define COMMAND_SET(id, callback, enabled) \
+	do { EsCommand *command = EsCommandByID(instance, id); \
+	EsCommandSetEnabled(command, enabled); \
+	EsCommandSetCallback(command, callback); } while(0)
+
+	COMMAND_SET(ES_COMMAND_COPY, CommandCopy, instance->selectedItemCount >= 1);
 }
 
 int InstanceCompareFolderEntries(FolderEntry *left, FolderEntry *right, uint16_t sortColumn) {
@@ -688,7 +695,13 @@ int ListItemMessage(EsElement *element, EsMessage *message) {
 int ListCallback(EsElement *element, EsMessage *message) {
 	Instance *instance = element->instance;
 
-	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
+	if (message->type == ES_MSG_FOCUSED_START) {
+		InstanceUpdateItemSelectionCountCommands(instance);
+		return 0;
+	} else if (message->type == ES_MSG_FOCUSED_END) {
+		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_COPY), nullptr);
+		return 0;
+	} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
 		int column = message->getContent.column, index = message->getContent.index;
 		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
 		ListEntry *listEntry = &instance->listContents[index];

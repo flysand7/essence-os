@@ -2540,6 +2540,8 @@ const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) {
 }
 
 bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) {
+	// TODO Support buffered reading from a EsFileStore.
+
 	const void *source = EsBufferRead(buffer, readBytes);
 
 	if (source) {
@@ -2577,6 +2579,15 @@ uint32_t EsBufferReadInt(EsBuffer *buffer) {
 	return p ? *p : 0;
 }
 
+#ifdef ES_API
+void EsBufferFlushToFileStore(EsBuffer *buffer) {
+	if (!buffer->position || buffer->error) return;
+	EsAssert(buffer->fileStore && buffer->position <= buffer->bytes);
+	buffer->error = !EsFileStoreAppend(buffer->fileStore, buffer->out, buffer->position);
+	buffer->position = 0;
+}
+#endif
+
 void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) {
 #ifdef ES_API
 	tryAgain:;
@@ -2584,6 +2595,22 @@ void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) {
 
 	if (buffer->error) {
 		return NULL;
+#ifdef ES_API
+	} else if (buffer->fileStore) {
+		while (writeBytes && !buffer->error) {
+			if (buffer->position == buffer->bytes) {
+				EsBufferFlushToFileStore(buffer);
+			} else {
+				size_t bytesToWrite = writeBytes > buffer->bytes - buffer->position ? buffer->bytes - buffer->position : writeBytes;
+				EsMemoryCopy(buffer->out + buffer->position, source, bytesToWrite);
+				buffer->position += bytesToWrite;
+				writeBytes -= bytesToWrite;
+				source = (const uint8_t *) source + bytesToWrite;
+			}
+		}
+
+		return NULL;
+#endif
 	} else if (buffer->bytes - buffer->position < writeBytes) {
 #ifdef ES_API
 		if (buffer->canGrow) {

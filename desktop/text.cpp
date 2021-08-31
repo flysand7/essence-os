@@ -3091,7 +3091,7 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 
 		if (error == ES_SUCCESS) {
 			EsAnnouncementShow(textbox->window, ES_FLAGS_DEFAULT, x, y, INTERFACE_STRING(CommonAnnouncementTextCopied));
-		} else if (error == ES_ERROR_INSUFFICIENT_RESOURCES) {
+		} else if (error == ES_ERROR_INSUFFICIENT_RESOURCES || error == ES_ERROR_DRIVE_FULL) {
 			EsAnnouncementShow(textbox->window, ES_FLAGS_DEFAULT, x, y, INTERFACE_STRING(CommonAnnouncementCopyErrorResources));
 		} else {
 			EsAnnouncementShow(textbox->window, ES_FLAGS_DEFAULT, x, y, INTERFACE_STRING(CommonAnnouncementCopyErrorOther));

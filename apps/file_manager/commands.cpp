@@ -1,4 +1,6 @@
 void CommandRename(Instance *instance, EsElement *, EsCommand *) {
+	// TODO Undo.
+
 	intptr_t index = -1;
 
 	for (uintptr_t i = 0; i < instance->listContents.Length(); i++) {
@@ -115,6 +117,36 @@ void CommandNewFolder(Instance *instance, EsElement *, EsCommand *) {
 			StringDestroy(&task->string);
 		},
 	});
+}
+
+void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
+	uint8_t _buffer[4096];
+	EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+	buffer.fileStore = EsClipboardOpen(ES_CLIPBOARD_PRIMARY);
+
+	for (uintptr_t i = 0; i < instance->listContents.Length() && !buffer.error; i++) {
+		if (instance->listContents[i].selected) {
+			FolderEntry *entry = instance->listContents[i].entry;
+			String name = entry->GetName();
+			EsBufferWrite(&buffer, STRING(instance->path));
+			EsBufferWrite(&buffer, STRING(name));
+			uint8_t separator = '\n';
+			EsBufferWrite(&buffer, &separator, 1);
+		}
+	}
+
+	EsBufferFlushToFileStore(&buffer);
+
+	EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
+	EsError error = EsClipboardCloseAndAdd(ES_CLIPBOARD_PRIMARY, ES_CLIPBOARD_FORMAT_PATH_LIST, buffer.fileStore);
+
+	if (error == ES_SUCCESS) {
+		EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementCopied));
+	} else if (error == ES_ERROR_INSUFFICIENT_RESOURCES || error == ES_ERROR_DRIVE_FULL) {
+		EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementCopyErrorResources));
+	} else {
+		EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementCopyErrorOther));
+	}
 }
 
 void InstanceRegisterCommands(Instance *instance) {

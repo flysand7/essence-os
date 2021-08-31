@@ -154,7 +154,7 @@ WindowManager windowManager;
 void SendMessageToWindow(Window *window, EsMessage *message);
 
 #ifdef TEST_HIGH_UI_SCALE
-#define UI_SCALE (140)
+#define UI_SCALE TEST_HIGH_UI_SCALE
 #else
 #define UI_SCALE (100)
 #endif

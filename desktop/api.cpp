@@ -4,7 +4,6 @@
 #define ES_DIRECT_API
 #include <essence.h>
 
-extern "C" void EsUnimplemented();
 #define alloca __builtin_alloca
 #define FT_EXPORT(x) extern "C" x
 
@@ -63,8 +62,6 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_FILE_TYPES_GET            (14)
 #define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
 
-extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
-
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
 #define FILE_STORE_PATH          (2)
@@ -110,8 +107,6 @@ struct Timer {
 	EsGeneric argument;
 };
 
-EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
-
 struct {
 	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
 	EsMutex systemConfigurationMutex;
@@ -142,9 +137,9 @@ struct {
 
 ptrdiff_t tlsStorageOffset;
 
-#include "syscall.cpp"
-
 // Miscellanous forward declarations.
+extern "C" void EsUnimplemented();
+extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 void MaybeDestroyElement(EsElement *element);
 const char *GetConstantString(const char *key);
 void UndoManagerDestroy(EsUndoManager *manager);
@@ -153,6 +148,11 @@ struct APIInstance *InstanceSetup(EsInstance *instance);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsFileStore *FileStoreCreateFromEmbeddedFile(const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
+EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
+void FileStoreCloseHandle(EsFileStore *fileStore);
+EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
+
+#include "syscall.cpp"
 
 struct ProcessMessageTiming {
 	double startLogic, endLogic;
@@ -584,6 +584,15 @@ EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes) {
 	return fileStore;
 }
 
+EsFileStore *FileStoreCreateFromHandle(EsHandle handle) {
+	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
+	fileStore->type = FILE_STORE_HANDLE;
+	fileStore->handles = 1;
+	fileStore->error = ES_SUCCESS;
+	fileStore->handle = handle;
+	return fileStore;
+}
+
 EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes) {
 	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + nameBytes, false);
 	EsMemoryZero(fileStore, sizeof(EsFileStore));
@@ -598,11 +607,7 @@ EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes)
 
 void InstanceCreateFileStore(APIInstance *instance, EsHandle handle) {
 	if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
-	instance->fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
-	instance->fileStore->type = FILE_STORE_HANDLE;
-	instance->fileStore->handle = handle;
-	instance->fileStore->error = ES_SUCCESS;
-	instance->fileStore->handles = 1;
+	instance->fileStore = FileStoreCreateFromHandle(handle);
 }
 
 void InstancePostOpenMessage(EsInstance *_instance, bool update) {

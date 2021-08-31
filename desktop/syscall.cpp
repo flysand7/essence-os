@@ -319,6 +319,19 @@ bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes) 
 	return file->error == ES_SUCCESS;
 }
 
+bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes) {
+	if (file->error == ES_SUCCESS) {
+		if (file->type == FILE_STORE_HANDLE) {
+			EsError error = EsFileWriteSync(file->handle, EsFileGetSize(file->handle), dataBytes, data);
+			if (ES_CHECK_ERROR(error)) file->error = error;
+		} else {
+			EsAssert(false);
+		}
+	}
+
+	return file->error == ES_SUCCESS;
+}
+
 EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file) {
 	if (file->type == FILE_STORE_HANDLE) {
 		return EsFileGetSize(file->handle);
@@ -691,10 +704,10 @@ void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow 
 struct ClipboardInformation {
 	uint8_t desktopMessageTag;
 	intptr_t error;
-	bool isText;
+	EsClipboardFormat format;
 };
 
-EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t textBytes) {
+EsFileStore *EsClipboardOpen(EsClipboard clipboard) {
 	(void) clipboard;
 	uint8_t m = DESKTOP_MSG_CREATE_CLIPBOARD_FILE;
 	EsBuffer buffer = { .canGrow = true };
@@ -704,15 +717,31 @@ EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t te
 	EsBufferReadInto(&buffer, &file, sizeof(file));
 	EsBufferReadInto(&buffer, &error, sizeof(error));
 	EsHeapFree(buffer.out);
-	if (error != ES_SUCCESS) return error;
-	error = EsFileWriteAllFromHandle(file, text, textBytes); 
-	EsHandleClose(file);
-	ClipboardInformation information = {};
-	information.desktopMessageTag = DESKTOP_MSG_CLIPBOARD_PUT;
-	information.error = error;
-	information.isText = true;
-	MessageDesktop(&information, sizeof(information));
+	EsFileStore *fileStore = FileStoreCreateFromHandle(file);
+	fileStore->error = error;
+	return fileStore;
+}
+
+EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore) {
+	(void) clipboard;
+	EsError error = fileStore->error;
+
+	if (error == ES_SUCCESS) {
+		ClipboardInformation information = {};
+		information.desktopMessageTag = DESKTOP_MSG_CLIPBOARD_PUT;
+		information.error = error;
+		information.format = format;
+		MessageDesktop(&information, sizeof(information));
+	}
+
+	FileStoreCloseHandle(fileStore);
 	return error;
+}
+
+EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t textBytes) {
+	EsFileStore *fileStore = EsClipboardOpen(clipboard);
+	EsFileStoreWriteAll(fileStore, text, textBytes); 
+	return EsClipboardCloseAndAdd(clipboard, ES_CLIPBOARD_FORMAT_TEXT, fileStore);
 }
 
 void ClipboardGetInformation(EsHandle *file, ClipboardInformation *information) {
@@ -724,13 +753,13 @@ void ClipboardGetInformation(EsHandle *file, ClipboardInformation *information) 
 	EsHeapFree(buffer.out);
 }
 
-bool EsClipboardHasText(EsClipboard clipboard) {
+bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format) {
 	(void) clipboard;
 	EsHandle file;
 	ClipboardInformation information;
 	ClipboardGetInformation(&file, &information);
 	if (file) EsHandleClose(file);
-	return information.error == ES_SUCCESS && information.isText;
+	return information.error == ES_SUCCESS && information.format == format;
 }
 
 char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
@@ -744,7 +773,7 @@ char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
 	ClipboardGetInformation(&file, &information);
 
 	if (file) {
-		if (information.isText) {
+		if (information.format == ES_CLIPBOARD_FORMAT_TEXT) {
 			result = (char *) EsFileReadAllFromHandle(file, bytes);
 		}
 

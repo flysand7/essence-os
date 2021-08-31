@@ -59,6 +59,7 @@ DEFINE_INTERFACE_STRING(CommonListViewTypeThumbnails, "Thumbnails");
 DEFINE_INTERFACE_STRING(CommonListViewTypeTiles, "Tiles");
 DEFINE_INTERFACE_STRING(CommonListViewTypeDetails, "Details");
 
+DEFINE_INTERFACE_STRING(CommonAnnouncementCopied, "Copied");
 DEFINE_INTERFACE_STRING(CommonAnnouncementTextCopied, "Text copied");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorResources, "There's not enough space to copy this");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorOther, "Could not copy");

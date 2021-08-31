@@ -110,6 +110,9 @@ ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int 
 
 #define EsWaitSingle(object) EsWait(&object, 1, ES_WAIT_NO_TIMEOUT)
 #define EsObjectUnmap EsMemoryUnreserve
+#define EsElementSetEnabled(element, enabled) EsElementSetDisabled(element, !(enabled))
+#define EsCommandSetEnabled(command, enabled) EsCommandSetDisabled(command, !(enabled))
+#define EsClipboardHasText(clipboard) EsClipboardHasFormat(clipboard, ES_CLIPBOARD_FORMAT_TEXT)
 
 #define EsLiteral(x) (char *) x, EsCStringLength((char *) x)
 

@@ -644,7 +644,7 @@ struct EsListView : EsElement {
 					position += visibleItem->element->width;
 				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.autoScrollbars[0]))) {
 					int indent = visibleItem->indent * currentStyle->gapWrap;
-					int firstColumn = columns[0].width + secondaryCellStyle->gapMajor;
+					int firstColumn = columns[0].width * theming.scale + secondaryCellStyle->gapMajor;
 					visibleItem->startAtSecondColumn = indent > firstColumn;
 					if (indent > firstColumn) indent = firstColumn;
 					visibleItem->element->InternalMove(totalColumnWidth - indent, visibleItem->size, 
@@ -1134,7 +1134,7 @@ struct EsListView : EsElement {
 					m.getContent.icon = 0;
 					buffer.position = 0;
 
-					bounds.r = bounds.l + columns[i].width 
+					bounds.r = bounds.l + columns[i].width * theming.scale
 						- element->currentStyle->insets.r - element->currentStyle->insets.l;
 
 					if (i == 0) {
@@ -1162,7 +1162,7 @@ struct EsListView : EsElement {
 						style->textAlign = previousTextAlign;
 					}
 
-					bounds.l += columns[i].width + secondaryCellStyle->gapMajor;
+					bounds.l += columns[i].width * theming.scale + secondaryCellStyle->gapMajor;
 
 					if (i == 0) {
 						bounds.l -= item->indent * currentStyle->gapWrap;
@@ -1545,7 +1545,7 @@ struct EsListView : EsElement {
 		if (flags & ES_LIST_VIEW_COLUMNS) {
 			int offset = primaryCellStyle->metrics->iconSize + primaryCellStyle->gapMinor 
 				+ style->insets.l - inlineTextbox->currentStyle->insets.l;
-			inlineTextbox->InternalMove(columns[0].width - offset, item->element->height, 
+			inlineTextbox->InternalMove(columns[0].width * theming.scale - offset, item->element->height, 
 					item->element->offsetX + offset, item->element->offsetY);
 		} else if (flags & ES_LIST_VIEW_TILED) {
 			if (style->metrics->layoutVertical) {
@@ -1887,9 +1887,9 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 					EsElement *item = element->children[i], *splitter = element->children[i + 1];
 					EsListViewColumn *column = view->columns + item->userData.u;
 					int splitterLeft = splitter->currentStyle->preferredWidth - view->secondaryCellStyle->gapMajor;
-					item->InternalMove(column->width - splitterLeft, element->height, x, 0);
-					splitter->InternalMove(splitter->currentStyle->preferredWidth, element->height, x + column->width - splitterLeft, 0);
-					x += column->width + view->secondaryCellStyle->gapMajor;
+					item->InternalMove(column->width * theming.scale - splitterLeft, element->height, x, 0);
+					splitter->InternalMove(splitter->currentStyle->preferredWidth, element->height, x + column->width * theming.scale - splitterLeft, 0);
+					x += column->width * theming.scale + view->secondaryCellStyle->gapMajor;
 				}
 			}
 
@@ -2199,6 +2199,14 @@ int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
+void ListViewCalculateTotalColumnWidth(EsListView *view) {
+	view->totalColumnWidth = -view->secondaryCellStyle->gapMajor;
+
+	for (uintptr_t i = 0; i < view->columnCount; i++) {
+		view->totalColumnWidth += view->columns[i].width * theming.scale + view->secondaryCellStyle->gapMajor;
+	}
+}
+
 void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount) {
 	EsMessageMutexCheck();
 
@@ -2209,8 +2217,6 @@ void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t co
 	view->columns = columns;
 	view->columnCount = columnCount;
 
-	view->totalColumnWidth = -view->secondaryCellStyle->gapMajor;
-
 	for (uintptr_t i = 0; i < columnCount; i++) {
 		EsElement *columnHeaderItem = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, 
 				(columns[i].flags & ES_LIST_VIEW_COLUMN_HAS_MENU) ? ES_STYLE_LIST_COLUMN_HEADER_ITEM_HAS_MENU : ES_STYLE_LIST_COLUMN_HEADER_ITEM);
@@ -2220,7 +2226,7 @@ void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t co
 		columnHeaderItem->userData = i;
 
 		if (!columns[i].width) {
-			columns[i].width = (i ? view->secondaryCellStyle : view->primaryCellStyle)->preferredWidth;
+			columns[i].width = (i ? view->secondaryCellStyle : view->primaryCellStyle)->preferredWidth / theming.scale;
 		}
 
 		EsElement *splitter = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, ES_STYLE_LIST_COLUMN_HEADER_SPLITTER);
@@ -2230,14 +2236,13 @@ void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t co
 			EsListView *view = (EsListView *) element->parent->parent;
 
 			if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
-				view->columnResizingOriginalWidth = column->width;
+				view->columnResizingOriginalWidth = column->width * theming.scale;
 			} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 				int width = message->mouseDragged.newPositionX - message->mouseDragged.originalPositionX + view->columnResizingOriginalWidth;
 				int minimumWidth = element->currentStyle->metrics->minimumWidth;
 				if (width < minimumWidth) width = minimumWidth;
-
-				view->totalColumnWidth += width - column->width;
-				column->width = width;
+				column->width = width / theming.scale;
+				ListViewCalculateTotalColumnWidth(view);
 				EsElementRelayout(element->parent);
 				EsElementRelayout(view);
 			} else {
@@ -2249,10 +2254,9 @@ void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t co
 
 		splitter->cName = "column header splitter";
 		splitter->userData = columns + i;
-
-		view->totalColumnWidth += columns[i].width + view->secondaryCellStyle->gapMajor;
 	}
 
+	ListViewCalculateTotalColumnWidth(view);
 	view->scroll.Refresh();
 }
 
@@ -2485,4 +2489,19 @@ void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibl
 
 void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand) {
 	view->maximumItemsPerBand = maximumItemsPerBand;
+}
+
+EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view) {
+	EsRectangle bounding = EsElementGetWindowBounds(view);
+	bool first = true;
+
+	for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
+		if (~view->visibleItems[i].element->customStyleState & THEME_STATE_SELECTED) continue;
+		EsRectangle bounds = EsElementGetWindowBounds(view->visibleItems[i].element);
+		if (first) bounding = bounds;
+		else bounding = EsRectangleBounding(bounding, bounds);
+		first = false;
+	}
+
+	return ES_POINT((bounding.l + bounding.r) / 2, (bounding.t + bounding.b) / 2);
 }

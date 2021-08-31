@@ -1121,12 +1121,19 @@ enum EsDeviceType {
 	ES_DEVICE_PCI_FUNCTION
 }
 
+enum EsClipboardFormat {
+	ES_CLIPBOARD_FORMAT_INVALID
+	ES_CLIPBOARD_FORMAT_TEXT
+	ES_CLIPBOARD_FORMAT_PATH_LIST
+}
+
 function_pointer int EsUICallbackFunction(struct EsElement *element, struct EsMessage *message);
 
 struct EsBuffer {
 	union { const uint8_t *in; uint8_t *out; };
 	size_t position, bytes;
 	void *context;
+	EsFileStore *fileStore;
 	bool error, canGrow;
 };
 
@@ -1382,7 +1389,7 @@ struct EsCommand {
 struct EsListViewColumn {
 	STRING title;
 	uint32_t flags;
-	int width;
+	double width;
 };
 
 struct EsApplicationStartupInformation {
@@ -1936,6 +1943,7 @@ function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *informat
 
 function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize); // Free with EsHeapFree.
 function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes);
+function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes);
 function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
 function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags);
 
@@ -1970,6 +1978,7 @@ function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t 
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
 function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
 function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments); // Appends.
+function void EsBufferFlushToFileStore(EsBuffer *buffer);
 
 function EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess); 
 function void EsConstantBufferRead(EsHandle constantBuffer, void *output); 
@@ -2213,8 +2222,10 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format,
 // Clipboard and undo.
 
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
-function bool EsClipboardHasText(EsClipboard clipboard);
+function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes); // Free with EsHeapFree.
+function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
+function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore);
 
 function void EsUndoClear(EsUndoManager *manager);
 function void EsUndoContinueGroup(EsUndoManager *manager);
@@ -2413,6 +2424,7 @@ function void EsListViewContentChanged(EsListView *view);
 function void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
 		const EsStyle *headerItemStyle, const EsStyle *footerItemStyle, uint32_t addFlags, uint32_t removeFlags);
 function void EsListViewScrollToEnd(EsListView *view);
+function EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view);
 
 function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group, EsListViewIndex index, uint32_t flags = ES_FLAGS_DEFAULT);
 
