@@ -63,6 +63,7 @@ DEFINE_INTERFACE_STRING(CommonAnnouncementCopied, "Copied");
 DEFINE_INTERFACE_STRING(CommonAnnouncementTextCopied, "Text copied");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorResources, "There's not enough space to copy this");
 DEFINE_INTERFACE_STRING(CommonAnnouncementCopyErrorOther, "Could not copy");
+DEFINE_INTERFACE_STRING(CommonAnnouncementPasteErrorOther, "Could not paste");
 
 DEFINE_INTERFACE_STRING(CommonEmpty, "empty");
 

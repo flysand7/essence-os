@@ -1692,6 +1692,8 @@ struct EsListView : EsElement {
 			}
 
 			EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_SELECT_ALL), nullptr);
+		} else if (message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
+			// Make sure that right clicking will focus the list.
 		} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 			Select(-1, 0, EsKeyboardIsShiftHeld(), EsKeyboardIsCtrlHeld(), false);
 		} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {

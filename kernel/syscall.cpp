@@ -794,6 +794,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	information.spaceUsed = fileSystem->spaceUsed;
 	information.spaceTotal = fileSystem->spaceTotal;
 	information.id = fileSystem->objectID;
+	information.flags = fileSystem->write ? ES_FLAGS_DEFAULT : ES_VOLUME_READ_ONLY;
 
 	SYSCALL_WRITE(argument1, &information, sizeof(EsVolumeInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);

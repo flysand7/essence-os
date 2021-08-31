@@ -293,7 +293,6 @@ bool NVMeController::IssueAdminCommand(const void *command, uint32_t *result) {
 
 bool NVMeController::Access(struct NVMeDrive *drive, uint64_t offsetBytes, size_t countBytes, int operation, 
 		KDMABuffer *buffer, uint64_t, KWorkGroup *dispatchGroup) {
-	// TODO Temporary.
 	// if (operation == K_ACCESS_WRITE) KernelPanic("NVMeController::Access - Attempted write.\n");
 
 	// Build the PRPs.

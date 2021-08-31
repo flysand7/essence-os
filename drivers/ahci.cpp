@@ -214,8 +214,6 @@ bool AHCIController::Access(uintptr_t portIndex, uint64_t offsetBytes, size_t co
 	AHCIPort *port = ports + portIndex;
 
 #if 0
-	// TODO Temporary.
-
 	if (operation == K_ACCESS_WRITE) {
 		KernelPanic("AHCIController::Access - Attempted write.\n");
 	}

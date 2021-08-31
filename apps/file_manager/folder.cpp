@@ -5,9 +5,7 @@
 
 Array<Folder *> loadedFolders;
 
-// #define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (20)
-// TODO Temporary.
-#define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (0)
+#define MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES (20)
 Array<Folder *> foldersWithNoAttachedInstances;
 
 /////////////////////////////////
@@ -57,13 +55,19 @@ EsError FSDirRenameItem(Folder *folder, String oldName, String newName) {
 };
 
 EsError FSDirEnumerate(Folder *folder) {
-	// Get the initial directory children.
 	// TODO Recurse mode.
 
 	EsNodeType type;
 
 	if (!EsPathExists(STRING(folder->path), &type) || type != ES_NODE_DIRECTORY) {
 		return ES_ERROR_FILE_DOES_NOT_EXIST;
+	}
+
+	EsVolumeInformation volume;
+	folder->readOnly = true;
+
+	if (EsMountPointGetVolumeInformation(STRING(folder->path), &volume)) {
+		folder->readOnly = volume.flags & ES_VOLUME_READ_ONLY;
 	}
 
 	EsDirectoryChild *buffer = nullptr;
@@ -90,8 +94,9 @@ void FSDirGetTotalSize(Folder *folder) {
 	}
 }
 
-String FSDirGetPathForChildFolder(Folder *folder, String item) {
-	return StringAllocateAndFormat("%s%s/", STRFMT(folder->path), STRFMT(item));
+String FSDirGetPathForChild(Folder *folder, FolderEntry *entry) {
+	String item = entry->GetInternalName();
+	return StringAllocateAndFormat("%s%s%z", STRFMT(folder->path), STRFMT(item), entry->isFolder ? "/" : "");
 }
 
 /////////////////////////////////
@@ -153,7 +158,8 @@ EsError DrivesPageEnumerate(Folder *folder) {
 	return ES_SUCCESS;
 }
 
-String DrivesPageGetPathForChildFolder(Folder *, String item) {
+String DrivesPageGetPathForChild(Folder *, FolderEntry *entry) {
+	String item = entry->GetInternalName();
 	return StringAllocateAndFormat("%s/", STRFMT(item));
 }
 
@@ -197,7 +203,7 @@ NamespaceHandler namespaceHandlers[] = {
 		.getFileType = DrivesPageGetFileType,
 		.getVisibleName = DrivesPageGetVisibleName,
 		.getTotalSize = DrivesPageGetTotalSize,
-		.getPathForChildFolder = DrivesPageGetPathForChildFolder,
+		.getPathForChild = DrivesPageGetPathForChild,
 		.getDefaultViewSettings = DrivesPageGetDefaultViewSettings,
 		.enumerate = DrivesPageEnumerate,
 	},
@@ -205,11 +211,13 @@ NamespaceHandler namespaceHandlers[] = {
 	{
 		.type = NAMESPACE_HANDLER_FILE_SYSTEM,
 		.rootContainerHandlerType = NAMESPACE_HANDLER_DRIVES_PAGE,
+		.canCopy = true,
+		.canPaste = true,
 		.handlesPath = FSDirHandlesPath,
 		.getFileType = NamespaceDefaultGetFileType,
 		.getVisibleName = NamespaceDefaultGetVisibleName,
 		.getTotalSize = FSDirGetTotalSize,
-		.getPathForChildFolder = FSDirGetPathForChildFolder,
+		.getPathForChild = FSDirGetPathForChild,
 		.createChildFolder = FSDirCreateChildFolder,
 		.renameItem = FSDirRenameItem,
 		.enumerate = FSDirEnumerate,

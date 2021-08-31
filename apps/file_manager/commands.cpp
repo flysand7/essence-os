@@ -120,6 +120,9 @@ void CommandNewFolder(Instance *instance, EsElement *, EsCommand *) {
 }
 
 void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
+	// TODO If copying a single file, copy the data of the file (as well as its path),
+	// 	so that document can be pasted into other applications.
+	
 	uint8_t _buffer[4096];
 	EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
 	buffer.fileStore = EsClipboardOpen(ES_CLIPBOARD_PRIMARY);
@@ -127,9 +130,9 @@ void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
 	for (uintptr_t i = 0; i < instance->listContents.Length() && !buffer.error; i++) {
 		if (instance->listContents[i].selected) {
 			FolderEntry *entry = instance->listContents[i].entry;
-			String name = entry->GetName();
-			EsBufferWrite(&buffer, STRING(instance->path));
-			EsBufferWrite(&buffer, STRING(name));
+			String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
+			EsBufferWrite(&buffer, STRING(path));
+			StringDestroy(&path);
 			uint8_t separator = '\n';
 			EsBufferWrite(&buffer, &separator, 1);
 		}
@@ -146,6 +149,66 @@ void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
 		EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementCopyErrorResources));
 	} else {
 		EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementCopyErrorOther));
+	}
+}
+
+void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
+	if (EsClipboardHasFormat(ES_CLIPBOARD_PRIMARY, ES_CLIPBOARD_FORMAT_PATH_LIST)) {
+		// TODO Background task.
+		// TODO Renaming.
+		// TODO Recursing into folders.
+		// TODO Reporting errors properly.
+		// TODO Other namespace handlers.
+		// TODO Selecting *all* pasted files.
+		// TODO Update parent folders after copy complete.
+
+		void *copyBuffer = nullptr;
+
+		size_t bytes;
+		char *pathList = EsClipboardReadText(ES_CLIPBOARD_PRIMARY, &bytes);
+
+		if (pathList) {
+			const char *position = pathList;
+
+			while (bytes) {
+				const char *newline = (const char *) EsCRTmemchr(position, '\n', bytes); 
+				if (!newline) break;
+
+				String source = StringFromLiteralWithSize(position, newline - position);
+				String name = PathGetName(source);
+				String destination = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(name));
+				EsError error = EsFileCopy(STRING(source), STRING(destination), &copyBuffer);
+
+				if (error == ES_SUCCESS) {
+					EsMutexAcquire(&instance->folder->modifyEntriesMutex);
+					EsAssert(instance->folder->doneInitialEnumeration);
+					EsDirectoryChild directoryChild;
+
+					if (EsPathQueryInformation(STRING(destination), &directoryChild)) {
+						FolderAddEntryAndUpdateInstances(instance->folder, STRING(name), &directoryChild, instance);
+					} else {
+						// File must have been deleted by the time we got here!
+					}
+
+					EsMutexRelease(&instance->folder->modifyEntriesMutex);
+				} else {
+					goto encounteredError;
+				}
+
+				position += source.bytes + 1;
+				bytes -= source.bytes + 1;
+				StringDestroy(&destination);
+			}
+		} else {
+			encounteredError:;
+			EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
+			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
+		}
+
+		EsHeapFree(pathList);
+		EsHeapFree(copyBuffer);
+	} else {
+		// TODO Paste the data into a new file.
 	}
 }
 

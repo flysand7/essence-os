@@ -182,12 +182,14 @@ struct NamespaceHandler {
 	uint8_t type;
 	uint8_t rootContainerHandlerType;
 
+	bool canCopy, canPaste;
+
 	bool (*handlesPath)(String path);
 
 	uint32_t (*getFileType)(String path);
 	void (*getVisibleName)(EsBuffer *buffer, String path);
 	void (*getTotalSize)(Folder *folder); // Possibly called on the blocking task thread.
-	String (*getPathForChildFolder)(Folder *folder, String item);
+	String (*getPathForChild)(Folder *folder, FolderEntry *entry);
 	void (*getDefaultViewSettings)(Folder *folder, FolderViewSettings *settings);
 
 	// Called on the blocking task thread:
@@ -207,6 +209,7 @@ struct Folder {
 	bool recurse;
 	bool refreshing;
 	bool driveRemoved;
+	bool readOnly;
 
 	bool doneInitialEnumeration;
 	EsMutex modifyEntriesMutex;

@@ -199,3 +199,10 @@ String PathRemoveTrailingSlash(String path) {
 
 	return path;
 }
+
+String PathGetName(String path) {
+	intptr_t i = path.bytes - 2;
+	while (i >= 0 && path.text[i] != '/') i--;
+	path.text += i + 1, path.bytes -= i + 1;
+	return path;
+}

@@ -725,6 +725,8 @@ define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
 define ES_DRAW_BITMAP_XOR    (0xFFFE)
 define ES_DRAW_BITMAP_BLEND  (0)
 
+define ES_VOLUME_READ_ONLY (1 << 0)
+
 include desktop/icons.header
 
 enum EsFatalError {
@@ -1497,6 +1499,7 @@ struct EsVolumeInformation {
 	char label[64];
 	uint8_t labelBytes;
 	uint8_t driveType;
+	uint32_t flags;
 	EsObjectID id;
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
@@ -1925,6 +1928,7 @@ function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, siz
 function EsError EsFileWriteAllGather(STRING filePath, const void **data, size_t *fileSize, size_t gatherCount); 
 function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_t *fileSize, size_t gatherCount); 
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags);
+function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
 function EsError EsFileControl(EsHandle file, uint32_t flags); 
 function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
@@ -2223,6 +2227,7 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format,
 
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
+function bool EsClipboardHasData(EsClipboard clipboard);
 function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
 function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore);

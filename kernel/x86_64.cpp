@@ -939,27 +939,22 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 					currentThread->process->cExecutableName,
 					context->rip, local->processorID, context->rsp, context->errorCode, context->cr2);
 
-#ifndef __OPTIMIZE__
 			EsPrint("Attempting to make a stack trace...\n");
 
 			{
-				// TODO Temporary, may crash kernel.
-				// Attempt to make a stack trace.
-			
-				uint64_t *rbp = (uint64_t *) context->rbp;
-				int i = 0;
+				uint64_t rbp = context->rbp;
+				int traceDepth = 0;
 
-				while (rbp && i < 32) {
-					EsPrint("\t%d: %x\n", ++i, rbp[1]);
-					if (!rbp[1]) break;
-					rbp = (uint64_t *) (rbp[0]);
+				while (rbp && traceDepth < 32) {
+					uint64_t value;
+					if (!MMArchSafeCopy((uintptr_t) &value, rbp + 8, sizeof(uint64_t))) break;
+					EsPrint("\t%d: %x\n", ++traceDepth, value);
+					if (!value) break;
+					if (!MMArchSafeCopy((uintptr_t) &rbp, rbp, sizeof(uint64_t))) break;
 				}
 			}
 
 			EsPrint("Stack trace complete.\n");
-#else
-			EsPrint("Disable optimisations to get a stack trace.\n");
-#endif
 
 			EsCrashReason crashReason;
 			EsMemoryZero(&crashReason, sizeof(EsCrashReason));

@@ -168,6 +168,10 @@ void InitialiseInstance(EsInstance *instance) {
 		EsSyscall(ES_SYSCALL_WAIT, 0x00000FFFFFFFFFFF, 1, 0, 0); 
 	});
 
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 6"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsMemoryCopy(nullptr, nullptr, 1);
+	});
+
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Announcement 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
 		EsRectangle bounds = EsElementGetWindowBounds(element);
 		EsAnnouncementShow(element->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, (bounds.t + bounds.b) / 2, "Hello, world!", -1); 

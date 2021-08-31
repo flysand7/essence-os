@@ -223,6 +223,41 @@ void *EsFileReadAll(const char *filePath, ptrdiff_t filePathLength, size_t *file
 	return buffer;
 }
 
+EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destination, ptrdiff_t destinationBytes, void **_copyBuffer) {
+	const size_t copyBufferBytes = 262144;
+	void *copyBuffer = _copyBuffer && *_copyBuffer ? *_copyBuffer : EsHeapAllocate(copyBufferBytes, false);
+	if (_copyBuffer) *_copyBuffer = copyBuffer;
+
+	if (!copyBuffer) {
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
+	EsError error = ES_SUCCESS;
+
+	EsFileInformation sourceFile = EsFileOpen(source, sourceBytes, ES_FILE_READ | ES_NODE_FILE | ES_NODE_FAIL_IF_NOT_FOUND);
+	EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
+
+	if (sourceFile.error == ES_SUCCESS && destinationFile.error == ES_SUCCESS) {
+		error = EsFileResize(destinationFile.handle, sourceFile.size);
+
+		if (error == ES_SUCCESS) {
+			for (uintptr_t i = 0; i < sourceFile.size; i += copyBufferBytes) {
+				size_t bytesRead = EsFileReadSync(sourceFile.handle, i, copyBufferBytes, copyBuffer);
+				if (ES_CHECK_ERROR(bytesRead)) { error = bytesRead; break; }
+				size_t bytesWritten = EsFileWriteSync(destinationFile.handle, i, bytesRead, copyBuffer);
+				if (ES_CHECK_ERROR(bytesWritten)) { error = bytesWritten; break; }
+			}
+		}
+	} else {
+		error = sourceFile.error == ES_SUCCESS ? destinationFile.error : sourceFile.error;
+	}
+
+	if (sourceFile.error == ES_SUCCESS) EsHandleClose(sourceFile.handle);
+	if (destinationFile.error == ES_SUCCESS) EsHandleClose(destinationFile.handle);
+	if (!_copyBuffer) EsHeapFree(copyBuffer);
+	return error;
+}
+
 EsHandle EsMemoryOpen(size_t size, const char *name, ptrdiff_t nameLength, unsigned flags) {
 	if (nameLength == -1) nameLength = EsCStringLength(name);
 	return EsSyscall(ES_SYSCALL_MEMORY_OPEN, size, (uintptr_t) name, nameLength, flags);
@@ -759,7 +794,22 @@ bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format) {
 	ClipboardInformation information;
 	ClipboardGetInformation(&file, &information);
 	if (file) EsHandleClose(file);
-	return information.error == ES_SUCCESS && information.format == format;
+	if (information.error != ES_SUCCESS) return false;
+
+	if (format == ES_CLIPBOARD_FORMAT_TEXT) {
+		return information.format == ES_CLIPBOARD_FORMAT_TEXT || information.format == ES_CLIPBOARD_FORMAT_PATH_LIST;
+	} else {
+		return information.format == format;
+	}
+}
+
+bool EsClipboardHasData(EsClipboard clipboard) {
+	(void) clipboard;
+	EsHandle file;
+	ClipboardInformation information;
+	ClipboardGetInformation(&file, &information);
+	if (file) EsHandleClose(file);
+	return information.error == ES_SUCCESS && information.format != ES_CLIPBOARD_FORMAT_INVALID;
 }
 
 char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
@@ -773,7 +823,7 @@ char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
 	ClipboardGetInformation(&file, &information);
 
 	if (file) {
-		if (information.format == ES_CLIPBOARD_FORMAT_TEXT) {
+		if (information.format == ES_CLIPBOARD_FORMAT_TEXT || information.format == ES_CLIPBOARD_FORMAT_PATH_LIST) {
 			result = (char *) EsFileReadAllFromHandle(file, bytes);
 		}
 

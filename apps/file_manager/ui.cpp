@@ -94,12 +94,12 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 
 		// Update commands.
 
-		EsCommandSetDisabled(&instance->commandGoBackwards, !instance->pathBackwardHistory.Length());
-		EsCommandSetDisabled(&instance->commandGoForwards, !instance->pathForwardHistory.Length());
-		EsCommandSetDisabled(&instance->commandGoParent, PathCountSections(folder->path) == 1);
-		EsCommandSetDisabled(&instance->commandNewFolder, !folder->itemHandler->createChildFolder);
-		EsCommandSetDisabled(&instance->commandRename, true);
-		EsCommandSetDisabled(&instance->commandRefresh, false);
+		EsCommandSetEnabled(&instance->commandGoBackwards, instance->pathBackwardHistory.Length());
+		EsCommandSetEnabled(&instance->commandGoForwards, instance->pathForwardHistory.Length());
+		EsCommandSetEnabled(&instance->commandGoParent, PathCountSections(folder->path) > 1);
+		EsCommandSetEnabled(&instance->commandNewFolder, folder->itemHandler->createChildFolder && !folder->readOnly);
+		EsCommandSetEnabled(&instance->commandRename, false);
+		EsCommandSetEnabled(&instance->commandRefresh, true);
 
 		// Load the view settings for the folder.
 
@@ -168,14 +168,15 @@ void InstanceRefreshViewType(Instance *instance) {
 }
 
 void InstanceUpdateItemSelectionCountCommands(Instance *instance) {
-	EsCommandSetEnabled(&instance->commandRename, instance->selectedItemCount == 1 && instance->folder->itemHandler->renameItem);
+	EsCommandSetEnabled(&instance->commandRename, instance->selectedItemCount == 1 && instance->folder->itemHandler->renameItem && !instance->folder->readOnly);
 
 #define COMMAND_SET(id, callback, enabled) \
 	do { EsCommand *command = EsCommandByID(instance, id); \
 	EsCommandSetEnabled(command, enabled); \
 	EsCommandSetCallback(command, callback); } while(0)
 
-	COMMAND_SET(ES_COMMAND_COPY, CommandCopy, instance->selectedItemCount >= 1);
+	COMMAND_SET(ES_COMMAND_COPY, CommandCopy, instance->selectedItemCount >= 1 && instance->folder->itemHandler->canCopy);
+	COMMAND_SET(ES_COMMAND_PASTE, CommandPaste, instance->folder->itemHandler->canPaste && EsClipboardHasData(ES_CLIPBOARD_PRIMARY) && !instance->folder->readOnly);
 }
 
 int InstanceCompareFolderEntries(FolderEntry *left, FolderEntry *right, uint16_t sortColumn) {
@@ -758,7 +759,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 			FolderEntry *entry = listEntry->entry;
 
 			if (entry->isFolder) {
-				String path = instance->folder->itemHandler->getPathForChildFolder(instance->folder, entry->GetInternalName());
+				String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
 				InstanceLoadFolder(instance, path);
 			} else {
 				FileType *fileType = FolderEntryGetType(instance->folder, entry);
