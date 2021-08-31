@@ -1455,7 +1455,7 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 	// TODO What should happen if the old file is deleted, but the new file isn't moved?
 
 	EsPathDelete(document->path, document->pathBytes);
-	EsPathMove(document->temporarySavePath, document->temporarySavePathBytes, document->path, document->pathBytes);
+	EsPathMove(document->temporarySavePath, document->temporarySavePathBytes, document->path, document->pathBytes, ES_PATH_MOVE_ALLOW_COPY_AND_DELETE);
 
 	// Re-open the read handle.
 

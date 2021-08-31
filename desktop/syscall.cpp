@@ -491,7 +491,7 @@ void *EsFileMap(const char *path, ptrdiff_t pathBytes, size_t *fileSize, uint32_
 	return base;
 }
 
-EsError EsPathMove(const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes) {
+EsError EsPathMove(const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes, uint32_t flags) {
 	if (oldPathBytes == -1) oldPathBytes = EsCStringLength(oldPath);
 	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
 
@@ -508,6 +508,15 @@ EsError EsPathMove(const char *oldPath, ptrdiff_t oldPathBytes, const char *newP
 	if (error != ES_SUCCESS) { EsHandleClose(node.handle); return error; }
 
 	error = EsSyscall(ES_SYSCALL_NODE_MOVE, node.handle, directory.handle, (uintptr_t) newPath + s, newPathBytes - s);
+
+	if (error == ES_ERROR_VOLUME_MISMATCH && (flags & ES_PATH_MOVE_ALLOW_COPY_AND_DELETE) && (node.type == ES_NODE_FILE)) {
+		// The paths are on different file systems, so we cannot directly move the file.
+		// Instead we need to copy the file to the new path, and then delete the old file.
+		// TODO Does it matter that this isn't atomic?
+		error = EsFileCopy(oldPath, oldPathBytes, newPath, newPathBytes);
+		if (error == ES_SUCCESS) error = EsPathDelete(oldPath, oldPathBytes);
+	}
+
 	EsHandleClose(node.handle);
 	EsHandleClose(directory.handle);
 	return error;

@@ -727,6 +727,8 @@ define ES_DRAW_BITMAP_BLEND  (0)
 
 define ES_VOLUME_READ_ONLY (1 << 0)
 
+define ES_PATH_MOVE_ALLOW_COPY_AND_DELETE (1 << 0) // Copy and delete the file if a direct move is not possible.
+
 include desktop/icons.header
 
 enum EsFatalError {
@@ -1928,7 +1930,7 @@ function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, siz
 function EsError EsFileWriteAllGather(STRING filePath, const void **data, size_t *fileSize, size_t gatherCount); 
 function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_t *fileSize, size_t gatherCount); 
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags);
-function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
+function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = nullptr); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
 function EsError EsFileControl(EsHandle file, uint32_t flags); 
 function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
@@ -1940,7 +1942,7 @@ function EsError EsFileDelete(EsHandle file);
 
 function EsError EsPathDelete(STRING path);
 function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes);
-function EsError EsPathMove(STRING oldPath, STRING newPath);
+function EsError EsPathMove(STRING oldPath, STRING newPath, uint32_t flags = ES_FLAGS_DEFAULT);
 function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL); // Returns true if the file/directory exists.
 function EsError EsPathCreate(STRING filePath, EsNodeType type, bool createLeadingDirectories);
 function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information);

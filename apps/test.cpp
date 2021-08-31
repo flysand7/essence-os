@@ -172,6 +172,10 @@ void InitialiseInstance(EsInstance *instance) {
 		EsMemoryCopy(nullptr, nullptr, 1);
 	});
 
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Move file"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsPathMove("0:/A Study in Scarlet.txt", -1, "0:/moved.txt", -1, ES_PATH_MOVE_ALLOW_COPY_AND_DELETE);
+	});
+
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Announcement 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
 		EsRectangle bounds = EsElementGetWindowBounds(element);
 		EsAnnouncementShow(element->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, (bounds.t + bounds.b) / 2, "Hello, world!", -1); 
