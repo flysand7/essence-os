@@ -230,6 +230,7 @@ void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder);
 void InstanceAddContents(struct Instance *instance, HashTable *newEntries);
 void InstanceAddSingle(struct Instance *instance, ListEntry newEntry);
 void InstanceRemoveContents(struct Instance *instance);
+void InstanceSelectByName(Instance *instance, String name, bool addToExistingSelection, bool focusItem);
 ListEntry InstanceRemoveSingle(Instance *instance, FolderEntry *folderEntry);
 ListEntry *InstanceGetSelectedListEntry(Instance *instance);
 void ListItemCreated(EsElement *element, uintptr_t index, bool fromFolderRename);
@@ -549,25 +550,7 @@ void _start() {
 			size_t pathSectionCount = PathCountSections(fullPath);
 
 			for (uintptr_t i = 0; i < pathSectionCount; i++) {
-				String path = PathGetParent(fullPath, i + 1);
-				String file = PathGetSection(fullPath, i + 1);
-				String folder = PathGetParent(path);
-				EsDirectoryChild information = {};
-
-				if (EsPathQueryInformation(STRING(path), &information)) {
-					for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
-						if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;
-						if (EsStringCompareRaw(STRING(loadedFolders[i]->path), STRING(folder))) continue;
-
-						EsMutexAcquire(&loadedFolders[i]->modifyEntriesMutex);
-
-						if (loadedFolders[i]->doneInitialEnumeration) {
-							FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, nullptr);
-						}
-
-						EsMutexRelease(&loadedFolders[i]->modifyEntriesMutex);
-					}
-				}
+				FolderFileUpdatedAtPath(PathGetParent(fullPath, i + 1), nullptr);
 			}
 
 			EsHandleClose(message->user.context1.u);

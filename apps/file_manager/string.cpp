@@ -176,7 +176,24 @@ String PathGetParent(String string) {
 	return result;
 }
 
+bool PathHasTrailingSlash(String path) {
+	return path.bytes && path.text[path.bytes - 1] == '/';
+}
+
+String PathRemoveTrailingSlash(String path) {
+	if (PathHasTrailingSlash(path)) path.bytes--;
+	return path;
+}
+
+String PathGetName(String path) {
+	intptr_t i = path.bytes - 2;
+	while (i >= 0 && path.text[i] != '/') i--;
+	path.text += i + 1, path.bytes -= i + 1;
+	return path;
+}
+
 bool PathHasPrefix(String path, String prefix) {
+	prefix = PathRemoveTrailingSlash(prefix);
 	return StringStartsWith(path, prefix) && path.bytes > prefix.bytes && path.text[prefix.bytes] == '/';
 }
 
@@ -190,19 +207,4 @@ bool PathReplacePrefix(String *knownPath, String oldPath, String newPath) {
 	}
 
 	return false;
-}
-
-String PathRemoveTrailingSlash(String path) {
-	if (path.bytes && path.text[path.bytes - 1] == '/') {
-		path.bytes--;
-	}
-
-	return path;
-}
-
-String PathGetName(String path) {
-	intptr_t i = path.bytes - 2;
-	while (i >= 0 && path.text[i] != '/') i--;
-	path.text += i + 1, path.bytes -= i + 1;
-	return path;
 }

@@ -2,6 +2,7 @@
 // TODO Consistent int64_t/intptr_t.
 // TODO Drag and drop.
 // TODO GetFirstIndex/GetLastIndex assume that every group is non-empty.
+// TODO Sticking to top/bottom scroll when inserting/removing space.
 
 struct ListViewItemElement : EsElement {
 	uintptr_t index; // Index into the visible items array.
@@ -482,6 +483,22 @@ struct EsListView : EsElement {
 	}
 
 	void Populate() {
+		EsPrint("--- Before Populate() ---\n");
+		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - currentStyle->insets.t));
+
+		for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
+			EsMessage m = { ES_MSG_LIST_VIEW_GET_CONTENT };
+			uint8_t _buffer[512];
+			EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+			m.getContent.buffer = &buffer;
+			m.getContent.index = visibleItems[i].index;
+			m.getContent.group = visibleItems[i].group;
+			EsMessageSend(this, &m);
+			EsPrint("%d: %d '%s' at %i\n", i, visibleItems[i].index, buffer.position, _buffer, visibleItems[i].element->offsetY - GetListBounds().t);
+		}
+
+		EsPrint("------\n");
+
 		// TODO Keep one item before and after the viewport, so tab traversal on custom elements works.
 		// TODO Always keep an item if it has FOCUS_WITHIN.
 		// 	- But maybe we shouldn't allow focusable elements in a list view.
@@ -533,7 +550,7 @@ struct EsListView : EsElement {
 							: visibleItem->element->offsetY - contentBounds.t;
 
 					if (position < expectedPosition - 1 || position > expectedPosition + 1) {
-						EsPrint("Item in unexpected position: expected %d, got %d; index %d, scroll %d.\n", 
+						EsPrint("Item in unexpected position: got %d, should have been %d; index %d, scroll %d.\n", 
 								expectedPosition, position, visibleItem->index, scroll);
 						EsAssert(false);
 					}
@@ -726,33 +743,19 @@ struct EsListView : EsElement {
 			return;
 		}
 
-		int64_t currentScroll = (flags & ES_LIST_VIEW_HORIZONTAL) ? scroll.position[0] : scroll.position[1];
-		int64_t scrollLimit = (flags & ES_LIST_VIEW_HORIZONTAL) ? scroll.limit[0] : scroll.limit[1];
-
 		totalSize += space;
 
-		if (((beforeItem == 0 && currentScroll) || currentScroll == scrollLimit) && firstLayout && space > 0 && scrollLimit) {
-			scroll.Refresh();
+		for (uintptr_t i = beforeItem; i < visibleItems.Length(); i++) {
+			ListViewItem *item = &visibleItems[i];
 
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
-				scroll.SetX(scroll.position[0] + space, false);
+				item->element->offsetX += space;
 			} else {
-				scroll.SetY(scroll.position[1] + space, false);
+				item->element->offsetY += space;
 			}
-		} else {
-			for (uintptr_t i = beforeItem; i < visibleItems.Length(); i++) {
-				ListViewItem *item = &visibleItems[i];
-
-				if (flags & ES_LIST_VIEW_HORIZONTAL) {
-					item->element->offsetX += space;
-				} else {
-					item->element->offsetY += space;
-				}
-			}
-
-			scroll.Refresh();
 		}
 
+		scroll.Refresh();
 		EsElementUpdateContentSize(this);
 	}
 
@@ -1575,7 +1578,7 @@ struct EsListView : EsElement {
 
 		if (message->type == ES_MSG_GET_WIDTH || message->type == ES_MSG_GET_HEIGHT) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
-				message->measure.width  = totalSize + currentStyle->insets.l + currentStyle->insets.r;
+				message->measure.width = totalSize + currentStyle->insets.l + currentStyle->insets.r;
 			} else {
 				message->measure.height = totalSize + currentStyle->insets.t + currentStyle->insets.b;
 
@@ -2305,10 +2308,20 @@ bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListVi
 	return view->hasFocusedItem;
 }
 
-void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index) {
+void EsListViewSelectNone(EsListView *view) {
+	EsMessageMutexCheck();
+	view->Select(-1, 0, false, false, false);
+}
+
+void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index, bool addToExistingSelection) {
 	EsMessageMutexCheck();
 
-	view->Select(group, index, false, false, false);
+	if (addToExistingSelection) {
+		view->SetSelected(group, index, group, index, true, false);
+		view->UpdateVisibleItemsSelectionState();
+	} else {
+		view->Select(group, index, false, false, false);
+	}
 }
 
 void EsListViewSetEmptyMessage(EsListView *view, const char *message, ptrdiff_t messageBytes) {

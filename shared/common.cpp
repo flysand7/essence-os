@@ -1606,13 +1606,17 @@ void EnterDebugger() {
 
 #ifndef KERNEL
 size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes) {
-	// TODO Check that this runs in a reasonable amount of time when all files are already present.
+	if (originalBytes && buffer[originalBytes - 1] == '/') {
+		originalBytes--;
+	}
 
 	size_t extensionPoint = originalBytes;
 
 	for (uintptr_t i = 0; i < originalBytes; i++) {
 		if (buffer[i] == '.') {
 			extensionPoint = i;
+		} else if (buffer[i] == '/') {
+			extensionPoint = originalBytes;
 		}
 	}
 
@@ -1624,6 +1628,8 @@ size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferByt
 	EsDefer(EsHeapFree(buffer2));
 
 	uintptr_t attempt = 2;
+
+	// TODO Check that this runs in a reasonable amount of time when all files are already present.
 
 	while (attempt < 1000) {
 		size_t length = EsStringFormat(buffer2, bufferBytes, "%s %d%s", extensionPoint, buffer, 

@@ -152,20 +152,80 @@ void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
 	}
 }
 
+EsError CommandPasteFile(String source, String destinationBase, void **copyBuffer, String *_destination = nullptr) {
+	if (PathHasPrefix(destinationBase, source)) {
+		return ES_ERROR_TARGET_WITHIN_SOURCE;
+	}
+
+	String name = PathGetName(source);
+	String destination = StringAllocateAndFormat("%s%z%s", STRFMT(destinationBase), PathHasTrailingSlash(destinationBase) ? "" : "/", STRFMT(name));
+
+	if (StringEquals(PathGetParent(source), destinationBase)) {
+		destination.allocated += 32;
+		destination.text = (char *) EsHeapReallocate(destination.text, destination.allocated, false);
+		size_t bytes = EsPathFindUniqueName(destination.text, destination.bytes, destination.allocated);
+
+		if (bytes) {
+			destination.bytes = destination.allocated = bytes;
+		} else {
+			destination.allocated = destination.bytes;
+			StringDestroy(&destination);
+			return ES_ERROR_FILE_ALREADY_EXISTS;
+		}
+	}
+
+	EsPrint("Copying %s -> %s...\n", STRFMT(source), STRFMT(destination));
+	EsError error = EsFileCopy(STRING(source), STRING(destination), copyBuffer);
+
+	if (error == ES_ERROR_INCORRECT_NODE_TYPE) {
+		EsDirectoryChild *buffer;
+		ptrdiff_t childCount = EsDirectoryEnumerateChildren(STRING(source), &buffer);
+
+		if (ES_CHECK_ERROR(childCount)) {
+			error = (EsError) childCount;
+		} else {
+			error = EsPathCreate(STRING(destination), ES_NODE_DIRECTORY, false);
+
+			if (error == ES_SUCCESS) {
+				for (intptr_t i = 0; i < childCount && error == ES_SUCCESS; i++) {
+					String childSourcePath = StringAllocateAndFormat("%s%z%s", STRFMT(source), 
+							PathHasTrailingSlash(source) ? "" : "/", buffer[i].nameBytes, buffer[i].name);
+					error = CommandPasteFile(childSourcePath, destination, copyBuffer);
+					StringDestroy(&childSourcePath);
+				}
+			}
+
+			EsHeapFree(buffer);
+		}
+	}
+
+	if (error == ES_SUCCESS) {
+		FolderFileUpdatedAtPath(destination, nullptr);
+	}
+
+	if (_destination && error == ES_SUCCESS) {
+		*_destination = destination;
+	} else {
+		StringDestroy(&destination);
+	}
+
+	return error;
+}
+
 void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 	if (EsClipboardHasFormat(ES_CLIPBOARD_PRIMARY, ES_CLIPBOARD_FORMAT_PATH_LIST)) {
 		// TODO Background task.
-		// TODO Renaming.
-		// TODO Recursing into folders.
-		// TODO Reporting errors properly.
+		// TODO Reporting errors properly. Ask to retry or cancel.
+		// TODO If the destination file already exists, ask to replace, skip, rename or cancel.
 		// TODO Other namespace handlers.
-		// TODO Selecting *all* pasted files.
-		// TODO Update parent folders after copy complete.
+		// TODO Undo.
 
 		void *copyBuffer = nullptr;
 
 		size_t bytes;
 		char *pathList = EsClipboardReadText(ES_CLIPBOARD_PRIMARY, &bytes);
+
+		Array<String> itemsToSelect = {};
 
 		if (pathList) {
 			const char *position = pathList;
@@ -175,29 +235,18 @@ void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 				if (!newline) break;
 
 				String source = StringFromLiteralWithSize(position, newline - position);
-				String name = PathGetName(source);
-				String destination = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(name));
-				EsError error = EsFileCopy(STRING(source), STRING(destination), &copyBuffer);
+				String destination;
 
-				if (error == ES_SUCCESS) {
-					EsMutexAcquire(&instance->folder->modifyEntriesMutex);
-					EsAssert(instance->folder->doneInitialEnumeration);
-					EsDirectoryChild directoryChild;
-
-					if (EsPathQueryInformation(STRING(destination), &directoryChild)) {
-						FolderAddEntryAndUpdateInstances(instance->folder, STRING(name), &directoryChild, instance);
-					} else {
-						// File must have been deleted by the time we got here!
-					}
-
-					EsMutexRelease(&instance->folder->modifyEntriesMutex);
-				} else {
+				if (ES_SUCCESS != CommandPasteFile(source, instance->folder->path, &copyBuffer, &destination)) {
 					goto encounteredError;
 				}
 
+				String destinationItem = StringDuplicate(PathGetName(destination));
+				itemsToSelect.Add(destinationItem);
+				StringDestroy(&destination);
+
 				position += source.bytes + 1;
 				bytes -= source.bytes + 1;
-				StringDestroy(&destination);
 			}
 		} else {
 			encounteredError:;
@@ -205,8 +254,23 @@ void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
 		}
 
+		size_t pathSectionCount = PathCountSections(instance->folder->path);
+
+		for (uintptr_t i = 0; i < pathSectionCount - 1; i++) {
+			String parent = PathGetParent(instance->folder->path, i + 1);
+			FolderFileUpdatedAtPath(parent, nullptr);
+		}
+
+		EsListViewSelectNone(instance->list);
+
+		for (uintptr_t i = 0; i < itemsToSelect.Length(); i++) {
+			InstanceSelectByName(instance, itemsToSelect[i], true, i == itemsToSelect.Length() - 1);
+			StringDestroy(&itemsToSelect[i]);
+		}
+
 		EsHeapFree(pathList);
 		EsHeapFree(copyBuffer);
+		itemsToSelect.Free();
 	} else {
 		// TODO Paste the data into a new file.
 	}

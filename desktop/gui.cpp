@@ -2900,8 +2900,8 @@ void ScrollPane::Refresh() {
 
 	EsRectangle bounds = parent->GetBounds();
 
-	if (bar[0]) ScrollbarSetMeasurements(bar[0], bounds.r - fixedViewport[0], contentWidth);
-	if (bar[1]) ScrollbarSetMeasurements(bar[1], bounds.b - fixedViewport[1], contentHeight);
+	if (bar[0]) ScrollbarSetMeasurements(bar[0], bounds.r - fixedViewport[0], contentWidth  - fixedViewport[0]);
+	if (bar[1]) ScrollbarSetMeasurements(bar[1], bounds.b - fixedViewport[1], contentHeight - fixedViewport[1]);
 
 	SetPosition(0, position[0], true);
 	SetPosition(1, position[1], true);

@@ -324,6 +324,16 @@ ES_MACRO_SORT(InstanceSortListContents, ListEntry, {
 	result = InstanceCompareFolderEntries(_left->entry, _right->entry, context);
 }, uint16_t);
 
+void InstanceSelectByName(Instance *instance, String name, bool addToExistingSelection, bool focusItem) {
+	for (uintptr_t i = 0; i < instance->listContents.Length(); i++) {
+		if (0 == EsStringCompareRaw(STRING(instance->listContents[i].entry->GetName()), STRING(name))) {
+			EsListViewSelect(instance->list, 0, i, addToExistingSelection);
+			if (focusItem) EsListViewFocusItem(instance->list, 0, i);
+			break;
+		}
+	}
+}
+
 void InstanceAddContents(Instance *instance, HashTable *newEntries) {
 	// Call with the message mutex acquired.
 
@@ -352,14 +362,7 @@ void InstanceAddContents(Instance *instance, HashTable *newEntries) {
 		EsListViewInsert(instance->list, 0, 0, instance->listContents.Length());
 
 		if (instance->delayedFocusItem.bytes) {
-			for (uintptr_t i = 0; i < instance->listContents.Length(); i++) {
-				if (0 == EsStringCompareRaw(STRING(instance->listContents[i].entry->GetName()), STRING(instance->delayedFocusItem))) {
-					EsListViewSelect(instance->list, 0, i);
-					EsListViewFocusItem(instance->list, 0, i);
-					break;
-				}
-			}
-
+			InstanceSelectByName(instance, instance->delayedFocusItem, false, true);
 			StringDestroy(&instance->delayedFocusItem);
 		}
 	}
@@ -696,7 +699,7 @@ int ListItemMessage(EsElement *element, EsMessage *message) {
 int ListCallback(EsElement *element, EsMessage *message) {
 	Instance *instance = element->instance;
 
-	if (message->type == ES_MSG_FOCUSED_START) {
+	if (message->type == ES_MSG_FOCUSED_START || message->type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 		InstanceUpdateItemSelectionCountCommands(instance);
 		return 0;
 	} else if (message->type == ES_MSG_FOCUSED_END) {

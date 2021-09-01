@@ -235,25 +235,32 @@ EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destin
 	EsError error = ES_SUCCESS;
 
 	EsFileInformation sourceFile = EsFileOpen(source, sourceBytes, ES_FILE_READ | ES_NODE_FILE | ES_NODE_FAIL_IF_NOT_FOUND);
-	EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
 
-	if (sourceFile.error == ES_SUCCESS && destinationFile.error == ES_SUCCESS) {
-		error = EsFileResize(destinationFile.handle, sourceFile.size);
+	if (sourceFile.error == ES_SUCCESS) {
+		EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
 
-		if (error == ES_SUCCESS) {
-			for (uintptr_t i = 0; i < sourceFile.size; i += copyBufferBytes) {
-				size_t bytesRead = EsFileReadSync(sourceFile.handle, i, copyBufferBytes, copyBuffer);
-				if (ES_CHECK_ERROR(bytesRead)) { error = bytesRead; break; }
-				size_t bytesWritten = EsFileWriteSync(destinationFile.handle, i, bytesRead, copyBuffer);
-				if (ES_CHECK_ERROR(bytesWritten)) { error = bytesWritten; break; }
+		if (destinationFile.error == ES_SUCCESS) {
+			error = EsFileResize(destinationFile.handle, sourceFile.size);
+
+			if (error == ES_SUCCESS) {
+				for (uintptr_t i = 0; i < sourceFile.size; i += copyBufferBytes) {
+					size_t bytesRead = EsFileReadSync(sourceFile.handle, i, copyBufferBytes, copyBuffer);
+					if (ES_CHECK_ERROR(bytesRead)) { error = bytesRead; break; }
+					size_t bytesWritten = EsFileWriteSync(destinationFile.handle, i, bytesRead, copyBuffer);
+					if (ES_CHECK_ERROR(bytesWritten)) { error = bytesWritten; break; }
+				}
 			}
+
+			EsHandleClose(destinationFile.handle);
+		} else {
+			error = destinationFile.error;
 		}
+
+		EsHandleClose(sourceFile.handle);
 	} else {
-		error = sourceFile.error == ES_SUCCESS ? destinationFile.error : sourceFile.error;
+		error = sourceFile.error;
 	}
 
-	if (sourceFile.error == ES_SUCCESS) EsHandleClose(sourceFile.handle);
-	if (destinationFile.error == ES_SUCCESS) EsHandleClose(destinationFile.handle);
 	if (!_copyBuffer) EsHeapFree(copyBuffer);
 	return error;
 }

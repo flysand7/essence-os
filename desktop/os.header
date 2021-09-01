@@ -2422,7 +2422,8 @@ function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumer
 function void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount);
 function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);
 function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand);
-function void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index);
+function void EsListViewSelectNone(EsListView *view);
+function void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index, bool addToExistingSelection = false);
 function void EsListViewFocusItem(EsListView *view, EsListViewIndex group, EsListViewIndex index);
 function bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index); // Returns false if not item was focused.
 function void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsListViewIndex index);

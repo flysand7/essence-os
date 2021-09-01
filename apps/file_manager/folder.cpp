@@ -426,6 +426,29 @@ void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t n
 	}
 }
 
+void FolderFileUpdatedAtPath(String path, Instance *instance) {
+	path = PathRemoveTrailingSlash(path);
+	String file = PathGetName(path);
+	String folder = PathGetParent(path);
+	EsDirectoryChild information = {};
+
+	if (EsPathQueryInformation(STRING(path), &information)) {
+		for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
+			if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;
+			if (EsStringCompareRaw(STRING(loadedFolders[i]->path), STRING(folder))) continue;
+
+			EsMutexAcquire(&loadedFolders[i]->modifyEntriesMutex);
+
+			if (loadedFolders[i]->doneInitialEnumeration) {
+				FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, instance);
+			}
+
+			EsMutexRelease(&loadedFolders[i]->modifyEntriesMutex);
+		}
+	}
+}
+
+
 uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, size_t nameBytes) {
 	FolderEntry *entry = (FolderEntry *) HashTableGetLong(&folder->entries, name, nameBytes);
 	uint64_t id = 0;
