@@ -502,6 +502,10 @@ EsError EsPathMove(const char *oldPath, ptrdiff_t oldPathBytes, const char *newP
 	if (oldPathBytes == -1) oldPathBytes = EsCStringLength(oldPath);
 	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
 
+	if (newPathBytes && newPath[newPathBytes - 1] == '/') {
+		newPathBytes--;
+	}
+
 	_EsNodeInformation node = {};
 	_EsNodeInformation directory = {};
 	EsError error;
@@ -756,6 +760,7 @@ struct ClipboardInformation {
 	uint8_t desktopMessageTag;
 	intptr_t error;
 	EsClipboardFormat format;
+	uint32_t flags;
 };
 
 EsFileStore *EsClipboardOpen(EsClipboard clipboard) {
@@ -773,7 +778,7 @@ EsFileStore *EsClipboardOpen(EsClipboard clipboard) {
 	return fileStore;
 }
 
-EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore) {
+EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags) {
 	(void) clipboard;
 	EsError error = fileStore->error;
 
@@ -782,6 +787,7 @@ EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, 
 		information.desktopMessageTag = DESKTOP_MSG_CLIPBOARD_PUT;
 		information.error = error;
 		information.format = format;
+		information.flags = flags;
 		MessageDesktop(&information, sizeof(information));
 	}
 
@@ -828,7 +834,7 @@ bool EsClipboardHasData(EsClipboard clipboard) {
 	return information.error == ES_SUCCESS && information.format != ES_CLIPBOARD_FORMAT_INVALID;
 }
 
-char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
+char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags) {
 	(void) clipboard;
 
 	char *result = nullptr;
@@ -841,6 +847,10 @@ char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes) {
 	if (file) {
 		if (information.format == ES_CLIPBOARD_FORMAT_TEXT || information.format == ES_CLIPBOARD_FORMAT_PATH_LIST) {
 			result = (char *) EsFileReadAllFromHandle(file, bytes);
+
+			if (flags) {
+				*flags = information.flags;
+			}
 		}
 
 		EsHandleClose(file);

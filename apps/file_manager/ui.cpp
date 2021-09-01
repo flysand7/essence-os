@@ -175,8 +175,11 @@ void InstanceUpdateItemSelectionCountCommands(Instance *instance) {
 	EsCommandSetEnabled(command, enabled); \
 	EsCommandSetCallback(command, callback); } while(0)
 
-	COMMAND_SET(ES_COMMAND_COPY, CommandCopy, instance->selectedItemCount >= 1 && instance->folder->itemHandler->canCopy);
-	COMMAND_SET(ES_COMMAND_PASTE, CommandPaste, instance->folder->itemHandler->canPaste && EsClipboardHasData(ES_CLIPBOARD_PRIMARY) && !instance->folder->readOnly);
+	if (EsElementIsFocused(instance->list)) {
+		COMMAND_SET(ES_COMMAND_CUT, CommandCut, instance->selectedItemCount >= 1 && instance->folder->itemHandler->canCut && !instance->folder->readOnly);
+		COMMAND_SET(ES_COMMAND_COPY, CommandCopy, instance->selectedItemCount >= 1 && instance->folder->itemHandler->canCopy);
+		COMMAND_SET(ES_COMMAND_PASTE, CommandPaste, instance->folder->itemHandler->canPaste && EsClipboardHasData(ES_CLIPBOARD_PRIMARY) && !instance->folder->readOnly);
+	}
 }
 
 int InstanceCompareFolderEntries(FolderEntry *left, FolderEntry *right, uint16_t sortColumn) {
@@ -703,7 +706,9 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		InstanceUpdateItemSelectionCountCommands(instance);
 		return 0;
 	} else if (message->type == ES_MSG_FOCUSED_END) {
+		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_CUT), nullptr);
 		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_COPY), nullptr);
+		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_PASTE), nullptr);
 		return 0;
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
 		int column = message->getContent.column, index = message->getContent.index;

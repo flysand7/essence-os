@@ -182,7 +182,7 @@ struct NamespaceHandler {
 	uint8_t type;
 	uint8_t rootContainerHandlerType;
 
-	bool canCopy, canPaste;
+	bool canCut, canCopy, canPaste;
 
 	bool (*handlesPath)(String path);
 

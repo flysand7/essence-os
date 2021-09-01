@@ -211,6 +211,7 @@ NamespaceHandler namespaceHandlers[] = {
 	{
 		.type = NAMESPACE_HANDLER_FILE_SYSTEM,
 		.rootContainerHandlerType = NAMESPACE_HANDLER_DRIVES_PAGE,
+		.canCut = true,
 		.canCopy = true,
 		.canPaste = true,
 		.handlesPath = FSDirHandlesPath,
@@ -426,29 +427,6 @@ void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t n
 	}
 }
 
-void FolderFileUpdatedAtPath(String path, Instance *instance) {
-	path = PathRemoveTrailingSlash(path);
-	String file = PathGetName(path);
-	String folder = PathGetParent(path);
-	EsDirectoryChild information = {};
-
-	if (EsPathQueryInformation(STRING(path), &information)) {
-		for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
-			if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;
-			if (EsStringCompareRaw(STRING(loadedFolders[i]->path), STRING(folder))) continue;
-
-			EsMutexAcquire(&loadedFolders[i]->modifyEntriesMutex);
-
-			if (loadedFolders[i]->doneInitialEnumeration) {
-				FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, instance);
-			}
-
-			EsMutexRelease(&loadedFolders[i]->modifyEntriesMutex);
-		}
-	}
-}
-
-
 uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, size_t nameBytes) {
 	FolderEntry *entry = (FolderEntry *) HashTableGetLong(&folder->entries, name, nameBytes);
 	uint64_t id = 0;
@@ -466,7 +444,32 @@ uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, s
 	return id;
 }
 
-void FolderPathMoved(Instance *instance, String oldPath, String newPath) {
+void FolderFileUpdatedAtPath(String path, Instance *instance) {
+	path = PathRemoveTrailingSlash(path);
+	String file = PathGetName(path);
+	String folder = PathGetParent(path);
+	EsDirectoryChild information = {};
+	bool add = EsPathQueryInformation(STRING(path), &information);
+
+	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
+		if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;
+		if (EsStringCompareRaw(STRING(loadedFolders[i]->path), STRING(folder))) continue;
+
+		EsMutexAcquire(&loadedFolders[i]->modifyEntriesMutex);
+
+		if (loadedFolders[i]->doneInitialEnumeration) {
+			if (add) {
+				FolderAddEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes, &information, instance);
+			} else {
+				FolderRemoveEntryAndUpdateInstances(loadedFolders[i], file.text, file.bytes);
+			}
+		}
+
+		EsMutexRelease(&loadedFolders[i]->modifyEntriesMutex);
+	}
+}
+
+void FolderPathMoved(Instance *instance, String oldPath, String newPath, bool saveConfiguration) {
 	_EsPathAnnouncePathMoved(instance, STRING(oldPath), STRING(newPath));
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
@@ -523,7 +526,9 @@ void FolderPathMoved(Instance *instance, String oldPath, String newPath) {
 				"%s%s", STRFMT(newPath), STRFMT(after));
 	}
 
-	ConfigurationSave();
+	if (saveConfiguration) {
+		ConfigurationSave();
+	}
 }
 
 void FolderAttachInstance(Instance *instance, String path, bool recurse) {

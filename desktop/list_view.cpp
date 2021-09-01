@@ -483,6 +483,7 @@ struct EsListView : EsElement {
 	}
 
 	void Populate() {
+#if 0
 		EsPrint("--- Before Populate() ---\n");
 		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - currentStyle->insets.t));
 
@@ -498,6 +499,7 @@ struct EsListView : EsElement {
 		}
 
 		EsPrint("------\n");
+#endif
 
 		// TODO Keep one item before and after the viewport, so tab traversal on custom elements works.
 		// TODO Always keep an item if it has FOCUS_WITHIN.
@@ -2507,7 +2509,8 @@ void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand)
 }
 
 EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view) {
-	EsRectangle bounding = EsElementGetWindowBounds(view);
+	EsRectangle viewWindowBounds = EsElementGetWindowBounds(view);
+	EsRectangle bounding = viewWindowBounds;
 	bool first = true;
 
 	for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
@@ -2518,5 +2521,6 @@ EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view) {
 		first = false;
 	}
 
+	bounding = EsRectangleIntersection(bounding, viewWindowBounds);
 	return ES_POINT((bounding.l + bounding.r) / 2, (bounding.t + bounding.b) / 2);
 }

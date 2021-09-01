@@ -729,6 +729,8 @@ define ES_VOLUME_READ_ONLY (1 << 0)
 
 define ES_PATH_MOVE_ALLOW_COPY_AND_DELETE (1 << 0) // Copy and delete the file if a direct move is not possible.
 
+define ES_CLIPBOARD_ADD_LAZY_CUT (1 << 0) // Only perform the deletion after pasting; often implemented as a move.
+
 include desktop/icons.header
 
 enum EsFatalError {
@@ -2230,9 +2232,9 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format,
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function bool EsClipboardHasData(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes); // Free with EsHeapFree.
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = nullptr); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
-function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore);
+function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags = ES_FLAGS_DEFAULT);
 
 function void EsUndoClear(EsUndoManager *manager);
 function void EsUndoContinueGroup(EsUndoManager *manager);
@@ -2277,6 +2279,7 @@ function EsMessage *EsMessageReceive();
 
 function void EsElementDraw(EsElement *element, EsPainter *painter); // Actually draw an element onto a painter.
 function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
+function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
 function void EsElementSetCallback(EsElement *element, EsUICallbackFunction callback);

@@ -5408,6 +5408,10 @@ void UIMaybeRemoveFocusedElement(EsWindow *window) {
 	}
 }
 
+bool EsElementIsFocused(EsElement *element) {
+	return element->window->focused == element;
+}
+
 void EsElementFocus(EsElement *element, uint32_t flags) {
 	EsMessageMutexCheck();
 
