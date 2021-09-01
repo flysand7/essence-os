@@ -73,6 +73,22 @@ BuildFont fonts[] = {
 		{},
 	} },
 
+	{ "Atkinson Hyperlegible", "Atkinson Hyperlegible License.txt", "Sans", "Latn", (FontFile []) {
+		{ "4", "Atkinson Hyperlegible Regular.ttf" },
+		{ "4i", "Atkinson Hyperlegible Regular Italic.ttf" },
+		{ "7", "Atkinson Hyperlegible Bold.ttf" },
+		{ "7i", "Atkinson Hyperlegible Bold Italic.ttf" },
+		{},
+	} },
+
+	{ "OpenDyslexic", "OpenDyslexic License.txt", "Sans", "Latn", (FontFile []) {
+		{ "4", "OpenDyslexic Regular.otf" },
+		{ "4i", "OpenDyslexic Regular Italic.otf" },
+		{ "7", "OpenDyslexic Bold.otf" },
+		{ "7i", "OpenDyslexic Bold Italic.otf" },
+		{},
+	} },
+
 	{},
 };
 
