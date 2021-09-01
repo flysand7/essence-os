@@ -295,7 +295,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			node.handle = NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
 			size_t pathBytes;
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
-			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE_EXCLUSIVE, (uintptr_t) &node);
+			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, (uintptr_t) &node);
 			EsHeapFree(path);
 			if (error == ES_ERROR_FILE_DOES_NOT_EXIST) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOTDIR;
@@ -315,7 +315,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			node.handle = NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
 			size_t pathBytes;
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
-			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE_EXCLUSIVE, (uintptr_t) &node);
+			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, (uintptr_t) &node);
 			EsHeapFree(path);
 			if (error == ES_ERROR_FILE_DOES_NOT_EXIST) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOTDIR;

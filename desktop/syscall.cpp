@@ -139,7 +139,7 @@ EsError EsFileWriteAllGather(const char *filePath, ptrdiff_t filePathLength, con
 		filePathLength = EsCStringLength(filePath);
 	}
 
-	EsFileInformation information = EsFileOpen((char *) filePath, filePathLength, ES_FILE_WRITE_EXCLUSIVE | ES_NODE_CREATE_DIRECTORIES);
+	EsFileInformation information = EsFileOpen((char *) filePath, filePathLength, ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
 
 	if (ES_SUCCESS != information.error) {
 		return information.error;
@@ -237,7 +237,7 @@ EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destin
 	EsFileInformation sourceFile = EsFileOpen(source, sourceBytes, ES_FILE_READ | ES_NODE_FILE | ES_NODE_FAIL_IF_NOT_FOUND);
 
 	if (sourceFile.error == ES_SUCCESS) {
-		EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE_EXCLUSIVE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
+		EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
 
 		if (destinationFile.error == ES_SUCCESS) {
 			error = EsFileResize(destinationFile.handle, sourceFile.size);
@@ -473,7 +473,7 @@ void EsBatch(EsBatchCall *calls, size_t count) {
 EsError EsPathDelete(const char *path, ptrdiff_t pathBytes) {
 	_EsNodeInformation node;
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE_EXCLUSIVE, &node);
+	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, &node);
 	if (ES_CHECK_ERROR(error)) return error;
 	error = EsSyscall(ES_SYSCALL_NODE_DELETE, node.handle, 0, 0, 0);
 	EsHandleClose(node.handle);
@@ -486,7 +486,7 @@ EsError EsFileDelete(EsHandle handle) {
 
 void *EsFileMap(const char *path, ptrdiff_t pathBytes, size_t *fileSize, uint32_t flags) {
 	EsFileInformation information = EsFileOpen(path, pathBytes, 
-			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE_EXCLUSIVE : ES_FILE_READ));
+			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE : ES_FILE_READ));
 
 	if (ES_CHECK_ERROR(information.error)) {
 		return nullptr;

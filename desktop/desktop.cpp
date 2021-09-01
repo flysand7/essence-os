@@ -1371,7 +1371,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		document->temporarySavePath = nullptr;
 
 		EsHandle fileHandle;
-		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes, ES_FILE_WRITE_EXCLUSIVE);
+		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes, ES_FILE_WRITE);
 
 		if (m.tabOperation.error == ES_SUCCESS) {
 			document->currentWriter = instance->embeddedWindowID;
@@ -1904,7 +1904,7 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsHandle handle;
 			char *path;
 			size_t pathBytes;
-			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes, ES_FILE_WRITE_EXCLUSIVE);
+			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes, ES_FILE_WRITE);
 
 			if (error == ES_SUCCESS) {
 				if (desktop.nextClipboardFile) {

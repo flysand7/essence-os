@@ -1056,7 +1056,7 @@ void *MMMapFile(MMSpace *space, FSFile *node, EsFileOffset offset, size_t bytes,
 
 	MMRegion *region = nullptr;
 	uint64_t fileHandleFlags = ES_NODE_PREVENT_RESIZE 
-		| (protection == ES_MAP_OBJECT_READ_WRITE ? ES_FILE_WRITE : ES_FILE_READ_SHARED);
+		| (protection == ES_MAP_OBJECT_READ_WRITE ? ES_FILE_WRITE_SHARED : ES_FILE_READ_SHARED);
 	bool decommit = false;
 
 	// Register a handle to the node.

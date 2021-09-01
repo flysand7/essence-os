@@ -1077,7 +1077,7 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode) {
 
 			if (flags & ES_FILE_READ) {
 				if (file->countWrite > 0) return ES_ERROR_FILE_HAS_WRITERS; 
-			} else if (flags & ES_FILE_WRITE_EXCLUSIVE) {
+			} else if (flags & ES_FILE_WRITE) {
 				if (flags & _ES_NODE_FROM_WRITE_EXCLUSIVE) {
 					if (!file->countWrite || (~file->flags & NODE_HAS_EXCLUSIVE_WRITER)) {
 						KernelPanic("FSNodeOpenHandle - File %x is invalid state for a handle to have the _ES_NODE_FROM_WRITE_EXCLUSIVE flag.\n", file);
@@ -1087,19 +1087,19 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode) {
 						return ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE; 
 					}
 				}
-			} else if (flags & ES_FILE_WRITE) {
+			} else if (flags & ES_FILE_WRITE_SHARED) {
 				if ((file->flags & NODE_HAS_EXCLUSIVE_WRITER) || file->countWrite < 0) return ES_ERROR_FILE_IN_EXCLUSIVE_USE;
 			}
 
-			if (flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) {
+			if (flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 				if (!file->fileSystem->write) {
 					return ES_ERROR_FILE_ON_READ_ONLY_VOLUME;
 				}
 			}
 
-			if (flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) file->countWrite++;
+			if (flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) file->countWrite++;
 			if (flags & ES_FILE_READ) file->countWrite--;
-			if (flags & ES_FILE_WRITE_EXCLUSIVE) __sync_fetch_and_or(&node->flags, NODE_HAS_EXCLUSIVE_WRITER);
+			if (flags & ES_FILE_WRITE) __sync_fetch_and_or(&node->flags, NODE_HAS_EXCLUSIVE_WRITER);
 		}
 
 		NODE_INCREMENT_HANDLE_COUNT(node);
@@ -1146,7 +1146,7 @@ void FSNodeCloseHandle(KNode *node, uint32_t flags) {
 	if (node->directoryEntry->type == ES_NODE_FILE) {
 		FSFile *file = (FSFile *) node;
 
-		if ((flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE))) {
+		if ((flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 			if (file->countWrite <= 0) KernelPanic("FSNodeCloseHandle - Invalid countWrite on node %x.\n", node);
 			file->countWrite--;
 		}
@@ -1156,7 +1156,7 @@ void FSNodeCloseHandle(KNode *node, uint32_t flags) {
 			file->countWrite++;
 		}
 
-		if ((flags & ES_FILE_WRITE_EXCLUSIVE) && file->countWrite == 0) {
+		if ((flags & ES_FILE_WRITE) && file->countWrite == 0) {
 			if (~file->flags & NODE_HAS_EXCLUSIVE_WRITER) KernelPanic("FSNodeCloseHandle - Missing exclusive flag on node %x.\n", node);
 			__sync_fetch_and_and(&node->flags, ~NODE_HAS_EXCLUSIVE_WRITER);
 		}

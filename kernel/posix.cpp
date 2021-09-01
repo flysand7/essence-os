@@ -236,9 +236,9 @@ namespace POSIX {
 					else if (flags & O_CREAT) {}
 					else openFlags |= ES_NODE_FAIL_IF_NOT_FOUND;
 					if (flags & O_DIRECTORY) openFlags |= ES_NODE_DIRECTORY;
-					if (flags & O_APPEND) openFlags |= ES_FILE_WRITE;
-					else if (flags & O_RDWR) openFlags |= ES_FILE_WRITE;
-					else if (flags & O_WRONLY) openFlags |= ES_FILE_WRITE;
+					if (flags & O_APPEND) openFlags |= ES_FILE_WRITE_SHARED;
+					else if (flags & O_RDWR) openFlags |= ES_FILE_WRITE_SHARED;
+					else if (flags & O_WRONLY) openFlags |= ES_FILE_WRITE_SHARED;
 					else if (!(flags & O_PATH)) openFlags |= ES_FILE_READ;
 
 					KNodeInformation information = FSNodeOpen(path, pathLength, openFlags, (KNode *) syscall.arguments[4]);
@@ -408,7 +408,7 @@ namespace POSIX {
 				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, true);
 
-				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE))) {
+				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 					return -EACCES;
 				}
 
@@ -428,7 +428,7 @@ namespace POSIX {
 
 				size_t bytesWritten = 0;
 
-				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE))) {
+				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 					return -EACCES;
 				}
 

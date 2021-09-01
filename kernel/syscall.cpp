@@ -702,7 +702,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 		if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
 		if (argument3 == ES_MAP_OBJECT_READ_WRITE) {
-			if (!(object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE))) {
+			if (!(object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 				SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 			}
 		} else {
@@ -774,7 +774,7 @@ SYSCALL_IMPLEMENT(syscallName) { \
 
 SYSCALL_SHARE_OBJECT(ES_SYSCALL_PROCESS_SHARE, KERNEL_OBJECT_PROCESS, share.flags);
 SYSCALL_SHARE_OBJECT(ES_SYSCALL_NODE_SHARE, KERNEL_OBJECT_NODE, 
-		(argument3 & 1) && (share.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) ? ES_FILE_READ_SHARED : share.flags);
+		(argument3 & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags);
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	if (~currentProcess->permissions & ES_PERMISSION_GET_VOLUME_INFORMATION) {
@@ -806,7 +806,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 
 	flags &= ~_ES_NODE_FROM_WRITE_EXCLUSIVE | _ES_NODE_NO_WRITE_BASE;
 
-	bool needWritePermission = flags & (ES_FILE_WRITE_EXCLUSIVE | ES_FILE_WRITE | _ES_NODE_DIRECTORY_WRITE);
+	bool needWritePermission = flags & (ES_FILE_WRITE | ES_FILE_WRITE_SHARED | _ES_NODE_DIRECTORY_WRITE);
 
 	char *path;
 	if (argument1 > K_MAX_PATH) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
@@ -840,7 +840,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 		SYSCALL_RETURN(_information.error, false);
 	}
 
-	if (flags & ES_FILE_WRITE_EXCLUSIVE) {
+	if (flags & ES_FILE_WRITE) {
 		// Mark this handle as being the exclusive writer for this file.
 		// This way, when the handle is used, OpenHandleToObject succeeds.
 		// The exclusive writer flag will only be removed from the file where countWrite drops to zero.
@@ -866,7 +866,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
 		SYSCALL_RETURN(ES_ERROR_FILE_PERMISSION_NOT_GRANTED, false);
 	}
 	
-	if (node->directoryEntry->type == ES_NODE_FILE && (~object.flags & ES_FILE_WRITE_EXCLUSIVE)) {
+	if (node->directoryEntry->type == ES_NODE_FILE && (~object.flags & ES_FILE_WRITE)) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	}
 
@@ -919,7 +919,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_WRITE_SYNC) {
 
 	SYSCALL_BUFFER(argument3, argument2, 1, true /* write */);
 
-	if (object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) {
+	if (object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 		size_t result = FSFileWriteSync(file, (void *) argument3, argument1, argument2, 
 				(_region1->flags & MM_REGION_FILE) ? FS_FILE_ACCESS_USER_BUFFER_MAPPED : 0);
 		SYSCALL_RETURN(result, false);
@@ -943,7 +943,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_RESIZE) {
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
-	if (object.flags & (ES_FILE_WRITE | ES_FILE_WRITE_EXCLUSIVE)) {
+	if (object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 		SYSCALL_RETURN(FSFileResize(file, argument1), false);
 	} else {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);

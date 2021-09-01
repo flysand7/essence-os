@@ -378,8 +378,8 @@ define ES_TEXT_PLAN_NO_FONT_SUBSTITUTION   (1 << 12)
 
 define ES_FILE_READ_SHARED		(0x1) // Read-only. The file can still be opened for writing.
 define ES_FILE_READ			(0x2) // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
-define ES_FILE_WRITE			(0x4) // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
-define ES_FILE_WRITE_EXCLUSIVE 		(0x8) // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
+define ES_FILE_WRITE_SHARED		(0x4) // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
+define ES_FILE_WRITE 			(0x8) // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
 
 define ES_NODE_FILE			(0)
 define ES_NODE_DIRECTORY		(0x10)
