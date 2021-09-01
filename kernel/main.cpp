@@ -1,6 +1,7 @@
 // TODO Prevent Meltdown/Spectre exploits.
 // TODO Kernel debugger.
 // TODO Passing data to userspace - zeroing padding bits of structures.
+// TODO Restoring all registers after system call.
 // TODO Remove file extensions?
 // TODO Thread-local variables for native applications (already working under the POSIX subsystem).
 

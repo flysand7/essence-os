@@ -567,7 +567,7 @@ void BuildDesktop(Application *application) {
 	ADD_BUNDLE_INPUT("res/Themes/Theme.dat", "Theme.dat", 16);
 	ADD_BUNDLE_INPUT("res/Themes/elementary Icons.dat", "Icons.dat", 16);
 	ADD_BUNDLE_INPUT("res/Themes/elementary Icons License.txt", "Icons License.txt", 16);
-	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "Executable (x86_64)", 0x1000);
+	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000);
 
 	MakeBundle("root/Essence/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 }
@@ -630,7 +630,7 @@ void BuildApplication(Application *application) {
 				ArgString(applicationLinkFlags), "-T", linkerScript);
 		ExecuteForApp(application, toolchainStrip, "-o", strippedFile, "--strip-all", symbolFile);
 
-		ADD_BUNDLE_INPUT(strippedFile, "Executable (x86_64)", 0x1000);
+		ADD_BUNDLE_INPUT(strippedFile, "$Executables/x86_64", 0x1000);
 
 		// Convert any files for the bundle marked with a '!'.
 
@@ -853,7 +853,7 @@ void OutputSystemConfiguration() {
 				FilePrintFormat(file, "%s=|Fonts:/%.*s.dat\n", fontLines[i].key, (int) fontLines[i].valueBytes - 4, fontLines[i].value);
 #endif
 			} else {
-				FilePrintFormat(file, "%s=:%s\n", fontLines[i].key, fontLines[i].value);
+				FilePrintFormat(file, "%s=:$Desktop/%s\n", fontLines[i].key, fontLines[i].value);
 			}
 		} else {
 			size_t bytes = EsINIFormat(fontLines + i, buffer, sizeof(buffer));

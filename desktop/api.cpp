@@ -1167,10 +1167,10 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		theming.scale = api.systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] / 100.0f;
 
 		size_t fileBytes;
-		const void *file = EsEmbeddedFileGet(EsLiteral("Theme.dat"), &fileBytes);
+		const void *file = EsEmbeddedFileGet(EsLiteral("$Desktop/Theme.dat"), &fileBytes);
 		EsAssert(ThemeLoadData(file, fileBytes));
 
-		iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("Icons.dat"), &iconManagement.standardPackSize);
+		iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Icons.dat"), &iconManagement.standardPackSize);
 
 		theming.cursors.width = ES_THEME_CURSORS_WIDTH;
 		theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
@@ -1498,30 +1498,27 @@ void EsInstanceSetActiveUndoManager(EsInstance *_instance, EsUndoManager *manage
 }
 
 const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *byteCount) {
-	// TODO It's probably a bad idea to let applications load embedded files from Desktop.
-		
-	uint64_t name = CalculateCRC64(_name, nameBytes == -1 ? EsCStringLength(_name) : nameBytes);
+	if (nameBytes == -1) {
+		nameBytes = EsCStringLength(_name);
+	}
 
-	for (uintptr_t i = 0; i < 2; i++) {
-		if (i == 0 && (api.startupInformation->isDesktop || !api.startupInformation->isBundle)) {
-			continue;
-		}
+	const BundleHeader *header = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS;
 
-		const BundleHeader *header = (const BundleHeader *) (i ? BUNDLE_FILE_DESKTOP_MAP_ADDRESS : BUNDLE_FILE_MAP_ADDRESS);
-		const BundleFile *files = (const BundleFile *) (header + 1);
+	if (nameBytes > 9 && 0 == EsMemoryCompare(_name, "$Desktop/", 9)) {
+		header = (const BundleHeader *) BUNDLE_FILE_DESKTOP_MAP_ADDRESS;
+		_name += 9, nameBytes -= 9;
+	}
 
-		if (header->signature != BUNDLE_SIGNATURE) {
-			return nullptr;
-		}
+	const BundleFile *files = (const BundleFile *) (header + 1);
+	uint64_t name = CalculateCRC64(_name, nameBytes);
 
-		for (uintptr_t i = 0; i < header->fileCount; i++) {
-			if (files[i].nameCRC64 == name) {
-				if (byteCount) {
-					*byteCount = files[i].bytes;
-				}
-
-				return (const uint8_t *) header + files[i].offset;
+	for (uintptr_t i = 0; i < header->fileCount; i++) {
+		if (files[i].nameCRC64 == name) {
+			if (byteCount) {
+				*byteCount = files[i].bytes;
 			}
+
+			return (const uint8_t *) header + files[i].offset;
 		}
 	}
 
