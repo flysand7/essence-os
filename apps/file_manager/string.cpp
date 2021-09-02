@@ -192,6 +192,13 @@ String PathGetName(String path) {
 	return path;
 }
 
+String PathGetDrive(String path) {
+	uintptr_t i = 0;
+	while (i < path.bytes && path.text[i] != '/') i++;
+	path.bytes = i;
+	return path;
+}
+
 bool PathHasPrefix(String path, String prefix) {
 	prefix = PathRemoveTrailingSlash(prefix);
 	return StringStartsWith(path, prefix) && path.bytes > prefix.bytes && path.text[prefix.bytes] == '/';

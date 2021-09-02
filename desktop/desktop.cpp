@@ -1442,8 +1442,9 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	EsMessagePostRemote(instance->processHandle, &m);
 }
 
-void InstanceAnnouncePathMoved(ApplicationInstance *fromInstance, const uint8_t *buffer, size_t embedWindowMessageBytes) {
+void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const uint8_t *buffer, size_t embedWindowMessageBytes) {
 	// TODO Update the location of installed applications and other things in the configuration.
+	// TODO Replace fromApplication with something better.
 
 	uintptr_t oldPathBytes, newPathBytes;
 	EsMemoryCopy(&oldPathBytes, buffer + 1, sizeof(uintptr_t));
@@ -1491,7 +1492,7 @@ void InstanceAnnouncePathMoved(ApplicationInstance *fromInstance, const uint8_t 
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
 		if (instance->documentID != documentID) continue;
-		if (instance->application == fromInstance->application) continue;
+		if (instance->application == fromApplication) continue;
 		if (!instance->processHandle) continue;
 
 		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
@@ -2038,6 +2039,12 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		if (application && (application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES)) {
 			ConfigurationWriteSectionsToBuffer("file_type", nullptr, false, pipe);
 		}
+	} else if (buffer[0] == DESKTOP_MSG_ANNOUNCE_PATH_MOVED && message->desktop.bytes > 1 + sizeof(uintptr_t) * 2) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+			InstanceAnnouncePathMoved(application, buffer, message->desktop.bytes);
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
@@ -2072,10 +2079,6 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			startupInformation.filePathBytes = document->pathBytes;
 			ApplicationInstanceCreate(desktop.fileManager->id, &startupInformation, instance->tab->container);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_ANNOUNCE_PATH_MOVED
-			&& (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES)
-			&& message->desktop.bytes > 1 + sizeof(uintptr_t) * 2) {
-		InstanceAnnouncePathMoved(instance, buffer, message->desktop.bytes);
 	} else if (buffer[0] == DESKTOP_MSG_RUN_TEMPORARY_APPLICATION) {
 		if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION)) {
 			InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);

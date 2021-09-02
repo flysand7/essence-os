@@ -469,8 +469,8 @@ void FolderFileUpdatedAtPath(String path, Instance *instance) {
 	}
 }
 
-void FolderPathMoved(Instance *instance, String oldPath, String newPath, bool saveConfiguration) {
-	_EsPathAnnouncePathMoved(instance, STRING(oldPath), STRING(newPath));
+void FolderPathMoved(String oldPath, String newPath, bool saveConfiguration) {
+	_EsPathAnnouncePathMoved(STRING(oldPath), STRING(newPath));
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 		Folder *folder = loadedFolders[i];

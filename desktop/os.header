@@ -1887,6 +1887,7 @@ function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, E
 function_pointer void EsMountPointEnumerationCallbackFunction(const char *prefix, size_t prefixBytes, EsGeneric context);
 function_pointer void EsListViewEnumerateVisibleItemsCallbackFunction(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
 function_pointer void EsFontEnumerationCallbackFunction(const EsFontInformation *information, EsGeneric context);
+function_pointer void EsUserTaskCallbackFunction(EsGeneric data);
 
 // System.
 
@@ -1958,7 +1959,7 @@ function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flag
 // Requires permission_all_files.
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
 function void EsMountPointEnumerate(EsMountPointEnumerationCallbackFunction callback, EsGeneric context);
-function void _EsPathAnnouncePathMoved(EsInstance *instance, STRING oldPath, STRING newPath);
+function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
 
 // Processes and threads.
 
@@ -2263,6 +2264,8 @@ function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInsta
 function const EsApplicationStartupInformation *EsInstanceGetStartupInformation(ES_INSTANCE_TYPE *instance);
 function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(EsMessage *message, bool success);
+
+function EsError EsUserTaskStart(EsUserTaskCallbackFunction callback, EsGeneric data);
 
 // Message processing.
 

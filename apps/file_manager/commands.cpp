@@ -62,7 +62,7 @@ void CommandRename(Instance *instance, EsElement *, EsCommand *) {
 							size_t oldPathBytes;
 							char *oldPath = EsStringAllocateAndFormat(&oldPathBytes, "%s%s", STRFMT(instance->folder->path), STRFMT(task->string2));
 
-							FolderPathMoved(instance, { .text = oldPath, .bytes = oldPathBytes }, { .text = newPath, .bytes = newPathBytes }, true);
+							FolderPathMoved({ .text = oldPath, .bytes = oldPathBytes }, { .text = newPath, .bytes = newPathBytes }, true);
 
 							EsDirectoryChild information = {};
 							EsPathQueryInformation(newPath, newPathBytes, &information);
@@ -229,11 +229,10 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 	}
 
 	if (error == ES_SUCCESS) {
-		if (move) {
-			FolderFileUpdatedAtPath(source, nullptr);
-		}
-
+		EsMessageMutexAcquire();
+		if (move) FolderFileUpdatedAtPath(source, nullptr);
 		FolderFileUpdatedAtPath(destination, nullptr);
+		EsMessageMutexRelease();
 	}
 
 	done:;
@@ -251,62 +250,58 @@ struct PasteOperation {
 	String source, destination;
 };
 
-void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
-	if (EsClipboardHasFormat(ES_CLIPBOARD_PRIMARY, ES_CLIPBOARD_FORMAT_PATH_LIST)) {
-		// TODO Background task.
-		// TODO Reporting errors properly. Ask to retry or cancel.
-		// TODO If the destination file already exists, ask to replace, skip, rename or cancel.
-		// TODO Other namespace handlers.
-		// TODO Undo.
+struct PasteTask {
+	// Input:
+	String destinationBase;
+	bool move;
+	char *pathList;
+	size_t pathListBytes;
+};
 
-		void *copyBuffer = nullptr;
+void CommandPasteTask(EsGeneric _task) {
+	// TODO Background task.
+	// TODO Reporting errors properly. Ask to retry or cancel.
+	// TODO If the destination file already exists, ask to replace, skip, rename or cancel.
+	// TODO Other namespace handlers.
+	// TODO Undo.
 
-		size_t bytes;
-		uint32_t flags;
-		char *pathList = EsClipboardReadText(ES_CLIPBOARD_PRIMARY, &bytes, &flags);
+	PasteTask *task = (PasteTask *) _task.p;
+	Array<PasteOperation> pasteOperations = {};
+	EsError error = ES_SUCCESS;
 
-		bool move = flags & ES_CLIPBOARD_ADD_LAZY_CUT;
-		String destinationBase = StringDuplicate(instance->folder->path);
-		Array<PasteOperation> pasteOperations = {};
+	void *copyBuffer = nullptr;
+	const char *position = task->pathList;
 
-		bool success = true;
+	while (task->pathListBytes) {
+		const char *newline = (const char *) EsCRTmemchr(position, '\n', task->pathListBytes); 
+		if (!newline) break;
 
-		if (pathList) {
-			const char *position = pathList;
+		String source = StringFromLiteralWithSize(position, newline - position);
+		String destination;
+		error = CommandPasteFile(source, task->destinationBase, &copyBuffer, task->move, &destination);
+		if (error != ES_SUCCESS) break;
 
-			while (bytes) {
-				const char *newline = (const char *) EsCRTmemchr(position, '\n', bytes); 
-				if (!newline) break;
+		PasteOperation operation = { .source = StringDuplicate(source), .destination = destination };
+		pasteOperations.Add(operation);
 
-				String source = StringFromLiteralWithSize(position, newline - position);
-				String destination;
+		position += source.bytes + 1;
+		task->pathListBytes -= source.bytes + 1;
+	}
 
-				if (ES_SUCCESS != CommandPasteFile(source, destinationBase, &copyBuffer, move, &destination)) {
-					goto encounteredError;
-				}
+	EsMessageMutexAcquire();
 
-				PasteOperation operation = { .source = StringDuplicate(source), .destination = destination };
-				pasteOperations.Add(operation);
+	size_t pathSectionCount = PathCountSections(task->destinationBase);
+	FolderFileUpdatedAtPath(PathGetDrive(task->destinationBase), nullptr);
 
-				position += source.bytes + 1;
-				bytes -= source.bytes + 1;
-			}
-		} else {
-			encounteredError:;
-			EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
-			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
-			success = false;
-		}
+	for (uintptr_t i = 0; i < pathSectionCount; i++) {
+		String parent = PathGetParent(task->destinationBase, i + 1);
+		FolderFileUpdatedAtPath(parent, nullptr);
+	}
 
-		size_t pathSectionCount = PathCountSections(destinationBase);
-
-		for (uintptr_t i = 0; i < pathSectionCount; i++) {
-			String parent = PathGetParent(destinationBase, i + 1);
-			FolderFileUpdatedAtPath(parent, nullptr);
-		}
-
+	if (task->move) {
 		if (pasteOperations.Length()) {
 			size_t pathSectionCount = PathCountSections(pasteOperations[0].source);
+			FolderFileUpdatedAtPath(PathGetDrive(pasteOperations[0].source), nullptr);
 
 			for (uintptr_t i = 0; i < pathSectionCount; i++) {
 				String parent = PathGetParent(pasteOperations[0].source, i + 1);
@@ -314,28 +309,61 @@ void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 			}
 		}
 
-		if (success) {
-			EsListViewSelectNone(instance->list);
-		}
-
 		for (uintptr_t i = 0; i < pasteOperations.Length(); i++) {
-			if (success) {
-				InstanceSelectByName(instance, PathGetName(pasteOperations[i].destination), true, i == pasteOperations.Length() - 1);
+			FolderPathMoved(pasteOperations[i].source, pasteOperations[i].destination, i == pasteOperations.Length() - 1);
+		}
+	}
 
-				if (move) {
-					// TODO We must do this regardless of whether the instance has been destroyed during the operation.
-					FolderPathMoved(instance, pasteOperations[i].source, pasteOperations[i].destination, i == pasteOperations.Length() - 1);
+	for (uintptr_t i = 0; i < instances.Length(); i++) {
+		Instance *instance = instances[i];
+
+		if (instance->issuedPasteTask == task) {
+			instance->issuedPasteTask = nullptr;
+
+			if (error != ES_SUCCESS) {
+				EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
+				EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
+			} else {
+				EsListViewSelectNone(instance->list);
+
+				for (uintptr_t i = 0; i < pasteOperations.Length(); i++) {
+					String name = PathRemoveTrailingSlash(PathGetName(pasteOperations[i].destination));
+					InstanceSelectByName(instance, name, true, i == pasteOperations.Length() - 1);
 				}
 			}
-
-			StringDestroy(&pasteOperations[i].source);
-			StringDestroy(&pasteOperations[i].destination);
 		}
+	}
 
-		EsHeapFree(pathList);
-		EsHeapFree(copyBuffer);
-		StringDestroy(&destinationBase);
-		pasteOperations.Free();
+	EsMessageMutexRelease();
+
+	for (uintptr_t i = 0; i < pasteOperations.Length(); i++) {
+		StringDestroy(&pasteOperations[i].source);
+		StringDestroy(&pasteOperations[i].destination);
+	}
+
+	pasteOperations.Free();
+	EsHeapFree(copyBuffer);
+	EsHeapFree(task->pathList);
+	StringDestroy(&task->destinationBase);
+	EsHeapFree(task);
+}
+
+void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
+	if (EsClipboardHasFormat(ES_CLIPBOARD_PRIMARY, ES_CLIPBOARD_FORMAT_PATH_LIST)) {
+		PasteTask *task = (PasteTask *) EsHeapAllocate(sizeof(PasteTask), true);
+		uint32_t flags;
+		task->pathList = EsClipboardReadText(ES_CLIPBOARD_PRIMARY, &task->pathListBytes, &flags);
+		task->move = flags & ES_CLIPBOARD_ADD_LAZY_CUT;
+		task->destinationBase = StringDuplicate(instance->folder->path);
+		instance->issuedPasteTask = task;
+
+		if (ES_SUCCESS != EsUserTaskStart(CommandPasteTask, task)) {
+			EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
+			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
+			EsHeapFree(task->pathList);
+			StringDestroy(&task->destinationBase);
+			EsHeapFree(task);
+		}
 	} else {
 		// TODO Paste the data into a new file.
 	}

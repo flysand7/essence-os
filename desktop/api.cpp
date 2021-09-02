@@ -133,6 +133,8 @@ struct {
 	uintptr_t performanceTimerStackCount;
 
 	ThreadLocalStorage firstThreadLocalStorage;
+
+	size_t openInstanceCount; // Also counts user tasks.
 } api;
 
 ptrdiff_t tlsStorageOffset;
@@ -244,6 +246,7 @@ MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes) {
 bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information) {
 	MountPoint *mountPoint = NodeFindMountPoint(prefix, prefixBytes);
 	if (!mountPoint) return false;
+	EsSyscall(ES_SYSCALL_VOLUME_GET_INFORMATION, mountPoint->base, (uintptr_t) &mountPoint->information, 0, 0);
 	EsMemoryCopy(information, &mountPoint->information, sizeof(EsVolumeInformation));
 	return true;
 }
@@ -513,7 +516,7 @@ int EsMessageSend(EsElement *element, EsMessage *message) {
 	return response;
 }
 
-void _EsPathAnnouncePathMoved(EsInstance *instance, const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes) {
+void _EsPathAnnouncePathMoved(const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes) {
 	if (oldPathBytes == -1) oldPathBytes = EsCStringLength(oldPath);
 	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
 	size_t bufferBytes = 1 + sizeof(uintptr_t) * 2 + oldPathBytes + newPathBytes;
@@ -523,7 +526,7 @@ void _EsPathAnnouncePathMoved(EsInstance *instance, const char *oldPath, ptrdiff
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t), &newPathBytes, sizeof(uintptr_t));
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
 	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
-	MessageDesktop(buffer, bufferBytes, instance->window->handle);
+	MessageDesktop(buffer, bufferBytes);
 	EsHeapFree(buffer);
 }
 
@@ -675,6 +678,7 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 	APIInstance *apiInstance = InstanceSetup(instance);
 	apiInstance->applicationName = applicationName;
 	apiInstance->applicationNameBytes = applicationNameBytes;
+	api.openInstanceCount++;
 
 	if (message && message->createInstance.data != ES_INVALID_HANDLE && message->createInstance.dataBytes > 1) {
 		apiInstance->startupInformation = (EsApplicationStartupInformation *) EsHeapAllocate(message->createInstance.dataBytes, false);
@@ -781,9 +785,12 @@ EsMessage *EsMessageReceive() {
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
 			EsProcessTerminateCurrent();
 		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
+			api.openInstanceCount--;
+
 			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
 
-			if (instance->startupInformation && (instance->startupInformation->flags & ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS)) {
+			if (instance->startupInformation && (instance->startupInformation->flags & ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS)
+					&& !api.openInstanceCount) {
 				EsMessage m = { ES_MSG_APPLICATION_EXIT };
 				EsMessagePost(nullptr, &m);
 			}
@@ -1538,6 +1545,37 @@ const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *by
 	}
 
 	return nullptr;
+}
+
+struct UserTask {
+	EsUserTaskCallbackFunction callback;
+	EsGeneric data;
+};
+
+void UserTaskThread(EsGeneric _task) {
+	UserTask *task = (UserTask *) _task.p;
+	task->callback(task->data);
+	EsMessageMutexAcquire();
+	api.openInstanceCount--; 
+	// TODO Send ES_MSG_APPLICATION_EXIT if needed.
+	// TODO Tell Desktop the task is complete.
+	EsMessageMutexRelease();
+	EsHeapFree(task);
+}
+
+EsError EsUserTaskStart(EsUserTaskCallbackFunction callback, EsGeneric data) {
+	EsMessageMutexCheck();
+	UserTask *task = (UserTask *) EsHeapAllocate(sizeof(UserTask), true);
+	if (!task) return ES_ERROR_INSUFFICIENT_RESOURCES;
+	task->callback = callback;
+	task->data = data;
+	// TODO Tell Desktop about the task. (This'll also prevent it sending ES_MSG_APPLICATION_EXIT in single process mode.)
+	api.openInstanceCount++;
+	EsThreadInformation information;
+	EsError error = EsThreadCreate(UserTaskThread, &information, task);
+	if (error == ES_SUCCESS) EsHandleClose(information.handle);
+	else EsHeapFree(task);
+	return error;
 }
 
 void TimersThread(EsGeneric) {

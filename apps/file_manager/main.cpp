@@ -168,9 +168,11 @@ struct Instance : EsInstance {
 
 	FolderViewSettings viewSettings;
 
-	// Blocking task thread.
-	// Tasks that block the use of the instance,
-	// but display progress and can be (optionally) cancelled.
+	// Asynchronous tasks.
+
+	struct PasteTask *issuedPasteTask;
+	
+	// Tasks that block the use of the instance, but display progress and can be (optionally) cancelled.
 	// Shows the dialog after some threshold.
 #define BLOCKING_TASK_DIALOG_THRESHOLD_MS (100)
 	Task blockingTask;

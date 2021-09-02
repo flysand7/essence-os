@@ -29,6 +29,8 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 		return true;
 	}
 
+	instance->issuedPasteTask = nullptr;
+
 	InstanceRemoveContents(instance);
 	FolderAttachInstance(instance, path, false);
 	StringDestroy(&path);
