@@ -769,6 +769,11 @@ void LayerBoxOp(RfState *state, RfItem *item, void *pointer) {
 		ExportState *export = (ExportState *) state;
 		LayerBox *box = (LayerBox *) pointer;
 
+#if 0
+#define EsContainerOf(type, member, pointer) ((type *) ((uint8_t *) pointer - offsetof(type, member)))
+		uint64_t layerID = EsContainerOf(Layer, base.box, box)->id;
+#endif
+
 		ThemeLayerBox themeBox = { 0 };
 		ExportAddPathToOffset2(export, LayerBox_borders, Rectangle8_l, offsetof(ThemeLayerBox, borders.l));
 		ExportAddPathToOffset2(export, LayerBox_borders, Rectangle8_r, offsetof(ThemeLayerBox, borders.r));
@@ -1943,8 +1948,8 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		}
 
 		if (previewShowGuides->e.flags & UI_BUTTON_CHECKED) {
-			UIDrawBlock(painter, UIRectangleAdd(generalBounds, UI_RECT_1I(-5)), 0xFFA2A0A4);
-			UIDrawBlock(painter, UIRectangleAdd(generalBounds, UI_RECT_1I(-3)), 0xFFC2C0C4);
+			UIDrawBlock(painter, UIRectangleAdd(generalBounds, UI_RECT_1I(-2)), 0xFFA2A0A4);
+			UIDrawBlock(painter, UIRectangleAdd(generalBounds, UI_RECT_1I(0)), 0xFFC2C0C4);
 		}
 
 		Rectangle8 opaqueInsets = StyleCalculateOpaqueInsets(selected.style->layers);

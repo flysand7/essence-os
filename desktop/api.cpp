@@ -203,6 +203,10 @@ struct APIInstance {
 
 	EsFileStore *fileStore;
 
+	// Do not propagate messages about this instance to the application. 
+	// Currently only used for inspectors.
+	bool internalOnly; 
+
 	union {
 		EsInstanceClassEditorSettings editorSettings;
 		EsInstanceClassViewerSettings viewerSettings;
@@ -714,8 +718,13 @@ const EsApplicationStartupInformation *EsInstanceGetStartupInformation(EsInstanc
 
 void EsInstanceDestroy(EsInstance *instance) {
 	InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
-	if (*inspector) EsInstanceDestroy(*inspector);
-	*inspector = nullptr;
+
+	if (*inspector) {
+		EsInstanceDestroy(*inspector);
+		(*inspector)->window->InternalDestroy();
+		*inspector = nullptr;
+	}
+
 	UndoManagerDestroy(instance->undoManager);
 	EsAssert(instance->window->instance == instance);
 	instance->window->destroyInstanceAfterClose = true;
@@ -956,6 +965,12 @@ EsMessage *EsMessageReceive() {
 					api.mountPoints[i].removing = true;
 					return &message.message;
 				}
+			}
+		} else if (type == ES_MSG_INSTANCE_DESTROY) {
+			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
+
+			if (!instance->internalOnly) {
+				return &message.message;
 			}
 		} else {
 			return &message.message;

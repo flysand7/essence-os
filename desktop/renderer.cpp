@@ -815,6 +815,19 @@ void RastPathAppendLinear(RastPath *path, RastVertex *vertices, size_t vertexCou
 	}
 }
 
+void RastPathAppendArc(RastPath *path, RastVertex center, float radius, float startAngle, float endAngle) {
+	float deltaAngle = EsCRTacosf(1 - 0.5f * RAST_FLATTEN_TOLERANCE * RAST_FLATTEN_TOLERANCE / radius / radius); // From cosine rule.
+	size_t steps = EsCRTfabsf(endAngle - startAngle) / deltaAngle;
+
+	for (uintptr_t i = 0; i <= steps; i++) {
+		float angle = (endAngle - startAngle) / steps * i + startAngle;
+		RastVertex vertex;
+		vertex.x = center.x + radius * EsCRTcosf(angle);
+		vertex.y = center.y + radius * EsCRTsinf(angle);
+		_RastPathAddVertex(path, vertex);
+	}
+}
+
 void RastPathTranslate(RastPath *path, float x, float y) {
 	if (!x && !y) return;
 		

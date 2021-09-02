@@ -542,6 +542,15 @@ void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 			uint32_t borderAlpha = borderColor >> 24;
 
 			if (outsideCount == (1 << (2 * STYLE_CORNER_OVERSAMPLING))) {
+			} else if (mainPaint.type == THEME_PAINT_OVERWRITE) {
+				// TODO Support borders when using an overwrite main paint.
+				uint32_t m1 = ((mainCount << 8) >> STYLE_CORNER_OVERSAMPLING * 2);
+				uint32_t m2 = 256 - m1;
+				uint32_t r2 = m2 * (*b & 0x00FF00FF);
+				uint32_t g2 = m2 * ((*b >> 8) & 0x00FF00FF);
+				uint32_t r1 = m1 * (mainColor & 0x00FF00FF);
+				uint32_t g1 = m1 * ((mainColor >> 8) & 0x00FF00FF);
+				*b = (0xFF00FF00 & (g1 + g2)) | (0x00FF00FF & ((r1 + r2) >> 8));
 			} else if (outsideCount || ((borderColor & 0xFF000000) != 0xFF000000) || (mainColor & 0xFF000000) != 0xFF000000) {
 				BlendPixel(b, (mainColor & 0x00FFFFFF) | (((mainAlpha * mainCount) << (24 - STYLE_CORNER_OVERSAMPLING * 2)) & 0xFF000000), 
 						painter->target->fullAlpha);

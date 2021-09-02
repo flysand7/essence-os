@@ -729,6 +729,65 @@ int TaskBarMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
+int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
+	if (message->type == ES_MSG_GET_WIDTH) {
+		message->measure.width = GetConstantNumber("taskBarTasksButtonWidth");
+		return ES_HANDLED;
+	} else if (message->type == ES_MSG_PAINT_ICON) {
+		float progress = 0.33f;
+
+		uint32_t color1 = GetConstantNumber("taskBarTasksButtonWheelColor1");
+		uint32_t color2 = GetConstantNumber("taskBarTasksButtonWheelColor2");
+
+		EsPainter *painter = message->painter;
+
+		EsRectangle destination = EsPainterBoundsClient(painter);
+		destination = EsRectangleFit(destination, ES_RECT_2S(1, 1), true); // Center with a 1:1 aspect ratio.
+
+		RastSurface surface = {};
+		surface.buffer = (uint32_t *) painter->target->bits;
+		surface.stride = painter->target->stride;
+
+		if (RastSurfaceInitialise(&surface, painter->target->width, painter->target->height, true)) {
+			RastVertex center = { (destination.l + destination.r) * 0.5f, (destination.t + destination.b) * 0.5f };
+
+			RastContourStyle style = {};
+			style.internalWidth = 5.0f * theming.scale;
+			style.capMode = RAST_LINE_CAP_FLAT;
+
+			RastPaint paint = {};
+			paint.type = RAST_PAINT_SOLID;
+
+			{
+				paint.solid.color = color1 & 0xFFFFFF;
+				paint.solid.alpha = (color1 >> 24) / 255.0f;
+
+				RastPath path = {};
+				RastPathAppendArc(&path, center, Width(destination) * 0.45f, ES_PI * 2.0f, 0.0f);
+				RastShape shape = RastShapeCreateContour(&path, style, true);
+				RastSurfaceFill(surface, shape, paint, false);
+				RastPathDestroy(&path);
+			}
+
+			{
+				paint.solid.color = color2 & 0xFFFFFF;
+				paint.solid.alpha = (color2 >> 24) / 255.0f;
+
+				RastPath path = {};
+				RastPathAppendArc(&path, center, Width(destination) * 0.45f, ES_PI * 1.5f + progress * ES_PI * 2.0f, ES_PI * 1.5f);
+				RastShape shape = RastShapeCreateContour(&path, style, true);
+				RastSurfaceFill(surface, shape, paint, false);
+				RastPathDestroy(&path);
+			}
+		}
+
+		RastSurfaceDestroy(&surface);
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
 void ShutdownModalCreate() {
 	if (desktop.shutdownWindowOpen) {
 		return;
@@ -1824,13 +1883,15 @@ void DesktopSetup() {
 			desktop.taskBar.taskList.Initialise(panel, ES_CELL_FILL, ReorderListMessage, nullptr);
 			desktop.taskBar.taskList.cName = "task list";
 
+			EsButton *tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON, "Copying files" ELLIPSIS, -1);
+			tasksButton->messageUser = TaskBarTasksButtonMessage;
+
 			EsButton *shutdownButton = EsButtonCreate(panel, ES_FLAGS_DEFAULT, ES_STYLE_TASK_BAR_EXTRA);
 			EsButtonSetIcon(shutdownButton, ES_ICON_SYSTEM_SHUTDOWN_SYMBOLIC);
 
 			EsButtonOnCommand(shutdownButton, [] (EsInstance *, EsElement *, EsCommand *) {
 				ShutdownModalCreate();
 			});
-
 		}
 	}
 

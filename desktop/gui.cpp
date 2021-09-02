@@ -6818,7 +6818,7 @@ struct InspectorElementEntry {
 };
 
 struct InspectorWindow : EsInstance {
-	EsInstance *instance;
+	EsInstance *instance; // The instance being inspected.
 
 	EsListView *elementList;
 	Array<InspectorElementEntry> elements;
@@ -6854,7 +6854,8 @@ int InspectorElementItemCallback(EsElement *element, EsMessage *message) {
 		else entry->element->Repaint(true);
 		inspector->hoveredElement = *entry;
 	} else if (message->type == ES_MSG_HOVERED_END || message->type == ES_MSG_DESTROY) {
-		InspectorElementEntry *entry = &inspector->elements[EsListViewGetIndexFromItem(element)];
+		EsListViewIndex index = EsListViewGetIndexFromItem(element);
+		InspectorElementEntry *entry = &inspector->elements[index];
 		if (entry->element->parent) entry->element->parent->Repaint(true);
 		else entry->element->Repaint(true);
 		inspector->hoveredElement = {};
@@ -7304,6 +7305,7 @@ void InspectorSetup(EsWindow *window) {
 	inspector->window = window;
 	InstanceSetup(inspector);
 	inspector->instance = window->instance;
+	((APIInstance *) inspector->_private)->internalOnly = true;
 	window->instance = inspector;
 
 	inspector->selectedElement = -1;
