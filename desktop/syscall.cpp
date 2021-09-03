@@ -717,7 +717,7 @@ size_t EsGameControllerStatePoll(EsGameControllerState *buffer) {
 	return EsSyscall(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL, (uintptr_t) buffer, 0, 0, 0);
 }
 
-void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe);
+void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe);
 
 void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow = ES_INVALID_HANDLE, EsBuffer *responseBuffer = nullptr) {
 	if (api.startupInformation->isDesktop) {
@@ -726,7 +726,7 @@ void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow 
 		m.desktop.windowID = embeddedWindow ? EsSyscall(ES_SYSCALL_WINDOW_GET_ID, embeddedWindow, 0, 0, 0) : 0;
 		m.desktop.processID = EsProcessGetID(ES_CURRENT_PROCESS);
 		m.desktop.bytes = messageBytes;
-		DesktopMessage2(&m, (uint8_t *) message, responseBuffer);
+		DesktopSyscall(&m, (uint8_t *) message, responseBuffer);
 	} else {
 		EsHandle pipeRead = ES_INVALID_HANDLE, pipeWrite = ES_INVALID_HANDLE;
 

@@ -2285,6 +2285,7 @@ function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAU
 function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
+function bool EsElementIsHidden(EsElement *element);
 function void EsElementSetCallback(EsElement *element, EsUICallbackFunction callback);
 function void EsElementGetSize(EsElement *element, int *width, int *height);
 function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL); // Mark an element to be repainted. If region is null, then the whole element is repainted.

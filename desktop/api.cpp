@@ -61,6 +61,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET  (13)
 #define DESKTOP_MSG_FILE_TYPES_GET            (14)
 #define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
+#define DESKTOP_MSG_START_USER_TASK           (16)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -1550,6 +1551,7 @@ const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *by
 struct UserTask {
 	EsUserTaskCallbackFunction callback;
 	EsGeneric data;
+	EsHandle taskHandle;
 };
 
 void UserTaskThread(EsGeneric _task) {
@@ -1558,23 +1560,48 @@ void UserTaskThread(EsGeneric _task) {
 	EsMessageMutexAcquire();
 	api.openInstanceCount--; 
 	// TODO Send ES_MSG_APPLICATION_EXIT if needed.
-	// TODO Tell Desktop the task is complete.
 	EsMessageMutexRelease();
+	EsSyscall(ES_SYSCALL_WINDOW_CLOSE, task->taskHandle, 0, 0, 0);
+	EsHandleClose(task->taskHandle);
 	EsHeapFree(task);
 }
 
 EsError EsUserTaskStart(EsUserTaskCallbackFunction callback, EsGeneric data) {
 	EsMessageMutexCheck();
+
 	UserTask *task = (UserTask *) EsHeapAllocate(sizeof(UserTask), true);
-	if (!task) return ES_ERROR_INSUFFICIENT_RESOURCES;
+
+	if (!task) {
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
+	uint8_t m = DESKTOP_MSG_START_USER_TASK;
+	EsBuffer response = { .canGrow = true };
+	MessageDesktop(&m, 1, ES_INVALID_HANDLE, &response);
+	EsHandle handle;
+	EsBufferReadInto(&response, &handle, sizeof(handle));
+	EsHeapFree(response.out);
+
+	if (!handle) {
+		EsHeapFree(task);
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
 	task->callback = callback;
 	task->data = data;
-	// TODO Tell Desktop about the task. (This'll also prevent it sending ES_MSG_APPLICATION_EXIT in single process mode.)
-	api.openInstanceCount++;
+	task->taskHandle = handle;
 	EsThreadInformation information;
 	EsError error = EsThreadCreate(UserTaskThread, &information, task);
-	if (error == ES_SUCCESS) EsHandleClose(information.handle);
-	else EsHeapFree(task);
+
+	if (error == ES_SUCCESS) {
+		EsHandleClose(information.handle);
+		api.openInstanceCount++;
+	} else {
+		EsSyscall(ES_SYSCALL_WINDOW_CLOSE, task->taskHandle, 0, 0, 0);
+		EsHandleClose(task->taskHandle);
+		EsHeapFree(task);
+	}
+
 	return error;
 }
 

@@ -321,6 +321,7 @@ struct ScrollPane {
 struct PanelMovementItem {
 	EsElement *element;
 	EsRectangle oldBounds;
+	bool wasHidden;
 };
 
 struct EsPanel : EsElement {
@@ -1903,15 +1904,19 @@ void PanelMoveChild(EsElement *element, int width, int height, int offsetX, int 
 			continue;
 		}
 
-		int oldWidth = Width(item->oldBounds);
-		int oldHeight = Height(item->oldBounds);
-		int oldOffsetX = item->oldBounds.l;
-		int oldOffsetY = item->oldBounds.t;
+		if (item->wasHidden) {
+			break;
+		} else {
+			int oldWidth = Width(item->oldBounds);
+			int oldHeight = Height(item->oldBounds);
+			int oldOffsetX = item->oldBounds.l;
+			int oldOffsetY = item->oldBounds.t;
 
-		element->InternalMove(LinearInterpolate(oldWidth, width, progress),
-				LinearInterpolate(oldHeight, height, progress),
-				LinearInterpolate(oldOffsetX, offsetX, progress),
-				LinearInterpolate(oldOffsetY, offsetY, progress));
+			element->InternalMove(LinearInterpolate(oldWidth, width, progress),
+					LinearInterpolate(oldHeight, height, progress),
+					LinearInterpolate(oldOffsetX, offsetX, progress),
+					LinearInterpolate(oldOffsetY, offsetY, progress));
+		}
 
 		return;
 	}
@@ -3471,6 +3476,7 @@ void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier) {
 		item.element = element;
 		item.oldBounds = ES_RECT_4(element->offsetX, element->offsetX + element->width, 
 				element->offsetY, element->offsetY + element->height);
+		item.wasHidden = element->flags & ES_ELEMENT_HIDDEN;
 		panel->movementItems.Add(item);
 	}
 
@@ -5641,6 +5647,11 @@ void EsElementSetHidden(EsElement *element, bool hidden) {
 
 	EsElementUpdateContentSize(element->parent);
 	UIMaybeRemoveFocusedElement(element->window);
+}
+
+bool EsElementIsHidden(EsElement *element) {
+	EsMessageMutexCheck();
+	return element->flags & ES_ELEMENT_HIDDEN;
 }
 
 void EsElementSetDisabled(EsElement *element, bool disabled) {

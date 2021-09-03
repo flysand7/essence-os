@@ -137,7 +137,7 @@ struct BlankTabInstance : CommonDesktopInstance {
 
 struct ApplicationInstance {
 	// User interface.
-	WindowTab *tab; // nullptr for notRespondingInstance.
+	WindowTab *tab; // nullptr for notRespondingInstance and user tasks.
 	EsObjectID embeddedWindowID;
 	EsHandle embeddedWindowHandle;
 
@@ -145,8 +145,9 @@ struct ApplicationInstance {
 	InstalledApplication *application;
 	EsObjectID documentID, processID;
 	EsHandle processHandle;
+	bool isUserTask;
 
-	// Tab information.
+	// Metadata.
 	char title[128];
 	size_t titleBytes;
 	uint32_t iconID;
@@ -182,6 +183,7 @@ struct {
 
 	TaskBar taskBar;
 	EsWindow *wallpaperWindow;
+	EsButton *tasksButton;
 
 	bool shutdownWindowOpen;
 	bool setupDesktopUIComplete;
@@ -729,12 +731,12 @@ int TaskBarMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
+int TaskBarTasksButtonMessage(EsElement *, EsMessage *message) {
 	if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = GetConstantNumber("taskBarTasksButtonWidth");
 		return ES_HANDLED;
 	} else if (message->type == ES_MSG_PAINT_ICON) {
-		float progress = 0.33f;
+		float progress = 0.0f; // TODO.
 
 		uint32_t color1 = GetConstantNumber("taskBarTasksButtonWheelColor1");
 		uint32_t color2 = GetConstantNumber("taskBarTasksButtonWheelColor2");
@@ -1200,8 +1202,10 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
 		if (instance->processID == message->crash.pid) {
-			ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, nullptr, instance);
-			WindowTabActivate(instance->tab, true);
+			if (instance->tab) {
+				ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, nullptr, instance);
+				WindowTabActivate(instance->tab, true);
+			}
 		}
 	}
 
@@ -1884,8 +1888,8 @@ void DesktopSetup() {
 			desktop.taskBar.taskList.Initialise(panel, ES_CELL_FILL, ReorderListMessage, nullptr);
 			desktop.taskBar.taskList.cName = "task list";
 
-			EsButton *tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON, "Copying files" ELLIPSIS, -1);
-			tasksButton->messageUser = TaskBarTasksButtonMessage;
+			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON, "Copying files" ELLIPSIS, -1);
+			desktop.tasksButton->messageUser = TaskBarTasksButtonMessage;
 
 			EsButton *shutdownButton = EsButtonCreate(panel, ES_FLAGS_DEFAULT, ES_STYLE_TASK_BAR_EXTRA);
 			EsButtonSetIcon(shutdownButton, ES_ICON_SYSTEM_SHUTDOWN_SYMBOLIC);
@@ -1953,7 +1957,7 @@ void DesktopSetup() {
 	desktop.setupDesktopUIComplete = true;
 }
 
-void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
+void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(message->desktop.windowID);
 
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
@@ -2045,6 +2049,57 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
 			InstanceAnnouncePathMoved(application, buffer, message->desktop.bytes);
 		}
+	} else if (buffer[0] == DESKTOP_MSG_START_USER_TASK && pipe) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (!application) {
+			return;
+		}
+
+		// HACK User tasks use an embedded window object for IPC.
+		// 	This allows us to basically treat them like other instances.
+
+		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
+		EsHandle windowHandle = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
+		ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
+		bool added = false;
+
+		if (processHandle && windowHandle && instance) {
+			added = desktop.allApplicationInstances.Add(instance);
+		}
+
+		if (!processHandle || !windowHandle || !instance || !added) {
+			if (processHandle) EsHandleClose(processHandle);
+			if (windowHandle) EsHandleClose(windowHandle);
+			if (instance) EsHeapFree(instance);
+
+			EsHandle invalid = ES_INVALID_HANDLE;
+			EsBufferWrite(pipe, &invalid, sizeof(invalid));
+			return;
+		}
+
+		instance->title[0] = ' ';
+		instance->titleBytes = 1;
+		instance->isUserTask = true;
+		instance->embeddedWindowHandle = windowHandle;
+		instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, windowHandle, 0, 0, 0);
+		instance->processHandle = processHandle;
+		instance->processID = message->desktop.processID;
+		instance->application = application;
+
+		if (application->singleProcessHandle) {
+			EsAssert(application->openInstanceCount);
+			application->openInstanceCount++;
+		}
+
+		EsHandle targetWindowHandle = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, windowHandle, processHandle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
+		EsBufferWrite(pipe, &targetWindowHandle, sizeof(targetWindowHandle));
+
+		if (EsElementIsHidden(desktop.tasksButton)) {
+			EsPanelStartMovementAnimation((EsPanel *) EsElementGetLayoutParent(desktop.tasksButton), 1.5f /* duration scale */);
+			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_IN, ES_ELEMENT_TRANSITION_ENTRANCE, 1.5f);
+			EsElementSetHidden(desktop.tasksButton, false);
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
@@ -2059,10 +2114,12 @@ void DesktopMessage2(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			}
 		}
 
-		instance->tab->Repaint(true);
+		if (instance->tab) {
+			instance->tab->Repaint(true);
 
-		if (instance->tab == instance->tab->container->active) {
-			instance->tab->container->taskBarButton->Repaint(true);
+			if (instance->tab == instance->tab->container->active) {
+				instance->tab->container->taskBarButton->Repaint(true);
+			}
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE) {
 		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1);
@@ -2201,7 +2258,7 @@ void DesktopMessage(EsMessage *message) {
 		if (buffer) {
 			EsConstantBufferRead(message->desktop.buffer, buffer);
 			EsBuffer pipe = { .canGrow = true };
-			DesktopMessage2(message, buffer, &pipe);
+			DesktopSyscall(message, buffer, &pipe);
 			if (message->desktop.pipe) EsPipeWrite(message->desktop.pipe, pipe.out, pipe.position);
 			EsHeapFree(pipe.out);
 			EsHeapFree(buffer);
