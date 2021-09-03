@@ -120,7 +120,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_INSPECTING		(1 << 22)
 
 struct EsElement : EsElementPublic {
-	EsUICallbackFunction messageClass;
+	EsUICallback messageClass;
 	EsElement *parent;
 	Array<EsElement *> children; 
 	uint32_t state;
@@ -223,7 +223,7 @@ struct EsElement : EsElementPublic {
 
 	void Repaint(bool all, EsRectangle region = ES_RECT_1(0) /* client coordinates */);
 
-	void Initialise(EsElement *_parent, uint64_t _flags, EsUICallbackFunction _classCallback, const EsStyle *style);
+	void Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *style);
 };
 
 struct MeasurementCache {
@@ -284,7 +284,7 @@ struct EsButton : EsElement {
 	uint32_t iconID;
 	MeasurementCache measurementCache;
 	EsCommand *command;
-	EsCommandCallbackFunction onCommand;
+	EsCommandCallback onCommand;
 	EsElement *checkBuddy;
 };
 
@@ -3806,7 +3806,7 @@ void EsButtonSetIcon(EsButton *button, uint32_t iconID) {
 	button->Repaint(true);
 }
 
-void EsButtonOnCommand(EsButton *button, EsCommandCallbackFunction onCommand, EsCommand *command) {
+void EsButtonOnCommand(EsButton *button, EsCommandCallback onCommand, EsCommand *command) {
 	EsMessageMutexCheck();
 
 	button->onCommand = onCommand;
@@ -3861,7 +3861,7 @@ void EsButtonSetCheck(EsButton *button, EsCheckState checkState, bool sendUpdate
 	button->MaybeRefreshStyle();
 }
 
-void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsMenuCallbackFunction callback, EsGeneric context) {
+void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsMenuCallback callback, EsGeneric context) {
 	EsButton *button = (EsButton *) EsButtonCreate(menu, 
 		ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_MENU_ITEM | ES_CELL_H_FILL | flags, 0,
 		label, labelBytes != -1 ? labelBytes : EsCStringLength(label));
@@ -3869,7 +3869,7 @@ void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t la
 
 	button->messageUser = [] (EsElement *element, EsMessage *message) {
 		if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
-			EsMenuCallbackFunction callback = (EsMenuCallbackFunction) element->userData.p;
+			EsMenuCallback callback = (EsMenuCallback) element->userData.p;
 			if (callback) callback((EsMenu *) element->window, ((EsButton *) element)->menuItemContext);
 		}
 
@@ -5519,7 +5519,7 @@ void EsElementInsertAfter(EsElement *element) {
 	gui.insertAfter = element;
 }
 
-void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallbackFunction _classCallback, const EsStyle *style) {
+void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *style) {
 	EsMessageMutexCheck();
 
 	// EsPrint("New element '%z' %x with parent %x.\n", _debugName, this, _parent);
@@ -5628,7 +5628,7 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	return m;
 }
 
-void EsElementSetCallback(EsElement *element, EsUICallbackFunction callback) {
+void EsElementSetCallback(EsElement *element, EsUICallback callback) {
 	EsMessageMutexCheck();
 	element->messageUser = callback;
 }

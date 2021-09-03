@@ -346,7 +346,7 @@ void AddTab(EsElement *toolbar, uintptr_t index, const char *label, bool asDefau
 	if (asDefault) EsButtonSetCheck(button, ES_CHECK_CHECKED);
 }
 
-void AddListView(EsListView **pointer, EsElement *switcher, EsUICallbackFunction callback, EsListViewColumn *columns, size_t columnsSize, uint64_t additionalFlags) {
+void AddListView(EsListView **pointer, EsElement *switcher, EsUICallback callback, EsListViewColumn *columns, size_t columnsSize, uint64_t additionalFlags) {
 	*pointer = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | additionalFlags);
 	(*pointer)->messageUser = callback;
 	EsListViewSetColumns(*pointer, columns, columnsSize / sizeof(EsListViewColumn));

@@ -604,7 +604,7 @@ EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFi
 	return 0;
 }
 
-void EsFontDatabaseEnumerate(EsFontEnumerationCallbackFunction callback, EsGeneric context) {
+void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context) {
 	FontInitialise();
 
 	for (uintptr_t i = 1; i < fontManagement.database.Length(); i++) {
@@ -2743,7 +2743,7 @@ struct EsTextbox : EsElement {
 	char *editStartContent;
 	int32_t editStartContentBytes;
 
-	EsUICallbackFunction overlayCallback;
+	EsUICallback overlayCallback;
 	EsGeneric overlayData;
 
 	char *activeLine;

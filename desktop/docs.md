@@ -74,9 +74,9 @@ struct EsThreadInformation {
 
 #define ES_CURRENT_THREAD ((EsHandle) (0x10))
 
-typedef void (*EsThreadEntryFunction)(EsGeneric argument);
+typedef void (*EsThreadEntryCallback)(EsGeneric argument);
 
-EsError EsThreadCreate(EsThreadEntryFunction entryFunction, EsThreadInformation *information, EsGeneric argument); 
+EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument); 
 uint64_t EsThreadGetID(EsHandle thread);
 void EsThreadTerminate(EsHandle thread); 
 ```

@@ -127,7 +127,7 @@ typedef struct ThemePaintRadialGradient {
 
 typedef struct ThemePaintCustom {
 #ifndef IN_DESIGNER
-	EsFragmentShaderCallbackFunction callback;
+	EsFragmentShaderCallback callback;
 #endif
 } ThemePaintCustom;
 

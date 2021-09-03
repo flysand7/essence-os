@@ -1133,7 +1133,7 @@ enum EsClipboardFormat {
 	ES_CLIPBOARD_FORMAT_PATH_LIST
 }
 
-function_pointer int EsUICallbackFunction(struct EsElement *element, struct EsMessage *message);
+function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
 
 struct EsBuffer {
 	union { const uint8_t *in; uint8_t *out; };
@@ -1144,7 +1144,7 @@ struct EsBuffer {
 };
 
 struct EsElementPublic {
-	EsUICallbackFunction messageUser;
+	EsUICallback messageUser;
 	EsCString cName; 
 	EsGeneric userData; 
 	char accessKey; // Upper-case.
@@ -1357,12 +1357,12 @@ struct EsTextSelection {
 	uint32_t foreground, background;
 };
 
-function_pointer uint32_t EsFragmentShaderCallbackFunction(int x, int y, struct EsStyledBox *box);
+function_pointer uint32_t EsFragmentShaderCallback(int x, int y, struct EsStyledBox *box);
 
 struct EsStyledBox {
 	EsRectangle bounds, clip; 
 	uint32_t backgroundColor, backgroundColor2; 
-	EsFragmentShaderCallbackFunction fragmentShader;
+	EsFragmentShaderCallback fragmentShader;
 	uint32_t borderColor; 
 	EsRectangle borders;
 	int cornerRadiusTopLeft, cornerRadiusTopRight, cornerRadiusBottomLeft, cornerRadiusBottomRight; 
@@ -1380,11 +1380,11 @@ struct EsCalculationValue {
 	double number;
 };
 
-function_pointer void EsCommandCallbackFunction(ES_INSTANCE_TYPE *instance, EsElement *element, struct EsCommand *command);
+function_pointer void EsCommandCallback(ES_INSTANCE_TYPE *instance, EsElement *element, struct EsCommand *command);
 
 struct EsCommand {
 	EsElement **elements;
-	EsCommandCallbackFunction callback;
+	EsCommandCallback callback;
 	bool disabled, registered, allocated;
 	EsCheckState check;
 	uint32_t stableID;
@@ -1877,17 +1877,17 @@ struct EsFontInformation {
 
 // Function pointer types.
 
-function_pointer void EsThreadEntryFunction(EsGeneric argument);
-function_pointer int EsComparisonCallbackFunction(const void *left, const void *right, EsGeneric context);
-function_pointer void EsSwapCallbackFunction(const void *left, const void *right, EsGeneric context);
+function_pointer void EsThreadEntryCallback(EsGeneric argument);
+function_pointer int EsComparisonCallback(const void *left, const void *right, EsGeneric context);
+function_pointer void EsSwapCallback(const void *left, const void *right, EsGeneric context);
 function_pointer int EsCRTComparisonCallback(const void *left, const void *right);
-function_pointer void EsTimerCallbackFunction(EsGeneric argument);
-function_pointer void EsMenuCallbackFunction(EsMenu *menu, EsGeneric context); 
+function_pointer void EsTimerCallback(EsGeneric argument);
+function_pointer void EsMenuCallback(EsMenu *menu, EsGeneric context); 
 function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
-function_pointer void EsMountPointEnumerationCallbackFunction(const char *prefix, size_t prefixBytes, EsGeneric context);
-function_pointer void EsListViewEnumerateVisibleItemsCallbackFunction(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
-function_pointer void EsFontEnumerationCallbackFunction(const EsFontInformation *information, EsGeneric context);
-function_pointer void EsUserTaskCallbackFunction(EsGeneric data);
+function_pointer void EsMountPointEnumerationCallback(const char *prefix, size_t prefixBytes, EsGeneric context);
+function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
+function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
+function_pointer void EsUserTaskCallback(EsGeneric data);
 
 // System.
 
@@ -1958,7 +1958,7 @@ function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flag
 
 // Requires permission_all_files.
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
-function void EsMountPointEnumerate(EsMountPointEnumerationCallbackFunction callback, EsGeneric context);
+function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
 
 // Processes and threads.
@@ -1971,7 +1971,7 @@ function EsHandle EsProcessOpen(EsObjectID pid);
 function void EsProcessPause(EsHandle process, bool resume); 
 function void EsProcessTerminate(EsHandle process, int status); 
 function void EsProcessTerminateCurrent(); 
-function EsError EsThreadCreate(EsThreadEntryFunction entryFunction, EsThreadInformation *information, EsGeneric argument); 
+function EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument); 
 function EsObjectID EsThreadGetID(EsHandle thread); // TODO Make this 64-bit.
 function void EsThreadTerminate(EsHandle thread); 
 
@@ -2043,8 +2043,8 @@ function EsRectangle EsRectangleSubtract(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
 function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
 function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
-function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallbackFunction compar, EsGeneric argument); 
-function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallbackFunction compar, EsGeneric argument, EsSwapCallbackFunction swap); 
+function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument); 
+function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument, EsSwapCallback swap); 
 function uint64_t EsTimeStamp(); 
 function double EsTimeStampMs(); 
 
@@ -2096,7 +2096,7 @@ function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 		char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount,
 		EsTextStyle *baseStyle);
 
-function void EsFontDatabaseEnumerate(EsFontEnumerationCallbackFunction callback, EsGeneric context);
+function void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context);
 function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information); // Returns false if the font does not exist in the database.
 function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
 
@@ -2146,7 +2146,7 @@ function void EsSchedulerYield();
 function void EsSleep(uint64_t milliseconds); 
 function void EsSpinlockAcquire(EsSpinlock *spinlock); 
 function void EsSpinlockRelease(EsSpinlock *spinlock); 
-function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallbackFunction callback, EsGeneric argument); 
+function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallback callback, EsGeneric argument); 
 function void EsTimerCancel(EsTimer id);
 function uintptr_t EsWait(EsHandle *objects, size_t objectCount, uintptr_t timeoutMs); 
 
@@ -2252,8 +2252,8 @@ function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
 
 function void EsCommandAddButton(EsCommand *command, EsButton *button);
 function EsCommand *EsCommandByID(EsInstance *instance, uint32_t stableID);
-function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, EsCommandCallbackFunction callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
-function void EsCommandSetCallback(EsCommand *command, EsCommandCallbackFunction callback);
+function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
+function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback);
 function void EsCommandSetDisabled(EsCommand *command, bool disabled);
 function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
 
@@ -2265,7 +2265,7 @@ function const EsApplicationStartupInformation *EsInstanceGetStartupInformation(
 function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(EsMessage *message, bool success);
 
-function EsError EsUserTaskStart(EsUserTaskCallbackFunction callback, EsGeneric data);
+function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data);
 
 // Message processing.
 
@@ -2286,7 +2286,7 @@ function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
 function bool EsElementIsHidden(EsElement *element);
-function void EsElementSetCallback(EsElement *element, EsUICallbackFunction callback);
+function void EsElementSetCallback(EsElement *element, EsUICallback callback);
 function void EsElementGetSize(EsElement *element, int *width, int *height);
 function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL); // Mark an element to be repainted. If region is null, then the whole element is repainted.
 function void EsElementRepaintForScroll(EsElement *element, EsMessage *message); // Minimal repaint for ES_MSG_SCROLL_X/Y.
@@ -2322,7 +2322,7 @@ function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsE
 
 function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
-function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallbackFunction callback = ES_NULL, EsGeneric context = ES_NULL);
+function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL);
 function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command);
 function void EsMenuAddSeparator(EsMenu *menu);
 function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
@@ -2343,7 +2343,7 @@ function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_D
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
 function EsCheckState EsButtonGetCheck(EsButton *button);
-function void EsButtonOnCommand(EsButton *button, EsCommandCallbackFunction callback, EsCommand *command = ES_NULL); // TODO Public property?
+function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback, EsCommand *command = ES_NULL); // TODO Public property?
 function void EsButtonSetCheckBuddy(EsButton *button, EsElement *checkBuddy); // The buddy element is enabled/disabled when the button is checked/unchecked.
 function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public property?
 
@@ -2424,7 +2424,7 @@ function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLA
 		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
 
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL);
-function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallbackFunction callback);
+function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback);
 
 function void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount);
 function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);

@@ -104,7 +104,7 @@ struct MountPoint : EsMountPoint {
 struct Timer {
 	EsTimer id;
 	double afterMs;
-	EsTimerCallbackFunction callback; 
+	EsTimerCallback callback; 
 	EsGeneric argument;
 };
 
@@ -252,7 +252,7 @@ bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, Es
 	return true;
 }
 
-void EsMountPointEnumerate(EsMountPointEnumerationCallbackFunction callback, EsGeneric context) {
+void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context) {
 	for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 		MountPoint *mountPoint = &api.mountPoints[i];
 		callback(mountPoint->prefix, mountPoint->prefixBytes, context);
@@ -851,7 +851,7 @@ EsMessage *EsMessageReceive() {
 		if (type == ES_MSG_EYEDROP_REPORT) {
 			EsMessageSend((EsElement *) message.object, &message.message);
 		} else if (type == ES_MSG_TIMER) {
-			((EsTimerCallbackFunction) message.message.user.context1.p)(message.message.user.context2);
+			((EsTimerCallback) message.message.user.context1.p)(message.message.user.context2);
 		} else if (type >= ES_MSG_WM_START && type <= ES_MSG_WM_END && message.object) {
 #if 0
 			ProcessMessageTiming timing = {};
@@ -1242,7 +1242,7 @@ void EsCommandAddButton(EsCommand *command, EsButton *button) {
 	EsButtonSetCheck(button, command->check);
 }
 
-EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsCommandCallbackFunction callback, uint32_t stableID, 
+EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsCommandCallback callback, uint32_t stableID, 
 		const char *cDefaultKeyboardShortcut, bool enabled) {
 	if (!command) {
 		command = (EsCommand *) EsHeapAllocate(sizeof(EsCommand), true);
@@ -1284,7 +1284,7 @@ void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedM
 	}
 }
 
-void EsCommandSetCallback(EsCommand *command, EsCommandCallbackFunction callback) {
+void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback) {
 	EsAssert(command->registered); // Command has not been registered.
 
 	if (callback != command->callback) {
@@ -1549,7 +1549,7 @@ const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *by
 }
 
 struct UserTask {
-	EsUserTaskCallbackFunction callback;
+	EsUserTaskCallback callback;
 	EsGeneric data;
 	EsHandle taskHandle;
 };
@@ -1566,7 +1566,7 @@ void UserTaskThread(EsGeneric _task) {
 	EsHeapFree(task);
 }
 
-EsError EsUserTaskStart(EsUserTaskCallbackFunction callback, EsGeneric data) {
+EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data) {
 	EsMessageMutexCheck();
 
 	UserTask *task = (UserTask *) EsHeapAllocate(sizeof(UserTask), true);
@@ -1641,7 +1641,7 @@ void TimersThread(EsGeneric) {
 	}
 }
 
-EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallbackFunction callback, EsGeneric argument) {
+EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallback callback, EsGeneric argument) {
 	EsMutexAcquire(&api.timersMutex);
 
 	static EsTimer _id = 0;

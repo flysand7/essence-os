@@ -2498,7 +2498,7 @@ void EsListViewScrollToEnd(EsListView *view) {
 	}
 }
 
-void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallbackFunction callback) {
+void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback) {
 	for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
 		callback(view, view->visibleItems[i].element, view->visibleItems[i].group, view->visibleItems[i].index);
 	}

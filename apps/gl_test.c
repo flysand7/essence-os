@@ -239,7 +239,7 @@ int main(int argc, char **argv) {
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			EsInstance *instance = EsInstanceCreate(message, "GL Test", -1);
 			EsWindowSetTitle(instance->window, "GL Test", -1);
-			EsCustomElementCreate(instance->window, ES_CELL_FILL, 0)->messageUser = (EsUICallbackFunction) CanvasCallback;
+			EsCustomElementCreate(instance->window, ES_CELL_FILL, 0)->messageUser = (EsUICallback) CanvasCallback;
 		}
 	}
 #endif

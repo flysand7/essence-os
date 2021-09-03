@@ -107,14 +107,14 @@ int EsProcessGetExitStatus(EsHandle process) {
 
 void ThreadInitialise(ThreadLocalStorage *local);
 
-void ThreadEntry(EsGeneric argument, EsThreadEntryFunction entryFunction) {
+void ThreadEntry(EsGeneric argument, EsThreadEntryCallback entryFunction) {
 	ThreadLocalStorage local;
 	ThreadInitialise(&local);
 	entryFunction(argument);
 	EsThreadTerminate(ES_CURRENT_THREAD);
 }
 
-EsError EsThreadCreate(EsThreadEntryFunction entryFunction, EsThreadInformation *information, EsGeneric argument) {
+EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument) {
 	EsThreadInformation discard = {};
 
 	if (!information) {
