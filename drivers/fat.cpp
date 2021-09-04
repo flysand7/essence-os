@@ -20,7 +20,7 @@ struct SuperBlockCommon {
 	uint16_t heads;
 	uint32_t hiddenSectors;
 	uint32_t largeSectorCount;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct SuperBlock16 : SuperBlockCommon {
 	uint8_t deviceID;
@@ -30,7 +30,7 @@ struct SuperBlock16 : SuperBlockCommon {
 	uint8_t label[11];
 	uint64_t systemIdentifier;
 	uint8_t _unused1[450];
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct SuperBlock32 : SuperBlockCommon {
 	uint32_t sectorsPerFAT32;
@@ -47,7 +47,7 @@ struct SuperBlock32 : SuperBlockCommon {
 	uint8_t label[11];
 	uint64_t systemIdentifier;
 	uint8_t _unused1[422];
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct DirectoryEntry {
 	uint8_t name[11];
@@ -62,7 +62,7 @@ struct DirectoryEntry {
 	uint16_t modificationDate;
 	uint16_t firstClusterLow;
 	uint32_t fileSizeBytes;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct Volume : KFileSystem {
 	union {

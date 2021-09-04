@@ -367,7 +367,7 @@ struct {
 } theming;
 #endif
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O2 
 void ThemeFillRectangle(EsPainter *painter, EsRectangle bounds, ThemePaintData paint, GradientCache *gradient) {
 	uint32_t *bits = (uint32_t *) painter->target->bits;
 	int width = painter->target->width;
@@ -463,9 +463,7 @@ void ThemeFillRectangle(EsPainter *painter, EsRectangle bounds, ThemePaintData p
 	}
 }
 
-#ifndef IN_DESIGNER
-__attribute__((optimize("-O2"))) 
-#endif
+ES_FUNCTION_OPTIMISE_O2 
 void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy, 
 		int border, int corner, ThemePaintData mainPaint, ThemePaintData borderPaint, 
 		GradientCache *mainGradient, GradientCache *borderGradient) {
@@ -571,14 +569,16 @@ void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 	}
 }
 
-#ifndef IN_DESIGNER
-__attribute__((optimize("-O2"))) 
-#endif
+ES_FUNCTION_OPTIMISE_O2 
 void ThemeFillBlurCutCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy, int border, int corner, GradientCache *gradient, ThemePaintData mainPaint) {
 	uint32_t *bits = (uint32_t *) painter->target->bits;
 	int width = painter->target->width;
 	cx += bounds.l, cy += bounds.t;
 	bounds = ThemeRectangleIntersection(bounds, painter->clip);
+
+	if (!THEME_RECT_VALID(bounds)) {
+		return;
+	}
 
 	int dp = (GRADIENT_CACHE_COUNT << GRADIENT_COORD_BASE) / border;
 	float mainRadius = corner > border ? corner - border : 0;
@@ -622,14 +622,16 @@ void ThemeFillBlurCutCorner(EsPainter *painter, EsRectangle bounds, int cx, int 
 	}
 }
 
-#ifndef IN_DESIGNER
-__attribute__((optimize("-O2"))) 
-#endif
+ES_FUNCTION_OPTIMISE_O2 
 void ThemeFillBlurCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy, int border, int corner, GradientCache *gradient) {
 	uint32_t *bits = (uint32_t *) painter->target->bits;
 	int width = painter->target->width;
 	cx += bounds.l, cy += bounds.t;
 	bounds = ThemeRectangleIntersection(bounds, painter->clip);
+
+	if (!THEME_RECT_VALID(bounds)) {
+		return;
+	}
 
 	int dp = (GRADIENT_CACHE_COUNT << GRADIENT_COORD_BASE) / border;
 	int mainRadius = corner > border ? corner - border : 0;
@@ -648,7 +650,7 @@ void ThemeFillBlurCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 	}
 }
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O2 
 void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gradient, int width, int height, EsBuffer *data) {
 	width--, height--;
 

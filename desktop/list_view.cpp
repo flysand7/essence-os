@@ -661,7 +661,7 @@ struct EsListView : EsElement {
 						position + contentBounds.l, 
 						currentStyle->insets.t - this->scroll.position[1] + visibleItem->indent * currentStyle->gapWrap + contentBounds.t);
 					position += visibleItem->element->width;
-				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.autoScrollbars[0]))) {
+				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.enabled[0]))) {
 					int indent = visibleItem->indent * currentStyle->gapWrap;
 					int firstColumn = columns[0].width * theming.scale + secondaryCellStyle->gapMajor;
 					visibleItem->startAtSecondColumn = indent > firstColumn;

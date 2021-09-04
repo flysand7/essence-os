@@ -30,7 +30,7 @@ struct BootSector {
 	uint32_t checksum;
 	uint8_t	 bootloader[426];
 	uint16_t bootSignature;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct FileRecordHeader {
 	uint32_t magic;
@@ -47,7 +47,7 @@ struct FileRecordHeader {
 	uint16_t nextAttributeID;
 	uint16_t unused;
 	uint32_t recordNumber;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct AttributeHeader {
 	uint32_t attributeType;
@@ -57,14 +57,14 @@ struct AttributeHeader {
 	uint16_t nameOffset;
 	uint16_t flags;
 	uint16_t attributeID;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct ResidentAttributeHeader : AttributeHeader {
 	uint32_t attributeLength;
 	uint16_t attributeOffset;
 	uint8_t	 indexed;
 	uint8_t	 unused;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct FileNameAttributeHeader {
 	uint64_t parentRecordNumber   : 48;
@@ -79,7 +79,7 @@ struct FileNameAttributeHeader {
 	uint32_t reparse;
 	uint8_t	 fileNameLength;
 	uint8_t	 namespaceType;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct NonResidentAttributeHeader : AttributeHeader {
 	uint64_t firstCluster;
@@ -90,12 +90,12 @@ struct NonResidentAttributeHeader : AttributeHeader {
 	uint64_t attributeAllocated;
 	uint64_t attributeSize;
 	uint64_t streamDataSize;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct RunHeader {
 	uint8_t	 lengthFieldBytes : 4;
 	uint8_t	 offsetFieldBytes : 4;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct IndexBlockHeader {
 	uint32_t magic;
@@ -107,7 +107,7 @@ struct IndexBlockHeader {
 	uint32_t totalEntrySize;
 	uint32_t allocatedSize;
 	uint32_t flags;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct IndexRootHeader {
 	uint32_t attributeType;
@@ -119,7 +119,7 @@ struct IndexRootHeader {
 	uint32_t totalEntrySize;
 	uint32_t allocatedSize;
 	uint32_t flags;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct IndexEntryHeader {
 	uint64_t fileRecordNumber   : 48;
@@ -127,7 +127,7 @@ struct IndexEntryHeader {
 	uint16_t indexEntryLength;
 	uint16_t streamLength;
 	uint32_t flags;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 // TODO Support other MFT file record sizes.
 #define MFT_FILE_SIZE (1024)

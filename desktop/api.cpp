@@ -1094,7 +1094,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 			switch (message->instanceSave.file->error) {
 				case ES_ERROR_FILE_DOES_NOT_EXIST: 
 				case ES_ERROR_NODE_DELETED: 
-				case ES_ERROR_FILE_PERMISSION_NOT_GRANTED: 
+				case ES_ERROR_PERMISSION_NOT_GRANTED: 
 				case ES_ERROR_INCORRECT_NODE_TYPE:
 					errorMessage = interfaceString_FileSaveErrorFileDeleted;
 					break;

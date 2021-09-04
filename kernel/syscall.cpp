@@ -768,7 +768,7 @@ SYSCALL_IMPLEMENT(syscallName) { \
 	CHECK_OBJECT(_process); \
 	Process *process = (Process *) _process.object; \
 	uint32_t sharedFlags = _sharedFlags; \
-	if (!OpenHandleToObject(share.object, objectType, sharedFlags)) return ES_ERROR_FILE_PERMISSION_NOT_GRANTED; \
+	if (!OpenHandleToObject(share.object, objectType, sharedFlags)) return ES_ERROR_PERMISSION_NOT_GRANTED; \
 	SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, sharedFlags, objectType), false); \
 }
 
@@ -827,7 +827,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 	}
 
 	if ((~_directory.flags & _ES_NODE_DIRECTORY_WRITE) && needWritePermission) {
-		SYSCALL_RETURN(ES_ERROR_FILE_PERMISSION_NOT_GRANTED, false);
+		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 
 	if (~_directory.flags & _ES_NODE_DIRECTORY_WRITE) {
@@ -863,7 +863,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
 	KNode *node = (KNode *) object.object;
 
 	if (object.flags & _ES_NODE_NO_WRITE_BASE) {
-		SYSCALL_RETURN(ES_ERROR_FILE_PERMISSION_NOT_GRANTED, false);
+		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 	
 	if (node->directoryEntry->type == ES_NODE_FILE && (~object.flags & ES_FILE_WRITE)) {
@@ -1143,12 +1143,36 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_GET) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_SET) {
 	KMutexAcquire(&windowManager.mutex);
-	windowManager.cursorX = argument0;
-	windowManager.cursorY = argument1;
-	windowManager.cursorXPrecise = argument0 * K_CURSOR_MOVEMENT_SCALE;
-	windowManager.cursorYPrecise = argument1 * K_CURSOR_MOVEMENT_SCALE;
+
+	// Only allow the cursor position to be modified by the process
+	// if it owns the window that is currently being pressed.
+
+	bool allowed = false;
+
+	if (windowManager.pressedWindow) {
+		if (windowManager.pressedWindow->embed) {
+			if (windowManager.pressedWindow->embed->owner == currentProcess) {
+				allowed = true;
+			}
+		}
+
+		if (windowManager.pressedWindow->owner == currentProcess) {
+			allowed = true;
+		}
+	}
+
+	if (allowed) {
+		// Preseve the precise offset.
+		int32_t offsetX = windowManager.cursorXPrecise - windowManager.cursorX * K_CURSOR_MOVEMENT_SCALE;
+		int32_t offsetY = windowManager.cursorYPrecise - windowManager.cursorY * K_CURSOR_MOVEMENT_SCALE;
+		windowManager.cursorX = argument0;
+		windowManager.cursorY = argument1;
+		windowManager.cursorXPrecise = argument0 * K_CURSOR_MOVEMENT_SCALE + offsetX;
+		windowManager.cursorYPrecise = argument1 * K_CURSOR_MOVEMENT_SCALE + offsetY;
+	}
+
 	KMutexRelease(&windowManager.mutex);
-	SYSCALL_RETURN(ES_SUCCESS, false);
+	SYSCALL_RETURN(allowed ? ES_SUCCESS : ES_ERROR_PERMISSION_NOT_GRANTED, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_PROPERTIES_SET) {

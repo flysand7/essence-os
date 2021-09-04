@@ -33,7 +33,7 @@ struct EthernetHeader {
 	KMACAddress destinationMAC;
 	KMACAddress sourceMAC;
 	uint16_t type;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 #define ETHERNET_HEADER(ethernet, _type, _destinationMAC) \
 	if (ethernet) { \
@@ -72,7 +72,7 @@ struct IPHeader {
 
 		return SwapBigEndian16(~sum);
 	}
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 #define IP_HEADER(ip, _destinationAddress, _protocol) \
 	if (ip) { \
@@ -142,7 +142,7 @@ struct UDPHeader {
 
 		return (sum == 0xFFFF) ? 0xFFFF : SwapBigEndian16(~sum);
 	}
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 #define UDP_HEADER(udp, _sourcePort, _destinationPort) \
 	if (udp) { \
@@ -204,7 +204,7 @@ struct TCPHeader {
 
 		return SwapBigEndian16(~sum);
 	}
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct TCPReceivedData {
 	uint16_t flags;
@@ -291,7 +291,7 @@ struct DHCPHeader {
 	uint8_t serverHostName[64];
 	uint8_t bootFileName[128];
 	uint8_t optionsMagic[4];
-} __attribute__((packed)); 
+} ES_STRUCT_PACKED; 
 
 #define DHCP_HEADER(dhcp, _opCode) \
 	if (dhcp) { \
@@ -342,7 +342,7 @@ struct ARPHeader {
 	uint8_t hardwareAddressLength;
 	uint8_t protocolAddressLength;
 	uint16_t opCode;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 #define ARP_ETHERNET (0x0001)
 #define ARP_IPV4 (0x0800)
@@ -380,7 +380,7 @@ struct ICMPHeader {
 
 		return SwapBigEndian16(~sum);
 	}
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct DNSHeader {
 	uint16_t identifier;
@@ -389,7 +389,7 @@ struct DNSHeader {
 	uint16_t answerCount;
 	uint16_t authorityCount;
 	uint16_t additionalCount;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct Networking {
 	KMutex interfacesListMutex;

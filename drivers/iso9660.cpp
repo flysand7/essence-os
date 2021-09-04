@@ -29,7 +29,7 @@ struct DateTime {
 	char second[2];
 	char centiseconds[2];
 	int8_t timeZoneOffset;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct DateTime2 {
 	uint8_t year;
@@ -39,7 +39,7 @@ struct DateTime2 {
 	uint8_t minute;
 	uint8_t second;
 	int8_t timeZoneOffset;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct DirectoryRecord {
 	uint8_t length;
@@ -52,7 +52,7 @@ struct DirectoryRecord {
 	uint8_t interleavedGapSize;
 	LBE16 volumeSequenceNumber;
 	uint8_t fileNameBytes;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct PrimaryDescriptor {
 	uint8_t typeCode;
@@ -89,7 +89,7 @@ struct PrimaryDescriptor {
 	uint8_t _unused3;
 	char applicationSpecific[512];
 	uint8_t _unused4[653];
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct DirectoryRecordReference {
 	uint32_t sector, offset;

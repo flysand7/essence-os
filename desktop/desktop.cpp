@@ -7,8 +7,6 @@
 // 	- Duplicate tabs.
 
 // TODO Graphical issues:
-// 	- New tab button isn't flush with right border when tab band full.
-// 	- Cursor doesn't update after switching embed window owners.
 // 	- Closing tabs isn't animating.
 // 	- Inactivate windows don't dim outline around tabs.
 // 	- Resizing windows doesn't redraw old shadow sometimes.
@@ -612,9 +610,10 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 			}
 		}
 
-		int x = ReorderListLayout(band, band->GetChild(0)->currentStyle->preferredWidth + 10, true, band->preventNextTabSizeAnimation);
+		int x = ReorderListLayout(band, band->GetChild(0)->currentStyle->preferredWidth + 10 * theming.scale, 
+				true, band->preventNextTabSizeAnimation);
 		band->GetChild(0)->InternalMove(band->GetChild(0)->currentStyle->preferredWidth, 
-				band->GetChild(0)->currentStyle->preferredHeight, x + 10, 4);
+				band->GetChild(0)->currentStyle->preferredHeight, x + 10 * theming.scale, 4 * theming.scale);
 		band->preventNextTabSizeAnimation = false;
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {

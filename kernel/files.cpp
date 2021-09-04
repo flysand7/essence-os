@@ -419,7 +419,7 @@ EsError FSNodeDelete(KNode *node) {
 	FSDirectory *parent = entry->parent;
 	FSFile *file = entry->type == ES_NODE_FILE ? (FSFile *) node : nullptr;
 
-	if (!parent) return ES_ERROR_FILE_PERMISSION_NOT_GRANTED;
+	if (!parent) return ES_ERROR_PERMISSION_NOT_GRANTED;
 
 	// Open a handle to the parent, so that if its directory entry count drops to zero after the operation,
 	// it is put on the node cache list when the handle is closed.
@@ -1260,7 +1260,7 @@ EsError FSNodeTraverseLayer(uintptr_t *sectionEnd,
 		// The node does not exist.
 
 		if (flags & _ES_NODE_NO_WRITE_BASE) {
-			error = ES_ERROR_FILE_PERMISSION_NOT_GRANTED;
+			error = ES_ERROR_PERMISSION_NOT_GRANTED;
 			goto failed;
 		}
 
@@ -1359,7 +1359,7 @@ EsError FSNodeTraverseLayer(uintptr_t *sectionEnd,
 KNodeInformation FSNodeOpen(const char *path, size_t pathBytes, uint32_t flags, KNode *baseDirectory) {
 	if ((1 << (flags & 0xF)) & ~(0x117)) {
 		// You should only pass one access flag! (or none)
-		return { ES_ERROR_FILE_PERMISSION_NOT_GRANTED }; 
+		return { ES_ERROR_PERMISSION_NOT_GRANTED }; 
 	}
 
 	if (fs.shutdown) return { ES_ERROR_PATH_NOT_TRAVERSABLE };

@@ -704,7 +704,7 @@ void KPCIWriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offs
 struct KUSBDescriptorHeader {
 	uint8_t length;
 	uint8_t descriptorType;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBConfigurationDescriptor : KUSBDescriptorHeader {
 	uint16_t totalLength;
@@ -713,7 +713,7 @@ struct KUSBConfigurationDescriptor : KUSBDescriptorHeader {
 	uint8_t configurationString;
 	uint8_t attributes;
 	uint8_t maximumPower;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBInterfaceDescriptor : KUSBDescriptorHeader {
 	uint8_t interfaceIndex;
@@ -723,7 +723,7 @@ struct KUSBInterfaceDescriptor : KUSBDescriptorHeader {
 	uint8_t interfaceSubclass;
 	uint8_t interfaceProtocol;
 	uint8_t interfaceString;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBDeviceDescriptor : KUSBDescriptorHeader {
 	uint16_t specificationVersion;
@@ -738,7 +738,7 @@ struct KUSBDeviceDescriptor : KUSBDescriptorHeader {
 	uint8_t productString;
 	uint8_t serialNumberString;
 	uint8_t configurationCount;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBEndpointCompanionDescriptor : KUSBDescriptorHeader {
 	uint8_t maxBurst;
@@ -747,12 +747,12 @@ struct KUSBEndpointCompanionDescriptor : KUSBDescriptorHeader {
 
 	inline uint8_t GetMaximumStreams() { return attributes & 0x1F; }
 	inline bool HasISOCompanion() { return attributes & (1 << 7); }
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBEndpointIsochronousCompanionDescriptor : KUSBDescriptorHeader {
 	uint16_t reserved;
 	uint32_t bytesPerInterval;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct KUSBEndpointDescriptor : KUSBDescriptorHeader {
 	uint8_t address;
@@ -768,7 +768,7 @@ struct KUSBEndpointDescriptor : KUSBDescriptorHeader {
 	inline bool IsOutput()      { return !(address & 0x80); }
 	inline uint8_t GetAddress() { return address & 0x0F; }
 	inline uint16_t GetMaximumPacketSize() { return maximumPacketSize & 0x7FF; }
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 typedef void (*KUSBTransferCallback)(ptrdiff_t bytesNotTransferred /* -1 if error */, EsGeneric context);
 

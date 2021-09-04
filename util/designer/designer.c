@@ -42,6 +42,7 @@
 #define EsCRTceilf ceilf
 #define EsMemoryCopy memcpy
 #define EsMemoryZero(a, b) memset((a), 0, (b))
+#define ES_FUNCTION_OPTIMISE_O2 __attribute__((optimize("-O2")))
 #define ES_INFINITY INFINITY
 #define IN_DESIGNER
 

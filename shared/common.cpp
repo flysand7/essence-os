@@ -167,7 +167,7 @@ EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side) {
 
 #ifdef SHARED_COMMON_WANT_RENDERING
 
-__attribute__((optimize("-O3"))) 
+ES_FUNCTION_OPTIMISE_O3 
 void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
 	if ((modified & 0xFF000000) == 0xFF000000) {
 		*destinationPixel = modified;

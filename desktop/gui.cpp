@@ -294,7 +294,7 @@ struct ScrollPane {
 	double position[2];
 	int64_t limit[2];
 	int32_t fixedViewport[2];
-	bool autoScrollbars[2];
+	bool enabled[2];
 	bool dragScrolling;
 
 #define SCROLL_MODE_NONE    (0)      // No scrolling takes place on this axis.
@@ -835,6 +835,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 	window->window = window;
 	window->width = window->windowWidth, window->height = window->windowHeight;
 	window->hovered = window;
+	window->hovering = true;
 	window->windowStyle = style;
 	window->RefreshStyle();
 
@@ -2924,13 +2925,13 @@ void ScrollPane::Refresh() {
 	if (bar[0]) {
 		bar[0]->InternalMove(parent->width - parent->internalOffsetRight, bar[0]->currentStyle->preferredHeight, 
 				0, parent->height - parent->internalOffsetBottom);
-		autoScrollbars[0] = ~bar[0]->flags & ES_ELEMENT_DISABLED;
+		enabled[0] = ~bar[0]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (bar[1]) {
 		bar[1]->InternalMove(bar[1]->currentStyle->preferredWidth, parent->height - parent->internalOffsetBottom, 
 				parent->width - parent->internalOffsetRight, 0);
-		autoScrollbars[1] = ~bar[1]->flags & ES_ELEMENT_DISABLED;
+		enabled[1] = ~bar[1]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (pad) {
@@ -3089,12 +3090,18 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 			panel->measurementCache.Store(message);
 		}
 	} else if (message->type == ES_MSG_ENSURE_VISIBLE) {
-		EsElement *child = message->child, *e = child;
-		int offsetX = panel->scroll.position[0], offsetY = panel->scroll.position[1];
-		while (e != element) offsetX += e->offsetX, offsetY += e->offsetY, e = e->parent;
-		EsRectangle bounds = panel->GetBounds();
-		panel->scroll.SetX(offsetX + child->width / 2 - bounds.r / 2);
-		panel->scroll.SetY(offsetY + child->height / 2 - bounds.b / 2);
+		if (panel->scroll.enabled[0] || panel->scroll.enabled[1]) {
+			EsElement *child = message->child, *e = child;
+			int offsetX = panel->scroll.position[0], offsetY = panel->scroll.position[1];
+			while (e != element) offsetX += e->offsetX, offsetY += e->offsetY, e = e->parent;
+			EsRectangle bounds = panel->GetBounds();
+			panel->scroll.SetX(offsetX + child->width / 2 - bounds.r / 2);
+			panel->scroll.SetY(offsetY + child->height / 2 - bounds.b / 2);
+			return ES_HANDLED;
+		} else {
+			// This is not a scroll container, so don't update the child element being made visible.
+			return 0;
+		}
 	} else if (message->type == ES_MSG_PRE_ADD_CHILD) {
 		if (!panel->addingSeparator && panel->separatorStylePart && panel->GetChildCount()) {
 			panel->addingSeparator = true;
@@ -5282,14 +5289,14 @@ void EsWindowSetTitle(EsWindow *window, const char *title, ptrdiff_t titleBytes)
 	MessageDesktop(buffer, bytes, window->handle);
 }
 
-void EsMouseSetPosition(EsWindow *relativeWindow, int x, int y) {
+EsError EsMouseSetPosition(EsWindow *relativeWindow, int x, int y) {
 	if (relativeWindow) {
 		EsRectangle bounds = EsWindowGetBounds(relativeWindow);
 		x += bounds.l;
 		y += bounds.t;
 	}
 
-	EsSyscall(ES_SYSCALL_CURSOR_POSITION_SET, x, y, 0, 0);
+	return EsSyscall(ES_SYSCALL_CURSOR_POSITION_SET, x, y, 0, 0);
 }
 
 EsPoint EsMouseGetPosition(EsElement *relativeElement) {
@@ -6743,6 +6750,12 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			EsElementSetHidden(alternative->small, !belowThreshold);
 			EsElementSetHidden(alternative->big, belowThreshold);
 		}
+		
+		// The mouse position gets reset to (0,0) on deactivation, so get the correct position here.
+		EsSyscall(ES_SYSCALL_CURSOR_POSITION_GET, (uintptr_t) &window->mousePosition, 0, 0, 0);
+		EsRectangle windowBounds = EsWindowGetBounds(window);
+		window->mousePosition.x -= windowBounds.l, window->mousePosition.y -= windowBounds.t;
+		window->hovering = true;
 	} else if (message->type == ES_MSG_WINDOW_DEACTIVATED) {
 		AccessKeyModeExit();
 
@@ -6801,13 +6814,12 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		return;
 	}
 
-	UIFindHoverElement(window);
-
-	bool changedCursor = UISetCursor(window);
-
 	if (window->receivedFirstResize || window->windowStyle != ES_WINDOW_NORMAL) {
 		UIWindowLayoutNow(window, timing);
 	}
+
+	UIFindHoverElement(window);
+	bool changedCursor = UISetCursor(window);
 
 	if (THEME_RECT_VALID(window->updateRegion) && window->width == (int) window->windowWidth && window->height == (int) window->windowHeight) {
 		UIWindowPaintNow(window, timing, message->type == ES_MSG_WINDOW_RESIZED);

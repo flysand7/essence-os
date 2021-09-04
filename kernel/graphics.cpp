@@ -232,7 +232,7 @@ void Surface::Scroll(EsRectangle region, ptrdiff_t delta, bool vertical) {
 #define C2(p) ((p & 0x00FF0000) >> 0x10)
 #define C3(p) ((p & 0xFF000000) >> 0x18)
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O2 
 void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint16_t *k, uintptr_t repeat) {
 	if (width <= 3 || height <= 3) {
 		return;
@@ -273,7 +273,7 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint1
 	}
 }
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O2 
 void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uintptr_t repeat) {
 	if (width <= 3 || height <= 3) {
 		return;
@@ -337,7 +337,7 @@ void Surface::Blur(EsRectangle region, EsRectangle clip) {
 #endif
 }
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O2 
 void Surface::BlendWindow(Surface *source, EsPoint destinationPoint, EsRectangle sourceRegion, int material, uint8_t alpha, EsRectangle materialRegion) {
 	if (destinationPoint.x < 0) { sourceRegion.l -= destinationPoint.x; destinationPoint.x = 0; }
 	if (destinationPoint.y < 0) { sourceRegion.t  -= destinationPoint.y; destinationPoint.y = 0; }

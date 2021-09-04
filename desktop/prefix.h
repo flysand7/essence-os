@@ -145,6 +145,10 @@ ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uint
 #endif
 #endif
 
+#define ES_STRUCT_PACKED __attribute__((packed))
+#define ES_FUNCTION_OPTIMISE_O2 __attribute__((optimize("-O2")))
+#define ES_FUNCTION_OPTIMISE_O3 __attribute__((optimize("-O3")))
+
 // --------- Algorithms:
 
 #define ES_MACRO_SORT(_name, _type, _compar, _contextType) void _name(_type *base, size_t nmemb, _contextType context) { \

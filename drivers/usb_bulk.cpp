@@ -30,7 +30,7 @@ struct CommandBlock {
 	uint8_t lun;
 	uint8_t commandBytes;
 	uint8_t command[16];
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 struct CommandStatus {
 #define COMMAND_STATUS_SIGNATURE (0x53425355)
@@ -40,7 +40,7 @@ struct CommandStatus {
 #define STATUS_FAILED (1)
 #define STATUS_PHASE_ERROR (2)
 	uint8_t status;
-} __attribute__((packed));
+} ES_STRUCT_PACKED;
 
 bool Device::DoTransfer(CommandBlock *block, void *buffer) {
 	KMutexAcquire(&mutex);

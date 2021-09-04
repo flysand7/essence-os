@@ -285,7 +285,7 @@ define ES_ERROR_FILE_ALREADY_EXISTS		(-19)
 define ES_ERROR_FILE_DOES_NOT_EXIST		(-20)
 define ES_ERROR_DRIVE_ERROR_FILE_DAMAGED	(-21) 
 define ES_ERROR_ACCESS_NOT_WITHIN_FILE_BOUNDS	(-22) 
-define ES_ERROR_FILE_PERMISSION_NOT_GRANTED	(-23)
+define ES_ERROR_PERMISSION_NOT_GRANTED	(-23)
 define ES_ERROR_FILE_IN_EXCLUSIVE_USE		(-24)
 define ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE	(-25)
 define ES_ERROR_INCORRECT_NODE_TYPE		(-26)
@@ -2121,7 +2121,7 @@ function size_t EsGameControllerStatePoll(EsGameControllerState *buffer); // Ret
 function uint8_t EsKeyboardGetModifiers(); // Synchronous with respect to message processing.
 
 function EsPoint EsMouseGetPosition(EsElement *relativeElement = ES_NULL); 
-function void EsMouseSetPosition(EsWindow *relativeWindow, int x, int y); 
+function EsError EsMouseSetPosition(EsWindow *relativeWindow, int x, int y); // The request will be rejected if the user is not clicking on your window.
 function bool EsMouseIsLeftHeld();
 function bool EsMouseIsRightHeld();
 function bool EsMouseIsMiddleHeld();

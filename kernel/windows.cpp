@@ -96,8 +96,8 @@ struct WindowManager {
 
 	// Cursor:
 
-	int cursorX, cursorY;
-	int cursorXPrecise, cursorYPrecise; // Scaled up by a factor of K_CURSOR_MOVEMENT_SCALE.
+	int32_t cursorX, cursorY;
+	int32_t cursorXPrecise, cursorYPrecise; // Scaled up by a factor of K_CURSOR_MOVEMENT_SCALE.
 	uint32_t lastButtons;
 
 	Surface cursorSurface, cursorSwap, cursorTemporary;
@@ -196,8 +196,7 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 	} else if (message->type == ES_MSG_MOUSE_MOVED) {
 		EsRectangle embedRegion = ES_RECT_4(WINDOW_INSET, window->width - WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, window->height - WINDOW_INSET);
-		bool inEmbed = windowManager.pressedWindow 
-			? window->hoveringOverEmbed 
+		bool inEmbed = windowManager.pressedWindow ? window->hoveringOverEmbed 
 			: EsRectangleContains(embedRegion, message->mouseMoved.newPositionX, message->mouseMoved.newPositionY);
 
 		if (inEmbed) {
@@ -569,6 +568,8 @@ void WindowManager::ClickCursor(unsigned buttons) {
 			if (delta & K_LEFT_BUTTON) message.type = (buttons & K_LEFT_BUTTON) ? ES_MSG_MOUSE_LEFT_DOWN : ES_MSG_MOUSE_LEFT_UP;
 			if (delta & K_RIGHT_BUTTON) message.type = (buttons & K_RIGHT_BUTTON) ? ES_MSG_MOUSE_RIGHT_DOWN : ES_MSG_MOUSE_RIGHT_UP;
 			if (delta & K_MIDDLE_BUTTON) message.type = (buttons & K_MIDDLE_BUTTON) ? ES_MSG_MOUSE_MIDDLE_DOWN : ES_MSG_MOUSE_MIDDLE_UP;
+
+			// TODO Setting pressedWindow if holding with other mouse buttons.
 
 			if (message.type == ES_MSG_MOUSE_LEFT_DOWN) {
 				pressedWindow = window;

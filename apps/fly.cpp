@@ -40,7 +40,7 @@ void Transform(float *destination, float *left, float *right) {
 	destination[5] = d[5];
 }
 
-__attribute__((optimize("-O2"))) 
+ES_FUNCTION_OPTIMISE_O3 
 void Draw(Texture *texture, 
 		float x, float y, float w = -1, float h = -1, 
 		float sx = 0, float sy = 0, float sw = -1, float sh = -1, 

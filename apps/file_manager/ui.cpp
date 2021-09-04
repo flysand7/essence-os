@@ -466,7 +466,7 @@ void InstanceChangeSortColumn(EsMenu *menu, EsGeneric context) {
 	EsListViewContentChanged(instance->list);
 }
 
-__attribute__((optimize("-O3"))) 
+ES_FUNCTION_OPTIMISE_O3
 void ThumbnailResize(uint32_t *bits, uint32_t originalWidth, uint32_t originalHeight, uint32_t targetWidth, uint32_t targetHeight) {
 	// NOTE Modifies the original bits!
 	// NOTE It looks like this only gets vectorised in -O3.
@@ -1077,7 +1077,7 @@ void InstanceReportError(Instance *instance, int error, EsError code) {
 		message = interfaceString_FileManagerItemAlreadyExistsError;
 	} else if (code == ES_ERROR_FILE_DOES_NOT_EXIST) {
 		message = interfaceString_FileManagerItemDoesNotExistError;
-	} else if (code == ES_ERROR_FILE_PERMISSION_NOT_GRANTED) {
+	} else if (code == ES_ERROR_PERMISSION_NOT_GRANTED) {
 		message = interfaceString_FileManagerPermissionNotGrantedError;
 	}
 
