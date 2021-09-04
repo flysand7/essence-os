@@ -151,6 +151,7 @@ struct ApplicationInstance {
 	char title[128];
 	size_t titleBytes;
 	uint32_t iconID;
+	double progress;
 };
 
 const EsStyle styleNewTabContent = {
@@ -195,6 +196,9 @@ struct {
 	ClipboardInformation clipboardInformation;
 
 	bool configurationModified;
+
+	Array<ApplicationInstance *> allOngoingUserTasks;
+	double totalUserTaskProgress;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -731,12 +735,53 @@ int TaskBarMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-int TaskBarTasksButtonMessage(EsElement *, EsMessage *message) {
+void TaskBarTasksButtonUpdate() {
+	if (desktop.allOngoingUserTasks.Length()) {
+		if (EsElementIsHidden(desktop.tasksButton)) {
+			EsPanelStartMovementAnimation((EsPanel *) EsElementGetLayoutParent(desktop.tasksButton), 1.5f /* duration scale */);
+			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_IN, ES_ELEMENT_TRANSITION_ENTRANCE, 1.5f);
+			EsElementSetHidden(desktop.tasksButton, false);
+		}
+
+		// TODO Maybe grow button.
+	} else {
+		// TODO Maybe shrink or hide button.
+		//	Currently, this always hides it, but I don't think this is a good behaviour.
+
+		if (!EsElementIsHidden(desktop.tasksButton)) {
+			EsPanelStartMovementAnimation((EsPanel *) EsElementGetLayoutParent(desktop.tasksButton), 1.5f /* duration scale */);
+			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_OUT, ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE, 1.5f);
+		}
+	}
+
+	EsElementRepaint(desktop.tasksButton);
+}
+
+int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = GetConstantNumber("taskBarTasksButtonWidth");
-		return ES_HANDLED;
+	} else if (message->type == ES_MSG_PAINT) {
+		char title[256];
+		size_t titleBytes;
+
+		if (desktop.allOngoingUserTasks.Length() > 1) {
+			// TODO Localization.
+			titleBytes = EsStringFormat(title, sizeof(title), "%d tasks" ELLIPSIS, desktop.allOngoingUserTasks.Length());
+		} else if (desktop.allOngoingUserTasks.Length() == 1) {
+			titleBytes = EsStringFormat(title, sizeof(title), "%s", desktop.allOngoingUserTasks.First()->titleBytes, desktop.allOngoingUserTasks.First()->title);
+		} else {
+			titleBytes = 0;
+		}
+
+		EsDrawContent(message->painter, element, ES_RECT_2S(message->painter->width, message->painter->height), title, titleBytes);
 	} else if (message->type == ES_MSG_PAINT_ICON) {
-		float progress = 0.0f; // TODO.
+		double progress = !desktop.allOngoingUserTasks.Length() ? 1.0 : desktop.totalUserTaskProgress / desktop.allOngoingUserTasks.Length();
+
+		if (progress > 0.0 && progress <= 0.05) {
+			progress = 0.05; // Really small angles look strange; avoid them.
+		} else if (progress >= 0.9 && progress < 1.0) {
+			progress = (progress - 0.9) * 0.5 + 0.9; // Approach 95% from 90% at half speed to account for bad progress calculations.
+		}
 
 		uint32_t color1 = GetConstantNumber("taskBarTasksButtonWheelColor1");
 		uint32_t color2 = GetConstantNumber("taskBarTasksButtonWheelColor2");
@@ -784,10 +829,11 @@ int TaskBarTasksButtonMessage(EsElement *, EsMessage *message) {
 		}
 
 		RastSurfaceDestroy(&surface);
-		return ES_HANDLED;
+	} else {
+		return 0;
 	}
 
-	return 0;
+	return ES_HANDLED;
 }
 
 void ShutdownModalCreate() {
@@ -1888,7 +1934,7 @@ void DesktopSetup() {
 			desktop.taskBar.taskList.Initialise(panel, ES_CELL_FILL, ReorderListMessage, nullptr);
 			desktop.taskBar.taskList.cName = "task list";
 
-			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON, "Copying files" ELLIPSIS, -1);
+			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON);
 			desktop.tasksButton->messageUser = TaskBarTasksButtonMessage;
 
 			EsButton *shutdownButton = EsButtonCreate(panel, ES_FLAGS_DEFAULT, ES_STYLE_TASK_BAR_EXTRA);
@@ -2095,15 +2141,13 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		EsHandle targetWindowHandle = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, windowHandle, processHandle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
 		EsBufferWrite(pipe, &targetWindowHandle, sizeof(targetWindowHandle));
 
-		if (EsElementIsHidden(desktop.tasksButton)) {
-			EsPanelStartMovementAnimation((EsPanel *) EsElementGetLayoutParent(desktop.tasksButton), 1.5f /* duration scale */);
-			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_IN, ES_ELEMENT_TRANSITION_ENTRANCE, 1.5f);
-			EsElementSetHidden(desktop.tasksButton, false);
-		}
+		desktop.allOngoingUserTasks.Add(instance);
+		TaskBarTasksButtonUpdate();
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
 		// -------------------------------------------------
+		EsPrint("DesktopSyscall - Received message %d without an instance.\n", buffer[0]);
 	} else if (buffer[0] == DESKTOP_MSG_SET_TITLE || buffer[0] == DESKTOP_MSG_SET_ICON) {
 		if (buffer[0] == DESKTOP_MSG_SET_TITLE) {
 			instance->titleBytes = EsStringFormat(instance->title, sizeof(instance->title), "%s", 
@@ -2120,6 +2164,15 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			if (instance->tab == instance->tab->container->active) {
 				instance->tab->container->taskBarButton->Repaint(true);
 			}
+		}
+	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && message->desktop.bytes == 1 + sizeof(double) && instance->isUserTask) {
+		double progress;
+		EsMemoryCopy(&progress, buffer + 1, sizeof(double));
+
+		if (progress >= 0.0 && progress <= 1.0) {
+			desktop.totalUserTaskProgress += progress - instance->progress;
+			instance->progress = progress;
+			EsElementRepaint(desktop.tasksButton);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE) {
 		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1);
@@ -2163,6 +2216,8 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		if (message.message.type != ES_MSG_INVALID) {
 			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
 		}
+	} else {
+		EsPrint("DesktopSyscall - Received unhandled message %d.\n", buffer[0]);
 	}
 }
 
@@ -2218,6 +2273,11 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 
 			EsElementDestroy(instance->tab);
 		}
+	} else if (instance->isUserTask) {
+		desktop.totalUserTaskProgress -= instance->progress;
+		EsElementRepaint(desktop.tasksButton);
+		desktop.allOngoingUserTasks.FindAndDeleteSwap(instance, false /* ignore if not found */);
+		TaskBarTasksButtonUpdate();
 	}
 
 	EsHeapFree(instance);

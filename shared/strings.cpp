@@ -260,6 +260,8 @@ DEFINE_INTERFACE_STRING(FileManagerInvalidPath, "The current path does not lead 
 DEFINE_INTERFACE_STRING(FileManagerInvalidDrive, "The drive containing this folder was disconnected.");
 DEFINE_INTERFACE_STRING(FileManagerRefresh, "Refresh");
 DEFINE_INTERFACE_STRING(FileManagerListContextActions, "Actions");
+DEFINE_INTERFACE_STRING(FileManagerCopyTask, "Copying" ELLIPSIS);
+DEFINE_INTERFACE_STRING(FileManagerMoveTask, "Moving" ELLIPSIS);
 
 // TODO System Monitor.
 

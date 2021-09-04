@@ -19,6 +19,7 @@ opaque_type EsPaintTarget      none;
 opaque_type EsUndoManager      none;
 opaque_type EsHeap             none;
 opaque_type EsFileStore        none;
+opaque_type EsUserTask         none;
 
 type_name uint8_t EsNodeType;
 type_name intptr_t EsError;
@@ -326,6 +327,7 @@ define ES_ERROR_CONNECTION_REFUSED		(-68)
 define ES_ERROR_ILLEGAL_PATH			(-69)
 define ES_ERROR_NODE_NOT_LOADED			(-71)
 define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
+define ES_ERROR_CANCELLED			(-73)
 
 define ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND (0)
 define ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT  (1)
@@ -666,6 +668,7 @@ define ES_MEMORY_RESERVE_COMMIT_ALL (1 << 0)
 define ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION (1 << 0)
 
 define ES_ELEMENT_TRANSITION_ENTRANCE (1 << 0)
+define ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE (1 << 1)
 
 define ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
 
@@ -910,7 +913,7 @@ enum EsMessageType {
 								// It will be removed from the `children` later (but before the next ES_MSG_LAYOUT message is received).
 	ES_MSG_PRE_ADD_CHILD			= 0x200D	// An element has been created with this element as its parent, but is not yet added to the parent.
 	ES_MSG_HIT_TEST				= 0x200E	// For non-rectangular elements: test whether a pixel should be considered inside the element. Set response to ES_HANDLED.
-	ES_MSG_KEY_TYPED			= 0x2011	// Sent to the focused element when a key is pressed.
+	ES_MSG_KEY_TYPED			= 0x2011	// Sent to the focused element when a key is pressed. Only if ES_HANDLED is returned the message will not propagate; this allows messageUser to block input processing by returning ES_REJECTED.
 	ES_MSG_SCROLL_X				= 0x2012	// The element has been horizontally scrolled.
 	ES_MSG_SCROLL_Y				= 0x2013	// The element has been vertically scrolled.
 	ES_MSG_STRONG_FOCUS_END			= 0x2014	// Sent once when the user 'clicks off' the element, even if a new element was not necessarily focused.
@@ -1887,7 +1890,8 @@ function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, E
 function_pointer void EsMountPointEnumerationCallback(const char *prefix, size_t prefixBytes, EsGeneric context);
 function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
-function_pointer void EsUserTaskCallback(EsGeneric data);
+function_pointer void EsUserTaskCallback(EsUserTask *task, EsGeneric data);
+function_pointer bool EsFileCopyCallback(EsFileOffset bytesCopied, EsFileOffset totalBytes, EsGeneric data); // Return false to cancel.
 
 // System.
 
@@ -1933,7 +1937,7 @@ function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, siz
 function EsError EsFileWriteAllGather(STRING filePath, const void **data, size_t *fileSize, size_t gatherCount); 
 function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_t *fileSize, size_t gatherCount); 
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags);
-function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = nullptr); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
+function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
 function EsError EsFileControl(EsHandle file, uint32_t flags); 
 function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
@@ -2233,7 +2237,7 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format,
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function bool EsClipboardHasData(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = nullptr); // Free with EsHeapFree.
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
 function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags = ES_FLAGS_DEFAULT);
 
@@ -2265,7 +2269,9 @@ function const EsApplicationStartupInformation *EsInstanceGetStartupInformation(
 function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(EsMessage *message, bool success);
 
-function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data);
+function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, STRING title, uint32_t iconID);
+function void EsUserTaskSetProgress(EsUserTask *task, double progress, EsFileOffsetDifference bytesPerSecond); // Set bytesPerSecond to -1 if not applicable.
+function bool EsUserTaskIsRunning(EsUserTask *task); // Returns false if the task was cancelled.
 
 // Message processing.
 

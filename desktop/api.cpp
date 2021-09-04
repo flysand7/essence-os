@@ -62,6 +62,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_FILE_TYPES_GET            (14)
 #define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
 #define DESKTOP_MSG_START_USER_TASK           (16)
+#define DESKTOP_MSG_SET_PROGRESS              (17)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -348,6 +349,23 @@ int64_t EsSystemConfigurationReadInteger(const char *section, ptrdiff_t sectionB
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) return defaultValue;
 	return EsSystemConfigurationGroupReadInteger(group, key, keyBytes, defaultValue);
+}
+
+void SystemConfigurationUnload() {
+	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
+		for (uintptr_t j = 0; j < api.systemConfigurationGroups[i].itemCount; j++) {
+			EsHeapFree(api.systemConfigurationGroups[i].items[j].key);
+			EsHeapFree(api.systemConfigurationGroups[i].items[j].value);
+		}
+
+		EsHeapFree(api.systemConfigurationGroups[i].section);
+		EsHeapFree(api.systemConfigurationGroups[i].sectionClass);
+
+		Array<EsSystemConfigurationItem> items = { api.systemConfigurationGroups[i].items };
+		items.Free();
+	}
+
+	api.systemConfigurationGroups.Free();
 }
 
 void SystemConfigurationLoad(char *file, size_t fileBytes) {
@@ -784,6 +802,16 @@ EsMessage *EsMessageReceive() {
 			EsAssert(message.message.instanceSave.file->operationComplete);
 			FileStoreCloseHandle(message.message.instanceSave.file);
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
+#ifdef DEBUG_BUILD
+			GlyphCacheFree();
+			FreeUnusedStyles();
+			theming.loadedStyles.Free();
+			SystemConfigurationUnload();
+			api.mountPoints.Free();
+			api.postBox.Free();
+			api.timers.Free();
+			EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d.\n", heap.allocationsCount);
+#endif
 			EsProcessTerminateCurrent();
 		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
 			api.openInstanceCount--;
@@ -1181,7 +1209,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
 		EsBuffer responseBuffer = { .canGrow = true };
 		MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
-		SystemConfigurationLoad((char *) responseBuffer.in, responseBuffer.bytes);
+		SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
 	}
 
 	if (uiProcess) {
@@ -1548,15 +1576,18 @@ const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *by
 	return nullptr;
 }
 
-struct UserTask {
+struct EsUserTask {
 	EsUserTaskCallback callback;
 	EsGeneric data;
 	EsHandle taskHandle;
+
+#define USER_TASK_MINIMUM_TIME_BETWEEN_PROGRESS_MESSAGES_MS (50)
+	double lastProgressMs;
 };
 
 void UserTaskThread(EsGeneric _task) {
-	UserTask *task = (UserTask *) _task.p;
-	task->callback(task->data);
+	EsUserTask *task = (EsUserTask *) _task.p;
+	task->callback(task, task->data);
 	EsMessageMutexAcquire();
 	api.openInstanceCount--; 
 	// TODO Send ES_MSG_APPLICATION_EXIT if needed.
@@ -1566,10 +1597,32 @@ void UserTaskThread(EsGeneric _task) {
 	EsHeapFree(task);
 }
 
-EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data) {
+void EsUserTaskSetProgress(EsUserTask *task, double progress, EsFileOffsetDifference bytesPerSecond) {
+	(void) bytesPerSecond;
+	double timeMs = EsTimeStampMs();
+
+	if (timeMs - task->lastProgressMs >= USER_TASK_MINIMUM_TIME_BETWEEN_PROGRESS_MESSAGES_MS) {
+		task->lastProgressMs = timeMs;
+		progress = ClampDouble(0.0, 1.0, progress);
+		uint8_t buffer[1 + sizeof(double)];
+		buffer[0] = DESKTOP_MSG_SET_PROGRESS;
+		EsMemoryCopy(buffer + 1, &progress, sizeof(double));
+		MessageDesktop(buffer, sizeof(buffer), task->taskHandle);
+	}
+}
+
+bool EsUserTaskIsRunning(EsUserTask *task) {
+	(void) task;
+	return true; // TODO.
+}
+
+EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, const char *title, ptrdiff_t titleBytes, uint32_t iconID) {
+	// TODO Only tell the Desktop about the task if it's going to take >1 seconds.
+	// 	Maybe check after 500ms if the task is <50% complete?
+
 	EsMessageMutexCheck();
 
-	UserTask *task = (UserTask *) EsHeapAllocate(sizeof(UserTask), true);
+	EsUserTask *task = (EsUserTask *) EsHeapAllocate(sizeof(EsUserTask), true);
 
 	if (!task) {
 		return ES_ERROR_INSUFFICIENT_RESOURCES;
@@ -1585,6 +1638,15 @@ EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data) {
 	if (!handle) {
 		EsHeapFree(task);
 		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
+	{
+		char buffer[4096];
+		buffer[0] = DESKTOP_MSG_SET_ICON;
+		EsMemoryCopy(buffer + 1, &iconID, sizeof(uint32_t));
+		MessageDesktop(buffer, 1 + sizeof(uint32_t), handle);
+		size_t bytes = EsStringFormat(buffer, 4096, "%c%s", DESKTOP_MSG_SET_TITLE, titleBytes == -1 ? EsCStringLength(title) : titleBytes, title);
+		MessageDesktop(buffer, bytes, handle);
 	}
 
 	task->callback = callback;

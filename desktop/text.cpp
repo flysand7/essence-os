@@ -95,22 +95,25 @@ Font FontGet(EsFont key);
 
 // --------------------------------- Glyph cache.
 
+void GlyphCacheFreeEntry() {
+	GlyphCacheEntry *entry = fontManagement.glyphCacheLRU.lastItem->thisItem;
+	fontManagement.glyphCacheLRU.Remove(&entry->itemLRU);
+	fontManagement.glyphCache.Delete(&entry->key);
+	EsAssert(fontManagement.glyphCacheBytes >= entry->dataBytes);
+	fontManagement.glyphCacheBytes -= entry->dataBytes;
+	EsHeapFree(entry->data);
+	EsHeapFree(entry);
+}
+
 void RegisterGlyphCacheEntry(GlyphCacheKey key, GlyphCacheEntry *entry) {
 	entry->itemLRU.thisItem = entry;
 	entry->key = key;
 	*fontManagement.glyphCache.Put(&key) = entry;
 	fontManagement.glyphCacheLRU.InsertStart(&entry->itemLRU);
-
 	fontManagement.glyphCacheBytes += entry->dataBytes;
 
 	while (fontManagement.glyphCacheBytes > GLYPH_CACHE_MAX_SIZE) {
-		GlyphCacheEntry *leastRecentlyUsedGlyph = fontManagement.glyphCacheLRU.lastItem->thisItem;
-		fontManagement.glyphCacheLRU.Remove(&leastRecentlyUsedGlyph->itemLRU);
-		fontManagement.glyphCache.Delete(&leastRecentlyUsedGlyph->key);
-		EsAssert(fontManagement.glyphCacheBytes >= entry->dataBytes); // Negative glyph cache bytes.
-		fontManagement.glyphCacheBytes -= entry->dataBytes;
-		EsHeapFree(leastRecentlyUsedGlyph->data);
-		EsHeapFree(leastRecentlyUsedGlyph);
+		GlyphCacheFreeEntry();
 	}
 }
 
@@ -124,6 +127,15 @@ GlyphCacheEntry *LookupGlyphCacheEntry(GlyphCacheKey key) {
 		fontManagement.glyphCacheLRU.InsertStart(&entry->itemLRU);
 		return entry;
 	}
+}
+
+void GlyphCacheFree() {
+	while (fontManagement.glyphCacheLRU.count) {
+		GlyphCacheFreeEntry();
+	}
+
+	EsAssert(fontManagement.glyphCache.Count() == 0);
+	fontManagement.glyphCache.Free();
 }
 
 // --------------------------------- Font renderer.

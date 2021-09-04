@@ -662,7 +662,7 @@ void ListItemCreated(EsElement *element, uintptr_t index, bool fromFolderRename)
 
 	thumbnail->generatingTasksInProgress++;
 
-	String path = StringAllocateAndFormat("%s%s", STRFMT(instance->path), STRFMT(entry->GetName()));
+	String path = StringAllocateAndFormat("%s%s", STRFMT(instance->path), STRFMT(entry->GetInternalName()));
 
 	Task task = {
 		.string = path,
@@ -805,6 +805,11 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		EsElement *element = message->createItem.item;
 		element->messageUser = ListItemMessage;
 		ListItemCreated(element, message->createItem.index, false);
+	} else if (message->type == ES_MSG_LIST_VIEW_CONTEXT_MENU) {
+		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
+		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCut), EsCommandByID(instance, ES_COMMAND_CUT));
+		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(instance, ES_COMMAND_COPY));
+		EsMenuShow(menu);
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
 

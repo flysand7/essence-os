@@ -125,7 +125,7 @@ struct EsElement : EsElementPublic {
 	Array<EsElement *> children; 
 	uint32_t state;
 
-	uint8_t transitionType;
+	uint8_t transitionType, transitionFlags;
 	uint16_t customStyleState; // ORed to the style state in RefreshStyle.
 	uint16_t previousStyleState; // Set by RefreshStyleState.
 	uint16_t transitionDurationMs, transitionTimeMs;
@@ -337,6 +337,7 @@ struct EsPanel : EsElement {
 	EsPanelBand *bands[2];
 	uintptr_t tableIndex;
 
+	// TODO This names overlap with fields in EsElement, they should probably be renamed.
 	uint16_t transitionType;
 	uint32_t transitionTimeMs,
 		 transitionLengthMs;
@@ -1308,6 +1309,10 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 }
 
 void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, EsRectangle bounds, EsTransitionType type, double progress, bool to) {
+	if (type == ES_TRANSITION_FADE_OUT && to) {
+		return;
+	}
+
 	EsRectangle destinationRegion = UIGetTransitionEffectRectangle(bounds, type, progress, to);
 	EsRectangle sourceRegion = ES_RECT_4(0, bounds.r - bounds.l, 0, bounds.b - bounds.t);
 	uint16_t alpha = (to ? progress : (1 - progress)) * 255;
@@ -1344,6 +1349,7 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 	}
 
 	element->transitionTimeMs = 0;
+	element->transitionFlags = flags;
 	element->transitionDurationMs = durationMs;
 	element->transitionType = transitionType;
 	element->StartAnimating();
@@ -1673,6 +1679,10 @@ void ProcessAnimations() {
 
 		if (!transitionComplete) {
 			element->Repaint(true, ES_RECT_1(0));
+		} else {
+			if (element->transitionFlags & ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE) {
+				EsElementSetHidden(element, true);
+			}
 		}
 
 		bool backgroundAnimationComplete = ThemeAnimationComplete(&element->animation);
@@ -6248,7 +6258,10 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 	if (window->focused) {
 		message->type = ES_MSG_KEY_TYPED;
-		if (EsMessageSend(window->focused, message) != 0) return;
+
+		if (EsMessageSend(window->focused, message) == ES_HANDLED /* allow messageUser to reject input */) {
+			return;
+		}
 
 		EsElement *element = window->focused;
 		message->type = ES_MSG_KEY_DOWN;

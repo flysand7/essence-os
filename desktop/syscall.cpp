@@ -223,7 +223,8 @@ void *EsFileReadAll(const char *filePath, ptrdiff_t filePathLength, size_t *file
 	return buffer;
 }
 
-EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destination, ptrdiff_t destinationBytes, void **_copyBuffer) {
+EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destination, ptrdiff_t destinationBytes, void **_copyBuffer,
+		EsFileCopyCallback callback, EsGeneric callbackData) {
 	const size_t copyBufferBytes = 262144;
 	void *copyBuffer = _copyBuffer && *_copyBuffer ? *_copyBuffer : EsHeapAllocate(copyBufferBytes, false);
 	if (_copyBuffer) *_copyBuffer = copyBuffer;
@@ -245,9 +246,25 @@ EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destin
 			if (error == ES_SUCCESS) {
 				for (uintptr_t i = 0; i < sourceFile.size; i += copyBufferBytes) {
 					size_t bytesRead = EsFileReadSync(sourceFile.handle, i, copyBufferBytes, copyBuffer);
-					if (ES_CHECK_ERROR(bytesRead)) { error = bytesRead; break; }
+
+					if (ES_CHECK_ERROR(bytesRead)) { 
+						error = bytesRead; 
+						break; 
+					}
+
 					size_t bytesWritten = EsFileWriteSync(destinationFile.handle, i, bytesRead, copyBuffer);
-					if (ES_CHECK_ERROR(bytesWritten)) { error = bytesWritten; break; }
+
+					if (ES_CHECK_ERROR(bytesWritten)) { 
+						error = bytesWritten; 
+						break; 
+					}
+
+					EsAssert(bytesRead == bytesWritten);
+
+					if (callback && !callback(i + bytesWritten, sourceFile.size, callbackData)) {
+						error = ES_ERROR_CANCELLED;
+						break;
+					}
 				}
 			}
 

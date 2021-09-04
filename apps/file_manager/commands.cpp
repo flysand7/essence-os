@@ -164,7 +164,60 @@ void CommandCopy(Instance *instance, EsElement *, EsCommand *) {
 	CommandCopyOrCut(instance, ES_FLAGS_DEFAULT);
 }
 
-EsError CommandPasteFile(String source, String destinationBase, void **copyBuffer, bool move, String *_destination) {
+struct PasteOperation {
+	String source, destination;
+};
+
+struct PasteTask {
+	// Input:
+	String destinationBase;
+	bool move;
+	char *pathList;
+	size_t pathListBytes;
+
+	// State:
+	bool progressByData;
+	EsFileOffset totalDataToProcess, totalDataProcessed;
+	size_t sourceItemCount, sourceItemsProcessed;
+	EsUserTask *userTask;
+	EsFileOffset lastBytesCopied, cumulativeSecondBytesCopied;
+	EsFileOffsetDifference bytesPerSecond;
+	double cumulativeSecondTimeStampMs;
+};
+
+bool CommandPasteCopyCallback(EsFileOffset bytesCopied, EsFileOffset totalBytes, EsGeneric data) {
+	(void) totalBytes;
+
+	PasteTask *task = (PasteTask *) data.p;
+	EsFileOffset delta = bytesCopied - task->lastBytesCopied;
+	task->totalDataProcessed += delta;
+	task->lastBytesCopied = bytesCopied;
+
+	if (task->progressByData) {
+		double timeStampMs = EsTimeStampMs();
+
+		if (!task->cumulativeSecondTimeStampMs) {
+			task->cumulativeSecondTimeStampMs = timeStampMs;
+			task->bytesPerSecond = -1;
+		} else if (timeStampMs - task->cumulativeSecondTimeStampMs > 1000.0) {
+			// TODO Test that this calculation is correct.
+			task->bytesPerSecond = task->cumulativeSecondBytesCopied / (timeStampMs - task->cumulativeSecondTimeStampMs);
+			task->cumulativeSecondTimeStampMs = timeStampMs;
+			task->cumulativeSecondBytesCopied = 0;
+		}
+
+		task->cumulativeSecondBytesCopied += delta;
+		EsUserTaskSetProgress(task->userTask, (double) task->totalDataProcessed / task->totalDataToProcess, task->bytesPerSecond);
+	}
+
+	return EsUserTaskIsRunning(task->userTask);
+}
+
+EsError CommandPasteFile(String source, String destinationBase, void **copyBuffer, PasteTask *task, String *_destination) {
+	if (!EsUserTaskIsRunning(task->userTask)) {
+		return ES_ERROR_CANCELLED;
+	}
+
 	if (PathHasPrefix(destinationBase, source)) {
 		return ES_ERROR_TARGET_WITHIN_SOURCE;
 	}
@@ -174,7 +227,7 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 	EsError error;
 
 	if (StringEquals(PathGetParent(source), destinationBase)) {
-		if (move) {
+		if (task->move) {
 			// Move with the source and destination folders identical; meaningless.
 			error = ES_SUCCESS;
 			goto done;
@@ -193,17 +246,19 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 		}
 	}
 
-	EsPrint("%z %s -> %s...\n", move ? "Moving" : "Copying", STRFMT(source), STRFMT(destination));
+	EsPrint("%z %s -> %s...\n", task->move ? "Moving" : "Copying", STRFMT(source), STRFMT(destination));
 
-	if (move) {
+	if (task->move) {
 		error = EsPathMove(STRING(source), STRING(destination), ES_FLAGS_DEFAULT);
 
 		if (error == ES_ERROR_VOLUME_MISMATCH) {
 			// TODO Delete the files after all copies complete successfully.
-			error = EsFileCopy(STRING(source), STRING(destination), copyBuffer);
+			goto copy;
 		}
 	} else {
-		error = EsFileCopy(STRING(source), STRING(destination), copyBuffer);
+		copy:;
+		task->lastBytesCopied = 0;
+		error = EsFileCopy(STRING(source), STRING(destination), copyBuffer, CommandPasteCopyCallback, task);
 	}
 
 	if (error == ES_ERROR_INCORRECT_NODE_TYPE) {
@@ -219,7 +274,7 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 				for (intptr_t i = 0; i < childCount && error == ES_SUCCESS; i++) {
 					String childSourcePath = StringAllocateAndFormat("%s%z%s", STRFMT(source), 
 							PathHasTrailingSlash(source) ? "" : "/", buffer[i].nameBytes, buffer[i].name);
-					error = CommandPasteFile(childSourcePath, destination, copyBuffer, move, nullptr);
+					error = CommandPasteFile(childSourcePath, destination, copyBuffer, task, nullptr);
 					StringDestroy(&childSourcePath);
 				}
 			}
@@ -230,7 +285,7 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 
 	if (error == ES_SUCCESS) {
 		EsMessageMutexAcquire();
-		if (move) FolderFileUpdatedAtPath(source, nullptr);
+		if (task->move) FolderFileUpdatedAtPath(source, nullptr);
 		FolderFileUpdatedAtPath(destination, nullptr);
 		EsMessageMutexRelease();
 	}
@@ -246,46 +301,75 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 	return error;
 }
 
-struct PasteOperation {
-	String source, destination;
-};
-
-struct PasteTask {
-	// Input:
-	String destinationBase;
-	bool move;
-	char *pathList;
-	size_t pathListBytes;
-};
-
-void CommandPasteTask(EsGeneric _task) {
-	// TODO Background task.
-	// TODO Reporting errors properly. Ask to retry or cancel.
-	// TODO If the destination file already exists, ask to replace, skip, rename or cancel.
+void CommandPasteTask(EsUserTask *userTask, EsGeneric _task) {
+	// TODO Reporting errors properly. Ask to retry or skip.
+	// TODO If the destination file already exists, ask to rename or skip (as replace is destructive, it should be an advanced option).
 	// TODO Other namespace handlers.
 	// TODO Undo.
 
 	PasteTask *task = (PasteTask *) _task.p;
 	Array<PasteOperation> pasteOperations = {};
 	EsError error = ES_SUCCESS;
+	task->userTask = userTask;
 
 	void *copyBuffer = nullptr;
-	const char *position = task->pathList;
 
-	while (task->pathListBytes) {
-		const char *newline = (const char *) EsCRTmemchr(position, '\n', task->pathListBytes); 
+	const char *position = task->pathList;
+	size_t remainingBytes = task->pathListBytes;
+
+	while (remainingBytes && EsUserTaskIsRunning(task->userTask)) {
+		const char *newline = (const char *) EsCRTmemchr(position, '\n', remainingBytes); 
+		if (!newline) break;
+
+		String source = StringFromLiteralWithSize(position, newline - position);
+
+		if (!task->move || !StringEquals(PathGetDrive(source), PathGetDrive(task->destinationBase))) {
+			// Files are actually being copied, so report progress by the amount of data copied,
+			// rather than the amount of files processed.
+			task->progressByData = true;
+		}
+
+		EsDirectoryChild information;
+
+		if (EsPathQueryInformation(STRING(source), &information)) {
+			if (information.fileSize == -1) {
+				// TODO Support progress on volumes that don't report total directory sizes.
+			} else {
+				task->totalDataToProcess += information.fileSize;
+			}
+
+			task->sourceItemCount++;
+		} else {
+			// We will probably error on this file, so ignore it.
+		}
+
+		position += source.bytes + 1;
+		remainingBytes -= source.bytes + 1;
+	}
+
+	position = task->pathList;
+	remainingBytes = task->pathListBytes;
+
+	while (remainingBytes && EsUserTaskIsRunning(task->userTask)) {
+		const char *newline = (const char *) EsCRTmemchr(position, '\n', remainingBytes); 
 		if (!newline) break;
 
 		String source = StringFromLiteralWithSize(position, newline - position);
 		String destination;
-		error = CommandPasteFile(source, task->destinationBase, &copyBuffer, task->move, &destination);
+		error = CommandPasteFile(source, task->destinationBase, &copyBuffer, task, &destination);
 		if (error != ES_SUCCESS) break;
 
 		PasteOperation operation = { .source = StringDuplicate(source), .destination = destination };
 		pasteOperations.Add(operation);
 
 		position += source.bytes + 1;
-		task->pathListBytes -= source.bytes + 1;
+		remainingBytes -= source.bytes + 1;
+
+		task->sourceItemsProcessed++;
+
+		if (!task->progressByData) {
+			EsUserTaskSetProgress(userTask, (double) task->sourceItemsProcessed / task->sourceItemCount, -1);
+		}
 	}
 
 	EsMessageMutexAcquire();
@@ -357,7 +441,15 @@ void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 		task->destinationBase = StringDuplicate(instance->folder->path);
 		instance->issuedPasteTask = task;
 
-		if (ES_SUCCESS != EsUserTaskStart(CommandPasteTask, task)) {
+		EsError error;
+
+		if (task->move) {
+			error = EsUserTaskStart(CommandPasteTask, task, INTERFACE_STRING(FileManagerMoveTask), ES_ICON_FOLDER_MOVE);
+		} else {
+			error = EsUserTaskStart(CommandPasteTask, task, INTERFACE_STRING(FileManagerCopyTask), ES_ICON_FOLDER_COPY);
+		}
+
+		if (error != ES_SUCCESS) {
 			EsPoint point = EsListViewGetAnnouncementPointForSelection(instance->list);
 			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, point.x, point.y, INTERFACE_STRING(CommonAnnouncementPasteErrorOther));
 			EsHeapFree(task->pathList);
