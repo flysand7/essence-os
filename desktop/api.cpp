@@ -688,8 +688,6 @@ APIInstance *InstanceSetup(EsInstance *instance) {
 }
 
 EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *applicationName, ptrdiff_t applicationNameBytes) {
-	if (!api.startupInformation->isDesktop) HeapPrintAllocatedRegions(&heap);
-
 	if (applicationNameBytes == -1) {
 		applicationNameBytes = EsCStringLength(applicationName);
 	}
@@ -850,8 +848,6 @@ EsMessage *EsMessageReceive() {
 			if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
 			EsHeapFree(instance);
 			EsHeapFree(message.message.instanceDestroy.instance);
-
-			if (!api.startupInformation->isDesktop) HeapPrintAllocatedRegions(&heap);
 		} else if (message.message.type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {

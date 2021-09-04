@@ -1640,6 +1640,7 @@ struct EsListView : EsElement {
 				fixedItems[i].otherColumns.Free();
 			}
 
+			EsHeapFree(emptyMessage);
 			primaryCellStyle->CloseReference();
 			secondaryCellStyle->CloseReference();
 			selectedCellStyle->CloseReference();

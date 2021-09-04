@@ -80,6 +80,11 @@ ProcessorCheckStackAlignment:
 	jne	$
 	ret
 
+[global ProcessorRBPRead]
+ProcessorRBPRead:
+	mov	rax,rbp
+	ret
+
 [global ProcessorTLSRead]
 ProcessorTLSRead:
 	mov	rax,[fs:rdi]

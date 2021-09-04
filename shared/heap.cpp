@@ -8,6 +8,10 @@
 #define MAYBE_VALIDATE_HEAP() 
 #endif
 
+#ifndef KERNEL
+// #define MEMORY_LEAK_DETECTOR
+#endif
+
 #define LARGE_ALLOCATION_THRESHOLD (32768)
 #define USED_HEAP_REGION_MAGIC (0xABCD)
 
@@ -40,6 +44,21 @@ static uintptr_t HeapCalculateIndex(uintptr_t size) {
 	return msb - 4;
 }
 
+#ifdef MEMORY_LEAK_DETECTOR
+extern "C" uint64_t ProcessorRBPRead();
+
+struct MemoryLeakDetectorEntry {
+	void *address;
+	size_t bytes;
+	uintptr_t stack[8];
+	size_t seenCount;
+};
+#else
+#define MemoryLeakDetectorAdd(...)
+#define MemoryLeakDetectorRemove(...)
+#define MemoryLeakDetectorCheckpoint(...)
+#endif
+
 struct EsHeap {
 #ifdef KERNEL
 	KMutex mutex;
@@ -52,6 +71,10 @@ struct EsHeap {
 	void *blocks[16];
 
 	bool cannotValidate;
+
+#ifdef MEMORY_LEAK_DETECTOR
+	MemoryLeakDetectorEntry leakDetectorEntries[4096];
+#endif
 };
 
 // TODO Better heap panic messages.
@@ -80,6 +103,62 @@ EsHeap heap;
 void *PlatformHeapAllocate(size_t size, bool zero);
 void PlatformHeapFree(void *address);
 void *PlatformHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace);
+#endif
+
+#ifdef MEMORY_LEAK_DETECTOR
+static void MemoryLeakDetectorAdd(EsHeap *heap, void *address, size_t bytes) {
+	if (!address || !bytes) {
+		return;
+	}
+
+	for (uintptr_t i = 0; i < sizeof(heap->leakDetectorEntries) / sizeof(heap->leakDetectorEntries[0]); i++) {
+		MemoryLeakDetectorEntry *entry = &heap->leakDetectorEntries[i];
+
+		if (entry->address) {
+			continue;
+		}
+
+		entry->address = address;
+		entry->bytes = bytes;
+		entry->seenCount = 0;
+
+		uint64_t rbp = ProcessorRBPRead();
+		uintptr_t traceDepth = 0;
+
+		while (rbp && traceDepth < sizeof(entry->stack) / sizeof(entry->stack[0])) {
+			uint64_t value = *(uint64_t *) (rbp + 8);
+			entry->stack[traceDepth++] = value;
+			if (!value) break;
+			rbp = *(uint64_t *) rbp;
+		}
+
+		break;
+	}
+}
+
+static void MemoryLeakDetectorRemove(EsHeap *heap, void *address) {
+	if (!address) {
+		return;
+	}
+
+	for (uintptr_t i = 0; i < sizeof(heap->leakDetectorEntries) / sizeof(heap->leakDetectorEntries[0]); i++) {
+		if (heap->leakDetectorEntries[i].address == address) {
+			heap->leakDetectorEntries[i].address = nullptr;
+			break;
+		}
+	}
+}
+
+static void MemoryLeakDetectorCheckpoint(EsHeap *heap) {
+	EsPrint("--- MemoryLeakDetectorCheckpoint ---\n");
+
+	for (uintptr_t i = 0; i < sizeof(heap->leakDetectorEntries) / sizeof(heap->leakDetectorEntries[0]); i++) {
+		MemoryLeakDetectorEntry *entry = &heap->leakDetectorEntries[i];
+		if (!entry->address) continue;
+		entry->seenCount++;
+		EsPrint("  %d %d %x %d\n", i, entry->seenCount, entry->address, entry->bytes);
+	}
+}
 #endif
 
 static void HeapRemoveFreeRegion(HeapRegion *region) {
@@ -178,6 +257,8 @@ static void HeapPrintAllocatedRegions(EsHeap *heap) {
 			region = HEAP_REGION_NEXT(region);
 		}
 	}
+
+	MemoryLeakDetectorCheckpoint(heap);
 }
 
 void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *_heap) {
@@ -217,6 +298,7 @@ void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *_heap) {
 		region->size = 0;
 		region->allocationSize = originalSize;
 		__sync_fetch_and_add(&heap.size, originalSize);
+		MemoryLeakDetectorAdd(&heap, HEAP_REGION_DATA(region), originalSize);
 		return HEAP_REGION_DATA(region);
 	}
 
@@ -275,6 +357,7 @@ void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *_heap) {
 #ifdef DEBUG_BUILD
 		else EsMemoryFill(address, (uint8_t *) address + originalSize, 0xA1);
 #endif
+		MemoryLeakDetectorAdd(&heap, address, originalSize);
 		return address;
 	}
 
@@ -308,6 +391,7 @@ void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *_heap) {
 	else EsMemoryFill(address, (uint8_t *) address + originalSize, 0xA1);
 #endif
 
+	MemoryLeakDetectorAdd(&heap, address, originalSize);
 	return address;
 }
 
@@ -324,6 +408,8 @@ void EsHeapFree(void *address, size_t expectedSize, EsHeap *_heap) {
 	PlatformHeapFree(address);
 	return;
 #endif
+
+	MemoryLeakDetectorRemove(&heap, address);
 
 	HeapRegion *region = HEAP_REGION_HEADER(address);
 	if (region->used != USED_HEAP_REGION_MAGIC) HEAP_PANIC(region->used, region, nullptr);
