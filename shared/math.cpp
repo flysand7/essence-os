@@ -1815,6 +1815,11 @@ namespace Calculator {
 #undef FUNCTION1
 #undef FUNCTION2
 		}
+
+		void Free() {
+			FreeAll();
+			builtins.Free();
+		}
 	};
 };
 

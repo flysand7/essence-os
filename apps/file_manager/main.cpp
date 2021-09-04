@@ -541,6 +541,39 @@ void _start() {
 			Instance *instance = message->instanceDestroy.instance;
 			InstanceDestroy(instance);
 			instances.FindAndDeleteSwap(instance, true);
+		} else if (message->type == ES_MSG_APPLICATION_EXIT) {
+#ifdef DEBUG_BUILD
+			for (uintptr_t i = 0; i < drives.Length(); i++) {
+				EsHeapFree(drives[i].prefix);
+			}
+
+			for (uintptr_t i = 0; i < bookmarks.Length(); i++) {
+				StringDestroy(&bookmarks[i]);
+			}
+
+			for (uintptr_t i = 0; i < thumbnailCache.Count(); i++) {
+				EsHeapFree(thumbnailCache[i].bits);
+			}
+
+			for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
+				FolderDestroy(loadedFolders[i]);
+			}
+
+			EsAssert(!instances.Length());
+			EsHandleClose(nonBlockingTaskWorkAvailable);
+			EsHeapFree(fileTypesBuffer.out);
+
+			bookmarks.Free();
+			drives.Free();
+			folderViewSettings.Free();
+			foldersWithNoAttachedInstances.Free();
+			instances.Free();
+			knownFileTypes.Free();
+			knownFileTypesByExtension.Free();
+			loadedFolders.Free();
+			nonBlockingTasks.Free();
+			thumbnailCache.Free();
+#endif
 		} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
 			DriveAdd(message->registerFileSystem.mountPoint->prefix, message->registerFileSystem.mountPoint->prefixBytes);
 		} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {

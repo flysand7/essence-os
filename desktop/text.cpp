@@ -129,15 +129,6 @@ GlyphCacheEntry *LookupGlyphCacheEntry(GlyphCacheKey key) {
 	}
 }
 
-void GlyphCacheFree() {
-	while (fontManagement.glyphCacheLRU.count) {
-		GlyphCacheFreeEntry();
-	}
-
-	EsAssert(fontManagement.glyphCache.Count() == 0);
-	fontManagement.glyphCache.Free();
-}
-
 // --------------------------------- Font renderer.
 
 bool FontLoad(Font *font, const void *data, size_t dataBytes) {
@@ -752,6 +743,50 @@ Font FontGet(EsFont key) {
 
 	*fontManagement.loaded.Put(&key) = font;
 	return font;
+}
+
+void FontDatabaseFree() {
+	while (fontManagement.glyphCacheLRU.count) {
+		GlyphCacheFreeEntry();
+	}
+
+	for (uintptr_t i = 0; i < fontManagement.loaded.Count(); i++) {
+		// TODO Unmap file store data.
+		Font font = fontManagement.loaded[i];
+#ifdef USE_HARFBUZZ
+		hb_font_destroy(font.hb);
+#endif
+#ifdef USE_FREETYPE
+		FT_Done_Face(font.ft);
+#endif
+	}
+
+	for (uintptr_t i = 0; i < fontManagement.database.Length(); i++) {
+		FontDatabaseEntry *entry = &fontManagement.database[i];
+
+		for (uintptr_t j = 0; j < sizeof(entry->files) / sizeof(entry->files[0]); j++) {
+			if (entry->files[j]) {
+				FileStoreCloseHandle(entry->files[j]);
+			}
+		}
+	}
+
+	EsAssert(fontManagement.glyphCache.Count() == 0);
+	EsAssert(fontManagement.glyphCacheBytes == 0);
+
+	EsHeapFree(fontManagement.sansName);
+	EsHeapFree(fontManagement.serifName);
+	EsHeapFree(fontManagement.monospacedName);
+	EsHeapFree(fontManagement.fallbackName);
+
+	fontManagement.glyphCache.Free();
+	fontManagement.substitutions.Free();
+	fontManagement.database.Free();
+	fontManagement.loaded.Free();
+
+#ifdef USE_FREETYPE
+	FT_Done_FreeType(fontManagement.freetypeLibrary);
+#endif
 }
 
 // --------------------------------- Blitting rendered glyphs.

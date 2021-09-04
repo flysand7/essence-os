@@ -688,6 +688,8 @@ APIInstance *InstanceSetup(EsInstance *instance) {
 }
 
 EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *applicationName, ptrdiff_t applicationNameBytes) {
+	if (!api.startupInformation->isDesktop) HeapPrintAllocatedRegions(&heap);
+
 	if (applicationNameBytes == -1) {
 		applicationNameBytes = EsCStringLength(applicationName);
 	}
@@ -803,14 +805,19 @@ EsMessage *EsMessageReceive() {
 			FileStoreCloseHandle(message.message.instanceSave.file);
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
 #ifdef DEBUG_BUILD
-			GlyphCacheFree();
-			FreeUnusedStyles();
+			FontDatabaseFree();
+			FreeUnusedStyles(true /* include permanent styles */);
 			theming.loadedStyles.Free();
 			SystemConfigurationUnload();
 			api.mountPoints.Free();
 			api.postBox.Free();
 			api.timers.Free();
-			EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d.\n", heap.allocationsCount);
+			gui.animatingElements.Free();
+			gui.accessKeys.entries.Free();
+			gui.allWindows.Free();
+			calculator.Free();
+			HashTableFree(&gui.keyboardShortcutNames, false);
+			EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
 			EsProcessTerminateCurrent();
 		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
@@ -843,6 +850,8 @@ EsMessage *EsMessageReceive() {
 			if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
 			EsHeapFree(instance);
 			EsHeapFree(message.message.instanceDestroy.instance);
+
+			if (!api.startupInformation->isDesktop) HeapPrintAllocatedRegions(&heap);
 		} else if (message.message.type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {

@@ -12,6 +12,7 @@ struct FileType {
 
 Array<FileType> knownFileTypes; 
 HashStore<char, uintptr_t /* index into knownFileTypes */> knownFileTypesByExtension;
+EsBuffer fileTypesBuffer;
 
 void AddKnownFileTypes() {
 #define ADD_FILE_TYPE(_extension, _name, _iconID) \
@@ -22,9 +23,7 @@ void AddKnownFileTypes() {
 		type.extension = (char *) _extension; \
 		type.extensionBytes = EsCStringLength(_extension); \
 		type.iconID = _iconID; \
-		uintptr_t index = knownFileTypes.Length(); \
 		knownFileTypes.Add(type); \
-		*knownFileTypesByExtension.Put(_extension, EsCStringLength(_extension)) = index; \
 	}
 
 #define KNOWN_FILE_TYPE_DIRECTORY (0)
@@ -42,9 +41,9 @@ void AddKnownFileTypes() {
 #define KNOWN_FILE_TYPE_DRIVES_PAGE (6)
 	ADD_FILE_TYPE("", interfaceString_FileManagerDrivesPage, ES_ICON_COMPUTER_LAPTOP);
 
-	EsBuffer buffer = { .canGrow = true };
-	EsSystemConfigurationReadFileTypes(&buffer);
-	EsINIState s = { .buffer = (char *) buffer.out, .bytes = buffer.bytes };
+	fileTypesBuffer = { .canGrow = true };
+	EsSystemConfigurationReadFileTypes(&fileTypesBuffer);
+	EsINIState s = { .buffer = (char *) fileTypesBuffer.out, .bytes = fileTypesBuffer.bytes };
 	FileType type = {};
 	
 	while (EsINIParse(&s)) {

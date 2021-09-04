@@ -1887,21 +1887,30 @@ int EsCRTabs(int n) {
 }
 
 #ifndef KERNEL
+volatile static size_t mallocCount;
+
 void *EsCRTmalloc(size_t size) {
 	void *x = EsHeapAllocate(size, false);
+	if (x) __sync_fetch_and_add(&mallocCount, 1);
 	return x;
 }
 
 void *EsCRTcalloc(size_t num, size_t size) {
-	return EsHeapAllocate(num * size, true);
+	void *x = EsHeapAllocate(num * size, true);
+	if (x) __sync_fetch_and_add(&mallocCount, 1);
+	return x;
 }
 
 void EsCRTfree(void *ptr) {
+	if (ptr) __sync_fetch_and_sub(&mallocCount, 1);
 	EsHeapFree(ptr);
 }
 
 void *EsCRTrealloc(void *ptr, size_t size) {
-	return EsHeapReallocate(ptr, size, false);
+	// EsHeapReallocate handles this logic, but do it ourselves to keep mallocCount correct.
+	if (!ptr) return EsCRTmalloc(size);
+	else if (!size) return EsCRTfree(ptr), nullptr;
+	else return EsHeapReallocate(ptr, size, false);
 }
 #else
 void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *heap);

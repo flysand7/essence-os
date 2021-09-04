@@ -1932,10 +1932,11 @@ UIStyleKey MakeStyleKey(const EsStyle *style, uint16_t stateFlags) {
 	return { .part = (uintptr_t) style, .stateFlags = stateFlags };
 }
 
-void FreeUnusedStyles() {
+void FreeUnusedStyles(bool includePermanentStyles) {
 	for (uintptr_t i = 0; i < theming.loadedStyles.Count(); i++) {
-		if (theming.loadedStyles[i]->referenceCount == 0) {
-			UIStyle *style = theming.loadedStyles[i];
+		UIStyle *style = theming.loadedStyles[i];
+
+		if (style->referenceCount == 0 || (style->referenceCount == -1 && includePermanentStyles)) {
 			UIStyleKey key = theming.loadedStyles.KeyAtIndex(i);
 			theming.loadedStyles.Delete(&key);
 			EsHeapFree(style);

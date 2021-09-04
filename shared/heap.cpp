@@ -1,6 +1,6 @@
 // TODO Rewrite. Make faster!
 // TODO EsHeapAllocateNearby.
-// TODO Larger heap blocks. Due to alignment, we can shift offset values a few bits right.
+// TODO Larger heap blocks.
 
 #ifdef DEBUG_BUILD
 #define MAYBE_VALIDATE_HEAP() HeapValidate(&heap)

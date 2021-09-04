@@ -6822,7 +6822,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 
 	// Free any unused styles.
 
-	FreeUnusedStyles();
+	FreeUnusedStyles(false);
 
 	// Finish update.
 
