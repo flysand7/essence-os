@@ -315,6 +315,8 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 			EsInstanceOpenComplete(message, true);
 		}
+
+		EsHeapFree(file);
 	} else if (message->type == ES_MSG_INSTANCE_SAVE) {
 		Instance *instance = message->instanceSave.instance;
 		size_t byteCount;

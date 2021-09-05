@@ -6101,7 +6101,7 @@ void AccessKeyModeEnter(EsWindow *window) {
 	}
 
 	if (!gui.accessKeys.hintStyle) {
-		gui.accessKeys.hintStyle = GetStyle(MakeStyleKey(ES_STYLE_ACCESS_KEY_HINT, 0), false);
+		gui.accessKeys.hintStyle = GetStyle(MakeStyleKey(ES_STYLE_ACCESS_KEY_HINT, 0), true);
 	}
 
 	gui.accessKeyMode = true;

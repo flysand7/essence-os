@@ -815,6 +815,7 @@ EsMessage *EsMessageReceive() {
 			gui.allWindows.Free();
 			calculator.Free();
 			HashTableFree(&gui.keyboardShortcutNames, false);
+			MemoryLeakDetectorCheckpoint(&heap);
 			EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
 			EsProcessTerminateCurrent();

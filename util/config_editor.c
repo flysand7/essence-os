@@ -31,31 +31,45 @@ int OptionTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		} else {
 			return snprintf(m->buffer, m->bufferBytes, "%s", option->id);
 		}
-	} else if (message == UI_MSG_CLICKED) {
+	} else if (message == UI_MSG_CLICKED || (message == UI_MSG_RIGHT_UP && element->window->hovered == element)) {
+		bool reset = message == UI_MSG_RIGHT_UP;
 		int index = UITableHitTest((UITable *) element, element->window->cursorX, element->window->cursorY); 
 
 		if (index != -1) {
 			Option *option = options + index;
 
 			if (option->type == OPTION_TYPE_BOOL) {
-				bool okay = true;
+				if (reset) {
+					option->state = option->defaultState;
+				} else {
+					bool okay = true;
 
-				if (option->warning && !option->state.b) {
-					if (UIDialogShow(element->window, 0, "Warning:\n%s\n%f%b%b", option->warning, "Enable", "Cancel")[0] == 'C') {
-						okay = false;
+					if (option->warning && !option->state.b) {
+						if (UIDialogShow(element->window, 0, "Warning:\n%s\n%f%b%b", option->warning, "Enable", "Cancel")[0] == 'C') {
+							okay = false;
+						}
+					}
+
+					if (okay) {
+						option->state.b = !option->state.b;
+						option->useDefaultState = false;
 					}
 				}
-
-				if (okay) {
-					option->state.b = !option->state.b;
+			} else if (option->type == OPTION_TYPE_STRING) {
+				if (reset) {
+					free(option->state.s);
+					option->state.s = option->defaultState.s ? strdup(option->defaultState.s) : NULL;
+				} else {
+					UIDialogShow(element->window, 0, "New value:          \n%t\n%f%b", &option->state.s, "OK");
 					option->useDefaultState = false;
 				}
-			} else if (option->type == OPTION_TYPE_STRING) {
-				UIDialogShow(element->window, 0, "New value:          \n%t\n%f%b", &option->state.s, "OK");
-				option->useDefaultState = false;
 			} else {
 				// TODO.
 				option->useDefaultState = false;
+			}
+
+			if (reset) {
+				option->useDefaultState = true;
 			}
 
 			UITableResizeColumns(optionTable);
@@ -106,15 +120,16 @@ int main(int argc, char **argv) {
 	LoadOptions();
 
 	UIInitialise();
-	window = UIWindowCreate(0, 0, "Config Editor", 0, 0);
+	ui.theme = _uiThemeClassic;
+	window = UIWindowCreate(0, 0, "Config Editor", 1024, 768);
 	UIPanel *panel = UIPanelCreate(&window->e, UI_PANEL_EXPAND);
 
-	UIPanel *toolbar = UIPanelCreate(&panel->e, UI_PANEL_SMALL_SPACING | UI_PANEL_WHITE | UI_PANEL_HORIZONTAL);
+	UIPanel *toolbar = UIPanelCreate(&panel->e, UI_PANEL_SMALL_SPACING | UI_PANEL_GRAY | UI_PANEL_HORIZONTAL);
 	UIButtonCreate(&toolbar->e, 0, "Save", -1)->invoke = ActionSave;
 	UIWindowRegisterShortcut(window, (UIShortcut) { .code = UI_KEYCODE_LETTER('S'), .ctrl = true, .invoke = ActionSave });
 	UIButtonCreate(&toolbar->e, 0, "Defaults", -1)->invoke = ActionDefaults;
 	UISpacerCreate(&toolbar->e, 0, 10, 0);
-	UILabelCreate(&toolbar->e, 0, "Click an option to modify it. (Changes are local.)", -1);
+	UILabelCreate(&toolbar->e, 0, "Left click an option to modify it. Right click to reset. (Changes are local.)", -1);
 
 	optionTable = UITableCreate(&panel->e, UI_ELEMENT_V_FILL, "Option\tValue\tModified");
 	optionTable->e.messageUser = OptionTableMessage;
