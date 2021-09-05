@@ -690,7 +690,7 @@ int ListItemMessage(EsElement *element, EsMessage *message) {
 			if (thumbnail && thumbnail->bits) {
 				EsRectangle destination = EsPainterBoundsClient(message->painter);
 				EsRectangle source = ES_RECT_2S(thumbnail->width, thumbnail->height);
-				destination = EsRectangleFit(destination, source, false);
+				destination = EsRectangleFit(destination, source, true /* allow scaling up */);
 				// EsDrawBlock(message->painter, EsRectangleAdd(destination, ES_RECT_1(2)), 0x20000000);
 				EsDrawBitmapScaled(message->painter, destination, source, thumbnail->bits, thumbnail->width * 4, 0xFF);
 				return ES_HANDLED;

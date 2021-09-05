@@ -203,7 +203,8 @@ typedef struct ThemeMetrics {
 	int16_t maximumWidth, maximumHeight;
 	int16_t gapMajor, gapMinor, gapWrap;
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
-	int8_t textAlign, textSize, fontWeight, iconSize;
+	int8_t textAlign, fontWeight;
+	int16_t textSize, iconSize;
 	bool isItalic, ellipsis, layoutVertical;
 } ThemeMetrics;
 
@@ -1255,7 +1256,8 @@ struct UIStyle {
 
 	// General information.
 
-	uint8_t textSize, textAlign;
+	uint8_t textAlign;
+	uint16_t textSize;
 	uint32_t textColor;
 	EsFont font;
 
@@ -1874,14 +1876,6 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 
 	// Apply scaling to the metrics.
 
-	int8_t *scale8[] = {
-		&style->metrics->textSize, &style->metrics->iconSize,
-	};
-
-	for (uintptr_t i = 0; i < sizeof(scale8) / sizeof(scale8[0]); i++) {
-		*(scale8[i]) = *(scale8[i]) * key.scale;
-	}
-
 	int16_t *scale16[] = {
 		&style->metrics->insets.l, &style->metrics->insets.r, &style->metrics->insets.t, &style->metrics->insets.b,
 		&style->metrics->clipInsets.l, &style->metrics->clipInsets.r, &style->metrics->clipInsets.t, &style->metrics->clipInsets.b,
@@ -1890,6 +1884,7 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 		&style->metrics->preferredWidth, &style->metrics->preferredHeight,
 		&style->metrics->minimumWidth, &style->metrics->minimumHeight,
 		&style->metrics->maximumWidth, &style->metrics->maximumHeight,
+		&style->metrics->textSize, &style->metrics->iconSize,
 	};
 
 	for (uintptr_t i = 0; i < sizeof(scale16) / sizeof(scale16[0]); i++) {

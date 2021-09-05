@@ -1124,6 +1124,7 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 	uint32_t variant = 0;
 
 	while (true) {
+		// Look for a perfect match of size and direction.
 		variant = EsBufferReadInt(&iconManagement.pack);
 		if (!variant) break;
 		if ((variant == size || variant == 1) && !rtl) { found = true; break; }
@@ -1131,6 +1132,7 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 	}
 
 	if (!found) {
+		// Look for the smallest bigger size.
 		iconManagement.pack.position = start;
 
 		while (true) {
@@ -1163,11 +1165,21 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 		}
 	}
 
-	// skipSizeSearch:;
-
 	if (!found) {
+		// Look for the biggest size.
 		iconManagement.pack.position = start;
-		EsBufferReadInt(&iconManagement.pack);
+		uintptr_t previous = 0;
+
+		while (true) {
+			if (!EsBufferReadInt(&iconManagement.pack) && previous) { 
+				iconManagement.pack.position = previous; 
+				found = true; 
+				break; 
+			}
+
+			previous = iconManagement.pack.position;
+			iconManagement.pack.position = EsBufferReadInt(&iconManagement.pack);
+		}
 	}
 
 	EsBufferReadInt(&iconManagement.pack);
