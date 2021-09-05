@@ -1,8 +1,8 @@
 # **Essence** — An Operating System
 
-![Screenshot of the OS running in an emulator, showing File Manager, and the new tab screen.](https://essence.handmade.network/static/media/image/p-essence-s1.png)
-![Screenshot of the OS running in an emulator, showing GCC running under the POSIX subsystem.](https://essence.handmade.network/static/media/image/p-essence-s3.png)
-![Screenshot of the OS running in an emulator, showing the shutdown dialog.](https://essence.handmade.network/static/media/image/p-essence-s5.png)
+![Screenshot of the OS running in an emulator, showing File Manager, and the new tab screen.](https://handmade.network/public/media/image/p-essence-s1.png)
+![Screenshot of the OS running in an emulator, showing GCC running under the POSIX subsystem.](https://handmade.network/public/media/image/p-essence-s3.png)
+![Screenshot of the OS running in an emulator, showing the shutdown dialog.](https://handmade.network/public/media/image/p-essence-s5.png)
 
 ## Support
 
