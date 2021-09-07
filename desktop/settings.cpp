@@ -256,7 +256,7 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-	bool oldValue;
+	bool oldValue = false;
 
 	if (group) {
 		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
@@ -382,7 +382,7 @@ int SettingsSliderMessage(EsElement *element, EsMessage *message) {
 		EsMutexAcquire(&api.systemConfigurationMutex);
 
 		EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-		int32_t oldValue;
+		int32_t oldValue = 0;
 		int32_t newValue = LinearMap(0, 1, control->minimumValue, control->maximumValue, EsSliderGetValue(slider));
 
 		if (group) {

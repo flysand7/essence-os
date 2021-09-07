@@ -17,8 +17,8 @@
 // Behaviour of activation clicks. --> Only ignore activation clicks from menus.
 // Behaviour of the scroll wheel with regards to focused/hovered elements --> Scroll the hovered element only.
 
-#define WINDOW_INSET 	          ((int) api.systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET])
-#define CONTAINER_TAB_BAND_HEIGHT ((int) api.systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT])
+#define WINDOW_INSET 	          ((int) (19 * theming.scale))
+#define CONTAINER_TAB_BAND_HEIGHT ((int) (33 * theming.scale))
 #define BORDER_THICKNESS          ((int) (9 * theming.scale))
 
 // #define TRACE_LAYOUT
@@ -764,6 +764,11 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 	if (window->windowStyle == ES_WINDOW_CONTAINER) {
 		if (message->type == ES_MSG_LAYOUT) {
 			EsElementMove(window->GetChild(0), WINDOW_INSET, WINDOW_INSET, bounds.r - WINDOW_INSET * 2, CONTAINER_TAB_BAND_HEIGHT);
+		} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
+			// This message is also sent when the window is created.
+			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 10 * theming.scale, ES_WINDOW_PROPERTY_SOLID);
+			EsRectangle embedInsets = ES_RECT_4(WINDOW_INSET, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, WINDOW_INSET);
+			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &embedInsets, 0, ES_WINDOW_PROPERTY_EMBED_INSETS);
 		} else {
 			response = ProcessWindowBorderMessage(window, message, bounds, WINDOW_INSET - BORDER_THICKNESS, WINDOW_INSET);
 		}
@@ -886,9 +891,10 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		cascadeX += cascadeOffset, cascadeY += cascadeOffset;
 		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_FLAGS_DEFAULT);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 10, ES_WINDOW_PROPERTY_SOLID);
 		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_CONTAINER_WINDOW_ROOT);
 		window->SetStyle(ES_STYLE_CONTAINER_WINDOW_ACTIVE);
+		EsMessage m = { .type = ES_MSG_UI_SCALE_CHANGED };
+		EsMessageSend(window, &m);
 	} else if (style == ES_WINDOW_INSPECTOR) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
 		window->SetStyle(ES_STYLE_PANEL_INSPECTOR_WINDOW_ROOT);
@@ -6819,11 +6825,10 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		window->height = window->windowHeight = message->windowResized.content.b;
 
 		if (window->windowStyle == ES_WINDOW_CONTAINER) {
-			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, 
-					WINDOW_INSET, window->windowHeight - WINDOW_INSET);
+			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, WINDOW_INSET, window->windowHeight - WINDOW_INSET);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &opaqueBounds, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		} else if (window->windowStyle == ES_WINDOW_INSPECTOR) {
-			EsRectangle opaqueBounds = ES_RECT_4(0, window->windowWidth, 0, window->windowHeight);
+			EsRectangle opaqueBounds = ES_RECT_2S(window->windowWidth, window->windowHeight);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &opaqueBounds, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		}
 

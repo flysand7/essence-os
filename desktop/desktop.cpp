@@ -1887,10 +1887,13 @@ void DesktopSetup() {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, desktop.wallpaperWindow->handle, (uintptr_t) &screen, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, desktop.wallpaperWindow->handle, 
 				ES_WINDOW_SOLID_TRUE | ES_WINDOW_SOLID_NO_BRING_TO_FRONT, 0, ES_WINDOW_PROPERTY_SOLID);
-		desktop.wallpaperWindow->windowWidth = Width(screen);
-		desktop.wallpaperWindow->windowHeight = Height(screen);
 		desktop.wallpaperWindow->doNotPaint = true;
-		EsThreadCreate(WallpaperLoad, nullptr, 0);
+
+		if ((int32_t) desktop.wallpaperWindow->windowWidth != Width(screen) || (int32_t) desktop.wallpaperWindow->windowHeight != Height(screen)) {
+			desktop.wallpaperWindow->windowWidth = Width(screen);
+			desktop.wallpaperWindow->windowHeight = Height(screen);
+			EsThreadCreate(WallpaperLoad, nullptr, 0);
+		}
 	}
 
 	if (desktop.installationState == INSTALLATION_STATE_NONE) {

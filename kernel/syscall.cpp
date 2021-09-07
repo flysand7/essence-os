@@ -425,6 +425,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		KMutexAcquire(&windowManager.mutex);
 		window->SetEmbed(embed);
 		KMutexRelease(&windowManager.mutex);
+	} else if (property == ES_WINDOW_PROPERTY_EMBED_INSETS) {
+		KMutexAcquire(&windowManager.mutex);
+		SYSCALL_READ(&window->embedInsets, argument1, sizeof(EsRectangle));
+		window->ResizeEmbed();
+		KMutexRelease(&windowManager.mutex);
 	} else if (property == ES_WINDOW_PROPERTY_OBJECT) {
 		if (embed->owner != currentProcess) {
 			// TODO Permissions.
@@ -434,17 +439,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		__sync_synchronize();
 
 		KMutexAcquire(&windowManager.mutex);
-
-		if (embed->container) {
-			EsMessage message;
-			EsMemoryZero(&message, sizeof(EsMessage));
-			message.type = ES_MSG_WINDOW_RESIZED;
-			int embedWidth = embed->container->width - WINDOW_INSET * 2;
-			int embedHeight = embed->container->height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT;
-			message.windowResized.content = ES_RECT_4(0, embedWidth, 0, embedHeight);
-			embed->owner->messageQueue.SendMessage((void *) argument2, &message);
-		}
-
+		if (embed->container) embed->container->ResizeEmbed();
 		KMutexRelease(&windowManager.mutex);
 	} else if (property == ES_WINDOW_PROPERTY_EMBED_OWNER) {
 		Process *process;
@@ -494,13 +489,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 	bool isEmbed = _window.type == KERNEL_OBJECT_EMBEDDED_WINDOW;
 	Window *window = isEmbed ? ((EmbeddedWindow *) _window.object)->container : ((Window *) _window.object);
 	Surface *surface = &window->surface;
+	EsRectangle insets = window->embedInsets;
 
 	if (!window || (isEmbed && currentProcess != ((EmbeddedWindow *) _window.object)->owner)) {
 		SYSCALL_RETURN(ES_SUCCESS, false);
 	}
 
 	if (isEmbed) {
-		region = Translate(region, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT);
+		region = Translate(region, insets.l, insets.t);
 	}
 
 	if (argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL || argument3 == WINDOW_SET_BITS_SCROLL_HORIZONTAL) {
@@ -570,12 +566,12 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 	+ stride * (subRegion.t - clippedRegion.t) + 4 * (subRegion.l - clippedRegion.l), stride, subRegion); } }
 
 			if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
-				SET_BITS_REGION(0, window->width, 0, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET);
-				SET_BITS_REGION(0, WINDOW_INSET, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET, window->height - WINDOW_INSET);
-				SET_BITS_REGION(window->width - WINDOW_INSET, window->width, CONTAINER_TAB_BAND_HEIGHT + WINDOW_INSET, window->height - WINDOW_INSET);
-				SET_BITS_REGION(0, window->width, window->height - WINDOW_INSET, window->height);
+				SET_BITS_REGION(0, window->width, 0, insets.t);
+				SET_BITS_REGION(0, insets.l, insets.t, window->height - insets.b);
+				SET_BITS_REGION(window->width - insets.r, window->width, insets.t, window->height - insets.b);
+				SET_BITS_REGION(0, window->width, window->height - insets.b, window->height);
 			} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
-				SET_BITS_REGION(WINDOW_INSET, window->width - WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, window->height - WINDOW_INSET);
+				SET_BITS_REGION(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
 			} else {
 				SET_BITS_REGION(0, window->width, 0, window->height);
 			}
@@ -1215,15 +1211,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
 		Window *window = embed->container;
 
 		if (window) {
-			rectangle.l = window->position.x + WINDOW_INSET;
-			rectangle.t = window->position.y + WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT;
-			rectangle.r = window->position.x + window->width - WINDOW_INSET;
-			rectangle.b = window->position.y + window->height - WINDOW_INSET;
-		} else {
-			rectangle.l = 0;
-			rectangle.t = 0;
-			rectangle.r = 0;
-			rectangle.b = 0;
+			rectangle.l = window->position.x + window->embedInsets.l;
+			rectangle.t = window->position.y + window->embedInsets.t;
+			rectangle.r = window->position.x + window->width - window->embedInsets.r;
+			rectangle.b = window->position.y + window->height - window->embedInsets.b;
 		}
 	}
 
@@ -1430,9 +1421,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
 	uint64_t systemConstants[ES_SYSTEM_CONSTANT_COUNT];
 	EsMemoryZero(systemConstants, sizeof(systemConstants));
 	systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] = timeStampTicksPerMs / 1000;
-	systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET] = WINDOW_INSET;
-	systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT] = CONTAINER_TAB_BAND_HEIGHT;
-	systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] = UI_SCALE;
 	systemConstants[ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT] = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
 	SYSCALL_WRITE(argument0, systemConstants, sizeof(systemConstants));
 	SYSCALL_RETURN(ES_SUCCESS, false);

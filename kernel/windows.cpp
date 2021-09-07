@@ -31,10 +31,11 @@ struct Window {
 	bool Move(EsRectangle newBounds, uint32_t flags);
 	void SetEmbed(EmbeddedWindow *window);
 	bool IsVisible();
+	void ResizeEmbed(); // Send a message to the embedded window telling it to resize.
 
 	// State:
 	EsWindowStyle style;
-	EsRectangle solidInsets;
+	EsRectangle solidInsets, embedInsets;
 	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, queuedScrollUpdate, activationClick, noBringToFront;
 	volatile bool closed;
 	EsMessage lastEmbedKeyboardMessage; // The most recent keyboard message sent to the embedded window.
@@ -153,15 +154,6 @@ WindowManager windowManager;
 
 void SendMessageToWindow(Window *window, EsMessage *message);
 
-#ifdef TEST_HIGH_UI_SCALE
-#define UI_SCALE TEST_HIGH_UI_SCALE
-#else
-#define UI_SCALE (100)
-#endif
-
-#define WINDOW_INSET (19 * UI_SCALE / 100)
-#define CONTAINER_TAB_BAND_HEIGHT (33 * UI_SCALE / 100)
-
 #else
 
 bool Window::IsVisible() {
@@ -185,22 +177,23 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 	}
 
 	if (message->type == ES_MSG_WINDOW_RESIZED) {
-		message->windowResized.content = ES_RECT_4(0, window->width, 0, window->height);
+		message->windowResized.content = ES_RECT_2S(window->width, window->height);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
-
-		message->windowResized.content = ES_RECT_4(0, window->width - WINDOW_INSET * 2, 0, window->height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT);
+		message->windowResized.content = ES_RECT_2S(window->width - window->embedInsets.l - window->embedInsets.r, 
+				window->height - window->embedInsets.t - window->embedInsets.b);
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 	} else if (message->type == ES_MSG_WINDOW_DEACTIVATED || message->type == ES_MSG_WINDOW_ACTIVATED) {
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 	} else if (message->type == ES_MSG_MOUSE_MOVED) {
-		EsRectangle embedRegion = ES_RECT_4(WINDOW_INSET, window->width - WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, window->height - WINDOW_INSET);
+		EsRectangle embedRegion = ES_RECT_4(window->embedInsets.l, window->width - window->embedInsets.r, 
+				window->embedInsets.t, window->height - window->embedInsets.b);
 		bool inEmbed = windowManager.pressedWindow ? window->hoveringOverEmbed 
 			: EsRectangleContains(embedRegion, message->mouseMoved.newPositionX, message->mouseMoved.newPositionY);
 
 		if (inEmbed) {
-			message->mouseMoved.newPositionX -= WINDOW_INSET;
-			message->mouseMoved.newPositionY -= WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT;
+			message->mouseMoved.newPositionX -= window->embedInsets.l;
+			message->mouseMoved.newPositionY -= window->embedInsets.t;
 
 			window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 
@@ -222,8 +215,8 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		}
 	} else if (message->type >= ES_MSG_MOUSE_LEFT_DOWN && message->type <= ES_MSG_MOUSE_MIDDLE_UP) {
 		if (window->hoveringOverEmbed) {
-			message->mouseDown.positionX -= WINDOW_INSET;
-			message->mouseDown.positionY -= WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT;
+			message->mouseDown.positionX -= window->embedInsets.l;
+			message->mouseDown.positionY -= window->embedInsets.t;
 
 			if (!window->activationClick) {
 				window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
@@ -868,10 +861,7 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 	}
 
 	if ((flags & ES_WINDOW_MOVE_DYNAMIC) && changedSize && style == ES_WINDOW_CONTAINER && !windowManager.resizeSlow) {
-		windowManager.Redraw(ES_POINT(position.x, position.y), WINDOW_INSET, height, nullptr);
-		windowManager.Redraw(ES_POINT(position.x + width - WINDOW_INSET, position.y), WINDOW_INSET, height, nullptr);
-		windowManager.Redraw(ES_POINT(position.x + WINDOW_INSET, position.y), width - WINDOW_INSET * 2, WINDOW_INSET, nullptr);
-		windowManager.Redraw(ES_POINT(position.x + WINDOW_INSET, position.y + height - WINDOW_INSET), width - WINDOW_INSET * 2, WINDOW_INSET, nullptr);
+		// Don't redraw anything yet.
 	} else {
 		windowManager.Redraw(position, width, height, nullptr);
 	}
@@ -1152,6 +1142,16 @@ void EmbeddedWindow::SetEmbedOwner(Process *process) {
 	owner = process;
 }
 
+void Window::ResizeEmbed() {
+	KMutexAssertLocked(&windowManager.mutex);
+	if (!embed || !embed->apiWindow) return;
+	EsMessage message;
+	EsMemoryZero(&message, sizeof(EsMessage));
+	message.type = ES_MSG_WINDOW_RESIZED;
+	message.windowResized.content = ES_RECT_2S(width - embedInsets.l - embedInsets.r, height - embedInsets.t - embedInsets.b);
+	embed->owner->messageQueue.SendMessage(embed->apiWindow, &message);
+}
+
 void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 	KMutexAssertLocked(&windowManager.mutex);
 
@@ -1161,17 +1161,6 @@ void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 
 	if (newEmbed == embed) {
 		return;
-	}
-
-	if (newEmbed) {
-		newEmbed->container = this;
-		EsMessage message;
-		EsMemoryZero(&message, sizeof(EsMessage));
-		message.type = ES_MSG_WINDOW_RESIZED;
-		int embedWidth = width - WINDOW_INSET * 2;
-		int embedHeight = height - WINDOW_INSET * 2 - CONTAINER_TAB_BAND_HEIGHT;
-		message.windowResized.content = ES_RECT_4(0, embedWidth, 0, embedHeight);
-		newEmbed->owner->messageQueue.SendMessage(newEmbed->apiWindow, &message);
 	}
 
 	if (embed) {
@@ -1193,6 +1182,11 @@ void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 	}
 
 	embed = newEmbed;
+
+	if (embed) {
+		embed->container = this;
+		ResizeEmbed();
+	}
 }
 
 void WindowManager::StartEyedrop(uintptr_t object, Window *avoid, uint32_t cancelColor) {
