@@ -557,10 +557,7 @@ bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) {
 
 EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store) {
 	FontInitialise();
-
 	EsAssert(store->handles);
-	store->handles++;
-
 	FontDatabaseEntry *entry = nullptr;
 
 	if (information->nameBytes) {
@@ -586,11 +583,17 @@ EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFi
 		FontDatabaseEntry e = {};
 		EsMemoryCopy(&e, information, sizeof(EsFontInformation));
 		e.id = fontManagement.database.Length();
-		fontManagement.database.Add(e);
-		entry = &fontManagement.database.Last();
+
+		if (fontManagement.database.Add(e)) {
+			entry = &fontManagement.database.Last();
+		} else {
+			return 0;
+		}
 	}
 
 	addFileToFamily:;
+
+	store->handles++;
 
 	entry->availableWeightsNormal |= information->availableWeightsNormal;
 	entry->availableWeightsItalic |= information->availableWeightsItalic;
@@ -1846,13 +1849,13 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 		TextPiece piece = {};
 		piece.style = plan->currentTextStyle;
 		piece.glyphOffset = plan->glyphInfos.Length();
-		piece.glyphCount = glyphCount;
 		piece.ascent  =  FontGetAscent (&plan->font) + plan->currentTextStyle->baselineOffset, 
 		piece.descent = -FontGetDescent(&plan->font) - plan->currentTextStyle->baselineOffset;
 
 		for (uintptr_t i = 0; i < glyphCount; i++) {
-			plan->glyphInfos.Add(glyphInfos[i]);
-			plan->glyphPositions.Add(glyphPositions[i]);
+			if (!plan->glyphInfos.Add(glyphInfos[i])) break;
+			if (!plan->glyphPositions.Add(glyphPositions[i])) break;
+			piece.glyphCount++;
 			int32_t width = glyphPositions[i].x_advance;
 			piece.width += width, line->width += width;
 		}
@@ -1938,18 +1941,19 @@ int32_t TextExpandTabs(EsTextPlan *plan, uintptr_t pieceOffset, int32_t width) {
 			piece->width = firstWidth + tabWidth * (piece->end - piece->start - 1);
 			addedWidth += piece->width;
 			piece->glyphOffset = plan->glyphInfos.Length();
-			piece->glyphCount = piece->end - piece->start;
+			piece->glyphCount = 0;
 			piece->ascent = FontGetAscent(&plan->font);
 			piece->descent = -FontGetDescent(&plan->font);
 
-			for (uintptr_t i = 0; i < piece->glyphCount; i++) {
+			for (uintptr_t i = 0; i < piece->end - piece->start; i++) {
 				hb_glyph_info_t info = {};
 				info.cluster = piece->start + i;
 				info.codepoint = 0xFFFFFFFF;
 				hb_glyph_position_t position = {};
 				position.x_advance = i ? tabWidth : firstWidth;
-				plan->glyphInfos.Add(info);
-				plan->glyphPositions.Add(position);
+				if (!plan->glyphInfos.Add(info)) break;
+				if (!plan->glyphPositions.Add(position)) break;
+				piece->glyphCount++;
 			}
 		}
 
@@ -2004,14 +2008,17 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 
 		if (plan->string[start] == '\t') {
 			TextPiece _piece = {};
-			plan->pieces.Add(_piece);
-			TextPiece *piece = &plan->pieces.Last();
-			piece->style = plan->currentTextStyle;
-			piece->glyphOffset = 0;
-			piece->glyphCount = 0;
-			piece->start = start;
-			piece->end = end;
-			piece->isTabPiece = true;
+
+			if (plan->pieces.Add(_piece)) {
+				TextPiece *piece = &plan->pieces.Last();
+				piece->style = plan->currentTextStyle;
+				piece->glyphOffset = 0;
+				piece->glyphCount = 0;
+				piece->start = start;
+				piece->end = end;
+				piece->isTabPiece = true;
+			}
+
 			plan->textRunPosition++;
 			continue;
 		}
@@ -2041,30 +2048,33 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 		// Create the text piece.
 
 		TextPiece _piece = {};
-		plan->pieces.Add(_piece);
-		TextPiece *piece = &plan->pieces.Last();
-		piece->style = plan->currentTextStyle;
-		piece->glyphOffset = plan->glyphInfos.Length();
-		piece->glyphCount = glyphCount;
-		piece->ascent  =  FontGetAscent (&plan->font) + plan->currentTextStyle->baselineOffset;
-		piece->descent = -FontGetDescent(&plan->font) - plan->currentTextStyle->baselineOffset;
-		piece->start = start;
-		piece->end = end;
 
-		for (uintptr_t i = 0; i < glyphCount; i++) {
-			plan->glyphInfos.Add(glyphInfos[i]);
-			plan->glyphPositions.Add(glyphPositions[i]);
+		if (plan->pieces.Add(_piece)) {
+			TextPiece *piece = &plan->pieces.Last();
+			piece->style = plan->currentTextStyle;
+			piece->glyphOffset = plan->glyphInfos.Length();
+			piece->glyphCount = 0;
+			piece->ascent  =  FontGetAscent (&plan->font) + plan->currentTextStyle->baselineOffset;
+			piece->descent = -FontGetDescent(&plan->font) - plan->currentTextStyle->baselineOffset;
+			piece->start = start;
+			piece->end = end;
 
-			piece->width += glyphPositions[i].x_advance;
+			for (uintptr_t i = 0; i < glyphCount; i++) {
+				if (!plan->glyphInfos.Add(glyphInfos[i])) break;
+				if (!plan->glyphPositions.Add(glyphPositions[i])) break;
+				piece->glyphCount++;
 
-			if (i == glyphCount - 1 || glyphInfos[i].cluster != glyphInfos[i + 1].cluster) {
-				piece->width += plan->currentTextStyle->tracking * FREETYPE_UNIT_SCALE;
+				piece->width += glyphPositions[i].x_advance;
+
+				if (i == glyphCount - 1 || glyphInfos[i].cluster != glyphInfos[i + 1].cluster) {
+					piece->width += plan->currentTextStyle->tracking * FREETYPE_UNIT_SCALE;
+				}
+
+				// EsPrint("\t%d\n", glyphInfos[i].codepoint);
 			}
 
-			// EsPrint("\t%d\n", glyphInfos[i].codepoint);
+			width += piece->width;
 		}
-
-		width += piece->width;
 
 		// Go to the next run.
 
@@ -2115,7 +2125,10 @@ EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *propertie
 	plan.properties = *properties;
 
 	TextLine blankLine = {};
-	plan.lines.Add(blankLine);
+
+	if (!plan.lines.Add(blankLine)) {
+		return nullptr;
+	}
 
 	// Setup the HarfBuzz buffer.
 
@@ -2166,8 +2179,9 @@ EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *propertie
 				break;
 			}
 
-			plan.lines.Add(blankLine);
-			plan.lines.Last().pieceOffset = pieceOffset;
+			if (plan.lines.Add(blankLine)) {
+				plan.lines.Last().pieceOffset = pieceOffset;
+			}
 		}
 
 #if 0
@@ -3980,7 +3994,14 @@ char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {
 	buffer[position] = 0;
 	EsAssert(position <= bytes); 
 	if (_bytes) *_bytes = position;
-	return (char *) EsHeapReallocate(buffer, position + 1, false);
+
+	char *result = (char *) EsHeapReallocate(buffer, position + 1, false);
+
+	if (!result) {
+		EsHeapFree(buffer);
+	}
+
+	return result;
 }
 
 double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags) {
@@ -4210,7 +4231,8 @@ int ProcessTextboxMarginMessage(EsElement *element, EsMessage *message) {
 			textRun[1].offset = EsStringFormat(label, sizeof(label), "%d", i + textbox->firstVisibleLine + 1);
 			EsTextPlanProperties properties = {};
 			properties.flags = ES_TEXT_V_CENTER | ES_TEXT_H_RIGHT | ES_TEXT_ELLIPSIS | ES_TEXT_PLAN_SINGLE_USE;
-			EsDrawText(painter, EsTextPlanCreate(element, &properties, bounds, label, textRun, 1), bounds, nullptr, nullptr);
+			EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, label, textRun, 1);
+			if (plan) EsDrawText(painter, plan, bounds, nullptr, nullptr);
 		}
 	}
 
@@ -4317,7 +4339,9 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			selectionProperties.caret1 = caret1;
 			EsTextPlan *plan;
 
-			if (textRuns[1].offset) {
+			if (!textRuns.Length()) {
+				plan = nullptr;
+			} else if (textRuns[1].offset) {
 				plan = EsTextPlanCreate(element, &properties, lineBounds, line->GetBuffer(textbox), textRuns.array, textRuns.Length() - 1);
 			} else {
 				textRuns[1].offset = 1; // Make sure that the caret and selection is draw correctly, even on empty lines.
@@ -4503,6 +4527,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_UP) {
 		textbox->inRightClickDrag = false;
 		EsMenu *menu = EsMenuCreate(textbox, ES_MENU_AT_CURSOR);
+		if (!menu) return ES_HANDLED;
 
 		// TODO User customisation of menus.
 
@@ -4613,6 +4638,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 
 EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsTextbox *textbox = (EsTextbox *) EsHeapAllocate(sizeof(EsTextbox), true);
+	if (!textbox) return nullptr;
 
 	if (!style) {
 		if (flags & ES_TEXTBOX_MULTILINE) {
@@ -4767,6 +4793,10 @@ void TextboxBreadcrumbOverlayRecreate(EsTextbox *textbox) {
 	EsPanel *panel = EsPanelCreate(textbox, ES_PANEL_HORIZONTAL | ES_CELL_FILL | ES_ELEMENT_NO_HOVER, ES_STYLE_BREADCRUMB_BAR_PANEL);
 	textbox->overlayData = panel;
 
+	if (!panel) {
+		return;
+	}
+
 	uint8_t _buffer[256];
 	EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
 	EsMessage m = { ES_MSG_TEXTBOX_GET_BREADCRUMB };
@@ -4780,19 +4810,22 @@ void TextboxBreadcrumbOverlayRecreate(EsTextbox *textbox) {
 
 		EsButton *crumb = EsButtonCreate(panel, ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_COMPACT | ES_CELL_V_FILL, 
 				ES_STYLE_BREADCRUMB_BAR_CRUMB, (char *) buffer.out, buffer.position);
-		crumb->userData = m.getBreadcrumb.index;
 
-		crumb->messageUser = [] (EsElement *element, EsMessage *message) {
-			if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
-				EsMessage m = { ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB };
-				m.activateBreadcrumb = element->userData.u;
-				EsMessageSend(element->parent->parent, &m);
-			} else {
-				return 0;
-			}
+		if (crumb) {
+			crumb->userData = m.getBreadcrumb.index;
 
-			return ES_HANDLED;
-		};
+			crumb->messageUser = [] (EsElement *element, EsMessage *message) {
+				if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
+					EsMessage m = { ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB };
+					m.activateBreadcrumb = element->userData.u;
+					EsMessageSend(element->parent->parent, &m);
+				} else {
+					return 0;
+				}
+
+				return ES_HANDLED;
+			};
+		}
 		
 		m.getBreadcrumb.index++;
 	}
@@ -4954,7 +4987,14 @@ void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, 
 
 	display->textRuns = (EsTextRun *) EsHeapAllocate(sizeof(EsTextRun) * (runCount + 1), true);
 	display->textRunCount = runCount;
-	HeapDuplicate((void **) &display->contents, string, runs[runCount].offset);
+
+	size_t outBytes;
+	HeapDuplicate((void **) &display->contents, &outBytes, string, runs[runCount].offset);
+
+	if (outBytes != runs[runCount].offset) {
+		// TODO Handle allocation failure.
+	}
+
 	EsMemoryCopy(display->textRuns, runs, sizeof(EsTextRun) * (runCount + 1));
 
 	display->usingSyntaxHighlighting = false;
@@ -4973,7 +5013,7 @@ void EsTextDisplaySetContents(EsTextDisplay *display, const char *string, ptrdif
 		display->currentStyle->GetTextStyle(&baseStyle);
 		EsRichTextParse(string, stringBytes, &display->contents, &display->textRuns, &display->textRunCount, &baseStyle);
 	} else {
-		HeapDuplicate((void **) &display->contents, string, stringBytes);
+		HeapDuplicate((void **) &display->contents, (size_t *) &stringBytes, string, stringBytes);
 		display->textRuns = (EsTextRun *) EsHeapAllocate(sizeof(EsTextRun) * 2, true);
 		display->currentStyle->GetTextStyle(&display->textRuns[0].style);
 		display->textRuns[1].offset = stringBytes;
@@ -4987,6 +5027,7 @@ void EsTextDisplaySetContents(EsTextDisplay *display, const char *string, ptrdif
 
 EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes) {
 	EsTextDisplay *display = (EsTextDisplay *) EsHeapAllocate(sizeof(EsTextDisplay), true);
+	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessTextDisplayMessage, style ?: UIGetDefaultStyleVariant(ES_STYLE_TEXT_LABEL, parent));
 	display->cName = "text display";
 	if (labelBytes == -1) labelBytes = EsCStringLength(label);
@@ -5100,7 +5141,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 			bounds.t += child->offsetY;
 			bounds.b = bounds.t + child->height;
 			EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, buffer, textRun, 1);
-			EsDrawText(message->painter, plan, bounds); 
+			if (plan) EsDrawText(message->painter, plan, bounds); 
 			bounds.t -= child->offsetY;
 			counter++;
 		}
@@ -5115,6 +5156,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 
 EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsListDisplay *display = (EsListDisplay *) EsHeapAllocate(sizeof(EsListDisplay), true);
+	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessListDisplayMessage, style ?: ES_STYLE_LIST_DISPLAY_DEFAULT);
 	display->cName = "list display";
 	return display;

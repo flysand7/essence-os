@@ -287,14 +287,20 @@ EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup
 	if (createIfNeeded) {
 		EsSystemConfigurationItem item = {};
 		item.key = (char *) EsHeapAllocate(keyBytes, false);
+		if (!item.key) return nullptr;
 		item.keyBytes = keyBytes;
 		EsMemoryCopy(item.key, key, keyBytes);
 
 		Array<EsSystemConfigurationItem> items = { group->items };
 		EsSystemConfigurationItem *_item = items.Add(item);
 		group->items = items.array;
-		group->itemCount++;
-		return _item;
+
+		if (_item) {
+			group->itemCount++;
+			return _item;
+		} else {
+			EsHeapFree(item.key);
+		}
 	}
 
 	return nullptr;
@@ -312,9 +318,16 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	if (createIfNeeded) {
 		EsSystemConfigurationGroup group = {};
 		group.section = (char *) EsHeapAllocate(sectionBytes, false);
+		if (!group.section) return nullptr;
 		group.sectionBytes = sectionBytes;
 		EsMemoryCopy(group.section, section, sectionBytes);
-		return api.systemConfigurationGroups.Add(group);
+		EsSystemConfigurationGroup *_group = api.systemConfigurationGroups.Add(group);
+
+		if (_group) {
+			return _group;
+		} else {
+			EsHeapFree(group.section);
+		}
 	}
 
 	return nullptr;
@@ -325,6 +338,7 @@ char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, co
 	if (!item) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	if (valueBytes) *valueBytes = item->valueBytes;
 	char *copy = (char *) EsHeapAllocate(item->valueBytes + 1, false);
+	if (!copy) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	copy[item->valueBytes] = 0;
 	EsMemoryCopy(copy, item->value, item->valueBytes);
 	return copy;
@@ -541,22 +555,28 @@ void _EsPathAnnouncePathMoved(const char *oldPath, ptrdiff_t oldPathBytes, const
 	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
 	size_t bufferBytes = 1 + sizeof(uintptr_t) * 2 + oldPathBytes + newPathBytes;
 	char *buffer = (char *) EsHeapAllocate(bufferBytes, false);
-	buffer[0] = DESKTOP_MSG_ANNOUNCE_PATH_MOVED;
-	EsMemoryCopy(buffer + 1, &oldPathBytes, sizeof(uintptr_t));
-	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t), &newPathBytes, sizeof(uintptr_t));
-	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
-	EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
-	MessageDesktop(buffer, bufferBytes);
-	EsHeapFree(buffer);
+
+	if (buffer) {
+		buffer[0] = DESKTOP_MSG_ANNOUNCE_PATH_MOVED;
+		EsMemoryCopy(buffer + 1, &oldPathBytes, sizeof(uintptr_t));
+		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t), &newPathBytes, sizeof(uintptr_t));
+		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
+		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
+		MessageDesktop(buffer, bufferBytes);
+		EsHeapFree(buffer);
+	}
 }
 
 void EsApplicationRunTemporary(EsInstance *instance, const char *path, ptrdiff_t pathBytes) {
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
 	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
-	buffer[0] = DESKTOP_MSG_RUN_TEMPORARY_APPLICATION;
-	EsMemoryCopy(buffer + 1, path, pathBytes);
-	MessageDesktop(buffer, pathBytes + 1, instance->window->handle);
-	EsHeapFree(buffer);
+
+	if (buffer) {
+		buffer[0] = DESKTOP_MSG_RUN_TEMPORARY_APPLICATION;
+		EsMemoryCopy(buffer + 1, path, pathBytes);
+		MessageDesktop(buffer, pathBytes + 1, instance->window->handle);
+		EsHeapFree(buffer);
+	}
 }
 
 void EsSystemShowShutdownDialog() {
@@ -574,10 +594,13 @@ void InstanceSave(EsInstance *_instance) {
 	EsAssert(instance->instanceClass == ES_INSTANCE_CLASS_EDITOR);
 	size_t bufferBytes = instance->editorSettings.newDocumentFileNameBytes + 1;
 	char *buffer = (char *) EsHeapAllocate(bufferBytes, false);
-	buffer[0] = DESKTOP_MSG_REQUEST_SAVE;
-	EsMemoryCopy(buffer + 1, instance->editorSettings.newDocumentFileName, instance->editorSettings.newDocumentFileNameBytes);
-	MessageDesktop(buffer, bufferBytes, _instance->window->handle);
-	EsHeapFree(buffer);
+
+	if (buffer) {
+		buffer[0] = DESKTOP_MSG_REQUEST_SAVE;
+		EsMemoryCopy(buffer + 1, instance->editorSettings.newDocumentFileName, instance->editorSettings.newDocumentFileNameBytes);
+		MessageDesktop(buffer, bufferBytes, _instance->window->handle);
+		EsHeapFree(buffer);
+	}
 }
 
 void FileStoreCloseHandle(EsFileStore *fileStore) {
@@ -601,6 +624,7 @@ void FileStoreCloseHandle(EsFileStore *fileStore) {
 
 EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes) {
 	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + pathBytes, false);
+	if (!fileStore) return nullptr;
 	EsMemoryZero(fileStore, sizeof(EsFileStore));
 	fileStore->type = FILE_STORE_PATH;
 	fileStore->handles = 1;
@@ -613,6 +637,7 @@ EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes) {
 
 EsFileStore *FileStoreCreateFromHandle(EsHandle handle) {
 	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
+	if (!fileStore) return nullptr;
 	fileStore->type = FILE_STORE_HANDLE;
 	fileStore->handles = 1;
 	fileStore->error = ES_SUCCESS;
@@ -622,6 +647,7 @@ EsFileStore *FileStoreCreateFromHandle(EsHandle handle) {
 
 EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes) {
 	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + nameBytes, false);
+	if (!fileStore) return nullptr;
 	EsMemoryZero(fileStore, sizeof(EsFileStore));
 	fileStore->type = FILE_STORE_EMBEDDED_FILE;
 	fileStore->handles = 1;
@@ -919,35 +945,44 @@ EsMessage *EsMessageReceive() {
 		} else if (type == ES_MSG_INSTANCE_SAVE_RESPONSE) {
 			EsMessage m = {};
 			m.type = ES_MSG_INSTANCE_SAVE;
-
 			m.instanceSave.file = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
-			m.instanceSave.file->error = message.message.tabOperation.error;
-			m.instanceSave.file->handle = message.message.tabOperation.handle;
-			m.instanceSave.file->type = FILE_STORE_HANDLE;
-			m.instanceSave.file->handles = 1;
-			m.instanceSave.instance = InstanceFromWindowID(message.message.tabOperation.id);
 
-			if (m.instanceSave.file->error == ES_SUCCESS) {
+			if (m.instanceSave.file) {
+				m.instanceSave.file->error = message.message.tabOperation.error;
+				m.instanceSave.file->handle = message.message.tabOperation.handle;
+				m.instanceSave.file->type = FILE_STORE_HANDLE;
+				m.instanceSave.file->handles = 1;
+				m.instanceSave.instance = InstanceFromWindowID(message.message.tabOperation.id);
+
+				if (m.instanceSave.file->error == ES_SUCCESS) {
+					EsMemoryCopy(&message.message, &m, sizeof(EsMessage));
+					return &message.message;
+				} else {
+					EsInstanceSaveComplete(&m, false);
+				}
+
 				EsMemoryCopy(&message.message, &m, sizeof(EsMessage));
-				return &message.message;
 			} else {
-				EsInstanceSaveComplete(&m, false);
+				if (message.message.tabOperation.handle) {
+					EsHandleClose(message.message.tabOperation.handle);
+				}
 			}
-
-			EsMemoryCopy(&message.message, &m, sizeof(EsMessage));
 		} else if (type == ES_MSG_INSTANCE_DOCUMENT_RENAMED) {
 			char *buffer = (char *) EsHeapAllocate(message.message.tabOperation.bytes, false);
-			EsConstantBufferRead(message.message.tabOperation.handle, buffer);
-			EsInstance *_instance = InstanceFromWindowID(message.message.tabOperation.id);
 
-			if (_instance) {
-				APIInstance *instance = (APIInstance *) _instance->_private;
-				EsHeapFree((void *) instance->startupInformation->filePath);
-				instance->startupInformation->filePath = buffer;
-				instance->startupInformation->filePathBytes = message.message.tabOperation.bytes;
-				EsWindowSetTitle(_instance->window, buffer, message.message.tabOperation.bytes);
-			} else {
-				EsHeapFree(buffer);
+			if (buffer) {
+				EsConstantBufferRead(message.message.tabOperation.handle, buffer);
+				EsInstance *_instance = InstanceFromWindowID(message.message.tabOperation.id);
+
+				if (_instance) {
+					APIInstance *instance = (APIInstance *) _instance->_private;
+					EsHeapFree((void *) instance->startupInformation->filePath);
+					instance->startupInformation->filePath = buffer;
+					instance->startupInformation->filePathBytes = message.message.tabOperation.bytes;
+					EsWindowSetTitle(_instance->window, buffer, message.message.tabOperation.bytes);
+				} else {
+					EsHeapFree(buffer);
+				}
 			}
 
 			EsHandleClose(message.message.tabOperation.handle);
@@ -1014,7 +1049,9 @@ EsMessage *EsMessageReceive() {
 				api.foundBootFileSystem = true;
 			}
 
-			return &message.message;
+			if (m->mountPoint) {
+				return &message.message;
+			}
 		} else if (type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {
@@ -1279,6 +1316,7 @@ EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsComman
 		const char *cDefaultKeyboardShortcut, bool enabled) {
 	if (!command) {
 		command = (EsCommand *) EsHeapAllocate(sizeof(EsCommand), true);
+		if (!command) return nullptr;
 		command->allocated = true;
 	}
 

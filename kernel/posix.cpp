@@ -195,6 +195,10 @@ namespace POSIX {
 			KMutexAcquire(&threadPOSIXDataMutex);
 			if (!currentThread->posixData) currentThread->posixData = (POSIXThread *) EsHeapAllocate(sizeof(POSIXThread), true, K_FIXED);
 			KMutexRelease(&threadPOSIXDataMutex);
+
+			if (!currentThread->posixData) {
+				return -ENOMEM;
+			}
 		} 
 
 		if (currentThread->posixData->forkProcess) {
@@ -260,7 +264,7 @@ namespace POSIX {
 				}
 
 				file->path = (char *) EsHeapAllocate(pathLength + 1, true, K_FIXED);
-				EsMemoryCopy(file->path, path, pathLength);
+				if (file->path) EsMemoryCopy(file->path, path, pathLength);
 
 				if ((flags & O_TRUNC) && file->type == POSIX_FILE_NORMAL) {
 					FSFileResize(file->node, 0);
@@ -278,7 +282,7 @@ namespace POSIX {
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 2, true);
 				KMutexAcquire(&file->mutex);
 				EsDefer(KMutexRelease(&file->mutex));
-				int length = EsCStringLength(file->path);
+				int length = file->path ? EsCStringLength(file->path) : 0;
 				if (length > syscall.arguments[2]) length = syscall.arguments[2];
 				EsMemoryZero((void *) syscall.arguments[1], syscall.arguments[2]);
 				EsMemoryCopy((void *) syscall.arguments[1], file->path, length);

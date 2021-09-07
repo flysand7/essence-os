@@ -2074,14 +2074,21 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 			size_t textRunCount;
 			EsRichTextParse(text, textBytes, &string, &textRuns, &textRunCount, &textRun[0].style);
 			EsTextPlan *plan = EsTextPlanCreate(element, &properties, textBounds, string, textRuns, textRunCount);
-			EsDrawText(painter, plan, textBounds, nullptr, selectionProperties);
-			EsTextPlanDestroy(plan);
+
+			if (plan) {
+				EsDrawText(painter, plan, textBounds, nullptr, selectionProperties);
+				EsTextPlanDestroy(plan);
+			}
+
 			EsHeapFree(textRuns);
 			EsHeapFree(string);
 		} else {
 			EsTextPlan *plan = EsTextPlanCreate(element, &properties, textBounds, text, textRun, 1);
-			PaintTextLayers(painter, plan, textBounds, selectionProperties);
-			EsTextPlanDestroy(plan);
+
+			if (plan) {
+				PaintTextLayers(painter, plan, textBounds, selectionProperties);
+				EsTextPlanDestroy(plan);
+			}
 		}
 	}
 

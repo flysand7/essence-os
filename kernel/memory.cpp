@@ -1982,16 +1982,12 @@ void *Pool::Add(size_t _elementSize) {
 
 	void *address;
 
-#if 1
 	if (cacheEntries) {
 		address = cache[--cacheEntries];
 		EsMemoryZero(address, elementSize);
 	} else {
 		address = EsHeapAllocate(elementSize, true, K_FIXED);
 	}
-#else
-	address = EsHeapAllocate(elementSize, true);
-#endif
 
 	return address;
 }

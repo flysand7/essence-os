@@ -394,17 +394,25 @@ struct ColorPickerHost {
 
 void ColorPickerCreate(EsElement *parent, ColorPickerHost host, uint32_t initialColor, bool showTextbox);
 
-void HeapDuplicate(void **pointer, const void *data, size_t bytes) {
+void HeapDuplicate(void **pointer, size_t *outBytes, const void *data, size_t bytes) {
 	if (*pointer) {
 		EsHeapFree(*pointer);
 	}
 
 	if (!data && !bytes) {
 		*pointer = nullptr;
+		*outBytes = 0;
 	} else {
 		void *buffer = EsHeapAllocate(bytes, false);
-		if (buffer) EsMemoryCopy(buffer, data, bytes);
-		*pointer = buffer;
+
+		if (buffer) {
+			EsMemoryCopy(buffer, data, bytes);
+			*pointer = buffer;
+			*outBytes = bytes;
+		} else {
+			*pointer = nullptr;
+			*outBytes = 0;
+		}
 	}
 }
 
@@ -674,7 +682,9 @@ void EsDialogClose(EsWindow *window) {
 EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titleBytes, 
 		const char *content, ptrdiff_t contentBytes, uint32_t iconID, uint32_t flags) {
 	EsElement *dialog = EsDialogShow(window);
+	if (!dialog) return nullptr;
 	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
+	if (!heading) return nullptr;
 
 	if (iconID) {
 		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, iconID);
@@ -687,6 +697,7 @@ EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titl
 			content, contentBytes)->cName = "dialog contents";
 
 	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
+	if (!buttonArea) return nullptr;
 
 	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
 		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, "OK");
@@ -821,7 +832,13 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 	}
 
 	EsWindow *window = (EsWindow *) EsHeapAllocate(sizeof(EsWindow), true);
-	gui.allWindows.Add(window);
+	if (!window) return nullptr;
+
+	if (!gui.allWindows.Add(window)) {
+		EsHeapFree(window);
+		return nullptr;
+	}
+
 	window->instance = instance;
 
 	if (style == ES_WINDOW_NORMAL) {
@@ -945,6 +962,7 @@ EsElement *EsMenuGetSource(EsMenu *menu) {
 
 EsMenu *EsMenuCreate(EsElement *source, uint64_t flags) {
 	EsWindow *menu = (EsWindow *) EsWindowCreate(source->instance, ES_WINDOW_MENU);
+	if (!menu) return nullptr;
 	menu->flags |= flags;
 	menu->activated = true;
 	menu->source = source;
@@ -1063,10 +1081,12 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 	APIInstance *instance = (APIInstance *) _instance->_private;
 	EsAssert(instance->instanceClass == ES_INSTANCE_CLASS_EDITOR);
 	EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
-	EsMenu *menu = EsMenuCreate(element, ES_FLAGS_DEFAULT);
-	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
-
 	bool newDocument = !instance->startupInformation || !instance->startupInformation->filePath;
+
+	EsMenu *menu = EsMenuCreate(element, ES_FLAGS_DEFAULT);
+	if (!menu) return;
+	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
+	if (!panel1) goto show;
 
 	{
 		// TODO Get this icon from the file type database?
@@ -1076,7 +1096,9 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 		EsSpacerCreate(panel1, ES_FLAGS_DEFAULT, 0, 5, 0);
 
 		EsPanel *panel2 = EsPanelCreate(panel1, ES_FLAGS_DEFAULT, &styleFileMenuDocumentInformationPanel2);
+		if (!panel2) goto show;
 		EsPanel *panel3 = EsPanelCreate(panel2, ES_PANEL_HORIZONTAL | ES_PANEL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+		if (!panel3) goto show;
 		
 		if (newDocument) {
 			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
@@ -1087,10 +1109,12 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 		}
 
 		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR); // TODO.
+		if (!renameButton) goto show;
 		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
 
 		if (!newDocument) {
 			EsPanel *panel4 = EsPanelCreate(panel2, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+			if (!panel4) goto show;
 			EsPanelSetBands(panel4, 2 /* columns */);
 
 			char buffer[64];
@@ -1120,11 +1144,13 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
 	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
 	EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
-	EsMenuShow(menu);
+
+	show: EsMenuShow(menu);
 }
 
 void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings) {
 	EsButton *button = EsButtonCreate(element, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
+	if (!button) return;
 	button->accessKey = 'F';
 	button->userData = (void *) settings;
 	EsButtonOnCommand(button, FileMenuCreate);
@@ -1651,7 +1677,7 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 
 bool EsElement::StartAnimating() {
 	if ((state & UI_STATE_ANIMATING) || (state & UI_STATE_DESTROYING)) return false;
-	gui.animatingElements.Add(this);
+	if (!gui.animatingElements.Add(this)) return false;
 	gui.animationSleep = false;
 	state |= UI_STATE_ANIMATING;
 	lastTimeStamp = 0;
@@ -2703,6 +2729,7 @@ int ProcessScrollbarButtonMessage(EsElement *element, EsMessage *message) {
 
 EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 	EsScrollbar *scrollbar = (EsScrollbar *) EsHeapAllocate(sizeof(EsScrollbar), true);
+	if (!scrollbar) return nullptr;
 	scrollbar->thumb = (EsElement *) EsHeapAllocate(sizeof(EsElement), true);
 
 	if (flags & ES_SCROLLBAR_HORIZONTAL) {
@@ -2792,7 +2819,15 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 	for (int axis = 0; axis < 2; axis++) {
 		if (mode[axis] == SCROLL_MODE_FIXED || mode[axis] == SCROLL_MODE_AUTO) {
 			uint64_t flags = ES_CELL_FILL | ES_ELEMENT_NON_CLIENT | (axis ? ES_SCROLLBAR_VERTICAL : ES_SCROLLBAR_HORIZONTAL);
-			if (!bar[axis]) bar[axis] = ScrollbarCreate(parent, flags);
+
+			if (!bar[axis]) {
+				bar[axis] = ScrollbarCreate(parent, flags);
+
+				if (!bar[axis]) {
+					continue;
+				}
+			}
+
 			bar[axis]->userData = this;
 
 			bar[axis]->messageUser = [] (EsElement *element, EsMessage *message) {
@@ -2816,7 +2851,7 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 
 	if (bar[0] && bar[1]) {
 		if (!pad) pad = EsCustomElementCreate(parent, ES_CELL_FILL | ES_ELEMENT_NON_CLIENT, ES_STYLE_SCROLLBAR_PAD);
-		pad->cName = "scrollbar pad";
+		if (pad) pad->cName = "scrollbar pad";
 	} else if (pad) {
 		EsElementDestroy(pad);
 		pad = nullptr;
@@ -3333,6 +3368,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 
 EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsPanel *panel = (EsPanel *) EsHeapAllocate(sizeof(EsPanel), true);
+	if (!panel) return nullptr;
 
 	panel->Initialise(parent, flags, ProcessPanelMessage, style);
 	panel->cName = "panel";
@@ -3367,6 +3403,7 @@ int ProcessSpacerMessage(EsElement *element, EsMessage *message) {
 
 EsElement *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style, int width, int height) {
 	EsSpacer *spacer = (EsSpacer *) EsHeapAllocate(sizeof(EsSpacer), true);
+	if (!spacer) return nullptr;
 	spacer->Initialise(panel, flags, ProcessSpacerMessage, style);
 	spacer->cName = "spacer";
 	spacer->width = width == -1 ? 4 : width;
@@ -3376,6 +3413,7 @@ EsElement *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style
 
 EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsElement *element = (EsElement *) EsHeapAllocate(sizeof(EsElement), true);
+	if (!element) return nullptr;
 	element->Initialise(parent, flags, nullptr, style);
 	element->cName = "custom element";
 	return element;
@@ -3604,6 +3642,7 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 
 EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsCanvasPane *pane = (EsCanvasPane *) EsHeapAllocate(sizeof(EsCanvasPane), true);
+	if (!pane) return nullptr;
 	pane->Initialise(parent, flags, ProcessCanvasPaneMessage, style);
 	pane->cName = "canvas pane";
 	pane->zoom = 1.0;
@@ -3659,12 +3698,12 @@ void EsAnnouncementShow(EsWindow *parent, uint64_t flags, int32_t x, int32_t y, 
 	(void) flags;
 
 	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_TIP);
+	if (!window) return;
 	window->messageUser = AnnouncementMessage;
 
 	EsTextDisplay *display = EsTextDisplayCreate(window, ES_CELL_FILL, ES_STYLE_ANNOUNCEMENT, text, textBytes);
-
-	int32_t width = display->GetWidth(0);
-	int32_t height = display->GetHeight(width);
+	int32_t width = display ? display->GetWidth(0) : 0;
+	int32_t height = display ? display->GetHeight(width) : 0;
 
 	EsRectangle parentBounds = {};
        	if (parent) parentBounds = EsWindowGetBounds(parent);
@@ -3778,6 +3817,7 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 
 EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes) {
 	EsButton *button = (EsButton *) EsHeapAllocate(sizeof(EsButton), true);
+	if (!button) return button;
 
 	if (!style) {
 		if (flags & ES_BUTTON_MENU_ITEM) {
@@ -3826,8 +3866,7 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 	}
 
 	if (labelBytes == -1) labelBytes = EsCStringLength(label);
-	HeapDuplicate((void **) &button->label, label, labelBytes);
-	button->labelBytes = labelBytes;
+	HeapDuplicate((void **) &button->label, &button->labelBytes, label, labelBytes);
 
 	if ((flags & ES_BUTTON_MENU_ITEM) && (flags & ES_MENU_ITEM_HEADER)) {
 		EsElementSetDisabled(button, true);
@@ -3904,6 +3943,7 @@ void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t la
 	EsButton *button = (EsButton *) EsButtonCreate(menu, 
 		ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_MENU_ITEM | ES_CELL_H_FILL | flags, 0,
 		label, labelBytes != -1 ? labelBytes : EsCStringLength(label));
+	if (!button) return;
 	button->userData = (void *) callback;
 
 	button->messageUser = [] (EsElement *element, EsMessage *message) {
@@ -3926,6 +3966,7 @@ void EsMenuAddCommand(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t
 	EsButton *button = (EsButton *) EsButtonCreate(menu, 
 			ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_MENU_ITEM | ES_CELL_H_FILL | flags, 
 			0, label, labelBytes);
+	if (!button) return;
 	EsCommandAddButton(command, button);
 }
 
@@ -4131,6 +4172,7 @@ int ProcessColorChosenPointMessage(EsElement *element, EsMessage *message) {
 
 void ColorPickerCreate(EsElement *parent, ColorPickerHost host, uint32_t initialColor, bool showTextbox) {
 	ColorPicker *picker = (ColorPicker *) EsHeapAllocate(sizeof(ColorPicker), true);
+	if (!picker) return;
 	picker->host = host;
 	picker->color = initialColor & 0xFFFFFF;
        	picker->opacity = (float) (initialColor >> 24) / 255.0f;
@@ -4500,6 +4542,7 @@ int ProcessColorWellMessage(EsElement *element, EsMessage *message) {
 		DrawStyledBox(message->painter, box);
 	} else if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
 		EsMenu *menu = EsMenuCreate(well, ES_FLAGS_DEFAULT);
+		if (!menu) return ES_HANDLED;
 		ColorPickerHost host = { well, &well->indeterminate, (well->flags & ES_COLOR_WELL_HAS_OPACITY) ? true : false };
 		ColorPickerCreate((EsElement *) menu, host, well->color, true);
 		EsMenuShow(menu);
@@ -4512,6 +4555,7 @@ int ProcessColorWellMessage(EsElement *element, EsMessage *message) {
 
 EsColorWell *EsColorWellCreate(EsElement *parent, uint64_t flags, uint32_t initialColor) {
 	EsColorWell *well = (EsColorWell *) EsHeapAllocate(sizeof(EsColorWell), true);
+	if (!well) return nullptr;
 	well->color = initialColor;
 	well->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ProcessColorWellMessage, ES_STYLE_PUSH_BUTTON_NORMAL_COLOR_WELL);
 	well->cName = "color well";
@@ -4706,6 +4750,11 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 				currentSizes.Add(splitter->resizeStartSizes[i]);
 			}
 
+			if (currentSizes.Length() != childCount / 2 + 1) {
+				currentSizes.Free();
+				return ES_HANDLED;
+			}
+
 			// Step 2: Calculate the fixed size, and total weight.
 
 			int64_t fixedSize = 0, totalWeight = 0;
@@ -4867,6 +4916,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 
 EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsSplitter *splitter = (EsSplitter *) EsHeapAllocate(sizeof(EsSplitter), true);
+	if (!splitter) return nullptr;
 	splitter->horizontal = flags & ES_SPLITTER_HORIZONTAL;
 	splitter->Initialise(parent, flags | ES_ELEMENT_NO_CLIP, ProcessSplitterMessage, 
 			style ?: ES_STYLE_PANEL_WINDOW_BACKGROUND);
@@ -4914,8 +4964,9 @@ int ProcessImageDisplayMessage(EsElement *element, EsMessage *message) {
 			}
 
 			if (~display->flags & UI_STATE_CHECK_VISIBLE) {
-				display->state |= UI_STATE_CHECK_VISIBLE;
-				display->window->checkVisible.Add(display);
+				if (display->window->checkVisible.Add(display)) {
+					display->state |= UI_STATE_CHECK_VISIBLE;
+				}
 			}
 		}
 
@@ -4944,6 +4995,7 @@ int ProcessImageDisplayMessage(EsElement *element, EsMessage *message) {
 
 EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
 	EsImageDisplay *display = (EsImageDisplay *) EsHeapAllocate(sizeof(EsImageDisplay), true);
+	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessImageDisplayMessage, style);
 	display->cName = "image";
 	return display;
@@ -5009,6 +5061,7 @@ int ProcessIconDisplayMessage(EsElement *element, EsMessage *message) {
 
 EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style, uint32_t iconID) {
 	EsIconDisplay *display = (EsIconDisplay *) EsHeapAllocate(sizeof(EsIconDisplay), true);
+	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessIconDisplayMessage, style ?: ES_STYLE_ICON_DISPLAY);
 	display->cName = "icon";
 	display->iconID = iconID;
@@ -5101,6 +5154,7 @@ void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage
 
 EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, const EsStyle *style, double value, uint32_t steps) {
 	EsSlider *slider = (EsSlider *) EsHeapAllocate(sizeof(EsSlider), true);
+	if (!slider) return nullptr;
 	slider->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ProcessSliderMessage, style ?: ES_STYLE_SLIDER_TRACK);
 	slider->cName = "slider";
 	slider->point = EsCustomElementCreate(slider, ES_FLAGS_DEFAULT, ES_STYLE_SLIDER_POINT);
@@ -5254,6 +5308,11 @@ EsElement *EsWindowGetToolbar(EsWindow *window, bool createNew) {
 	if (createNew || !window->toolbar) {
 		bool first = !window->toolbar;
 		window->toolbar = EsPanelCreate(window->toolbarSwitcher, ES_PANEL_HORIZONTAL | ES_CELL_FILL, ES_STYLE_PANEL_TOOLBAR);
+
+		if (!window->toolbar) {
+			return nullptr;
+		}
+
 		window->toolbar->cName = "toolbar";
 		EsAssert(window->toolbar->messageClass == ProcessPanelMessage);
 
@@ -6099,8 +6158,9 @@ void AccessKeysGather(EsElement *element) {
 
 	entry.bounds = hintBounds;
 
-	gui.accessKeys.entries.Add(entry);
-	gui.accessKeys.numbers[entry.character - 'A']++;
+	if (gui.accessKeys.entries.Add(entry)) {
+		gui.accessKeys.numbers[entry.character - 'A']++;
+	}
 }
 
 void AccessKeyHintsShow(EsPainter *painter) {
@@ -7071,8 +7131,7 @@ int InspectorContentTextboxCallback(EsElement *element, EsMessage *message) {
 
 		if (e->messageClass == ProcessButtonMessage) {
 			EsButton *button = (EsButton *) e;
-			HeapDuplicate((void **) &button->label, newContent, newContentBytes);
-			button->labelBytes = newContentBytes;
+			HeapDuplicate((void **) &button->label, &button->labelBytes, newContent, newContentBytes);
 		} else if (e->messageClass == ProcessTextDisplayMessage) {
 			EsTextDisplay *display = (EsTextDisplay *) e;
 			EsTextDisplaySetContents(display, newContent, newContentBytes);

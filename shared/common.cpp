@@ -880,6 +880,12 @@ char *EsStringAllocateAndFormatV(size_t *bytes, const char *format, va_list argu
 
 	if (bytes) *bytes = needed;
 	char *buffer = (char *) EsHeapAllocate(needed + 1, false);
+
+	if (!buffer) {
+		if (bytes) *bytes = 0;
+		return nullptr;
+	}
+
 	char *position = buffer;
 	buffer[needed] = 0;
 
@@ -1625,6 +1631,11 @@ size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferByt
 	}
 
 	char *buffer2 = (char *) EsHeapAllocate(bufferBytes, false);
+
+	if (!buffer2) {
+		return 0;
+	}
+
 	EsDefer(EsHeapFree(buffer2));
 
 	uintptr_t attempt = 2;

@@ -187,12 +187,21 @@ void SettingsNumberBoxSetValue(EsElement *element, double newValueDouble) {
 	EsTextboxInsert(textbox, buffer, bytes);
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
+
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
-	int32_t oldValue = EsIntegerParse(item->value, item->valueBytes);
-	EsHeapFree(item->value);
-	item->value = (char *) EsHeapAllocate(65, true);
-	item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
+	int32_t oldValue = 0;
+
+	if (group) {
+		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
+
+		if (item) {
+			oldValue = EsIntegerParse(item->value, item->valueBytes);
+			EsHeapFree(item->value);
+			item->value = (char *) EsHeapAllocate(65, true);
+			item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
+		}
+	}
+
 	EsMutexRelease(&api.systemConfigurationMutex);
 
 	if (oldValue != newValue) {
@@ -245,13 +254,22 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 	bool newValue = EsButtonGetCheck(button) == ES_CHECK_CHECKED;
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
+
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
-	bool oldValue = EsIntegerParse(item->value, item->valueBytes);
-	EsHeapFree(item->value);
-	item->value = (char *) EsHeapAllocate(2, true);
-	*item->value = newValue ? '1' : '0';
-	item->valueBytes = 1;
+	bool oldValue;
+
+	if (group) {
+		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
+
+		if (item) {
+			oldValue = EsIntegerParse(item->value, item->valueBytes);
+			EsHeapFree(item->value);
+			item->value = (char *) EsHeapAllocate(2, true);
+			*item->value = newValue ? '1' : '0';
+			item->valueBytes = 1;
+		}
+	}
+
 	EsMutexRelease(&api.systemConfigurationMutex);
 
 	if (oldValue == newValue) return;
@@ -362,13 +380,22 @@ int SettingsSliderMessage(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_SLIDER_MOVED && !message->sliderMoved.inDrag) {
 		EsMutexAcquire(&api.systemConfigurationMutex);
+
 		EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
+		int32_t oldValue;
 		int32_t newValue = LinearMap(0, 1, control->minimumValue, control->maximumValue, EsSliderGetValue(slider));
-		int32_t oldValue = EsIntegerParse(item->value, item->valueBytes);
-		EsHeapFree(item->value);
-		item->value = (char *) EsHeapAllocate(65, true);
-		item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
+
+		if (group) {
+			EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
+
+			if (item) {
+				oldValue = EsIntegerParse(item->value, item->valueBytes);
+				EsHeapFree(item->value);
+				item->value = (char *) EsHeapAllocate(65, true);
+				item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
+			}
+		}
+
 		EsMutexRelease(&api.systemConfigurationMutex);
 
 		if (oldValue != newValue) {

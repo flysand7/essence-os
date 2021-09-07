@@ -1454,6 +1454,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 			KSpinlockRelease(&scheduler.lock);
 			
 			buffer = EsHeapAllocate(bufferSize, true, K_FIXED);
+
+			if (!buffer) {
+				SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+			}
+
 			EsMemoryZero(buffer, bufferSize);
 
 			KSpinlockAcquire(&scheduler.lock);

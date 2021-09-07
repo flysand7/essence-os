@@ -800,6 +800,7 @@ EsFileStore *EsClipboardOpen(EsClipboard clipboard) {
 	EsBufferReadInto(&buffer, &error, sizeof(error));
 	EsHeapFree(buffer.out);
 	EsFileStore *fileStore = FileStoreCreateFromHandle(file);
+	if (!fileStore) return nullptr;
 	fileStore->error = error;
 	return fileStore;
 }
@@ -823,8 +824,13 @@ EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, 
 
 EsError EsClipboardAddText(EsClipboard clipboard, const char *text, ptrdiff_t textBytes) {
 	EsFileStore *fileStore = EsClipboardOpen(clipboard);
-	EsFileStoreWriteAll(fileStore, text, textBytes); 
-	return EsClipboardCloseAndAdd(clipboard, ES_CLIPBOARD_FORMAT_TEXT, fileStore);
+
+	if (fileStore) {
+		EsFileStoreWriteAll(fileStore, text, textBytes); 
+		return EsClipboardCloseAndAdd(clipboard, ES_CLIPBOARD_FORMAT_TEXT, fileStore);
+	} else {
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
 }
 
 void ClipboardGetInformation(EsHandle *file, ClipboardInformation *information) {

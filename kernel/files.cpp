@@ -1182,7 +1182,7 @@ void FSNodeCloseHandle(KNode *node, uint32_t flags) {
 		// Spawn a thread to unmount it.
 		fileSystem->unmounting = true;
 		__sync_fetch_and_add(&fs.fileSystemsUnmounting, 1);
-		KThreadCreate("FSUnmount", FSUnmountFileSystem, (uintptr_t) fileSystem);
+		KThreadCreate("FSUnmount", FSUnmountFileSystem, (uintptr_t) fileSystem); // TODO What should happen if creating the thread fails?
 	}
 
 	if (deleted) {
@@ -1799,6 +1799,11 @@ void FSDetectFileSystem(KBlockDevice *device) {
 	}
 
 	uint8_t *information = (uint8_t *) EsHeapAllocate(sectorsToRead * device->sectorSize, false, K_FIXED);
+
+	if (!information) {
+		return;
+	}
+
 	device->information = information;
 
 	KDMABuffer dmaBuffer = { (uintptr_t) information };

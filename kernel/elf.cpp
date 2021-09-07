@@ -202,6 +202,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 	if (header.instructionSet != 0x3E) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 
 	ElfProgramHeader *programHeaders = (ElfProgramHeader *) EsHeapAllocate(programHeaderEntrySize * header.programHeaderEntries, false, K_PAGED);
+	if (!programHeaders) return ES_ERROR_INSUFFICIENT_RESOURCES;
 	EsDefer(EsHeapFree(programHeaders, 0, K_PAGED));
 
 	bytesRead = FSFileReadSync(node, (uint8_t *) programHeaders, executableOffset + header.programHeaderTable, programHeaderEntrySize * header.programHeaderEntries, 0);

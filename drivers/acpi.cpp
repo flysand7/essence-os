@@ -328,8 +328,12 @@ ES_EXTERN_C ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE type, ACPI_OSD_EXEC_CALL
 		KernelPanic("AcpiOsExecute - Exceeded maximum event count, 256.\n");
 	}
 
-	acpiEvents[acpiEventCount++] = thread;
-	return AE_OK;
+	if (thread) {
+		acpiEvents[acpiEventCount++] = thread;
+		return AE_OK;
+	} else {
+		return AE_NO_MEMORY;
+	}
 }
 
 ES_EXTERN_C void AcpiOsSleep(UINT64 ms) {

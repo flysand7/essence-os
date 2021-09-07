@@ -1524,6 +1524,10 @@ namespace Calculator {
 
 			if (!allocationPool) {
 				allocationPool = (char *) EsHeapAllocate(CALCULATOR_PARSER_ALLOCATION_POOL_SIZE, false);
+
+				if (!allocationPool) {
+					return nullptr;
+				}
 			}
 
 			void *pointer = allocationPool + allocatedBytes;

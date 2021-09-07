@@ -378,6 +378,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	if (terminating) return nullptr;
 
 	Thread *thread = (Thread *) threadPool.Add(sizeof(Thread));
+	if (!thread) return nullptr;
 	KernelLog(LOG_INFO, "Scheduler", "spawn thread", "Created thread, %x to start at %x\n", thread, startAddress);
 	thread->isKernelThread = !userland;
 	thread->priority = (flags & SPAWN_THREAD_LOW_PRIORITY) ? THREAD_PRIORITY_LOW : THREAD_PRIORITY_NORMAL;

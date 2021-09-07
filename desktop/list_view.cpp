@@ -1979,6 +1979,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *style, 
 		const EsStyle *itemStyle, const EsStyle *headerItemStyle, const EsStyle *footerItemStyle) {
 	EsListView *view = (EsListView *) EsHeapAllocate(sizeof(EsListView), true);
+	if (!view) return nullptr;
 
 	view->primaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_PRIMARY_CELL, 0), false);
 	view->secondaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SECONDARY_CELL, 0), false);
@@ -2009,7 +2010,10 @@ void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, uint32_t fla
 
 	ListViewGroup empty = { .flags = flags };
 	EsAssert(group <= (EsListViewIndex) view->groups.Length()); // Invalid group index.
-	view->groups.Insert(empty, group);
+
+	if (!view->groups.Insert(empty, group)) {
+		return;
+	}
 
 	// Update the group index on visible items.
 
@@ -2339,8 +2343,7 @@ void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex i
 void EsListViewSetEmptyMessage(EsListView *view, const char *message, ptrdiff_t messageBytes) {
 	EsMessageMutexCheck();
 	if (messageBytes == -1) messageBytes = EsCStringLength(message);
-	HeapDuplicate((void **) &view->emptyMessage, message, messageBytes);
-	view->emptyMessageBytes = messageBytes;
+	HeapDuplicate((void **) &view->emptyMessage, &view->emptyMessageBytes, message, messageBytes);
 
 	if (!view->totalItemCount) {
 		view->Repaint(true);
@@ -2389,8 +2392,7 @@ EsListViewIndex EsListViewFixedItemInsert(EsListView *view, const char *string, 
 	ListViewFixedItem item = {};
 	item.data = data;
 	item.iconID = iconID;
-	HeapDuplicate((void **) &item.firstColumn.string, string, stringBytes);
-	item.firstColumn.bytes = stringBytes;
+	HeapDuplicate((void **) &item.firstColumn.string, &item.firstColumn.bytes, string, stringBytes);
 	view->fixedItems.Insert(item, index);
 
 	EsListViewInsert(view, 0, index, 1);
@@ -2403,9 +2405,13 @@ void EsListViewFixedItemAddString(EsListView *view, EsListViewIndex index, const
 	EsAssert(index >= 0 && index < (intptr_t) view->fixedItems.Length());
 	ListViewFixedString fixedString = {};
 	fixedString.bytes = stringBytes == -1 ? EsCStringLength(string) : stringBytes;
-	HeapDuplicate((void **) &fixedString, string, fixedString.bytes);
-	view->fixedItems[index].otherColumns.Add(fixedString);
-	EsListViewInvalidateContent(view, 0, index);
+	size_t outBytes;
+	HeapDuplicate((void **) &fixedString, &outBytes, string, fixedString.bytes);
+
+	if (outBytes == fixedString.bytes) {
+		view->fixedItems[index].otherColumns.Add(fixedString);
+		EsListViewInvalidateContent(view, 0, index);
+	}
 }
 
 bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index) {
@@ -2473,6 +2479,11 @@ EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group
 	}
 
 	view->inlineTextbox = EsTextboxCreate(view, textboxFlags, ES_STYLE_TEXTBOX_INLINE);
+
+	if (!view->inlineTextbox) {
+		return nullptr;
+	}
+
 	EsAssert(view->inlineTextbox->messageClass == ProcessTextboxMessage);
 	view->inlineTextbox->messageClass = ListViewInlineTextboxMessage;
 
