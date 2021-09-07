@@ -467,9 +467,18 @@ ptrdiff_t EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, Es
 	}
 
 	*buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
+	ptrdiff_t result;
 
-	ptrdiff_t result = EsDirectoryEnumerateChildrenFromHandle(node.handle, *buffer, node.directoryChildren);
-	if (ES_CHECK_ERROR(result)) { EsHeapFree(*buffer); *buffer = nullptr; }
+	if (*buffer) {
+		result = EsDirectoryEnumerateChildrenFromHandle(node.handle, *buffer, node.directoryChildren);
+
+		if (ES_CHECK_ERROR(result)) { 
+			EsHeapFree(*buffer); 
+			*buffer = nullptr; 
+		}
+	} else {
+		result = ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
 
 	EsHandleClose(node.handle);
 	return result;

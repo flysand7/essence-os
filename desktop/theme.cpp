@@ -1295,18 +1295,6 @@ struct UIStyle {
 	bool IsRegionCompletelyOpaque(EsRectangle region, int width, int height);
 
 	inline void GetTextStyle(EsTextStyle *style);
-
-	inline int GetLineHeight() { 
-		EsTextStyle style;
-		GetTextStyle(&style);
-		return EsTextGetLineHeight(&style);
-	}
-
-	inline int MeasureTextWidth(const char *text, size_t textBytes) {
-		EsTextStyle style;
-		GetTextStyle(&style);
-		return TextGetStringWidth(&style, text, textBytes);
-	}
 };
 
 const void *GetConstant(const char *cKey, size_t *byteCount, bool *scale) {
@@ -1383,22 +1371,32 @@ const char *GetConstantString(const char *cKey) {
 	return !value || !byteCount || value[byteCount - 1] ? nullptr : value; 
 }
 
-bool ThemeLoadData(const void *buffer, size_t byteCount) {
+bool ThemeInitialise() {
 	EsBuffer data = {};
-	data.in = (const uint8_t *) buffer;
-	data.bytes = byteCount;
+	data.in = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Theme.dat"), &data.bytes);
 
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
 
 	if (!header || header->signature != THEME_HEADER_SIGNATURE 
 			|| !header->styleCount || !EsBufferRead(&data, sizeof(ThemeStyle))
-			|| byteCount < header->bitmapBytes) {
+			|| data.bytes < header->bitmapBytes) {
 		return false;
 	}
 
-	theming.system.in = (const uint8_t *) buffer;
-	theming.system.bytes = byteCount;
+	theming.system.in = (const uint8_t *) data.in;
+	theming.system.bytes = data.bytes;
 	theming.header = header;
+
+	theming.scale = api.global->uiScale;
+
+	theming.cursors.width = ES_THEME_CURSORS_WIDTH;
+	theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
+	theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
+	theming.cursors.bits = EsObjectMap(EsMemoryOpen(theming.cursors.height * theming.cursors.stride, EsLiteral(ES_THEME_CURSORS_NAME), 0), 
+			0, ES_MAP_OBJECT_ALL, ES_MAP_OBJECT_READ_ONLY);
+	theming.cursors.fullAlpha = true;
+	theming.cursors.readOnly = true;
+
 	return true;
 }
 
@@ -1618,11 +1616,104 @@ void ThemeAnimationBuild(ThemeAnimation *animation, UIStyle *oldStyle, uint16_t 
 	_ThemeAnimationBuildAddProperties(animation, oldStyle, newStateFlags);
 }
 
+void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
+	EsStyle *esStyle = (key.part & 1) || (!key.part) ? nullptr : (EsStyle *) (key.part);
+	EsThemeMetrics *customMetrics = esStyle ? &esStyle->metrics : nullptr;
+	const ThemeStyle *themeStyle = style->style;
+
+	// Apply custom metrics and appearance.
+
+	if (customMetrics) {
+#define ES_RECTANGLE_TO_RECTANGLE_8(x) { (int8_t) (x).l, (int8_t) (x).r, (int8_t) (x).t, (int8_t) (x).b }
+		if (customMetrics->mask & ES_THEME_METRICS_INSETS) style->metrics->insets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->insets);
+		if (customMetrics->mask & ES_THEME_METRICS_CLIP_INSETS) style->metrics->clipInsets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->clipInsets);
+		if (customMetrics->mask & ES_THEME_METRICS_GLOBAL_OFFSET) style->metrics->globalOffset = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->globalOffset);
+		if (customMetrics->mask & ES_THEME_METRICS_CLIP_ENABLED) style->metrics->clipEnabled = customMetrics->clipEnabled;
+		if (customMetrics->mask & ES_THEME_METRICS_CURSOR) style->metrics->cursor = customMetrics->cursor;
+		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_TRANSITION) style->metrics->entranceTransition = customMetrics->entranceTransition;
+		if (customMetrics->mask & ES_THEME_METRICS_EXIT_TRANSITION) style->metrics->exitTransition = customMetrics->exitTransition;
+		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_DURATION) style->metrics->entranceDuration = customMetrics->entranceDuration;
+		if (customMetrics->mask & ES_THEME_METRICS_EXIT_DURATION) style->metrics->exitDuration = customMetrics->exitDuration;
+		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_WIDTH) style->metrics->preferredWidth = customMetrics->preferredWidth;
+		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_HEIGHT) style->metrics->preferredHeight = customMetrics->preferredHeight;
+		if (customMetrics->mask & ES_THEME_METRICS_MINIMUM_WIDTH) style->metrics->minimumWidth = customMetrics->minimumWidth;
+		if (customMetrics->mask & ES_THEME_METRICS_MINIMUM_HEIGHT) style->metrics->minimumHeight = customMetrics->minimumHeight;
+		if (customMetrics->mask & ES_THEME_METRICS_MAXIMUM_WIDTH) style->metrics->maximumWidth = customMetrics->maximumWidth;
+		if (customMetrics->mask & ES_THEME_METRICS_MAXIMUM_HEIGHT) style->metrics->maximumHeight = customMetrics->maximumHeight;
+		if (customMetrics->mask & ES_THEME_METRICS_GAP_MAJOR) style->metrics->gapMajor = customMetrics->gapMajor;
+		if (customMetrics->mask & ES_THEME_METRICS_GAP_MINOR) style->metrics->gapMinor = customMetrics->gapMinor;
+		if (customMetrics->mask & ES_THEME_METRICS_GAP_WRAP) style->metrics->gapWrap = customMetrics->gapWrap;
+		if (customMetrics->mask & ES_THEME_METRICS_TEXT_COLOR) style->metrics->textColor = customMetrics->textColor;
+		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_BACKGROUND) style->metrics->selectedBackground = customMetrics->selectedBackground;
+		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_TEXT) style->metrics->selectedText = customMetrics->selectedText;
+		if (customMetrics->mask & ES_THEME_METRICS_ICON_COLOR) style->metrics->iconColor = customMetrics->iconColor;
+		if (customMetrics->mask & ES_THEME_METRICS_TEXT_ALIGN) style->metrics->textAlign = customMetrics->textAlign;
+		if (customMetrics->mask & ES_THEME_METRICS_TEXT_SIZE) style->metrics->textSize = customMetrics->textSize;
+		if (customMetrics->mask & ES_THEME_METRICS_FONT_FAMILY) style->metrics->fontFamily = customMetrics->fontFamily;
+		if (customMetrics->mask & ES_THEME_METRICS_FONT_WEIGHT) style->metrics->fontWeight = customMetrics->fontWeight;
+		if (customMetrics->mask & ES_THEME_METRICS_ICON_SIZE) style->metrics->iconSize = customMetrics->iconSize;
+		if (customMetrics->mask & ES_THEME_METRICS_IS_ITALIC) style->metrics->isItalic = customMetrics->isItalic;
+		if (customMetrics->mask & ES_THEME_METRICS_ELLIPSIS) style->metrics->ellipsis = customMetrics->ellipsis;
+		if (customMetrics->mask & ES_THEME_METRICS_LAYOUT_VERTICAL) style->metrics->layoutVertical = customMetrics->layoutVertical;
+	}
+
+	if (esStyle && esStyle->appearance.enabled) {
+		style->appearance = &esStyle->appearance;
+	}
+
+	// Apply scaling to the metrics.
+
+	int16_t *scale16[] = {
+		&style->metrics->insets.l, &style->metrics->insets.r, &style->metrics->insets.t, &style->metrics->insets.b,
+		&style->metrics->clipInsets.l, &style->metrics->clipInsets.r, &style->metrics->clipInsets.t, &style->metrics->clipInsets.b,
+		&style->metrics->globalOffset.l, &style->metrics->globalOffset.r, &style->metrics->globalOffset.t, &style->metrics->globalOffset.b,
+		&style->metrics->gapMajor, &style->metrics->gapMinor, &style->metrics->gapWrap,
+		&style->metrics->preferredWidth, &style->metrics->preferredHeight,
+		&style->metrics->minimumWidth, &style->metrics->minimumHeight,
+		&style->metrics->maximumWidth, &style->metrics->maximumHeight,
+		&style->metrics->iconSize,
+	};
+
+	for (uintptr_t i = 0; i < sizeof(scale16) / sizeof(scale16[0]); i++) {
+		*(scale16[i]) = *(scale16[i]) * key.scale;
+	}
+
+	style->scale = key.scale;
+
+	// Copy inline metrics.
+
+	style->borders.l = themeStyle->approximateBorders.l * key.scale;
+	style->borders.r = themeStyle->approximateBorders.r * key.scale;
+	style->borders.t = themeStyle->approximateBorders.t * key.scale;
+	style->borders.b = themeStyle->approximateBorders.b * key.scale;
+
+	style->paintOutsets.l = themeStyle->paintOutsets.l * key.scale;
+	style->paintOutsets.r = themeStyle->paintOutsets.r * key.scale;
+	style->paintOutsets.t = themeStyle->paintOutsets.t * key.scale;
+	style->paintOutsets.b = themeStyle->paintOutsets.b * key.scale;
+
+	if (style->opaqueInsets.l != 0x7F) {
+		style->opaqueInsets.l = themeStyle->opaqueInsets.l * key.scale;
+		style->opaqueInsets.r = themeStyle->opaqueInsets.r * key.scale;
+		style->opaqueInsets.t = themeStyle->opaqueInsets.t * key.scale;
+		style->opaqueInsets.b = themeStyle->opaqueInsets.b * key.scale;
+	}
+
+	if (style->appearance) {
+		if ((style->appearance->backgroundColor & 0xFF000000) == 0xFF000000) {
+			style->opaqueInsets = ES_RECT_1(0);
+		} else {
+			style->opaqueInsets = ES_RECT_1(0x7F);
+		}
+	}
+
+	ThemeStyleCopyInlineMetrics(style);
+}
+
 UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 	// Find the ThemeStyle entry.
 
 	EsStyle *esStyle = (key.part & 1) || (!key.part) ? nullptr : (EsStyle *) (key.part);
-	EsThemeMetrics *customMetrics = esStyle ? &esStyle->metrics : nullptr;
 	uint16_t id = esStyle ? (uint16_t) (uintptr_t) esStyle->inherit : key.part;
 	if (!id) id = 1;
 
@@ -1834,99 +1925,12 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 		layerDataByteCount += layer->dataByteCount;
 	}
 
-	// Apply custom metrics and appearance.
-
-	if (customMetrics) {
-#define ES_RECTANGLE_TO_RECTANGLE_8(x) { (int8_t) (x).l, (int8_t) (x).r, (int8_t) (x).t, (int8_t) (x).b }
-		if (customMetrics->mask & ES_THEME_METRICS_INSETS) style->metrics->insets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->insets);
-		if (customMetrics->mask & ES_THEME_METRICS_CLIP_INSETS) style->metrics->clipInsets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->clipInsets);
-		if (customMetrics->mask & ES_THEME_METRICS_GLOBAL_OFFSET) style->metrics->globalOffset = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->globalOffset);
-		if (customMetrics->mask & ES_THEME_METRICS_CLIP_ENABLED) style->metrics->clipEnabled = customMetrics->clipEnabled;
-		if (customMetrics->mask & ES_THEME_METRICS_CURSOR) style->metrics->cursor = customMetrics->cursor;
-		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_TRANSITION) style->metrics->entranceTransition = customMetrics->entranceTransition;
-		if (customMetrics->mask & ES_THEME_METRICS_EXIT_TRANSITION) style->metrics->exitTransition = customMetrics->exitTransition;
-		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_DURATION) style->metrics->entranceDuration = customMetrics->entranceDuration;
-		if (customMetrics->mask & ES_THEME_METRICS_EXIT_DURATION) style->metrics->exitDuration = customMetrics->exitDuration;
-		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_WIDTH) style->metrics->preferredWidth = customMetrics->preferredWidth;
-		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_HEIGHT) style->metrics->preferredHeight = customMetrics->preferredHeight;
-		if (customMetrics->mask & ES_THEME_METRICS_MINIMUM_WIDTH) style->metrics->minimumWidth = customMetrics->minimumWidth;
-		if (customMetrics->mask & ES_THEME_METRICS_MINIMUM_HEIGHT) style->metrics->minimumHeight = customMetrics->minimumHeight;
-		if (customMetrics->mask & ES_THEME_METRICS_MAXIMUM_WIDTH) style->metrics->maximumWidth = customMetrics->maximumWidth;
-		if (customMetrics->mask & ES_THEME_METRICS_MAXIMUM_HEIGHT) style->metrics->maximumHeight = customMetrics->maximumHeight;
-		if (customMetrics->mask & ES_THEME_METRICS_GAP_MAJOR) style->metrics->gapMajor = customMetrics->gapMajor;
-		if (customMetrics->mask & ES_THEME_METRICS_GAP_MINOR) style->metrics->gapMinor = customMetrics->gapMinor;
-		if (customMetrics->mask & ES_THEME_METRICS_GAP_WRAP) style->metrics->gapWrap = customMetrics->gapWrap;
-		if (customMetrics->mask & ES_THEME_METRICS_TEXT_COLOR) style->metrics->textColor = customMetrics->textColor;
-		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_BACKGROUND) style->metrics->selectedBackground = customMetrics->selectedBackground;
-		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_TEXT) style->metrics->selectedText = customMetrics->selectedText;
-		if (customMetrics->mask & ES_THEME_METRICS_ICON_COLOR) style->metrics->iconColor = customMetrics->iconColor;
-		if (customMetrics->mask & ES_THEME_METRICS_TEXT_ALIGN) style->metrics->textAlign = customMetrics->textAlign;
-		if (customMetrics->mask & ES_THEME_METRICS_TEXT_SIZE) style->metrics->textSize = customMetrics->textSize;
-		if (customMetrics->mask & ES_THEME_METRICS_FONT_FAMILY) style->metrics->fontFamily = customMetrics->fontFamily;
-		if (customMetrics->mask & ES_THEME_METRICS_FONT_WEIGHT) style->metrics->fontWeight = customMetrics->fontWeight;
-		if (customMetrics->mask & ES_THEME_METRICS_ICON_SIZE) style->metrics->iconSize = customMetrics->iconSize;
-		if (customMetrics->mask & ES_THEME_METRICS_IS_ITALIC) style->metrics->isItalic = customMetrics->isItalic;
-		if (customMetrics->mask & ES_THEME_METRICS_ELLIPSIS) style->metrics->ellipsis = customMetrics->ellipsis;
-		if (customMetrics->mask & ES_THEME_METRICS_LAYOUT_VERTICAL) style->metrics->layoutVertical = customMetrics->layoutVertical;
-	}
-
-	if (esStyle && esStyle->appearance.enabled) {
-		style->appearance = &esStyle->appearance;
-	}
-
-	// Apply scaling to the metrics.
-
-	int16_t *scale16[] = {
-		&style->metrics->insets.l, &style->metrics->insets.r, &style->metrics->insets.t, &style->metrics->insets.b,
-		&style->metrics->clipInsets.l, &style->metrics->clipInsets.r, &style->metrics->clipInsets.t, &style->metrics->clipInsets.b,
-		&style->metrics->globalOffset.l, &style->metrics->globalOffset.r, &style->metrics->globalOffset.t, &style->metrics->globalOffset.b,
-		&style->metrics->gapMajor, &style->metrics->gapMinor, &style->metrics->gapWrap,
-		&style->metrics->preferredWidth, &style->metrics->preferredHeight,
-		&style->metrics->minimumWidth, &style->metrics->minimumHeight,
-		&style->metrics->maximumWidth, &style->metrics->maximumHeight,
-		&style->metrics->textSize, &style->metrics->iconSize,
-	};
-
-	for (uintptr_t i = 0; i < sizeof(scale16) / sizeof(scale16[0]); i++) {
-		*(scale16[i]) = *(scale16[i]) * key.scale;
-	}
-
-	style->scale = key.scale;
-
-	// Copy inline metrics.
-
-	style->borders.l = themeStyle->approximateBorders.l * key.scale;
-	style->borders.r = themeStyle->approximateBorders.r * key.scale;
-	style->borders.t = themeStyle->approximateBorders.t * key.scale;
-	style->borders.b = themeStyle->approximateBorders.b * key.scale;
-
-	style->paintOutsets.l = themeStyle->paintOutsets.l * key.scale;
-	style->paintOutsets.r = themeStyle->paintOutsets.r * key.scale;
-	style->paintOutsets.t = themeStyle->paintOutsets.t * key.scale;
-	style->paintOutsets.b = themeStyle->paintOutsets.b * key.scale;
-
-	if (style->opaqueInsets.l != 0x7F) {
-		style->opaqueInsets.l = themeStyle->opaqueInsets.l * key.scale;
-		style->opaqueInsets.r = themeStyle->opaqueInsets.r * key.scale;
-		style->opaqueInsets.t = themeStyle->opaqueInsets.t * key.scale;
-		style->opaqueInsets.b = themeStyle->opaqueInsets.b * key.scale;
-	}
-
-	if (style->appearance) {
-		if ((style->appearance->backgroundColor & 0xFF000000) == 0xFF000000) {
-			style->opaqueInsets = ES_RECT_1(0);
-		} else {
-			style->opaqueInsets = ES_RECT_1(0x7F);
-		}
-	}
-
-	ThemeStyleCopyInlineMetrics(style);
-
+	ThemeStylePrepare(style, key);
 	return style;
 }
 
 UIStyleKey MakeStyleKey(const EsStyle *style, uint16_t stateFlags) {
-	return { .part = (uintptr_t) style, .stateFlags = stateFlags };
+	return { .part = (uintptr_t) style, .scale = theming.scale, .stateFlags = stateFlags };
 }
 
 void FreeUnusedStyles(bool includePermanentStyles) {
@@ -1946,10 +1950,8 @@ UIStyle *GetStyle(UIStyleKey key, bool keepAround) {
 	UIStyle **style = theming.loadedStyles.Get(&key);
 
 	if (!style) {
-		UIStyleKey key2 = key;
-		key2.scale = theming.scale; // TODO Per-window scaling.
 		style = theming.loadedStyles.Put(&key);
-		*style = ThemeStyleInitialise(key2);
+		*style = ThemeStyleInitialise(key);
 		EsAssert(style);
 	} else if ((*style)->referenceCount != -1) {
 		(*style)->referenceCount++;
@@ -2024,7 +2026,7 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 	EsMessage m = { ES_MSG_PAINT_ICON };
 	m.painter = &iconPainter;
 	
-	if (element && ES_HANDLED == EsMessageSend(element, &m)) {
+	if (ES_HANDLED == EsMessageSend(element, &m)) {
 		// Icon painted by the application.
 	} else if (iconID) {
 		EsDrawStandardIcon(painter, iconID, metrics->iconSize, iconBounds, metrics->iconColor);
@@ -2071,13 +2073,13 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 			EsTextRun *textRuns;
 			size_t textRunCount;
 			EsRichTextParse(text, textBytes, &string, &textRuns, &textRunCount, &textRun[0].style);
-			EsTextPlan *plan = EsTextPlanCreate(&properties, textBounds, string, textRuns, textRunCount);
+			EsTextPlan *plan = EsTextPlanCreate(element, &properties, textBounds, string, textRuns, textRunCount);
 			EsDrawText(painter, plan, textBounds, nullptr, selectionProperties);
 			EsTextPlanDestroy(plan);
 			EsHeapFree(textRuns);
 			EsHeapFree(string);
 		} else {
-			EsTextPlan *plan = EsTextPlanCreate(&properties, textBounds, text, textRun, 1);
+			EsTextPlan *plan = EsTextPlanCreate(element, &properties, textBounds, text, textRun, 1);
 			PaintTextLayers(painter, plan, textBounds, selectionProperties);
 			EsTextPlanDestroy(plan);
 		}

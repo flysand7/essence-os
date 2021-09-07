@@ -68,6 +68,7 @@ DEFINE_INTERFACE_STRING(CommonAnnouncementPasteErrorOther, "Could not paste");
 
 DEFINE_INTERFACE_STRING(CommonEmpty, "empty");
 
+DEFINE_INTERFACE_STRING(CommonUnitPercent, "%");
 DEFINE_INTERFACE_STRING(CommonUnitBytes, " B");
 DEFINE_INTERFACE_STRING(CommonUnitKilobytes, " KB");
 DEFINE_INTERFACE_STRING(CommonUnitMegabytes, " MB");
@@ -127,7 +128,7 @@ DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeedFast, "Fast");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone, "None");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany, "Many");
 
-DEFINE_INTERFACE_STRING(DesktopSettingsApplicationSelectItem, "Select an application to view its information or manage it.");
+DEFINE_INTERFACE_STRING(DesktopSettingsDisplayUIScale, "Interface scale:");
 
 // File operations.
 

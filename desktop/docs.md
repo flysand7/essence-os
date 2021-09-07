@@ -402,7 +402,7 @@ struct EsTextPlanProperties {
 #define ES_TEXT_PLAN_RTL	            (1 << 10)
 #define ES_TEXT_PLAN_CLIP_UNBREAKABLE_LINES (1 << 11)
 
-EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount);
+EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount);
 
 int EsTextPlanGetWidth(EsTextPlan *plan);
 int EsTextPlanGetHeight(EsTextPlan *plan);
@@ -418,6 +418,7 @@ void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, EsTextStyle *style
 Before you can draw text, you first need to create a *text plan*, which contains all the necessary information to draw the text. The advantage of using text plans is that it enables you to draw the same block of text multiple times without needing the text shaping and layout to be recalculated.
 
 To create a text plan, use `EsTextPlanCreate`. 
+- `element`: The user interface element which will use the text plan. The text plan will inherit appropriate display settings from the element, such as the UI scaling factor.
 - `properties`: Contains properties to apply while laying out the text. `cLanguage` is the BCP 47 language tag as a string; if `NULL`, the default language is used. `maxLines` contains the maximum number of lines allowed in the layout, after which lines will be clipped; if `0`, the number of lines will be unlimited. `flags` contains any combination of the following constants:
   - `ES_TEXT_H/V_...`: Sets the alignment of the text in the bounds.
   - `ES_TEXT_WRAP`: The text is allowed to wrap when it reaches the end of a line.
@@ -445,7 +446,7 @@ void DrawElementText(EsElement *element, EsRectangle bounds, const char *string,
 	textRun[0].offset = 0;
 	textRun[1].offset = stringBytes;
 	EsTextPlanProperties properties = {};
-	EsTextPlan *plan = EsTextPlanCreate(&properties, bounds, string, textRun, 1);
+	EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, string, textRun, 1);
 	EsDrawText(painter, plan, bounds, nullptr, nullptr);
 	EsTextPlanDestroy(plan);
 }

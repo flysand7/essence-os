@@ -161,7 +161,6 @@ void SendMessageToWindow(Window *window, EsMessage *message);
 
 #define WINDOW_INSET (19 * UI_SCALE / 100)
 #define CONTAINER_TAB_BAND_HEIGHT (33 * UI_SCALE / 100)
-#define BORDER_THICKNESS (9 * UI_SCALE / 100)
 
 #else
 

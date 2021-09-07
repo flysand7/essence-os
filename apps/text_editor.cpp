@@ -21,17 +21,19 @@
 // - Trim trailing space
 // - Indent/comment/join/split shortcuts
 
-const EsStyle styleFormatPopupColumn = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR,
-		.gapMajor = 5,
-	},
-};
+#define SETTINGS_FILE "|Settings:/Default.ini"
 
 const EsInstanceClassEditorSettings editorSettings = {
 	INTERFACE_STRING(TextEditorNewFileName),
 	INTERFACE_STRING(TextEditorNewDocument),
 	ES_ICON_TEXT,
+};
+
+const EsStyle styleFormatPopupColumn = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_GAP_MAJOR,
+		.gapMajor = 5,
+	},
 };
 
 struct Instance : EsInstance {
@@ -50,7 +52,10 @@ struct Instance : EsInstance {
 		  commandFormat;
 
 	uint32_t syntaxHighlightingLanguage;
+	int32_t textSize;
 };
+
+int32_t globalTextSize = 10;
 
 void Find(Instance *instance, bool backwards) {
 	EsWindowSwitchToolbar(instance->window, instance->toolbarSearch, ES_TRANSITION_SLIDE_UP);
@@ -96,10 +101,10 @@ void Find(Instance *instance, bool backwards) {
 }
 
 void SetLanguage(Instance *instance, uint32_t newLanguage) {
-	EsTextStyle textStyle = {};
-	EsTextboxGetTextStyle(instance->textboxDocument, &textStyle);
-	textStyle.font.family = newLanguage ? ES_FONT_MONOSPACED : ES_FONT_SANS;
-	EsTextboxSetTextStyle(instance->textboxDocument, &textStyle);
+	EsFont font = {};
+	font.family = newLanguage ? ES_FONT_MONOSPACED : ES_FONT_SANS;
+	font.weight = ES_FONT_REGULAR;
+	EsTextboxSetFont(instance->textboxDocument, font);
 
 	instance->syntaxHighlightingLanguage = newLanguage;
 	EsTextboxSetupSyntaxHighlighting(instance->textboxDocument, newLanguage);
@@ -122,14 +127,25 @@ void FormatPopupCreate(Instance *instance) {
 			72, 96, 120, 144,
 		};
 
-		for (uintptr_t i = 0; i < sizeof(presetSizes) / sizeof(presetSizes[0]); i++) {
-			char buffer[64];
-			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetSizes[i]), presetSizes[i]);
+		size_t presetSizeCount = sizeof(presetSizes) / sizeof(presetSizes[0]);
+		int currentSize = instance->textSize;
+		char buffer[64];
+
+		if (currentSize < presetSizes[0]) {
+			// The current size is not in the list; add it.
+			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize), currentSize);
 		}
 
-		EsTextStyle textStyle = {};
-		EsTextboxGetTextStyle(instance->textboxDocument, &textStyle);
-		EsListViewFixedItemSelect(list, textStyle.size);
+		for (uintptr_t i = 0; i < presetSizeCount; i++) {
+			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetSizes[i]), presetSizes[i]);
+
+			if (currentSize > presetSizes[i] && (i == presetSizeCount - 1 || (i != presetSizeCount - 1 && currentSize < presetSizes[i + 1]))) {
+				// The current size is not in the list; add it.
+				EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize), currentSize);
+			}
+		}
+
+		EsListViewFixedItemSelect(list, currentSize);
 
 		list->messageUser = [] (EsElement *element, EsMessage *message) {
 			if (message->type == ES_MSG_LIST_VIEW_SELECT) {
@@ -137,10 +153,8 @@ void FormatPopupCreate(Instance *instance) {
 				EsGeneric newSize;
 
 				if (EsListViewFixedItemGetSelected(((EsListView *) element), &newSize)) {
-					EsTextStyle textStyle = {};
-					EsTextboxGetTextStyle(instance->textboxDocument, &textStyle);
-					textStyle.size = newSize.u;
-					EsTextboxSetTextStyle(instance->textboxDocument, &textStyle);
+					globalTextSize = instance->textSize = newSize.u;
+					EsTextboxSetTextSize(instance->textboxDocument, newSize.u);
 				}
 			}
 
@@ -212,10 +226,11 @@ void ProcessApplicationMessage(EsMessage *message) {
 		// Content:
 
 		EsPanel *panel = EsPanelCreate(window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-		instance->textboxDocument = EsTextboxCreate(panel, 
-				ES_CELL_FILL | ES_TEXTBOX_MULTILINE | ES_TEXTBOX_ALLOW_TABS | ES_TEXTBOX_MARGIN, 
-				ES_STYLE_TEXTBOX_NO_BORDER);
+		uint64_t documentFlags = ES_CELL_FILL | ES_TEXTBOX_MULTILINE | ES_TEXTBOX_ALLOW_TABS | ES_TEXTBOX_MARGIN;
+		instance->textboxDocument = EsTextboxCreate(panel, documentFlags, ES_STYLE_TEXTBOX_NO_BORDER);
 		instance->textboxDocument->cName = "document";
+		instance->textSize = globalTextSize;
+		EsTextboxSetTextSize(instance->textboxDocument, globalTextSize);
 		EsTextboxSetUndoManager(instance->textboxDocument, instance->undoManager);
 		EsElementFocus(instance->textboxDocument);
 
@@ -324,11 +339,27 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsFileStoreWriteAll(message->instanceSave.file, contents, byteCount);
 		EsHeapFree(contents);
 		EsInstanceSaveComplete(message, true);
+	} else if (message->type == ES_MSG_APPLICATION_EXIT) {
+		EsBuffer buffer = {};
+		buffer.canGrow = true;
+		EsBufferFormat(&buffer, "[general]\ntext_size=%d\n", globalTextSize);
+		EsFileWriteAll(EsLiteral(SETTINGS_FILE), buffer.out, buffer.position);
+		EsHeapFree(buffer.out);
 	}
 }
 
 void _start() {
 	_init();
+
+	EsINIState state = { (char *) EsFileReadAll(EsLiteral(SETTINGS_FILE), &state.bytes) };
+
+	while (EsINIParse(&state)) {
+		if (0 == EsStringCompareRaw(state.section, state.sectionBytes, EsLiteral("general"))) {
+			if (0 == EsStringCompareRaw(state.key, state.keyBytes, EsLiteral("text_size"))) {
+				globalTextSize = EsIntegerParse(state.value, state.valueBytes);
+			}
+		}
+	}
 
 	while (true) {
 		ProcessApplicationMessage(EsMessageReceive());

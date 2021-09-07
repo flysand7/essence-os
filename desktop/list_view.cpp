@@ -53,7 +53,6 @@ struct EsListView : EsElement {
 	int64_t fixedWidth, fixedHeight;
 	int64_t fixedHeaderSize, fixedFooterSize;
 
-	// TODO Updating these when the style changes.
 	UIStyle *primaryCellStyle;
 	UIStyle *secondaryCellStyle;
 	UIStyle *selectedCellStyle;
@@ -87,7 +86,6 @@ struct EsListView : EsElement {
 	EsListViewColumn *columns;
 	size_t columnCount;
 	int columnResizingOriginalWidth;
-	// TODO Updating this when the style changes.
 	int64_t totalColumnWidth;
 
 	EsTextbox *inlineTextbox;
@@ -1782,7 +1780,7 @@ struct EsListView : EsElement {
 			style->GetTextStyle(&textRun[0].style);
 			textRun[1].offset = emptyMessageBytes;
 			EsRectangle bounds = EsPainterBoundsInset(message->painter); 
-			EsTextPlan *plan = EsTextPlanCreate(&properties, bounds, emptyMessage, textRun, 1);
+			EsTextPlan *plan = EsTextPlanCreate(this, &properties, bounds, emptyMessage, textRun, 1);
 			EsDrawText(message->painter, plan, bounds); 
 		} else if (message->type == ES_MSG_ANIMATE) {
 			if (scroll.dragScrolling && (flags & ES_LIST_VIEW_CHOICE_SELECT)) {
@@ -1823,6 +1821,16 @@ struct EsListView : EsElement {
 			zOrderItems.Free();
 		} else if (message->type == ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS) {
 			AccessKeysCenterHint(this, message);
+		} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
+			primaryCellStyle->CloseReference();
+			secondaryCellStyle->CloseReference();
+			selectedCellStyle->CloseReference();
+
+			primaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_PRIMARY_CELL, 0), false);
+			secondaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SECONDARY_CELL, 0), false);
+			selectedCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SELECTED_CHOICE_CELL, 0), false);
+
+			EsListViewChangeStyles(this, nullptr, nullptr, nullptr, nullptr, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			uintptr_t index = message->getContent.index;
 			EsAssert(index < fixedItems.Length());
@@ -1849,6 +1857,14 @@ int ListViewProcessMessage(EsElement *element, EsMessage *message) {
 int ListViewProcessItemMessage(EsElement *_element, EsMessage *message) {
 	ListViewItemElement *element = (ListViewItemElement *) _element;
 	return ((EsListView *) element->parent)->ProcessItemMessage(element->index, message, element);
+}
+
+void ListViewCalculateTotalColumnWidth(EsListView *view) {
+	view->totalColumnWidth = -view->secondaryCellStyle->gapMajor;
+
+	for (uintptr_t i = 0; i < view->columnCount; i++) {
+		view->totalColumnWidth += view->columns[i].width * theming.scale + view->secondaryCellStyle->gapMajor;
+	}
 }
 
 void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
@@ -1926,6 +1942,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 	}
 
 	view->scroll.Setup(view, scrollXMode, scrollYMode, SCROLL_X_DRAG | SCROLL_Y_DRAG);
+	ListViewCalculateTotalColumnWidth(view);
 
 	// Remove existing visible items; the list will need to be repopulated.
 
@@ -2205,14 +2222,6 @@ int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 	}
 
 	return ES_HANDLED;
-}
-
-void ListViewCalculateTotalColumnWidth(EsListView *view) {
-	view->totalColumnWidth = -view->secondaryCellStyle->gapMajor;
-
-	for (uintptr_t i = 0; i < view->columnCount; i++) {
-		view->totalColumnWidth += view->columns[i].width * theming.scale + view->secondaryCellStyle->gapMajor;
-	}
 }
 
 void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount) {

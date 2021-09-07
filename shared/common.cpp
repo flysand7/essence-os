@@ -237,7 +237,7 @@ void EsDrawInvert(EsPainter *painter, EsRectangle bounds) {
 		int j = bounds.r - bounds.l;
 
 		while (j >= 4) {
-			*(__m128i *) destination = _mm_xor_si128(*(__m128i *) destination, mask);
+			_mm_storeu_si128((__m128i *) destination, _mm_xor_si128(_mm_loadu_si128((__m128i *) destination), mask));
 			destination += 4;
 			j -= 4;
 		} 

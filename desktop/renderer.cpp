@@ -200,7 +200,7 @@ void RastSurfaceFill(RastSurface surface, RastShape shape, RastPaint paint, bool
 	if (paint.type == RAST_PAINT_LINEAR_GRADIENT 
 			|| paint.type == RAST_PAINT_RADIAL_GRADIENT
 			|| paint.type == RAST_PAINT_ANGULAR_GRADIENT) {
-		if (!paint.gradient.color) {
+		if (!paint.gradient.color || !paint.gradient.alpha) {
 			_RastShapeDestroy(shape);
 			return;
 		}
@@ -867,6 +867,10 @@ void RastGradientInitialise(RastPaint *paint, RastGradientStop *stops, size_t st
 
 	paint->gradient.color = (uint32_t *) EsHeapAllocate(4 * RAST_GRADIENT_COLORS, false);
 	paint->gradient.alpha = (float *) EsHeapAllocate(sizeof(float) * RAST_GRADIENT_COLORS, false);
+
+	if (!paint->gradient.color || !paint->gradient.alpha) {
+		return;
+	}
 	
 	for (uintptr_t stop = 0; stop < stopCount - 1; stop++) {
 		float fa = ((stops[stop + 0].color >> 24) & 0xFF) / 255.0f;

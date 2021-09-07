@@ -17,9 +17,9 @@
 // Behaviour of activation clicks. --> Only ignore activation clicks from menus.
 // Behaviour of the scroll wheel with regards to focused/hovered elements --> Scroll the hovered element only.
 
-#define WINDOW_INSET 			((int) api.systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET])
-#define CONTAINER_TAB_BAND_HEIGHT 	((int) api.systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT])
-#define BORDER_THICKNESS 		((int) api.systemConstants[ES_SYSTEM_CONSTANT_BORDER_THICKNESS])
+#define WINDOW_INSET 	          ((int) api.systemConstants[ES_SYSTEM_CONSTANT_WINDOW_INSET])
+#define CONTAINER_TAB_BAND_HEIGHT ((int) api.systemConstants[ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT])
+#define BORDER_THICKNESS          ((int) (9 * theming.scale))
 
 // #define TRACE_LAYOUT
 
@@ -403,7 +403,7 @@ void HeapDuplicate(void **pointer, const void *data, size_t bytes) {
 		*pointer = nullptr;
 	} else {
 		void *buffer = EsHeapAllocate(bytes, false);
-		EsMemoryCopy(buffer, data, bytes);
+		if (buffer) EsMemoryCopy(buffer, data, bytes);
 		*pointer = buffer;
 	}
 }
@@ -497,18 +497,18 @@ void WindowSnap(EsWindow *window, bool restored, bool dragging, uint8_t edge) {
 
 	if (edge == SNAP_EDGE_MAXIMIZE) {
 		bounds.t = screen.t - 16 * theming.scale;
-		bounds.b = screen.b + 19 * theming.scale;
-		bounds.l = screen.l - 19 * theming.scale;
-		bounds.r = screen.r + 19 * theming.scale;
+		bounds.b = screen.b + WINDOW_INSET;
+		bounds.l = screen.l - WINDOW_INSET;
+		bounds.r = screen.r + WINDOW_INSET;
 	} else if (edge == SNAP_EDGE_LEFT) {
 		bounds.t = screen.t;
 		bounds.b = screen.b;
 		bounds.l = screen.l;
-		bounds.r = (screen.r + screen.l) / 2;
+		bounds.r = (screen.r + screen.l) / 2 + BORDER_THICKNESS / 2;
 	} else if (edge == SNAP_EDGE_RIGHT) {
 		bounds.t = screen.t;
 		bounds.b = screen.b;
-		bounds.l = (screen.r + screen.l) / 2;
+		bounds.l = (screen.r + screen.l) / 2 - BORDER_THICKNESS / 2;
 		bounds.r = screen.r;
 	}
 
@@ -1368,6 +1368,17 @@ EsRectangle EsPainterBoundsInset(EsPainter *painter) {
 			painter->offsetY + style->insets.t, painter->offsetY + painter->height - style->insets.b);
 }
 
+#if 0
+EsDeviceColor EsPainterRealizeColorRGB(EsPainter *painter, float alpha, float red, float green, float blue) {
+	// TODO Convert the color to the device's color space.
+	EsAssert(painter);
+	return    ((uint32_t) (alpha * 255.0f) << 24)
+		+ ((uint32_t) (red   * 255.0f) << 16)
+		+ ((uint32_t) (green * 255.0f) <<  8)
+		+ ((uint32_t) (blue  * 255.0f) <<  0);
+}
+#endif
+
 void EsElement::Repaint(bool all, EsRectangle region) {
 	// TODO Optimisation: don't paint if overlapped by an opaque child or sibling.
 
@@ -1772,6 +1783,7 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 
 	UIStyleKey oldStyleKey = _oldStyleKey ? *_oldStyleKey : currentStyleKey;
 	currentStyleKey.stateFlags = styleStateFlags;
+	currentStyleKey.scale = theming.scale;
 
 	if (!force && 0 == EsMemoryCompare(&currentStyleKey, &oldStyleKey, sizeof(UIStyleKey)) && currentStyle) {
 		return;
@@ -1786,6 +1798,8 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 
 	UIStyle *oldStyle = currentStyle;
 	currentStyle = GetStyle(currentStyleKey, false); // TODO Forcing new styles if force flag set.
+
+	state &= ~UI_STATE_USE_MEASUREMENT_CACHE;
 
 	// Respond to modifications.
 
@@ -1959,6 +1973,10 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 	size_t childCount = panel->GetChildCount();
 
 	uint8_t *memoryBase = (uint8_t *) EsHeapAllocate(sizeof(int) * childCount * 2 + sizeof(EsPanelBand) * (panel->bandCount[0] + panel->bandCount[1]), true), *memory = memoryBase;
+
+	if (!memoryBase) {
+		return;
+	}
 
 	int *calculatedSize[2];
 	calculatedSize[0] = (int *) memory; memory += sizeof(int) * childCount;
@@ -3391,8 +3409,8 @@ void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount, EsPane
 	panel->bandCount[1] = rowCount;
 	panel->bands[0] = columns ? (EsPanelBand *) EsHeapAllocate(columnCount * sizeof(EsPanelBand), false) : nullptr; 
 	panel->bands[1] = rows ? (EsPanelBand *) EsHeapAllocate(rowCount * sizeof(EsPanelBand), false) : nullptr;
-	if (columns) EsMemoryCopy(panel->bands[0], columns, columnCount * sizeof(EsPanelBand));
-	if (rows) EsMemoryCopy(panel->bands[1], rows, rowCount * sizeof(EsPanelBand));
+	if (columns && panel->bands[0]) EsMemoryCopy(panel->bands[0], columns, columnCount * sizeof(EsPanelBand));
+	if (rows && panel->bands[1]) EsMemoryCopy(panel->bands[1], rows, rowCount * sizeof(EsPanelBand));
 }
 
 void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column, EsPanelBand *row) {
@@ -3408,8 +3426,10 @@ void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column, EsPanelBand *row) {
 			panel->bands[axis] = (EsPanelBand *) EsHeapAllocate(panel->bandCount[axis] * sizeof(EsPanelBand), false);
 		}
 
-		for (uintptr_t i = 0; i < panel->bandCount[axis]; i++) {
-			panel->bands[axis][i] = *templates[axis];
+		if (panel->bands[axis]) {
+			for (uintptr_t i = 0; i < panel->bandCount[axis]; i++) {
+				panel->bands[axis][i] = *templates[axis];
+			}
 		}
 	}
 }
@@ -3667,7 +3687,9 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 			(button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : ES_FLAGS_DEFAULT);
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		if (!button->measurementCache.Get(message, &button->state)) {
-			int stringWidth = button->currentStyle->MeasureTextWidth(button->label, button->labelBytes);
+			EsTextStyle textStyle;
+			button->currentStyle->GetTextStyle(&textStyle);
+			int stringWidth = TextGetStringWidth(button, &textStyle, button->label, button->labelBytes);
 			int iconWidth = button->iconID ? button->currentStyle->metrics->iconSize : 0;
 			int contentWidth = stringWidth + iconWidth + ((stringWidth && iconWidth) ? button->currentStyle->gapMinor : 0)
 				+ button->currentStyle->insets.l + button->currentStyle->insets.r;
@@ -4508,6 +4530,7 @@ struct EsSplitter : EsElement {
 	bool horizontal;
 	bool addingSplitBar;
 	int previousSize;
+	float previousScale;
 	Array<int64_t> resizeStartSizes;
 	bool calculatedInitialSize;
 };
@@ -4748,6 +4771,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 
 		splitter->calculatedInitialSize = true;
 		splitter->previousSize = newSize;
+		splitter->previousScale = theming.scale;
 
 		int position = splitter->horizontal ? bounds.l : bounds.t;
 
@@ -4821,6 +4845,18 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 
 				break;
 			}
+		}
+	} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
+		float changeFactor = theming.scale / splitter->previousScale;
+		splitter->previousScale = theming.scale;
+
+		for (uintptr_t i = 1; i < splitter->GetChildCount(); i += 2) {
+			SplitBar *bar = (SplitBar *) splitter->GetChild(i);
+			bar->position *= changeFactor;
+		}
+
+		for (uintptr_t i = 0; i < splitter->resizeStartSizes.Length(); i++) {
+			splitter->resizeStartSizes[i] *= changeFactor;
 		}
 	} else if (message->type == ES_MSG_DESTROY) {
 		splitter->resizeStartSizes.Free();
@@ -4916,10 +4952,15 @@ EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags, const Es
 void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) {
 	EsHeapFree(display->bits);
 	display->bits = (uint32_t *) EsHeapAllocate(stride * height, false);
-	display->width = width;
-	display->height = height;
-	display->stride = stride;
-	EsMemoryCopy(display->bits, bits, stride * height);
+
+	if (!display->bits) {
+		display->width = display->height = display->stride = 0;
+	} else {
+		display->width = width;
+		display->height = height;
+		display->stride = stride;
+		EsMemoryCopy(display->bits, bits, stride * height);
+	}
 }
 
 void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) {
@@ -5645,6 +5686,11 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	return m;
 }
 
+float EsElementGetScaleFactor(EsElement *element) {
+	EsAssert(element);
+	return theming.scale;
+}
+
 void EsElementSetCallback(EsElement *element, EsUICallback callback) {
 	EsMessageMutexCheck();
 	element->messageUser = callback;
@@ -5768,29 +5814,14 @@ bool EsMouseIsLeftHeld()     { return gui.mouseButtonDown && gui.lastClickButton
 bool EsMouseIsRightHeld()    { return gui.mouseButtonDown && gui.lastClickButton == ES_MSG_MOUSE_RIGHT_DOWN; }
 bool EsMouseIsMiddleHeld()   { return gui.mouseButtonDown && gui.lastClickButton == ES_MSG_MOUSE_MIDDLE_DOWN; }
 
-void EsStyleRefreshAll(EsElement *element) {
+void UIScaleChanged(EsElement *element, EsMessage *message) {
 	EsMessageMutexCheck();
 
 	element->RefreshStyle(nullptr, false, true);
+	EsMessageSend(element, message);
 
 	for (uintptr_t i = 0; i < element->children.Length(); i++) {
-		if (element->children[i]) {
-			EsStyleRefreshAll(element->children[i]);
-		}
-	}
-}
-
-void EsUISetDPI(int dpiScale) {
-	EsMessageMutexCheck();
-
-	if (dpiScale < 50) {
-		dpiScale = 50;
-	}
-
-	theming.scale = dpiScale / 100.0f;
-
-	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
-		EsStyleRefreshAll(gui.allWindows[i]);
+		UIScaleChanged(element->children[i], message);
 	}
 }
 
@@ -6083,7 +6114,7 @@ void AccessKeyHintsShow(EsPainter *painter) {
 
 		style->PaintLayers(painter, entry->bounds, 0, THEME_LAYER_MODE_BACKGROUND);
 		char c = gui.accessKeys.typedCharacter ? entry->number + '0' : entry->character;
-		style->PaintText(painter, nullptr, entry->bounds, &c, 1, 0, ES_FLAGS_DEFAULT);
+		style->PaintText(painter, gui.accessKeys.window, entry->bounds, &c, 1, 0, ES_FLAGS_DEFAULT);
 	}
 }
 

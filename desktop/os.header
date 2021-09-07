@@ -31,6 +31,7 @@ type_name uint16_t EsFontFamily;
 type_name uint64_t EsTimer;
 type_name int64_t EsListViewIndex;
 type_name uint64_t EsObjectID;
+type_name uint32_t EsDeviceColor; // TODO Make this 64-bit?
 
 define ES_SCANCODE_A				(0x04)
 define ES_SCANCODE_B				(0x05)
@@ -334,8 +335,7 @@ define ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT  (1)
 define ES_SYSTEM_CONSTANT_WINDOW_INSET 		    	   (2)
 define ES_SYSTEM_CONSTANT_CONTAINER_TAB_BAND_HEIGHT        (3)
 define ES_SYSTEM_CONSTANT_UI_SCALE                         (4)
-define ES_SYSTEM_CONSTANT_BORDER_THICKNESS                 (5)
-define ES_SYSTEM_CONSTANT_COUNT (6)
+define ES_SYSTEM_CONSTANT_COUNT (5)
 
 define ES_INVALID_HANDLE 		((EsHandle) (0))
 define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
@@ -934,6 +934,7 @@ enum EsMessageType {
 	ES_MSG_MOUSE_RIGHT_DRAG			= 0x2027	// Similar to LEFT_DRAG above, but for the right button. 
 	ES_MSG_MOUSE_MIDDLE_DRAG		= 0x2028	// Similar to LEFT_DRAG above, but for the middle button. 
 	ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS	= 0x2029	// Get the bounds to display an access key hint.
+	ES_MSG_UI_SCALE_CHANGED			= 0x202A	// The UI scale has changed.
 
 	// State change messages: (causes a style refresh)
 	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
@@ -2061,13 +2062,13 @@ function uint32_t EsColorParse(STRING string);
 
 function void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *bits, uintptr_t stride, uint16_t mode); // OR mode with alpha.
 function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *bits, uintptr_t stride, uint16_t alpha); // Set alpha to 0xFFFF if source is opaque.
-function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, uint32_t mainColor);
+function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor);
 function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
 function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, EsTextSelection *selectionProperties = ES_NULL);
 function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
-function void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, uint32_t color, float width, uint32_t flags); // Vertices are pairs of x,y coordinates.
-function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, uint32_t mainColor, uint32_t borderColor, EsRectangle borderSize);
-function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, uint32_t color);
+function void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags); // Vertices are pairs of x,y coordinates.
+function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
+function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
 function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
 function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *clip = ES_NULL, EsTextSelection *selectionProperties = ES_NULL); 
 function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsTextSelection *selectionProperties = ES_NULL); 
@@ -2088,8 +2089,7 @@ function EsPaintTarget *EsPaintTargetCreateFromBitmap(uint32_t *bits, size_t wid
 function void EsPaintTargetGetSize(EsPaintTarget *target, size_t *width, size_t *height);
 function void EsPaintTargetDestroy(EsPaintTarget *target);
 
-function int EsTextGetLineHeight(const EsTextStyle *style);
-function EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount); // textRuns should point to an array of (textRunCount + 1) EsTextRuns; the last one should have its offset set to the total number of bytes in the string. The passed string must remain valid until the plan is destroyed.
+function EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount); // textRuns should point to an array of (textRunCount + 1) EsTextRuns; the last one should have its offset set to the total number of bytes in the string. The passed string must remain valid until the plan is destroyed. The element is used for UI scaling calculations.
 function int EsTextPlanGetWidth(EsTextPlan *plan); // TODO Public property?
 function int EsTextPlanGetHeight(EsTextPlan *plan); // TODO Public property?
 function size_t EsTextPlanGetLineCount(EsTextPlan *plan); // TODO Public property?
@@ -2300,7 +2300,8 @@ function void EsElementRelayout(EsElement *element);
 function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
 function EsRectangle EsElementGetInsets(EsElement *element); 
 function EsRectangle EsElementGetInsetSize(EsElement *element); // Get the size of the element, minus the insets.
-function EsThemeMetrics EsElementGetMetrics(EsElement *element);
+function EsThemeMetrics EsElementGetMetrics(EsElement *element); // Returns the *scaled* metrics; the metrics given in the EsStyle passed to element creation functions should *not* be scaled.
+function float EsElementGetScaleFactor(EsElement *element);
 function EsRectangle EsElementGetPreferredSize(EsElement *element);
 function void EsElementMove(EsElement *element, int x, int y, int width, int height, bool applyCellLayout = true); // x, y are given relative to the top-left of the parent.
 function EsElement *EsElementGetLayoutParent(EsElement *element);
@@ -2371,8 +2372,8 @@ function void EsTextboxUseBreadcrumbOverlay(EsTextbox *textbox);
 function void EsTextboxMoveCaretRelative(EsTextbox *textbox, uint32_t flags);
 function void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter = false);
 function void EsTextboxSetUndoManager(EsTextbox *textbox, EsUndoManager *manager);
-function void EsTextboxGetTextStyle(EsTextbox *textbox, EsTextStyle *textStyle);
-function void EsTextboxSetTextStyle(EsTextbox *textbox, const EsTextStyle *textStyle);
+function void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size);
+function void EsTextboxSetFont(EsTextbox *textbox, EsFont font);
 function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
 function void EsTextboxStartEdit(EsTextbox *textbox);
 

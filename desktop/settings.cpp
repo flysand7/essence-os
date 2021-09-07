@@ -22,7 +22,7 @@ struct SettingsControl {
 	int32_t originalValueInt;
 	int32_t minimumValue, maximumValue;
 	uint32_t steps;
-	double dragSpeed, dragValue;
+	double dragSpeed, dragValue, discreteStep;
 	const char *suffix;
 	size_t suffixBytes;
 	const char *cConfigurationSection; 
@@ -125,6 +125,31 @@ void SettingsUpdateGlobalAndWindowManager() {
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
 	api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
 
+	{
+		float newUIScale = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("ui_scale")) * 0.01f;
+		bool changed = api.global->uiScale != newUIScale && api.global->uiScale;
+		api.global->uiScale = newUIScale;
+
+		if (changed) {
+			EsMessage m;
+			EsMemoryZero(&m, sizeof(EsMessage));
+			m.type = ES_MSG_UI_SCALE_CHANGED;
+
+			for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+				ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+				if (instance->processHandle && !instance->application->notified) {
+					EsMessagePostRemote(instance->processHandle, &m);
+					if (instance->application->useSingleProcess) instance->application->notified = true;
+				}
+			}
+
+			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+				desktop.installedApplications[i]->notified = false;
+			}
+		}
+	}
+
 	uint32_t cursorProperties = 0;
 	if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_cursor_acceleration"))) cursorProperties |= CURSOR_USE_ACCELERATION;
 	if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_cursor_alt_slow")))     cursorProperties |= CURSOR_USE_ALT_SLOW;
@@ -148,10 +173,12 @@ void SettingsBackButton(EsInstance *_instance, EsElement *, EsCommand *) {
 	ConfigurationWriteToFile();
 }
 
-void SettingsNumberBoxSetValue(EsElement *element, int32_t newValue) {
+void SettingsNumberBoxSetValue(EsElement *element, double newValueDouble) {
 	EsTextbox *textbox = (EsTextbox *) element;
 	SettingsInstance *instance = (SettingsInstance *) textbox->instance;
 	SettingsControl *control = (SettingsControl *) textbox->userData.p;
+
+	int32_t newValue = (int32_t) (newValueDouble / control->discreteStep + 0.5) * control->discreteStep;
 
 	newValue = ClampInteger(control->minimumValue, control->maximumValue, newValue);
 	char buffer[64];
@@ -258,12 +285,20 @@ int SettingsNumberBoxMessage(EsElement *element, EsMessage *message) {
 	SettingsControl *control = (SettingsControl *) textbox->userData.p;
 
 	if (message->type == ES_MSG_TEXTBOX_EDIT_END || message->type == ES_MSG_TEXTBOX_NUMBER_DRAG_END) {
-		char *expression = EsTextboxGetContents(textbox);
+		size_t bytes;
+		char *expression = EsTextboxGetContents(textbox, &bytes);
+
+		if (control->suffixBytes && bytes > control->suffixBytes && 0 == EsMemoryCompare(control->suffix, 
+					expression + bytes - control->suffixBytes, control->suffixBytes)) {
+			// Trim the suffix.
+			expression[bytes - control->suffixBytes] = 0;
+		}
+
 		EsCalculationValue value = EsCalculateFromUserExpression(expression); 
 		EsHeapFree(expression);
 
 		if (!value.error) {
-			SettingsNumberBoxSetValue(element, value.number + 0.5);
+			SettingsNumberBoxSetValue(element, value.number);
 			return ES_HANDLED;
 		} else {
 			return ES_REJECTED;
@@ -286,7 +321,7 @@ int SettingsNumberBoxMessage(EsElement *element, EsMessage *message) {
 
 void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t stringBytes, char accessKey, 
 		const char *cConfigurationSection, const char *cConfigurationKey,
-		int32_t minimumValue, int32_t maximumValue, const char *suffix, ptrdiff_t suffixBytes, double dragSpeed) {
+		int32_t minimumValue, int32_t maximumValue, const char *suffix, ptrdiff_t suffixBytes, double dragSpeed, double discreteStep) {
 	if (suffixBytes == -1) {
 		suffixBytes = EsCStringLength(suffix);
 	}
@@ -303,6 +338,7 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	control->minimumValue = minimumValue;
 	control->maximumValue = maximumValue;
 	control->dragSpeed = dragSpeed;
+	control->discreteStep = discreteStep;
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, string, stringBytes); 
 	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, &styleSettingsNumberTextbox);
@@ -413,7 +449,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsPanelSetBands(table, 2);
 
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch), 'S', "general", "scroll_lines_per_notch", 
-			1, 100, nullptr, 0, 0.04);
+			1, 100, nullptr, 0, 0.04, 1);
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', "general", "swap_left_and_right_buttons");
@@ -426,7 +462,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsPanelSetBands(table, 2);
 
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed), 'D', "general", "click_chain_timeout_ms", 
-			100, 1500, INTERFACE_STRING(CommonUnitMilliseconds), 1.0);
+			100, 1500, INTERFACE_STRING(CommonUnitMilliseconds), 1.0, 1);
 
 	EsPanel *testBox = EsPanelCreate(container, ES_CELL_H_FILL);
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsMouseTestDoubleClickIntroduction));
@@ -474,10 +510,27 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsTextboxCreate(testBox, ES_CELL_H_LEFT)->accessKey = 'T';
 }
 
+void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
+	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
+
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	SettingsAddTitle(container, page);
+
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
+	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
+
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanelSetBands(table, 2);
+	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsDisplayUIScale), 'S', "general", "ui_scale", 
+			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
+}
+
 SettingsPage settingsPages[] = {
 	{ INTERFACE_STRING(DesktopSettingsAccessibility), ES_ICON_PREFERENCES_DESKTOP_ACCESSIBILITY, SettingsPageUnimplemented, 'A' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'C' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsDisplay), ES_ICON_PREFERENCES_DESKTOP_DISPLAY, SettingsPageUnimplemented, 'D' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsDisplay), ES_ICON_PREFERENCES_DESKTOP_DISPLAY, SettingsPageDisplay, 'D' },
 	{ INTERFACE_STRING(DesktopSettingsKeyboard), ES_ICON_INPUT_KEYBOARD, SettingsPageKeyboard, 'E' },
 	{ INTERFACE_STRING(DesktopSettingsLocalisation), ES_ICON_PREFERENCES_DESKTOP_LOCALE, SettingsPageUnimplemented, 'F' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsMouse), ES_ICON_INPUT_MOUSE, SettingsPageMouse, 'G' },

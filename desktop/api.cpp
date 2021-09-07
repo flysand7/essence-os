@@ -85,9 +85,10 @@ struct EsFileStore {
 };
 
 struct GlobalData {
-	int32_t clickChainTimeoutMs;
-	bool swapLeftAndRightButtons;
-	bool showCursorShadow;
+	volatile int32_t clickChainTimeoutMs;
+	volatile float uiScale;
+	volatile bool swapLeftAndRightButtons;
+	volatile bool showCursorShadow;
 };
 
 struct ThreadLocalStorage {
@@ -147,7 +148,7 @@ extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 void MaybeDestroyElement(EsElement *element);
 const char *GetConstantString(const char *key);
 void UndoManagerDestroy(EsUndoManager *manager);
-int TextGetStringWidth(const EsTextStyle *style, const char *string, size_t stringBytes);
+int TextGetStringWidth(EsElement *element, const EsTextStyle *style, const char *string, size_t stringBytes);
 struct APIInstance *InstanceSetup(EsInstance *instance);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsFileStore *FileStoreCreateFromEmbeddedFile(const char *path, size_t pathBytes);
@@ -967,6 +968,20 @@ EsMessage *EsMessageReceive() {
 		} else if (type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 			if (instance) UIRefreshPrimaryClipboard(instance->window);
+		} else if (type == ES_MSG_UI_SCALE_CHANGED) {
+			if (theming.scale != api.global->uiScale) {
+				theming.scale = api.global->uiScale;
+				gui.accessKeys.hintStyle = nullptr;
+				// TODO Clear old keepAround styles.
+
+				for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
+					UIScaleChanged(gui.allWindows[i], &message.message);
+					gui.allWindows[i]->state |= UI_STATE_RELAYOUT;
+					UIWindowNeedsUpdate(gui.allWindows[i]);
+				}
+
+				return &message.message;
+			}
 		} else if (type == ES_MSG_REGISTER_FILE_SYSTEM) {
 			EsMessageRegisterFileSystem *m = &message.message.registerFileSystem;
 
@@ -1219,23 +1234,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 	}
 
 	if (uiProcess) {
-		// Initialise the GUI.
-
-		theming.scale = api.systemConstants[ES_SYSTEM_CONSTANT_UI_SCALE] / 100.0f;
-
-		size_t fileBytes;
-		const void *file = EsEmbeddedFileGet(EsLiteral("$Desktop/Theme.dat"), &fileBytes);
-		EsAssert(ThemeLoadData(file, fileBytes));
-
-		iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Icons.dat"), &iconManagement.standardPackSize);
-
-		theming.cursors.width = ES_THEME_CURSORS_WIDTH;
-		theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
-		theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
-		theming.cursors.bits = EsObjectMap(EsMemoryOpen(theming.cursors.height * theming.cursors.stride, EsLiteral(ES_THEME_CURSORS_NAME), 0), 
-				0, ES_MAP_OBJECT_ALL, ES_MAP_OBJECT_READ_ONLY);
-		theming.cursors.fullAlpha = true;
-		theming.cursors.readOnly = true;
+		EsAssert(ThemeInitialise());
 	}
 
 	if (desktop) {

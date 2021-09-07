@@ -283,10 +283,11 @@ int32_t FontGetEmWidth(Font *font) {
 #endif
 }
 
-int EsTextGetLineHeight(const EsTextStyle *textStyle) {
+int TextGetLineHeight(EsElement *element, const EsTextStyle *textStyle) {
+	EsAssert(element);
 	EsMessageMutexCheck();
 	Font font = FontGet(textStyle->font);
-	FontSetSize(&font, textStyle->size);
+	FontSetSize(&font, textStyle->size * theming.scale);
 	return (FontGetAscent(&font) - FontGetDescent(&font) + FREETYPE_UNIT_SCALE / 2) / FREETYPE_UNIT_SCALE;
 }
 
@@ -1123,6 +1124,8 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 	bool found = false;
 	uint32_t variant = 0;
 
+	// TODO Clean this up!
+
 	while (true) {
 		// Look for a perfect match of size and direction.
 		variant = EsBufferReadInt(&iconManagement.pack);
@@ -1171,13 +1174,18 @@ IconPackImage *IconPackReadImage(uint32_t id, uint32_t size, int *type) {
 		uintptr_t previous = 0;
 
 		while (true) {
-			if (!EsBufferReadInt(&iconManagement.pack) && previous) { 
+			variant = EsBufferReadInt(&iconManagement.pack);
+
+			if (!variant) { 
 				iconManagement.pack.position = previous; 
-				found = true; 
+				found = previous != 0; 
 				break; 
 			}
 
-			previous = iconManagement.pack.position;
+			if ((~variant & 0x8000) || rtl) {
+				previous = iconManagement.pack.position;
+			}
+
 			iconManagement.pack.position = EsBufferReadInt(&iconManagement.pack);
 		}
 	}
@@ -1342,16 +1350,33 @@ bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle r
 
 	GlyphCacheEntry *cacheEntry = LookupGlyphCacheEntry(key);
 
+	if (!cacheEntry) {
+		return false;
+	}
+
 	if (!cacheEntry->data) {
+		if (!iconManagement.standardPack) {
+			iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Icons.dat"), &iconManagement.standardPackSize);
+		}
+
 		iconManagement.buffer = (char *) EsHeapAllocate((iconManagement.bufferAllocated = 131072), false);
 		if (!iconManagement.buffer) return false;
 		iconManagement.pack = { .in = iconManagement.standardPack, .bytes = iconManagement.standardPackSize };
 		cacheEntry->width = size, cacheEntry->height = size;
 		cacheEntry->dataBytes = size * size * 4;
 		cacheEntry->data = (uint8_t *) EsHeapAllocate(cacheEntry->dataBytes, true);
-		RegisterGlyphCacheEntry(key, cacheEntry);
-		IconPackImage *image = IconPackReadImage(id, size, &cacheEntry->type);
-		if (image) DrawIcon(size, size, cacheEntry->data, image, size * 4, 0, 0, (float) size / image->width, (float) size / image->height);
+
+		if (cacheEntry->data) {
+			RegisterGlyphCacheEntry(key, cacheEntry);
+			IconPackImage *image = IconPackReadImage(id, size, &cacheEntry->type);
+
+			if (image) {
+				DrawIcon(size, size, cacheEntry->data, image, size * 4, 0, 0, (float) size / image->width, (float) size / image->height);
+			}
+		} else {
+			EsHeapFree(cacheEntry);
+		}
+
 		EsHeapFree(iconManagement.buffer);
 	}
 
@@ -1367,6 +1392,10 @@ void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, 
 	iconManagement.bufferPosition = 0;
 	iconManagement.buffer = (char *) EsHeapAllocate((iconManagement.bufferAllocated = 131072), false);
 	iconManagement.pack = { .in = (const uint8_t *) data, .bytes = dataBytes };
+
+	if (!iconManagement.buffer) {
+		return;
+	}
 
 	IconPackImage *image = (IconPackImage *) IconBufferAllocate(sizeof(IconPackImage));
 	image->width = EsBufferReadFloat(&iconManagement.pack);
@@ -1562,14 +1591,14 @@ TextStyleDifference CompareTextStyles(const EsTextStyle *style1, const EsTextSty
 	return TEXT_STYLE_IDENTICAL;
 }
 
-ptrdiff_t TextGetCharacterAtPoint(const EsTextStyle *textStyle, const char *string, size_t stringBytes, int *_pointX, uint32_t flags) {
+ptrdiff_t TextGetCharacterAtPoint(EsElement *element, const EsTextStyle *textStyle, const char *string, size_t stringBytes, int *_pointX, uint32_t flags) {
 	// TODO Better integration with the EsTextPlan API.
 
 	EsTextPlanProperties properties = {};
 	EsTextRun textRuns[2] = {};
 	textRuns[0].style = *textStyle;
 	textRuns[1].offset = stringBytes;
-	EsTextPlan *plan = EsTextPlanCreate(&properties, {}, string, textRuns, 1); 
+	EsTextPlan *plan = EsTextPlanCreate(element, &properties, {}, string, textRuns, 1); 
 	if (!plan) return 0;
 
 	EsAssert(plan->lines.Length() == 1);
@@ -1605,7 +1634,7 @@ ptrdiff_t TextGetCharacterAtPoint(const EsTextStyle *textStyle, const char *stri
 	return result;
 }
 
-int TextGetPartialStringWidth(const EsTextStyle *textStyle, const char *fullString, size_t fullStringBytes, size_t measureBytes) {
+int TextGetPartialStringWidth(EsElement *element, const EsTextStyle *textStyle, const char *fullString, size_t fullStringBytes, size_t measureBytes) {
 	// TODO Better integration with the EsTextPlan API.
 
 	EsTextPlanProperties properties = {};
@@ -1614,7 +1643,7 @@ int TextGetPartialStringWidth(const EsTextStyle *textStyle, const char *fullStri
 	textRuns[1].style = *textStyle;
 	textRuns[1].offset = measureBytes;
 	textRuns[2].offset = fullStringBytes;
-	EsTextPlan *plan = EsTextPlanCreate(&properties, {}, fullString, textRuns, 2); 
+	EsTextPlan *plan = EsTextPlanCreate(element, &properties, {}, fullString, textRuns, 2); 
 	if (!plan) return 0;
 
 	int width = 0;
@@ -1632,8 +1661,8 @@ int TextGetPartialStringWidth(const EsTextStyle *textStyle, const char *fullStri
 	return width / FREETYPE_UNIT_SCALE;
 }
 
-int TextGetStringWidth(const EsTextStyle *textStyle, const char *string, size_t stringBytes) {
-	return TextGetPartialStringWidth(textStyle, string, stringBytes, stringBytes);
+int TextGetStringWidth(EsElement *element, const EsTextStyle *textStyle, const char *string, size_t stringBytes) {
+	return TextGetPartialStringWidth(element, textStyle, string, stringBytes, stringBytes);
 }
 
 void TextTrimSpaces(EsTextPlan *plan) {
@@ -1834,7 +1863,7 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 	}
 }
 
-void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCount) {
+void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCount, float sizeScaleFactor) {
 	hb_unicode_funcs_t *unicodeFunctions = hb_unicode_funcs_get_default();
 	uint32_t lastAssignedScript = FALLBACK_SCRIPT;
 
@@ -1863,6 +1892,7 @@ void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCoun
 				run.offset = offset;
 				run.script = lastAssignedScript;
 				run.style.font.family = FontApplySubstitution(&plan->properties, run.style.font.family, run.script);
+				run.style.size *= sizeScaleFactor;
 				plan->textRuns.Add(run);
 				offset = j;
 			}
@@ -1876,6 +1906,7 @@ void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCoun
 		run.offset = offset;
 		run.script = lastAssignedScript;
 		run.style.font.family = FontApplySubstitution(&plan->properties, run.style.font.family, run.script);
+		run.style.size *= sizeScaleFactor;
 		plan->textRuns.Add(run);
 	}
 
@@ -2045,7 +2076,15 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 	return width;
 }
 
-EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *formatRuns, size_t formatRunCount) {
+void TextPlanDestroy(EsTextPlan *plan) {
+	plan->glyphInfos.Free();
+	plan->glyphPositions.Free();
+	plan->pieces.Free();
+	plan->lines.Free();
+	plan->textRuns.Free();
+}
+
+EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *formatRuns, size_t formatRunCount) {
 	// TODO Bidirectional text (UAX9). 
 	// TODO Vertical text layout (UAX50).
 	// TODO Supporting arbitrary OpenType features.
@@ -2054,6 +2093,8 @@ EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bound
 	// EsPrint("EsTextPlanCreate... width %d\n", Width(bounds) * FREETYPE_UNIT_SCALE);
 
 	EsMessageMutexCheck();
+	EsAssert(element);
+	float scale = theming.scale; // TODO Get the scale factor from the element's window.
 
 	EsTextPlan plan = {};
 
@@ -2088,8 +2129,9 @@ EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bound
 #endif
 
 	// Subdivide the runs by character script.
+	// This is also responsible for scaling the text sizes.
 	
-	TextItemizeByScript(&plan, formatRuns, formatRunCount);
+	TextItemizeByScript(&plan, formatRuns, formatRunCount, scale);
 
 	// Layout the paragraph.
 
@@ -2197,18 +2239,20 @@ EsTextPlan *EsTextPlanCreate(EsTextPlanProperties *properties, EsRectangle bound
 	// Return the plan.
 
 	EsTextPlan *copy = (EsTextPlan *) EsHeapAllocate(sizeof(EsTextPlan), true);
-	*copy = plan;
-	return copy;
+	
+	if (copy) {
+		*copy = plan;
+		return copy;
+	} else {
+		TextPlanDestroy(&plan);
+		return nullptr;
+	}
 }
 
 void EsTextPlanDestroy(EsTextPlan *plan) {
 	EsMessageMutexCheck();
 	EsAssert(!plan->singleUse);
-	plan->glyphInfos.Free();
-	plan->glyphPositions.Free();
-	plan->pieces.Free();
-	plan->lines.Free();
-	plan->textRuns.Free();
+	TextPlanDestroy(plan);
 	EsHeapFree(plan);
 }
 
@@ -2336,6 +2380,10 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		}
 
 		entry = LookupGlyphCacheEntry(key);
+
+		if (!entry) {
+			goto nextCharacter;
+		}
 
 		if (!entry->data) {
 			if (!FontRenderGlyph(mono, key, entry)) {
@@ -2828,6 +2876,8 @@ struct EsTextbox : EsElement {
 	
 	EsRectangle borders, insets;
 	EsTextStyle textStyle;
+	EsFont overrideFont;
+	uint16_t overrideTextSize;
 
 	uint32_t syntaxHighlightingLanguage;
 	uint32_t syntaxHighlightingColors[8];
@@ -3260,7 +3310,7 @@ void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
 		DocumentLine *line = &textbox->lines[caret.line];
 		int scrollX = textbox->scroll.position[0];
 		int viewportWidth = bounds.r;
-		int caretX = TextGetPartialStringWidth(&textbox->textStyle,
+		int caretX = TextGetPartialStringWidth(textbox, &textbox->textStyle,
 				line->GetBuffer(textbox), line->lengthBytes, caret.byte) - scrollX + textbox->insets.l;
 
 		if (caretX < textbox->insets.l) {
@@ -3288,7 +3338,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 		}
 
 		if (textbox->verticalMotionHorizontalDepth == -1) {
-			textbox->verticalMotionHorizontalDepth = TextGetPartialStringWidth(&textbox->textStyle,
+			textbox->verticalMotionHorizontalDepth = TextGetPartialStringWidth(textbox, &textbox->textStyle,
 					textbox->lines[caret->line].GetBuffer(textbox), textbox->lines[caret->line].lengthBytes, caret->byte);
 		}
 
@@ -3297,7 +3347,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 
 		DocumentLine *line = &textbox->lines[caret->line];
 		int pointX = textbox->verticalMotionHorizontalDepth ? textbox->verticalMotionHorizontalDepth - 1 : 0;
-		ptrdiff_t result = TextGetCharacterAtPoint(&textbox->textStyle,
+		ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
 				line->GetBuffer(textbox), line->lengthBytes, &pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 		caret->byte = result == -1 ? line->lengthBytes : result;
 	} else {
@@ -3445,7 +3495,7 @@ void TextboxRefreshVisibleLines(EsTextbox *textbox, bool repaint = true) {
 			continue;
 		}
 
-		line->lengthWidth = TextGetStringWidth(&textbox->textStyle,
+		line->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle,
 				line->GetBuffer(textbox), line->lengthBytes);
 
 		if (textbox->longestLine != -1 && line->lengthWidth > textbox->longestLineWidth) {
@@ -3617,7 +3667,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 			// Step 4: Update the width of the line and repaint it.
 
-			line->lengthWidth = TextGetStringWidth(&textbox->textStyle, textbox->activeLine, textbox->activeLineBytes);
+			line->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle, textbox->activeLine, textbox->activeLineBytes);
 			TextboxRepaintLine(textbox, deleteFrom.line);
 
 			// Step 5: Update the active line buffer.
@@ -3658,7 +3708,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 			DocumentLine *firstLine = &textbox->lines[deleteFrom.line];
 			firstLine->lengthBytes = textbox->lines[deleteTo.line].lengthBytes - deleteTo.byte + deleteFrom.byte;
-			firstLine->lengthWidth = TextGetStringWidth(&textbox->textStyle, textbox->data + firstLine->offset, firstLine->lengthBytes);
+			firstLine->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle, textbox->data + firstLine->offset, firstLine->lengthBytes);
 
 			// Step 7: Remove the deleted lines and update the textbox.
 
@@ -3741,7 +3791,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 			textbox->carets[0].byte += bytesToInsert;
 			textbox->carets[1].byte += bytesToInsert;
-			line->lengthWidth = TextGetStringWidth(&textbox->textStyle, textbox->activeLine, line->lengthBytes);
+			line->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle, textbox->activeLine, line->lengthBytes);
 			TextboxRepaintLine(textbox, insertionPoint.line);
 
 			// Step 4: Update the longest line.
@@ -3776,7 +3826,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 				if (i) {
 					EsMemoryZero(line, sizeof(*line));
-					line->height = EsTextGetLineHeight(&textbox->textStyle);
+					line->height = TextGetLineHeight(textbox, &textbox->textStyle);
 					line->yPosition = previous->yPosition + previous->height;
 					line->offset = lineByteOffset + insertedBytes;
 				}
@@ -4068,7 +4118,7 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 				DocumentLine *line = &textbox->lines[i + textbox->firstVisibleLine];
 				int pointX = positionX + textbox->scroll.position[0] - textbox->insets.l;
 				if (pointX < 0) pointX = 0;
-				ptrdiff_t result = TextGetCharacterAtPoint(&textbox->textStyle,
+				ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
 						line->GetBuffer(textbox), line->lengthBytes, 
 						&pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 				textbox->carets[1].byte = result == -1 ? line->lengthBytes : result;
@@ -4160,11 +4210,38 @@ int ProcessTextboxMarginMessage(EsElement *element, EsMessage *message) {
 			textRun[1].offset = EsStringFormat(label, sizeof(label), "%d", i + textbox->firstVisibleLine + 1);
 			EsTextPlanProperties properties = {};
 			properties.flags = ES_TEXT_V_CENTER | ES_TEXT_H_RIGHT | ES_TEXT_ELLIPSIS | ES_TEXT_PLAN_SINGLE_USE;
-			EsDrawText(painter, EsTextPlanCreate(&properties, bounds, label, textRun, 1), bounds, nullptr, nullptr);
+			EsDrawText(painter, EsTextPlanCreate(element, &properties, bounds, label, textRun, 1), bounds, nullptr, nullptr);
 		}
 	}
 
 	return 0;
+}
+
+void TextboxStyleChanged(EsTextbox *textbox) {
+	textbox->borders = textbox->currentStyle->borders;
+	textbox->insets = textbox->currentStyle->insets;
+
+	if (textbox->flags & ES_TEXTBOX_MARGIN) {
+		int marginWidth = textbox->margin->currentStyle->preferredWidth;
+		textbox->borders.l += marginWidth;
+		textbox->insets.l += marginWidth + textbox->margin->currentStyle->gapMajor;
+	}
+
+	int lineHeight = TextGetLineHeight(textbox, &textbox->textStyle);
+
+	for (int32_t i = 0; i < (int32_t) textbox->lines.Length(); i++) {
+		DocumentLine *line = &textbox->lines[i];
+		DocumentLine *previous = i ? (&textbox->lines[i - 1]) : nullptr;
+		line->height = lineHeight;
+		line->yPosition = previous ? (previous->yPosition + previous->height) : 0;
+		line->lengthWidth = -1;
+		textbox->longestLine = -1;
+	}
+
+	TextboxRefreshVisibleLines(textbox);
+	TextboxFindLongestLine(textbox);
+	textbox->scroll.Refresh();
+	EsElementRepaint(textbox);
 }
 
 int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
@@ -4241,10 +4318,10 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			EsTextPlan *plan;
 
 			if (textRuns[1].offset) {
-				plan = EsTextPlanCreate(&properties, lineBounds, line->GetBuffer(textbox), textRuns.array, textRuns.Length() - 1);
+				plan = EsTextPlanCreate(element, &properties, lineBounds, line->GetBuffer(textbox), textRuns.array, textRuns.Length() - 1);
 			} else {
 				textRuns[1].offset = 1; // Make sure that the caret and selection is draw correctly, even on empty lines.
-				plan = EsTextPlanCreate(&properties, lineBounds, " ", textRuns.array, textRuns.Length() - 1);
+				plan = EsTextPlanCreate(element, &properties, lineBounds, " ", textRuns.array, textRuns.Length() - 1);
 			}
 
 			if (plan) {
@@ -4510,6 +4587,23 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		DocumentLine *firstLine = &textbox->lines.First();
 		EsBufferFormat(message->getContent.buffer, "'%s'", firstLine->lengthBytes, firstLine->GetBuffer(textbox));
+	} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
+		if (textbox->margin) {
+			// Force the margin to update its style now, so that its width can be read correctly by TextboxStyleChanged.
+			textbox->margin->RefreshStyle(nullptr, false, true);
+		}
+
+		textbox->currentStyle->GetTextStyle(&textbox->textStyle);
+
+		if (textbox->overrideTextSize) {
+			textbox->textStyle.size = textbox->overrideTextSize;
+		}
+
+		if (textbox->overrideFont.family) {
+			textbox->textStyle.font = textbox->overrideFont;
+		}
+
+		TextboxStyleChanged(textbox);
 	} else {
 		response = 0;
 	}
@@ -4539,13 +4633,13 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 	textbox->undo = &textbox->localUndo;
 	textbox->undo->instance = textbox->instance;
 
-	// TODO Automatically update these when the theme changes.
 	textbox->borders = textbox->currentStyle->borders;
 	textbox->insets = textbox->currentStyle->insets;
+
 	textbox->currentStyle->GetTextStyle(&textbox->textStyle);
 
 	DocumentLine firstLine = {};
-	firstLine.height = EsTextGetLineHeight(&textbox->textStyle);
+	firstLine.height = TextGetLineHeight(textbox, &textbox->textStyle);
 	textbox->lines.Add(firstLine);
 
 	TextboxVisibleLine firstVisibleLine = {};
@@ -4742,31 +4836,16 @@ void EsTextboxSetUndoManager(EsTextbox *textbox, EsUndoManager *undoManager) {
 	textbox->undo = undoManager;
 }
 
-void EsTextboxSetTextStyle(EsTextbox *textbox, const EsTextStyle *textStyle) {
-	if (0 == EsMemoryCompare(textStyle, &textbox->textStyle, sizeof(EsTextStyle))) {
-		return;
-	}
-
-	EsMemoryCopy(&textbox->textStyle, textStyle, sizeof(EsTextStyle));
-	int lineHeight = EsTextGetLineHeight(&textbox->textStyle);
-
-	for (int32_t i = 0; i < (int32_t) textbox->lines.Length(); i++) {
-		DocumentLine *line = &textbox->lines[i];
-		DocumentLine *previous = i ? (&textbox->lines[i - 1]) : nullptr;
-		line->height = lineHeight;
-		line->yPosition = previous ? (previous->yPosition + previous->height) : 0;
-		line->lengthWidth = -1;
-		textbox->longestLine = -1;
-	}
-
-	TextboxRefreshVisibleLines(textbox);
-	TextboxFindLongestLine(textbox);
-	textbox->scroll.Refresh();
-	EsElementRepaint(textbox);
+void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size) {
+	textbox->overrideTextSize = size;
+	textbox->textStyle.size = size;
+	TextboxStyleChanged(textbox);
 }
 
-void EsTextboxGetTextStyle(EsTextbox *textbox, EsTextStyle *textStyle) {
-	EsMemoryCopy(textStyle, &textbox->textStyle, sizeof(EsTextStyle));
+void EsTextboxSetFont(EsTextbox *textbox, EsFont font) {
+	textbox->overrideFont = font;
+	textbox->textStyle.font = font;
+	TextboxStyleChanged(textbox);
 }
 
 void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors, size_t customColorCount) {
@@ -4817,7 +4896,7 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 			display->properties.flags = display->currentStyle->textAlign;
 			if (~display->flags & ES_TEXT_DISPLAY_PREFORMATTED) display->properties.flags |= ES_TEXT_PLAN_TRIM_SPACES;
 			if (display->flags & ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION) display->properties.flags |= ES_TEXT_PLAN_NO_FONT_SUBSTITUTION;
-			display->plan = EsTextPlanCreate(&display->properties, textBounds, display->contents, display->textRuns, display->textRunCount);
+			display->plan = EsTextPlanCreate(element, &display->properties, textBounds, display->contents, display->textRuns, display->textRunCount);
 			display->planWidth = textBounds.r - textBounds.l;
 			display->planHeight = textBounds.b - textBounds.t;
 		}
@@ -4833,7 +4912,7 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 			display->planWidth = message->type == ES_MSG_GET_HEIGHT && message->measure.width 
 				? (message->measure.width - insets.l - insets.r) : 0;
 			display->planHeight = 0;
-			display->plan = EsTextPlanCreate(&display->properties, 
+			display->plan = EsTextPlanCreate(element, &display->properties, 
 					ES_RECT_4(0, display->planWidth, 0, 0), 
 					display->contents, display->textRuns, display->textRunCount);
 
@@ -4858,6 +4937,11 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 		EsHeapFree(display->contents);
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		EsBufferFormat(message->getContent.buffer, "'%s'", display->textRuns[display->textRunCount].offset, display->contents);
+	} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
+		if (display->plan) {
+			EsTextPlanDestroy(display->plan);
+			display->plan = nullptr;
+		}
 	} else {
 		return 0;
 	}
@@ -5015,7 +5099,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 			textRun[0].style.figures = ES_TEXT_FIGURE_TABULAR;
 			bounds.t += child->offsetY;
 			bounds.b = bounds.t + child->height;
-			EsTextPlan *plan = EsTextPlanCreate(&properties, bounds, buffer, textRun, 1);
+			EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, buffer, textRun, 1);
 			EsDrawText(message->painter, plan, bounds); 
 			bounds.t -= child->offsetY;
 			counter++;

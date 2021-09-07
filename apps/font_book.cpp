@@ -141,7 +141,7 @@ int FontPreviewMessage(EsElement *element, EsMessage *message) {
 		runs[0].style.font.italic = element->instance->fontVariant / 10;
 		runs[0].style.size = element->instance->fontSize;
 		runs[1].offset = element->instance->previewTextBytes;
-		EsTextPlan *plan = EsTextPlanCreate(&properties, bounds, element->instance->previewText, runs, 1);
+		EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, element->instance->previewText, runs, 1);
 		EsDrawText(message->painter, plan, bounds); 
 	}
 
