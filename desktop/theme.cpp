@@ -67,10 +67,6 @@
 #define THEME_CHILD_TYPE_NONE       (3)
 #define THEME_CHILD_TYPE_HORIZONTAL (1 << 4)
 
-#ifndef IN_DESIGNER
-typedef uint32_t (*EsFragmentShaderCallback)(int x, int y, struct EsStyledBox *box);
-#endif
-
 typedef enum ThemeCursor {
 	THEME_CURSOR_NORMAL,
 	THEME_CURSOR_TEXT,
@@ -129,6 +125,10 @@ typedef struct ThemePaintRadialGradient {
 	uint8_t _unused0;
 	// Followed by gradient stops.
 } ThemePaintRadialGradient;
+
+#ifndef IN_DESIGNER
+typedef uint32_t (*EsFragmentShaderCallback)(int x, int y, struct StyledBox *box);
+#endif
 
 typedef struct ThemePaintCustom {
 #ifndef IN_DESIGNER
@@ -453,7 +453,7 @@ void ThemeFillRectangle(EsPainter *painter, EsRectangle bounds, ThemePaintData p
 			uint32_t *b = bits + bounds.l + y * width;
 
 			do { 
-				BlendPixel(b, paint.custom->callback(x, y, (EsStyledBox *) gradient->context), painter->target->fullAlpha);
+				BlendPixel(b, paint.custom->callback(x, y, (StyledBox *) gradient->context), painter->target->fullAlpha);
 				x++, b++; 
 			} while (x < bounds.r);
 		}
@@ -525,7 +525,7 @@ void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 #ifndef IN_DESIGNER
 			} else if (mainPaint.type == THEME_PAINT_CUSTOM) {
 				mainColor = mainPaint.custom->callback((i >> STYLE_CORNER_OVERSAMPLING) - mainGradient->ox + bounds.l, 
-						(j >> STYLE_CORNER_OVERSAMPLING) - mainGradient->oy + bounds.t, (EsStyledBox *) mainGradient->context);
+						(j >> STYLE_CORNER_OVERSAMPLING) - mainGradient->oy + bounds.t, (StyledBox *) mainGradient->context);
 #endif
 			} else {
 				mainColor = 0;
@@ -2184,56 +2184,6 @@ bool UIStyle::IsStateChangeObserved(uint16_t state1, uint16_t state2) {
 bool UIStyle::IsRegionCompletelyOpaque(EsRectangle region, int width, int height) {
 	return region.l >= opaqueInsets.l && region.r < width - opaqueInsets.r
 		&& region.t >= opaqueInsets.t && region.b < height - opaqueInsets.b;
-}
-
-struct EsStyledBox {
-	EsRectangle bounds, clip; 
-	uint32_t backgroundColor, backgroundColor2; 
-	EsFragmentShaderCallback fragmentShader;
-	uint32_t borderColor; 
-	EsRectangle borders;
-	int cornerRadiusTopLeft, cornerRadiusTopRight, cornerRadiusBottomLeft, cornerRadiusBottomRight; 
-};
-
-void DrawStyledBox(EsPainter *painter, EsStyledBox box) {
-	ThemeLayer layer = {};
-	ThemeLayerBox layerBox = {};
-	EsBuffer data = {};
-
-	layerBox.borders = { (int8_t) box.borders.l, (int8_t) box.borders.r, (int8_t) box.borders.t, (int8_t) box.borders.b };
-	layerBox.corners = { (int8_t) box.cornerRadiusTopLeft, (int8_t) box.cornerRadiusTopRight, (int8_t) box.cornerRadiusBottomLeft, (int8_t) box.cornerRadiusBottomRight };
-	layerBox.mainPaintType = THEME_PAINT_SOLID;
-	layerBox.borderPaintType = THEME_PAINT_SOLID;
-
-	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintCustom) + sizeof(ThemePaintSolid) * 2];
-
-	if (box.fragmentShader) {
-		ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
-		ThemePaintCustom *infoMain = (ThemePaintCustom *) (infoBox + 1);
-		ThemePaintSolid *infoBorder = (ThemePaintSolid *) (infoMain + 1);
-
-		*infoBox = layerBox;
-		infoBox->mainPaintType = THEME_PAINT_CUSTOM;
-		infoMain->callback = box.fragmentShader;
-		infoBorder->color = box.borderColor;
-
-		data.in = (const uint8_t *) &info;
-		data.bytes = sizeof(info);
-		data.context = &box;
-	} else {
-		ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
-		ThemePaintSolid *infoMain = (ThemePaintSolid *) (infoBox + 1);
-		ThemePaintSolid *infoBorder = (ThemePaintSolid *) (infoMain + 1);
-
-		*infoBox = layerBox;
-		infoMain->color = box.backgroundColor;
-		infoBorder->color = box.borderColor;
-
-		data.in = (const uint8_t *) &info;
-		data.bytes = sizeof(info);
-	}
-
-	ThemeDrawBox(painter, box.bounds, &data, 1, &layer, {}, THEME_CHILD_TYPE_ONLY);
 }
 
 void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii) {

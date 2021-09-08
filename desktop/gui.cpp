@@ -4177,22 +4177,69 @@ struct ColorPicker {
 	}
 };
 
+struct StyledBox {
+	EsRectangle bounds; 
+	uint32_t backgroundColor, backgroundColor2, borderColor; 
+	uint32_t cornerRadius, borderSize; 
+	EsFragmentShaderCallback fragmentShader;
+};
+
+void DrawStyledBox(EsPainter *painter, StyledBox box) {
+	ThemeLayer layer = {};
+	ThemeLayerBox layerBox = {};
+	EsBuffer data = {};
+
+	layerBox.borders = { (int8_t) box.borderSize, (int8_t) box.borderSize, (int8_t) box.borderSize, (int8_t) box.borderSize };
+	layerBox.corners = { (int8_t) box.cornerRadius, (int8_t) box.cornerRadius, (int8_t) box.cornerRadius, (int8_t) box.cornerRadius };
+	layerBox.mainPaintType = THEME_PAINT_SOLID;
+	layerBox.borderPaintType = THEME_PAINT_SOLID;
+
+	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintCustom) + sizeof(ThemePaintSolid) * 2];
+
+	if (box.fragmentShader) {
+		ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
+		ThemePaintCustom *infoMain = (ThemePaintCustom *) (infoBox + 1);
+		ThemePaintSolid *infoBorder = (ThemePaintSolid *) (infoMain + 1);
+
+		*infoBox = layerBox;
+		infoBox->mainPaintType = THEME_PAINT_CUSTOM;
+		infoMain->callback = box.fragmentShader;
+		infoBorder->color = box.borderColor;
+
+		data.in = (const uint8_t *) &info;
+		data.bytes = sizeof(info);
+		data.context = &box;
+	} else {
+		ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
+		ThemePaintSolid *infoMain = (ThemePaintSolid *) (infoBox + 1);
+		ThemePaintSolid *infoBorder = (ThemePaintSolid *) (infoMain + 1);
+
+		*infoBox = layerBox;
+		infoMain->color = box.backgroundColor;
+		infoBorder->color = box.borderColor;
+
+		data.in = (const uint8_t *) &info;
+		data.bytes = sizeof(info);
+	}
+
+	ThemeDrawBox(painter, box.bounds, &data, 1, &layer, {}, THEME_CHILD_TYPE_ONLY);
+}
+
 int ProcessColorChosenPointMessage(EsElement *element, EsMessage *message) {
 	ColorPicker *picker = (ColorPicker *) element->userData.p;
 
 	if (message->type == ES_MSG_PAINT) {
 		EsRectangle bounds = EsPainterBoundsInset(message->painter);
-		EsStyledBox box = {};
+		StyledBox box = {};
 		box.bounds = bounds;
-		box.clip = message->painter->clip;
 		box.borderColor = 0xFFFFFFFF;
 		box.backgroundColor = picker->color | 0xFF000000;
 		box.backgroundColor2 = picker->color | ((uint32_t) (255.0f * picker->opacity) << 24);
-		box.borders = ES_RECT_1(2);
-		box.cornerRadiusTopLeft = box.cornerRadiusTopRight = box.cornerRadiusBottomLeft = box.cornerRadiusBottomRight = Width(box.bounds) / 2;
+		box.borderSize = 2;
+		box.cornerRadius = Width(box.bounds) / 2;
 
 		if (picker->opacity < 1 && picker->host.hasOpacity) {
-			box.fragmentShader = [] (int x, int y, EsStyledBox *box) -> uint32_t {
+			box.fragmentShader = [] (int x, int y, StyledBox *box) -> uint32_t {
 				// TODO Move the alpha background as the chosen point moves.
 				return EsColorBlend(((((x - 2) >> 3) ^ ((y + 5) >> 3)) & 1) ? 0xFFFFFFFF : 0xFFC0C0C0, 
 						box->backgroundColor2, false);
@@ -4553,10 +4600,9 @@ int ProcessColorWellMessage(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_PAINT) {
 		EsRectangle bounds = EsPainterBoundsInset(message->painter);
-		EsStyledBox box = {};
+		StyledBox box = {};
 		box.bounds = bounds;
-		box.clip = message->painter->clip;
-		box.borders = ES_RECT_1(1);
+		box.borderSize = 1;
 
 		if (well->indeterminate) {
 			box.backgroundColor = 0;
@@ -4567,7 +4613,7 @@ int ProcessColorWellMessage(EsElement *element, EsMessage *message) {
 			box.borderColor = EsColorBlend(well->color | 0xFF000000, 0x40000000, false);
 
 			if ((well->flags & ES_COLOR_WELL_HAS_OPACITY) && ((well->color & 0xFF000000) != 0xFF000000)) {
-				box.fragmentShader = [] (int x, int y, EsStyledBox *box) -> uint32_t {
+				box.fragmentShader = [] (int x, int y, StyledBox *box) -> uint32_t {
 					return EsColorBlend(((((x - box->bounds.l - 4) >> 3) ^ ((y - box->bounds.t + 2) >> 3)) & 1) 
 							? 0xFFFFFFFF : 0xFFC0C0C0, box->backgroundColor, false);
 				};
