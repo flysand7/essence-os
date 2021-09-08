@@ -104,21 +104,32 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 		EsCommandSetEnabled(&instance->commandRefresh, true);
 
 		// Load the view settings for the folder.
+		// If the folder does not have any settings, inherit from closest ancestor with settings.
 
 		bool foundViewSettings = false;
+		size_t lastMatchBytes = 0;
+		ptrdiff_t updateLRU = -1;
 
 		if (folder->path.bytes < sizeof(folderViewSettings[0].path)) {
 			for (uintptr_t i = 0; i < folderViewSettings.Length(); i++) {
-				if (folderViewSettings[i].pathBytes == folder->path.bytes
-						&& 0 == EsMemoryCompare(folderViewSettings[i].path, STRING(folder->path))) {
+				String path = StringFromLiteralWithSize(folderViewSettings[i].path, folderViewSettings[i].pathBytes);
+				bool matchFull = StringEquals(path, folder->path);
+				bool matchPartial = matchFull || PathHasPrefix(folder->path, path);
+
+				if (matchFull || (matchPartial && lastMatchBytes < path.bytes)) {
 					foundViewSettings = true;
-					FolderViewSettingsEntry entry = folderViewSettings[i];
-					instance->viewSettings = entry.settings;
-					folderViewSettings.Delete(i);
-					folderViewSettings.Add(entry); // Update the LRU order.
-					break;
+					instance->viewSettings = folderViewSettings[i].settings;
+					updateLRU = i;
+					if (matchFull) break;
+					else lastMatchBytes = path.bytes; // Keep looking for a closer ancestor.
 				}
 			}
+		}
+
+		if (updateLRU != -1) {
+			FolderViewSettingsEntry entry = folderViewSettings[updateLRU];
+			folderViewSettings.Delete(updateLRU);
+			folderViewSettings.Add(entry);
 		}
 
 		if (!foundViewSettings) {

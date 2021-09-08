@@ -2041,6 +2041,7 @@ function EsRectangle EsRectangleCenter(EsRectangle parent, EsRectangle child);
 function EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side);
 function EsRectangle EsRectangleFit(EsRectangle parent, EsRectangle child, bool allowScalingUp); // Preserves aspect ratio.
 function EsRectangle EsRectangleIntersection(EsRectangle a, EsRectangle b);
+function EsRectangle EsRectangleLinearInterpolate(EsRectangle a, EsRectangle b, float progress);
 function EsRectangle EsRectangleSplit(EsRectangle *a, int32_t amount, char side, int32_t gap = 0); // Same as EsRectangleCut, but the source rectangle is modified.
 function EsRectangle EsRectangleSubtract(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
@@ -2199,6 +2200,8 @@ function bool EsCRTisnanf(float f);
 function int EsCRTisspace(int c); 
 function int EsCRTisupper(int c);
 function int EsCRTisxdigit(int c);
+function double EsCRTlog2(double x); 
+function float EsCRTlog2f(float x); 
 function void *EsCRTmalloc(size_t size); 
 function void *EsCRTmemchr(const void *_s, int _c, size_t n); 
 function int EsCRTmemcmp(const void *s1, const void *s2, size_t n); 

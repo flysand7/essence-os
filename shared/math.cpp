@@ -64,6 +64,22 @@ inline int MinimumInteger(int a, int b) {
 	return a < b ? a : b;
 }
 
+inline float AbsoluteFloat(float f) {
+	return f > 0 ? f : -f;
+}
+
+inline float SignFloat(float f) {
+	return f < 0 ? -1 : f > 0 ? 1 : 0;
+}
+
+inline int AbsoluteInteger(int a) {
+	return a > 0 ? a : -a;
+}
+
+inline int64_t AbsoluteInteger64(int64_t a) {
+	return a > 0 ? a : -a;
+}
+
 /////////////////////////////////
 // Interpolation.
 /////////////////////////////////
@@ -77,6 +93,18 @@ float LinearMap(float inFrom, float inTo, float outFrom, float outTo, float valu
 
 float LinearInterpolate(float from, float to, float progress) {
 	return from + progress * (to - from);
+}
+
+EsRectangle EsRectangleLinearInterpolate(EsRectangle from, EsRectangle to, float progress) {
+	return ES_RECT_4(LinearInterpolate(from.l, to.l, progress), LinearInterpolate(from.r, to.r, progress), 
+			LinearInterpolate(from.t, to.t, progress), LinearInterpolate(from.b, to.b, progress));
+}
+
+float RubberBand(float original, float target) {
+	float sign = SignFloat(original - target);
+	float distance = AbsoluteFloat(original - target);
+	float amount = EsCRTlog2f(distance);
+	return target + sign * amount * 2.0f;
 }
 
 #ifndef KERNEL
@@ -182,18 +210,6 @@ float EsCRTfloorf(float x) {
 	}
 
 	return convert.f;
-}
-
-inline float AbsoluteFloat(float f) {
-	return f > 0 ? f : -f;
-}
-
-inline int AbsoluteInteger(int a) {
-	return a > 0 ? a : -a;
-}
-
-inline int64_t AbsoluteInteger64(int64_t a) {
-	return a > 0 ? a : -a;
 }
 
 double EsCRTfloor(double x) {

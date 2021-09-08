@@ -420,6 +420,7 @@ void HeapDuplicate(void **pointer, size_t *outBytes, const void *data, size_t by
 
 struct EsWindow : EsElement {
 	EsHandle handle;
+	EsWindowStyle windowStyle;
 	uint32_t windowWidth, windowHeight;
 
 	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, hasDialog, doNotPaint;
@@ -427,10 +428,11 @@ struct EsWindow : EsElement {
 	bool hovering, activated;
 	bool visualizeRepaints, visualizeLayoutBounds, visualizePaintSteps; // Inspector properties.
 
-	EsPoint mousePosition;
-
 	EsElement *mainPanel, *toolbar;
 	EsPanel *toolbarSwitcher;
+	EsElement *dialogOverlay, *dialogPanel;
+
+	EsPoint mousePosition;
 
 	EsElement *hovered, 
 		  *pressed, 
@@ -449,9 +451,9 @@ struct EsWindow : EsElement {
 	Array<EsElement *> checkVisible;
 	bool processCheckVisible;
 
-	EsElement *dialogOverlay, *dialogPanel;
-	EsWindowStyle windowStyle;
-	EsRectangle beforeMaximiseBounds;
+	EsRectangle beforeMaximiseBounds, targetBounds, animateFromBounds;
+	bool animateToTargetBoundsAfterResize;
+	double animateToTargetBoundsTimeMs;
 
 	EsRectangle updateRegion;
 	EsRectangle updateRegionInProgress; // For visualizePaintSteps.
@@ -561,20 +563,14 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 	EsRectangle screen;
 	EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_GET, 0, (uintptr_t) &screen, 0, 0);
 
-	int newWidth = bounds.r - bounds.l;
-	int newHeight = bounds.b - bounds.t;
-
 	int windowSnapRange = GetConstantNumber("windowSnapRange");
 	int windowMinimumWidth = GetConstantNumber("windowMinimumWidth");
 	int windowMinimumHeight = GetConstantNumber("windowMinimumHeight");
 	int windowRestoreDragYPosition = GetConstantNumber("windowRestoreDragYPosition");
 
 	window->isMaximised = false;
-
-	if (newWidth  < windowMinimumWidth  && direction & RESIZE_LEFT)   bounds.l = bounds.r - windowMinimumWidth;
-	if (newWidth  < windowMinimumWidth  && direction & RESIZE_RIGHT)  bounds.r = bounds.l + windowMinimumWidth;
-	if (newHeight < windowMinimumHeight && direction & RESIZE_TOP)    bounds.t = bounds.b - windowMinimumHeight;
-	if (newHeight < windowMinimumHeight && direction & RESIZE_BOTTOM) bounds.b = bounds.t + windowMinimumHeight;
+	window->animateToTargetBoundsAfterResize = false;
+	window->animateToTargetBoundsTimeMs = -1;
 
 	if (direction == RESIZE_MOVE) {
 		if (newY < screen.t + windowSnapRange && canSnap) {
@@ -605,6 +601,17 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 			bounds.b = bounds.t + oldHeight;
 		}
 	} else {
+		EsRectangle targetBounds = bounds;
+#define WINDOW_CLAMP_SIZE(_size, _direction, _side, _target) \
+		if (_size(bounds) < windowMinimum ## _size && (direction & _direction)) targetBounds._side = _target, bounds._side = RubberBand(bounds._side, _target)
+		WINDOW_CLAMP_SIZE(Width,  RESIZE_LEFT,   l, bounds.r - windowMinimumWidth);
+		WINDOW_CLAMP_SIZE(Width,  RESIZE_RIGHT,  r, bounds.l + windowMinimumWidth);
+		WINDOW_CLAMP_SIZE(Height, RESIZE_TOP,    t, bounds.b - windowMinimumHeight);
+		WINDOW_CLAMP_SIZE(Height, RESIZE_BOTTOM, b, bounds.t + windowMinimumHeight);
+
+		window->animateToTargetBoundsAfterResize = !EsRectangleEquals(targetBounds, bounds);
+		window->animateFromBounds = bounds;
+		window->targetBounds = targetBounds;
 		window->resetPositionOnNextMove = window->restoreOnNextMove = false;
 	}
 
@@ -658,7 +665,25 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 			window->resetPositionOnNextMove = true;
 		}
 
+		if (window->animateToTargetBoundsAfterResize) {
+			window->animateToTargetBoundsTimeMs = 0;
+			window->StartAnimating();
+		}
+
 		gui.resizing = false;
+	} else if (message->type == ES_MSG_ANIMATE && window->animateToTargetBoundsAfterResize) {
+		double progress = window->animateToTargetBoundsTimeMs / 100.0;
+		window->animateToTargetBoundsTimeMs += message->animate.deltaMs;
+
+		if (progress > 1 || progress < 0) {
+			message->animate.complete = true;
+			window->animateToTargetBoundsAfterResize = false;
+		} else {
+			progress = SmoothAnimationTimeSharp(progress);
+			EsRectangle bounds = EsRectangleLinearInterpolate(window->animateFromBounds, window->targetBounds, progress);
+			EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_DYNAMIC);
+			message->animate.complete = false;
+		}
 	} else {
 		return 0;
 	}
