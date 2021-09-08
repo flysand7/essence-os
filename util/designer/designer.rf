@@ -294,6 +294,7 @@ enum PrimaryState_Type StyleEnumOp {
 	PRIMARY_STATE_HOVERED #StringOption { "Hovered" };
 	PRIMARY_STATE_PRESSED #StringOption { "Pressed" };
 	PRIMARY_STATE_DISABLED #StringOption { "Disabled" };
+	PRIMARY_STATE_INACTIVE #StringOption { "Inactive" };
 };
 
 struct Sequence Sequence_Type RfStructOp {

@@ -208,6 +208,7 @@ void EmbeddedWindowDestroyed(EsObjectID id);
 void ConfigurationWriteToFile();
 void OpenDocumentOpenReference(EsObjectID id);
 void OpenDocumentCloseReference(EsObjectID id);
+void WallpaperLoad(EsGeneric);
 
 #include "settings.cpp"
 
@@ -1901,6 +1902,7 @@ void DesktopSetup() {
 
 		EsWindow *window = desktop.setupDesktopUIComplete ? desktop.taskBar.window : EsWindowCreate(nullptr, ES_WINDOW_PLAIN);
 		window->messageUser = TaskBarWindowMessage;
+		window->appearActivated = true;
 		window->StartAnimating();
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE | ES_WINDOW_SOLID_NO_ACTIVATE, 0, ES_WINDOW_PROPERTY_SOLID);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);

@@ -28,6 +28,7 @@
 #define THEME_PRIMARY_STATE_HOVERED  (2)
 #define THEME_PRIMARY_STATE_PRESSED  (3)
 #define THEME_PRIMARY_STATE_DISABLED (4)
+#define THEME_PRIMARY_STATE_INACTIVE (5) // When the window has been deactivated.
 #define THEME_PRIMARY_STATE_MASK (0x000F)
 
 #define THEME_STATE_FOCUSED        (1 << 15)

@@ -425,7 +425,7 @@ struct EsWindow : EsElement {
 
 	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, hasDialog, doNotPaint;
 	bool restoreOnNextMove, resetPositionOnNextMove, receivedFirstResize, isMaximised;
-	bool hovering, activated;
+	bool hovering, activated, appearActivated;
 	bool visualizeRepaints, visualizeLayoutBounds, visualizePaintSteps; // Inspector properties.
 
 	EsElement *mainPanel, *toolbar;
@@ -919,7 +919,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_FLAGS_DEFAULT);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
 		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_CONTAINER_WINDOW_ROOT);
-		window->SetStyle(ES_STYLE_CONTAINER_WINDOW_ACTIVE);
+		window->SetStyle(ES_STYLE_CONTAINER_WINDOW);
 		EsMessage m = { .type = ES_MSG_UI_SCALE_CHANGED };
 		EsMessageSend(window, &m);
 	} else if (style == ES_WINDOW_INSPECTOR) {
@@ -1799,6 +1799,8 @@ bool EsElement::RefreshStyleState() {
 
 	if (flags & ES_ELEMENT_DISABLED) {
 		styleStateFlags |= THEME_PRIMARY_STATE_DISABLED;
+	} else if (window && !window->activated && !window->appearActivated) {
+		styleStateFlags |= THEME_PRIMARY_STATE_INACTIVE;
 	} else {
 		if (((state & UI_STATE_LEFT_PRESSED) && ((state & UI_STATE_HOVERED) || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) 
 				|| (state & UI_STATE_MENU_SOURCE)) {
@@ -5917,6 +5919,14 @@ void UIScaleChanged(EsElement *element, EsMessage *message) {
 	}
 }
 
+void UIMaybeRefreshStyleAll(EsElement *element) {
+	element->MaybeRefreshStyle();
+
+	for (uintptr_t i = 0; i < element->children.Length(); i++) {
+		UIMaybeRefreshStyleAll(element->children[i]);
+	}
+}
+
 void EsElementGetSize(EsElement *element, int *width, int *height) {
 	EsMessageMutexCheck();
 
@@ -6884,10 +6894,6 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 
 		if (window->windowStyle == ES_WINDOW_MENU) {
 			window->Destroy();
-		} else if (window->windowStyle == ES_WINDOW_CONTAINER) {
-			// Redraw window borders.
-			window->SetStyle(ES_STYLE_CONTAINER_WINDOW_INACTIVE);
-			window->Repaint(true);
 		}
 
 		window->activated = false;
@@ -6901,6 +6907,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		}
 
 		EsMessageSend(window, message);
+		UIMaybeRefreshStyleAll(window);
 	} else if (message->type == ES_MSG_WINDOW_ACTIVATED) {
 		AccessKeyModeExit();
 
@@ -6911,12 +6918,6 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		EsMessage m = { ES_MSG_WINDOW_ACTIVATED };
 		EsMessageSend(window, &m);
 
-		if (window->windowStyle == ES_WINDOW_CONTAINER) {
-			// Redraw window borders.
-			window->SetStyle(ES_STYLE_CONTAINER_WINDOW_ACTIVE);
-			window->Repaint(true);
-		}
-
 		if (!window->focused && window->inactiveFocus) {
 			EsElementFocus(window->inactiveFocus, false);
 			window->inactiveFocus->Repaint(true);
@@ -6924,6 +6925,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		}
 
 		UIRefreshPrimaryClipboard(window);
+		UIMaybeRefreshStyleAll(window);
 	}
 
 	skipInputMessage:;

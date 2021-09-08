@@ -538,6 +538,8 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 }
 
 void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
+	// TODO.
+
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
 	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
@@ -554,6 +556,49 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
 }
 
+void SettingsPageTheme(EsElement *element, SettingsPage *page) {
+	// TODO.
+
+	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
+
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	SettingsAddTitle(container, page);
+
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
+	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
+
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanelSetBands(table, 2);
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, "Wallpaper:", -1); 
+	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE);
+
+	textbox->messageUser = [] (EsElement *element, EsMessage *message) {
+		if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
+			EsMutexAcquire(&api.systemConfigurationMutex);
+
+			EsSystemConfigurationGroup *group = SystemConfigurationGetGroup("general", -1, true);
+
+			if (group) {
+				EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, "wallpaper", -1, true);
+
+				if (item) {
+					EsHeapFree(item->value);
+					item->value = EsTextboxGetContents((EsTextbox *) element, &item->valueBytes);
+					desktop.configurationModified = true;
+					EsThreadCreate(WallpaperLoad, nullptr, 0);
+				}
+			}
+
+			EsMutexRelease(&api.systemConfigurationMutex);
+			return ES_HANDLED;
+		}
+
+		return 0;
+	};
+}
+
 SettingsPage settingsPages[] = {
 	{ INTERFACE_STRING(DesktopSettingsAccessibility), ES_ICON_PREFERENCES_DESKTOP_ACCESSIBILITY, SettingsPageUnimplemented, 'A' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'C' }, // TODO.
@@ -564,7 +609,7 @@ SettingsPage settingsPages[] = {
 	{ INTERFACE_STRING(DesktopSettingsNetwork), ES_ICON_PREFERENCES_SYSTEM_NETWORK, SettingsPageUnimplemented, 'H' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsPower), ES_ICON_PREFERENCES_SYSTEM_POWER, SettingsPageUnimplemented, 'J' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsSound), ES_ICON_PREFERENCES_DESKTOP_SOUND, SettingsPageUnimplemented, 'K' }, // TODO.
-	{ INTERFACE_STRING(DesktopSettingsTheme), ES_ICON_APPLICATIONS_INTERFACEDESIGN, SettingsPageUnimplemented, 'M' }, // TODO.
+	{ INTERFACE_STRING(DesktopSettingsTheme), ES_ICON_APPLICATIONS_INTERFACEDESIGN, SettingsPageTheme, 'M' },
 };
 
 void SettingsButtonPressed(EsInstance *_instance, EsElement *element, EsCommand *) {

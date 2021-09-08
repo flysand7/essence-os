@@ -207,6 +207,7 @@ UIButton *previewPrimaryStateIdle;
 UIButton *previewPrimaryStateHovered;
 UIButton *previewPrimaryStatePressed;
 UIButton *previewPrimaryStateDisabled;
+UIButton *previewPrimaryStateInactive;
 UIButton *previewStateFocused;
 UIButton *previewStateChecked;
 UIButton *previewStateIndeterminate;
@@ -5507,6 +5508,9 @@ int main(int argc, char **argv)
 				previewPrimaryStateDisabled = UIButtonCreate(0, UI_BUTTON_SMALL, "Disabled", -1);
 				previewPrimaryStateDisabled->invoke = PreviewSetPrimaryState;
 				previewPrimaryStateDisabled->e.cp = (void *) PRIMARY_STATE_DISABLED;
+				previewPrimaryStateInactive = UIButtonCreate(0, UI_BUTTON_SMALL, "Inactive", -1);
+				previewPrimaryStateInactive->invoke = PreviewSetPrimaryState;
+				previewPrimaryStateInactive->e.cp = (void *) PRIMARY_STATE_INACTIVE;
 			UIParentPop();
 
 			UIPanelCreate(0, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
