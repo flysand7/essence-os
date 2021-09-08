@@ -769,6 +769,8 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 10 * theming.scale, ES_WINDOW_PROPERTY_SOLID);
 			EsRectangle embedInsets = ES_RECT_4(WINDOW_INSET, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, WINDOW_INSET);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &embedInsets, 0, ES_WINDOW_PROPERTY_EMBED_INSETS);
+			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, WINDOW_INSET, window->windowHeight - WINDOW_INSET);
+			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &opaqueBounds, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		} else {
 			response = ProcessWindowBorderMessage(window, message, bounds, WINDOW_INSET - BORDER_THICKNESS, WINDOW_INSET);
 		}

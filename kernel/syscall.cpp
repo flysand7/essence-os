@@ -488,12 +488,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 
 	bool isEmbed = _window.type == KERNEL_OBJECT_EMBEDDED_WINDOW;
 	Window *window = isEmbed ? ((EmbeddedWindow *) _window.object)->container : ((Window *) _window.object);
-	Surface *surface = &window->surface;
-	EsRectangle insets = window->embedInsets;
 
 	if (!window || (isEmbed && currentProcess != ((EmbeddedWindow *) _window.object)->owner)) {
 		SYSCALL_RETURN(ES_SUCCESS, false);
 	}
+
+	Surface *surface = &window->surface;
+	EsRectangle insets = window->embedInsets;
 
 	if (isEmbed) {
 		region = Translate(region, insets.l, insets.t);
