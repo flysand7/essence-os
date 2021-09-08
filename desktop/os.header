@@ -1359,17 +1359,6 @@ struct EsTextSelection {
 	uint32_t foreground, background;
 };
 
-function_pointer uint32_t EsFragmentShaderCallback(int x, int y, struct EsStyledBox *box);
-
-struct EsStyledBox {
-	EsRectangle bounds, clip; 
-	uint32_t backgroundColor, backgroundColor2; 
-	EsFragmentShaderCallback fragmentShader;
-	uint32_t borderColor; 
-	EsRectangle borders;
-	int cornerRadiusTopLeft, cornerRadiusTopRight, cornerRadiusBottomLeft, cornerRadiusBottomRight; 
-};
-
 struct EsArena {
 	// Arenas are not thread-safe!
 	// You can use different arenas in different threads, though.
@@ -2067,6 +2056,7 @@ function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle 
 function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
 function void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags); // Vertices are pairs of x,y coordinates.
 function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
+function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii); // Must pass 4 corner radii in the order top left, top right, bottom left, bottom right.
 function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
 function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
 function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *clip = ES_NULL, EsTextSelection *selectionProperties = ES_NULL); 

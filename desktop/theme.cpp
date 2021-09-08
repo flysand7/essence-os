@@ -67,6 +67,10 @@
 #define THEME_CHILD_TYPE_NONE       (3)
 #define THEME_CHILD_TYPE_HORIZONTAL (1 << 4)
 
+#ifndef IN_DESIGNER
+typedef uint32_t (*EsFragmentShaderCallback)(int x, int y, struct EsStyledBox *box);
+#endif
+
 typedef enum ThemeCursor {
 	THEME_CURSOR_NORMAL,
 	THEME_CURSOR_TEXT,
@@ -2182,6 +2186,15 @@ bool UIStyle::IsRegionCompletelyOpaque(EsRectangle region, int width, int height
 		&& region.t >= opaqueInsets.t && region.b < height - opaqueInsets.b;
 }
 
+struct EsStyledBox {
+	EsRectangle bounds, clip; 
+	uint32_t backgroundColor, backgroundColor2; 
+	EsFragmentShaderCallback fragmentShader;
+	uint32_t borderColor; 
+	EsRectangle borders;
+	int cornerRadiusTopLeft, cornerRadiusTopRight, cornerRadiusBottomLeft, cornerRadiusBottomRight; 
+};
+
 void DrawStyledBox(EsPainter *painter, EsStyledBox box) {
 	ThemeLayer layer = {};
 	ThemeLayerBox layerBox = {};
@@ -2221,6 +2234,26 @@ void DrawStyledBox(EsPainter *painter, EsStyledBox box) {
 	}
 
 	ThemeDrawBox(painter, box.bounds, &data, 1, &layer, {}, THEME_CHILD_TYPE_ONLY);
+}
+
+void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii) {
+	ThemeLayer layer = {};
+	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintSolid) * 2];
+
+	ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
+	infoBox->borders = { (int8_t) borderSize.l, (int8_t) borderSize.r, (int8_t) borderSize.t, (int8_t) borderSize.b };
+	infoBox->corners = { (int8_t) cornerRadii[0], (int8_t) cornerRadii[1], (int8_t) cornerRadii[2], (int8_t) cornerRadii[3] };
+	infoBox->mainPaintType = THEME_PAINT_SOLID;
+	infoBox->borderPaintType = THEME_PAINT_SOLID;
+
+	ThemePaintSolid *infoMain = (ThemePaintSolid *) (infoBox + 1);
+	infoMain->color = mainColor;
+
+	ThemePaintSolid *infoBorder = (ThemePaintSolid *) (infoMain + 1);
+	infoBorder->color = borderColor;
+
+	EsBuffer data = { .in = (const uint8_t *) &info, .bytes = sizeof(info) };
+	ThemeDrawBox(painter, bounds, &data, 1, &layer, {}, THEME_CHILD_TYPE_ONLY);
 }
 
 #endif

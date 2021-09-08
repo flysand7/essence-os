@@ -131,6 +131,9 @@ int TestCanvasMessage(EsElement *, EsMessage *message) {
 		size_t dataBytes;
 		const void *data = EsEmbeddedFileGet("test", -1, &dataBytes);
 		if (data) EsDrawVectorFile(message->painter, EsPainterBoundsClient(message->painter), data, dataBytes);
+
+		uint32_t cornerRadii[4] = { 10, 20, 30, 40 };
+		EsDrawRoundedRectangle(message->painter, EsPainterBoundsClient(message->painter), 0xFF00FF00, 0xFFFF00FF, ES_RECT_1(10), cornerRadii);
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = 256;
 	} else if (message->type == ES_MSG_GET_HEIGHT) {
