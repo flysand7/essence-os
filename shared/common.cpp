@@ -2677,4 +2677,22 @@ void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) {
 	}
 }
 
+bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value) {
+#ifdef __BIG_ENDIAN__
+	value = ByteSwap32(value);
+#endif
+	EsBufferWrite(buffer, &value, sizeof(int32_t));
+	return buffer->error;
+}
+
+int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue) {
+	int32_t *pointer = (int32_t *) EsBufferRead(buffer, sizeof(int32_t));
+	if (!pointer) return errorValue;
+#ifdef __BIG_ENDIAN__
+	return ByteSwap32(*pointer);
+#else
+	return *pointer;
+#endif
+}
+
 #endif

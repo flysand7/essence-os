@@ -1655,6 +1655,7 @@ void ConfigurationLoadApplications() {
 		application->iconID = EsIconIDFromString(icon);
 		EsHeapFree(icon);
 		application->useSingleProcess = EsSystemConfigurationGroupReadInteger(group, EsLiteral("use_single_process"), true);
+		application->useSingleInstance = EsSystemConfigurationGroupReadInteger(group, EsLiteral("use_single_instance"), true);
 		application->hidden = EsSystemConfigurationGroupReadInteger(group, EsLiteral("hidden"), false);
 		application->id = EsIntegerParse(group->section, group->sectionBytes);
 

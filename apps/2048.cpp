@@ -16,7 +16,7 @@
 
 #define TILE_BOUNDS(x, y) ES_RECT_4PD(mainArea.l + TILE_GAP * (x + 1) + TILE_SIZE * x, mainArea.t + TILE_GAP * (y + 1) + TILE_SIZE * y, TILE_SIZE, TILE_SIZE)
 
-#define SETTINGS_FILE "|Settings:/Default.ini"
+#define SETTINGS_FILE "|Settings:/Default.dat"
 
 struct AnimatingTile {
 	float sourceOpacity, targetOpacity;
@@ -44,7 +44,6 @@ size_t animatingTileCount;
 float animationTimeMs;
 
 uint8_t grid[TILE_COUNT][TILE_COUNT];
-uintptr_t currentTileCount;
 int32_t score, highScore;
 
 EsInstance *instance;
@@ -54,7 +53,9 @@ EsTextDisplay *scoreDisplay, *highScoreDisplay;
 void SaveConfiguration() {
 	EsBuffer buffer = {};
 	buffer.canGrow = true;
-	EsBufferFormat(&buffer, "high_score=%d\n", highScore);
+	EsBufferWriteInt32Endian(&buffer, highScore);
+	EsBufferWriteInt32Endian(&buffer, score);
+	EsBufferWrite(&buffer, grid, sizeof(grid));
 	EsFileWriteAll(EsLiteral(SETTINGS_FILE), buffer.out, buffer.position);
 	EsHeapFree(buffer.out);
 }
@@ -141,7 +142,17 @@ bool MoveTiles(intptr_t dx, intptr_t dy, bool speculative) {
 }
 
 void SpawnTile() {
-	if (currentTileCount == TILE_COUNT * TILE_COUNT) {
+	bool full = true;
+
+	for (uintptr_t i = 0; i < TILE_COUNT; i++) {
+		for (uintptr_t j = 0; j < TILE_COUNT; j++) {
+			if (!grid[i][j]) {
+				full = false;
+			}
+		}
+	}
+
+	if (full) {
 		// The grid is full.
 		return;
 	}
@@ -188,9 +199,10 @@ void Update(intptr_t dx, intptr_t dy) {
 		if (!MoveTiles(dx, dy, false)) {
 			return;
 		}
+
+		SpawnTile();
 	}
 
-	SpawnTile();
 	EsElementStartAnimating(gameArea);
 
 	if (score > highScore) {
@@ -324,9 +336,11 @@ int InfoPanelMessage(EsElement *element, EsMessage *message) {
 
 void NewGameCommand(EsInstance *, EsElement *, EsCommand *) {
 	SaveConfiguration();
+	EsElementStartTransition(gameArea, ES_TRANSITION_SLIDE_UP);
 	EsMemoryZero(grid, sizeof(grid));
 	score = 0;
 	Update(0, 0);
+	SpawnTile();
 	EsElementFocus(gameArea);
 }
 
@@ -370,13 +384,14 @@ void ProcessApplicationMessage(EsMessage *message) {
 void _start() {
 	_init();
 
-	EsINIState state = { (char *) EsFileReadAll(EsLiteral(SETTINGS_FILE), &state.bytes) };
-
-	while (EsINIParse(&state)) {
-		if (0 == EsStringCompareRaw(state.key, state.keyBytes, EsLiteral("high_score"))) {
-			highScore = EsIntegerParse(state.value, state.valueBytes);
-		}
-	}
+	EsBuffer buffer = {};
+	uint8_t *settings = (uint8_t *) EsFileReadAll(EsLiteral(SETTINGS_FILE), &buffer.bytes);
+	buffer.in = settings;
+	highScore = EsBufferReadInt32Endian(&buffer, 0);
+	score = EsBufferReadInt32Endian(&buffer, 0);
+	EsBufferReadInto(&buffer, grid, sizeof(grid));
+	EsHeapFree(settings);
+	if (!settings) SpawnTile();
 
 	while (true) {
 		ProcessApplicationMessage(EsMessageReceive());

@@ -1978,7 +1978,9 @@ function void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSiz
 function const void *EsBufferRead(struct EsBuffer *buffer, size_t readBytes);
 function bool EsBufferReadInto(struct EsBuffer *buffer, void *destination, size_t readBytes);
 function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
+function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue);
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
+function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value); // Changes byte order if big endian.
 function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
 function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments); // Appends.
 function void EsBufferFlushToFileStore(EsBuffer *buffer);
