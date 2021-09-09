@@ -1732,8 +1732,8 @@ void ProcessAnimations() {
 
 		EsMessage m = {};
 		m.type = ES_MSG_ANIMATE;
-		int64_t deltaUs = (timeStamp - element->lastTimeStamp) / api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND];
-		m.animate.deltaMs = deltaUs / 1000;
+		int64_t deltaMs = (timeStamp - element->lastTimeStamp) / api.startupInformation->timeStampTicksPerMs;
+		m.animate.deltaMs = deltaMs;
 		m.animate.complete = true;
 
 		if (!m.animate.deltaMs) {
@@ -1779,7 +1779,7 @@ void ProcessAnimations() {
 			waitMs = m.animate.waitMs;
 		}
 
-		element->lastTimeStamp += m.animate.deltaMs * 1000 * api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND];
+		element->lastTimeStamp += m.animate.deltaMs * api.startupInformation->timeStampTicksPerMs;
 		UIWindowNeedsUpdate(element->window);
 	}
 
@@ -2779,7 +2779,6 @@ EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 		} else if (message->type == ES_MSG_ANIMATE) {
 			if (scrollbar->position != scrollbar->smoothScrollTarget) {
 				double factor = EsCRTexp2f(-5.0f / message->animate.deltaMs);
-				// EsPrint("%dmcs -> %F\n", message->animate.deltaUs, factor);
 				scrollbar->position += (scrollbar->smoothScrollTarget - scrollbar->position) * factor;
 				ScrollbarSetPosition(scrollbar, scrollbar->smoothScrollTarget, true, true);
 				bool done = scrollbar->position == scrollbar->smoothScrollTarget;

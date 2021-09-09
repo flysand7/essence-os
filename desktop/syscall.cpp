@@ -3,10 +3,10 @@ ThreadLocalStorage *GetThreadLocalStorage() {
 }
 
 double EsTimeStampMs() {
-	if (!api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND]) {
+	if (!api.startupInformation->timeStampTicksPerMs) {
 		return 0;
 	} else {
-		return (double) EsTimeStamp() / api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] / 1000;
+		return (double) EsTimeStamp() / api.startupInformation->timeStampTicksPerMs;
 	}
 }
 

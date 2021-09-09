@@ -1418,15 +1418,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_YIELD_SCHEDULER) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_GET_CONSTANTS) {
-	uint64_t systemConstants[ES_SYSTEM_CONSTANT_COUNT];
-	EsMemoryZero(systemConstants, sizeof(systemConstants));
-	systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] = timeStampTicksPerMs / 1000;
-	systemConstants[ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT] = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
-	SYSCALL_WRITE(argument0, systemConstants, sizeof(systemConstants));
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 	SYSCALL_PERMISSION(ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT);
 

@@ -116,7 +116,6 @@ struct {
 	Array<MountPoint> mountPoints;
 	bool foundBootFileSystem;
 	EsProcessStartupInformation *startupInformation;
-	uint64_t systemConstants[ES_SYSTEM_CONSTANT_COUNT];
 	GlobalData *global;
 
 	EsMutex messageMutex;
@@ -132,7 +131,7 @@ struct {
 
 	EsSpinlock performanceTimerStackLock;
 #define PERFORMANCE_TIMER_STACK_SIZE (100)
-	uint64_t performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
+	double performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
 	uintptr_t performanceTimerStackCount;
 
 	ThreadLocalStorage firstThreadLocalStorage;
@@ -905,10 +904,6 @@ EsMessage *EsMessageReceive() {
 
 		EsMessageType type = message.message.type;
 
-		if (type == ES_MSG_SYSTEM_CONSTANT_UPDATED) {
-			api.systemConstants[message.message.systemConstantUpdated.index] = message.message.systemConstantUpdated.newValue;
-		}
-
 		if (type == ES_MSG_EYEDROP_REPORT) {
 			EsMessageSend((EsElement *) message.object, &message.message);
 		} else if (type == ES_MSG_TIMER) {
@@ -1186,8 +1181,8 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 	message->instanceSave.file->operationComplete = true;
 }
 
-uint64_t EsSystemGetConstant(uintptr_t index) {
-	return api.systemConstants[index];
+uintptr_t EsSystemGetOptimalWorkQueueThreadCount() {
+	return api.startupInformation->optimalWorkQueueThreadCount;
 }
 
 void ThreadInitialise(ThreadLocalStorage *local) {
@@ -1216,7 +1211,6 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		// Initialise the API.
 
 		_init();
-		EsSyscall(ES_SYSCALL_SYSTEM_GET_CONSTANTS, (uintptr_t) api.systemConstants, 0, 0, 0);
 		EsRandomSeed(EsTimeStamp());
 		ThreadInitialise(&api.firstThreadLocalStorage);
 		EsMessageMutexAcquire();
@@ -1384,7 +1378,7 @@ void EsPerformanceTimerPush() {
 	EsSpinlockAcquire(&api.performanceTimerStackLock);
 
 	if (api.performanceTimerStackCount < PERFORMANCE_TIMER_STACK_SIZE) {
-		api.performanceTimerStack[api.performanceTimerStackCount++] = EsTimeStamp();
+		api.performanceTimerStack[api.performanceTimerStackCount++] = EsTimeStampMs();
 	}
 
 	EsSpinlockRelease(&api.performanceTimerStackLock);
@@ -1395,8 +1389,8 @@ double EsPerformanceTimerPop() {
 	EsSpinlockAcquire(&api.performanceTimerStackLock);
 
 	if (api.performanceTimerStackCount) {
-		uint64_t start = api.performanceTimerStack[--api.performanceTimerStackCount];
-		result = ((double) (EsTimeStamp() - start) / (double) (api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND])) / 1000000.0; 
+		double start = api.performanceTimerStack[--api.performanceTimerStackCount];
+		result = (EsTimeStampMs() - start) / 1000.0 /* ms to seconds */; 
 	}
 
 	EsSpinlockRelease(&api.performanceTimerStackLock);

@@ -531,11 +531,10 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 		case SYS_clock_gettime: {
 			// We'll ignore the clockid_t in a1, since we don't have proper timekeeping yet.
 			struct timespec *tp = (struct timespec *) a2;
-			uint64_t timeStamp = EsTimeStamp();
-			uint64_t unitsPerMicrosecond = EsSystemGetConstant(ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND);
-			uint64_t microseconds = timeStamp / unitsPerMicrosecond;
-			tp->tv_sec = microseconds / 1000000;
-			tp->tv_nsec = (microseconds % 1000000) * 1000;
+			double timeStampMs = EsTimeStampMs();
+			uint64_t ns = timeStampMs * 1e6;
+			tp->tv_sec = ns / 1000000000;
+			tp->tv_nsec = (ns % 1000000000) * 1000;
 		} break;
 
 		case SYS_wait4: {

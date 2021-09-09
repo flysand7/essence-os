@@ -523,7 +523,7 @@ void _start() {
 	nonBlockingTaskWorkAvailable = EsEventCreate(true /* autoReset */);
 	EsThreadInformation _nonBlockingTaskThread = {};
 
-	for (uintptr_t i = 0; i < EsSystemGetConstant(ES_SYSTEM_CONSTANT_OPTIMAL_WORK_QUEUE_THREAD_COUNT); i++) {
+	for (uintptr_t i = 0; i < EsSystemGetOptimalWorkQueueThreadCount(); i++) {
 		EsThreadCreate(NonBlockingTaskThread, &_nonBlockingTaskThread, nullptr);
 	}
 

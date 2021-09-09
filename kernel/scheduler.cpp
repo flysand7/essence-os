@@ -628,6 +628,8 @@ void NewProcess() {
 			startupInformation->tlsImageStart = application.tlsImageStart;
 			startupInformation->tlsImageBytes = application.tlsImageBytes;
 			startupInformation->tlsBytes = application.tlsBytes;
+			startupInformation->timeStampTicksPerMs = timeStampTicksPerMs;
+			startupInformation->optimalWorkQueueThreadCount = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
 		}
 	}
 

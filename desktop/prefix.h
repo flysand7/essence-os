@@ -250,6 +250,8 @@ struct EsProcessStartupInformation {
 	uintptr_t tlsImageStart;
 	uintptr_t tlsImageBytes;
 	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
+	uintptr_t timeStampTicksPerMs;
+	uintptr_t optimalWorkQueueThreadCount;
 };
 
 struct _EsPOSIXSyscall {
