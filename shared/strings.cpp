@@ -264,6 +264,16 @@ DEFINE_INTERFACE_STRING(FileManagerListContextActions, "Actions");
 DEFINE_INTERFACE_STRING(FileManagerCopyTask, "Copying" ELLIPSIS);
 DEFINE_INTERFACE_STRING(FileManagerMoveTask, "Moving" ELLIPSIS);
 
+// 2048.
+
+DEFINE_INTERFACE_STRING(Game2048Score, "Score:");
+DEFINE_INTERFACE_STRING(Game2048Instructions, "Use the \aw6]arrow-keys\a] to slide the tiles. When matching tiles touch, they \aw6]merge\a] into one. Try to create the number \aw6]2048\a]!");
+DEFINE_INTERFACE_STRING(Game2048GameOver, "Game over");
+DEFINE_INTERFACE_STRING(Game2048GameOverExplanation, "There are no valid moves left.");
+DEFINE_INTERFACE_STRING(Game2048NewGame, "New game");
+DEFINE_INTERFACE_STRING(Game2048HighScore, "High score: \aw6]%d\a]");
+DEFINE_INTERFACE_STRING(Game2048NewHighScore, "You reached a new high score!");
+
 // TODO System Monitor.
 
 #pragma GCC diagnostic pop

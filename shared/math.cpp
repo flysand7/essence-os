@@ -100,6 +100,25 @@ EsRectangle EsRectangleLinearInterpolate(EsRectangle from, EsRectangle to, float
 			LinearInterpolate(from.t, to.t, progress), LinearInterpolate(from.b, to.b, progress));
 }
 
+uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress) {
+	float fa = ((from >> 24) & 0xFF) / 255.0f;
+	float fb = ((from >> 16) & 0xFF) / 255.0f;
+	float fg = ((from >>  8) & 0xFF) / 255.0f;
+	float fr = ((from >>  0) & 0xFF) / 255.0f;
+	float ta = ((to   >> 24) & 0xFF) / 255.0f;
+	float tb = ((to   >> 16) & 0xFF) / 255.0f;
+	float tg = ((to   >>  8) & 0xFF) / 255.0f;
+	float tr = ((to   >>  0) & 0xFF) / 255.0f;
+
+	if (fa && !ta) { tr = fr, tg = fg, tb = fb; }
+	if (ta && !fa) { fr = tr, fg = tg, fb = tb; }
+
+	return (uint32_t) (LinearInterpolate(fr, tr, progress) * 255.0f) << 0
+		| (uint32_t) (LinearInterpolate(fg, tg, progress) * 255.0f) << 8
+		| (uint32_t) (LinearInterpolate(fb, tb, progress) * 255.0f) << 16
+		| (uint32_t) (LinearInterpolate(fa, ta, progress) * 255.0f) << 24;
+}
+
 float RubberBand(float original, float target) {
 	float sign = SignFloat(original - target);
 	float distance = AbsoluteFloat(original - target);

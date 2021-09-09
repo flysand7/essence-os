@@ -2566,6 +2566,15 @@ void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRect
 	painter->clip = oldClip;
 }
 
+void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, EsTextStyle style, uint32_t flags) {
+	EsTextPlanProperties properties = {};
+	properties.flags = ES_TEXT_PLAN_SINGLE_USE | flags;
+	EsTextRun textRuns[2] = {};
+	textRuns[0].style = style;
+	textRuns[1].offset = stringBytes == -1 ? EsCStringLength(string) : stringBytes;
+	EsDrawText(painter, EsTextPlanCreate(element, &properties, bounds, string, textRuns, 1), bounds); 
+}
+
 #elif defined(TEXT_ELEMENTS)
 
 // --------------------------------- Markup parsing.

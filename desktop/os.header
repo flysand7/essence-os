@@ -419,8 +419,6 @@ define ES_PERMISSION_POSIX_SUBSYSTEM			(1 << 8)
 define ES_PERMISSION_ALL				((_EsLongConstant) (-1))
 define ES_PERMISSION_INHERIT				((_EsLongConstant) (1) << 63)
 
-define ES_PANEL_BAND_SIZE_DEFAULT              (-1)
-
 // Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
 
 define ES_ELEMENT_FOCUSABLE			((_EsLongConstant) (1) << 32)
@@ -455,6 +453,8 @@ define ES_CELL_V_SHRINK		((_EsLongConstant) (1) << 61)
 define ES_CELL_V_TOP            ((_EsLongConstant) (1) << 62)
 define ES_CELL_V_BOTTOM         ((_EsLongConstant) (1) << 63)
 
+define ES_PANEL_BAND_SIZE_DEFAULT              (-1)
+
 define ES_PANEL_STACK			(0) // Default.
 define ES_PANEL_SWITCHER		(1 << 0)
 define ES_PANEL_Z_STACK			(1 << 1)
@@ -471,6 +471,7 @@ define ES_PANEL_HORIZONTAL		(1 << 8)
 define ES_PANEL_REVERSE 		(1 << 9) // Reverse layout is not supported with ES_PANEL_TABLE yet.
 
 // For ES_PANEL_TABLE.
+// TODO Implement these!
 define ES_PANEL_H_LEFT			(1 << 16)
 define ES_PANEL_H_RIGHT			(1 << 17)
 define ES_PANEL_H_CENTER		(1 << 18)
@@ -542,6 +543,7 @@ define ES_FONT_SERIF 		(0xFFFE)
 define ES_FONT_MONOSPACED 	(0xFFFD)
 
 define ES_FONT_REGULAR		(4)
+define ES_FONT_SEMIBOLD 	(6)
 define ES_FONT_BOLD 		(7)
 
 define ES_TEXT_FIGURE_DEFAULT	(0)
@@ -2047,6 +2049,7 @@ function uint32_t EsColorBlend(uint32_t under, uint32_t over, bool fullAlpha);
 function uint32_t EsColorConvertToRGB(float h, float s, float v); // 0 <= hue < 6; 0 <= saturation <= 1; 0 <= value <= 1.
 function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v);
 function uint32_t EsColorParse(STRING string);
+function uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress);
 
 function void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *bits, uintptr_t stride, uint16_t mode); // OR mode with alpha.
 function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *bits, uintptr_t stride, uint16_t alpha); // Set alpha to 0xFFFF if source is opaque.
@@ -2060,6 +2063,7 @@ function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsD
 function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
 function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
 function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *clip = ES_NULL, EsTextSelection *selectionProperties = ES_NULL); 
+function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT); 
 function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsTextSelection *selectionProperties = ES_NULL); 
 function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes);
 

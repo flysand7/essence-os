@@ -1465,25 +1465,8 @@ ThemeVariant ThemeAnimatingPropertyInterpolate(ThemeAnimatingProperty *property,
 		float to = *(float *) (layerData + dataOffset);
 		return (ThemeVariant) { .f32 = (float) LinearInterpolate(property->from.f32, to, position) };
 	} else if (property->type == THEME_OVERRIDE_COLOR) {
-		uint32_t from = property->from.u32;
 		uint32_t to = *(uint32_t *) (layerData + dataOffset);
-
-		float fa = ((from >> 24) & 0xFF) / 255.0f;
-		float fb = ((from >> 16) & 0xFF) / 255.0f;
-		float fg = ((from >>  8) & 0xFF) / 255.0f;
-		float fr = ((from >>  0) & 0xFF) / 255.0f;
-		float ta = ((to   >> 24) & 0xFF) / 255.0f;
-		float tb = ((to   >> 16) & 0xFF) / 255.0f;
-		float tg = ((to   >>  8) & 0xFF) / 255.0f;
-		float tr = ((to   >>  0) & 0xFF) / 255.0f;
-
-		if (fa && !ta) { tr = fr, tg = fg, tb = fb; }
-		if (ta && !fa) { fr = tr, fg = tg, fb = tb; }
-
-		return (ThemeVariant) { .u32 = (uint32_t) (LinearInterpolate(fr, tr, position) * 255.0f) << 0
-			| (uint32_t) (LinearInterpolate(fg, tg, position) * 255.0f) << 8
-			| (uint32_t) (LinearInterpolate(fb, tb, position) * 255.0f) << 16
-			| (uint32_t) ((fa + (ta - fa) * position) * 255.0f) << 24 };
+		return (ThemeVariant) { .u32 = EsColorInterpolate(property->from.u32, to, position) };
 	} else {
 		EsAssert(false);
 		return {};
@@ -2188,7 +2171,7 @@ bool UIStyle::IsRegionCompletelyOpaque(EsRectangle region, int width, int height
 
 void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii) {
 	ThemeLayer layer = {};
-	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintSolid) * 2];
+	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintSolid) * 2] = {};
 
 	ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
 	infoBox->borders = { (int8_t) borderSize.l, (int8_t) borderSize.r, (int8_t) borderSize.t, (int8_t) borderSize.b };
