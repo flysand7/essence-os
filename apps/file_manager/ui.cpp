@@ -1043,6 +1043,7 @@ void InstanceCreateUI(Instance *instance) {
 	EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT);
 	instance->breadcrumbBar = EsTextboxCreate(toolbar, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED | ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS, {});
 	instance->breadcrumbBar->messageUser = BreadcrumbBarMessage;
+	instance->breadcrumbBar->accessKey = 'A';
 	EsTextboxUseBreadcrumbOverlay(instance->breadcrumbBar);
 	ADD_BUTTON_TO_TOOLBAR(commandNewFolder, interfaceString_FileManagerNewFolderToolbarItem, ES_ICON_FOLDER_NEW_SYMBOLIC, 'N', instance->newFolderButton);
 

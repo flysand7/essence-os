@@ -50,7 +50,6 @@
 #define THEME_LAYER_BOX_AUTO_CORNERS  (1 << 1)
 #define THEME_LAYER_BOX_AUTO_BORDERS  (1 << 2)
 #define THEME_LAYER_BOX_SHADOW_HIDING (1 << 3)
-#define THEME_LAYER_BOX_SHADOW_CUT    (1 << 4)
 
 #define THEME_LAYER_PATH_FILL_EVEN_ODD (1 << 0)
 #define THEME_LAYER_PATH_CLOSED        (1 << 1)
@@ -576,59 +575,6 @@ void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 }
 
 ES_FUNCTION_OPTIMISE_O2 
-void ThemeFillBlurCutCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy, int border, int corner, GradientCache *gradient, ThemePaintData mainPaint) {
-	uint32_t *bits = (uint32_t *) painter->target->bits;
-	int width = painter->target->width;
-	cx += bounds.l, cy += bounds.t;
-	bounds = ThemeRectangleIntersection(bounds, painter->clip);
-
-	if (!THEME_RECT_VALID(bounds)) {
-		return;
-	}
-
-	int dp = (GRADIENT_CACHE_COUNT << GRADIENT_COORD_BASE) / border;
-	float mainRadius = corner > border ? corner - border : 0;
-
-	for (int y = bounds.t; y < bounds.b; y++) {
-		int x = bounds.l;
-		uint32_t *b = bits + x + y * width;
-
-		do { 
-			int dx = x - cx, dy = y - cy;
-			float radius = EsCRTsqrtf(dx * dx + dy * dy) - mainRadius;
-			uint32_t color1 = 0, color2 = 0, color;
-
-			if (radius < 1) {
-				if (mainPaint.type == THEME_PAINT_SOLID) {
-					color1 = mainPaint.solid->color;
-				}
-			}
-
-			if (radius >= 0) {
-				color2 = gradient->colors[ClampInteger(0, GRADIENT_CACHE_COUNT - 1, 
-						(int) (radius * dp) >> GRADIENT_COORD_BASE)];
-			}
-
-			if (radius < 0) {
-				color = color1;
-			} else if (radius < 1) {
-				int p = (uint32_t) (radius * 0x100);
-				int c10 = (color1 >> 24) & 0xFF, c11 = (color1 >> 16) & 0xFF, c12 = (color1 >> 8) & 0xFF, c13 = (color1 >> 0) & 0xFF;
-				int c20 = (color2 >> 24) & 0xFF, c21 = (color2 >> 16) & 0xFF, c22 = (color2 >> 8) & 0xFF, c23 = (color2 >> 0) & 0xFF;
-				int c30 = (c10 << 8) + p * (c20 - c10), c31 = (c11 << 8) + p * (c21 - c11), c32 = (c12 << 8) + p * (c22 - c12), c33 = (c13 << 8) + p * (c23 - c13);
-				color = ((c30 & 0xFF00) << 16) | ((c31 & 0xFF00) << 8) | ((c32 & 0xFF00) << 0) | ((c33 & 0xFF00) >> 8);
-			} else {
-				color = color2;
-			}
-
-			BlendPixel(b, color, painter->target->fullAlpha); 
-
-			x++, b++;
-		} while (x < bounds.r);
-	}
-}
-
-ES_FUNCTION_OPTIMISE_O2 
 void ThemeFillBlurCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy, int border, int corner, GradientCache *gradient) {
 	uint32_t *bits = (uint32_t *) painter->target->bits;
 	int width = painter->target->width;
@@ -848,10 +794,8 @@ void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float sc
 			borderGradient.colors[i] = color | (uint32_t) (alpha * gaussLookup[i]) << 24;
 		}
 
-		if (~box->flags & THEME_LAYER_BOX_SHADOW_CUT) {
-			mainPaint.type = THEME_PAINT_SOLID;
-			mainPaint.solid = borderPaint.solid;
-		}
+		mainPaint.type = THEME_PAINT_SOLID;
+		mainPaint.solid = borderPaint.solid;
 
 		borderPaint.type = THEME_PAINT_LINEAR_GRADIENT;
 		borderPaint.linearGradient = NULL;
@@ -992,16 +936,7 @@ void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float sc
 		ThemeFillRectangle(painter, THEME_RECT_4(rect.r - corners.br, rect.r, rect.b - cornerBorders.br, rect.b - corners.br), borderPaint, &borderGradient);
 	}
 
-	if (box->flags & THEME_LAYER_BOX_SHADOW_CUT) {
-		ThemeFillBlurCutCorner(painter, THEME_RECT_4(rect.l, rect.l + corners.tl, rect.t, rect.t + corners.tl),  
-			corners.tl, corners.tl, borders.l, corners.tl, &borderGradient, mainPaint);
-		ThemeFillBlurCutCorner(painter, THEME_RECT_4(rect.r - corners.tr, rect.r, rect.t, rect.t + corners.tr),  
-			-1, corners.tr, borders.l, corners.tr, &borderGradient, mainPaint);
-		ThemeFillBlurCutCorner(painter, THEME_RECT_4(rect.l, rect.l + corners.bl, rect.b - corners.bl, rect.b),  
-			corners.bl, -1, borders.l, corners.bl, &borderGradient, mainPaint);
-		ThemeFillBlurCutCorner(painter, THEME_RECT_4(rect.r - corners.br, rect.r, rect.b - corners.br, rect.b),  
-			-1, -1, borders.l, corners.br, &borderGradient, mainPaint);
-	} else if (isBlurred) {
+	if (isBlurred) {
 		ThemeFillBlurCorner(painter, THEME_RECT_4(rect.l, rect.l + corners.tl, rect.t, rect.t + corners.tl),  
 			corners.tl, corners.tl, borders.l, corners.tl, &borderGradient);
 		ThemeFillBlurCorner(painter, THEME_RECT_4(rect.r - corners.tr, rect.r, rect.t, rect.t + corners.tr),  

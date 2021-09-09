@@ -104,7 +104,7 @@ struct LayerBox LayerBox_Type LayerBoxOp {
 	StyleBool_Type bool autoCorners #StringOption { "Auto corners" };
 	StyleBool_Type bool autoBorders #StringOption { "Auto borders" };
 	StyleBool_Type bool shadowHiding #StringOption { "Shadow hiding" };
-	StyleBool_Type bool shadowCut #StringOption { "Shadow cut" } from 13;
+	StyleBool_Type bool shadowCut #StringOption { "Shadow cut (obsolete)" } from 13;
 };
 
 enum ClipMode_Type StyleEnumOp {

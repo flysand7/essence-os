@@ -791,7 +791,6 @@ void LayerBoxOp(RfState *state, RfItem *item, void *pointer) {
 		if (box->autoCorners) themeBox.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
 		if (box->autoBorders) themeBox.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
 		if (box->shadowHiding) themeBox.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
-		if (box->shadowCut) themeBox.flags |= THEME_LAYER_BOX_SHADOW_CUT;
 		themeBox.mainPaintType = box->mainPaint.tag == Paint_solid + 1 ? THEME_PAINT_SOLID 
 			: box->mainPaint.tag == Paint_linearGradient + 1 ? THEME_PAINT_LINEAR_GRADIENT 
 			: box->mainPaint.tag == Paint_overwrite + 1 ? THEME_PAINT_OVERWRITE : 0;
