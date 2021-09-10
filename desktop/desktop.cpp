@@ -254,7 +254,7 @@ bool ReorderItemDragged(ReorderItem *item, int mouseX) {
 
 	item->dragPosition = mouseX + item->GetWindowBounds().l - item->dragOffset;
 
-	int draggedIndex = (item->dragPosition + list->targetWidth / 2) / list->targetWidth;
+	int draggedIndex = list->targetWidth ? ((item->dragPosition + list->targetWidth / 2) / list->targetWidth) : 0;
 	if (draggedIndex < 0) draggedIndex = 0;
 	if (draggedIndex >= (int) childCount) draggedIndex = childCount - 1;
 	int currentIndex = -1;
@@ -591,49 +591,36 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			EsPoint screenPosition = EsMouseGetPosition();
 			WindowChangeBounds(RESIZE_MOVE, screenPosition.x, screenPosition.y, &gui.lastClickX, &gui.lastClickY, band->window);
 		} else {
-			EsRectangle tabBarBounds = tab->parent->GetWindowBounds();
-			EsRectangle tabBounds = tab->GetWindowBounds();
-			int32_t mouseX = message->mouseDragged.newPositionX + tabBounds.l;
-			int32_t mouseY = message->mouseDragged.newPositionY + tabBounds.t;
+			EsPoint mousePosition = EsMouseGetPosition(tab->window);
 			int32_t dragOffThreshold = GetConstantNumber("tabDragOffThreshold");
+			int32_t previousTabOffsetX = tab->offsetX;
 
-			if (EsRectangleContains(EsRectangleAdd(tabBarBounds, ES_RECT_1I(-dragOffThreshold)), mouseX, mouseY)) {
+			if (EsRectangleContains(EsRectangleAdd(band->GetWindowBounds(), ES_RECT_1I(-dragOffThreshold)), mousePosition.x, mousePosition.y)) {
 				ReorderItemDragged(tab, message->mouseDragged.newPositionX);
 			} else {
-				// Save information about the old container.
-				int32_t oldTabDragX = mouseX - tab->dragOffset;
-				int32_t oldTabDragY = mouseY - (gui.lastClickY - tab->offsetY);
-				EsRectangle oldContainerBounds = tab->window->GetScreenBounds();
-				EsRectangle oldTabBarScreenBounds = tab->parent->GetScreenBounds();
-				EsWindow *oldContainer = tab->window;
-				EsPoint mousePosition = EsMouseGetPosition(oldContainer);
+				// If we dragged the tab off the left or right side of the band, put it at the start of the new tab band.
+				bool putAtStart = tab->dragPosition < band->currentStyle->insets.l 
+					|| tab->dragPosition + tab->width > band->width - band->currentStyle->insets.r;
+				int32_t putAtStartClickX = band->currentStyle->insets.l + tab->dragOffset;
 
 				// End the drag on this container.
 				EsMessage m = { .type = ES_MSG_MOUSE_LEFT_UP };
-				UIMouseUp(oldContainer, &m, false);
+				UIMouseUp(band->window, &m, false);
 
 				// Move the tab to a new container.
 				WindowTab *newTab = WindowTabMoveToNewContainer(tab);
 
 				if (newTab) {
-					// Work out the position of the new container, so that the mouse position within the tab is preserved.
-					newTab->window->width = Width(oldContainerBounds);
-					newTab->window->height = Height(oldContainerBounds);
-					UIWindowLayoutNow(newTab->window, nullptr);
-					EsRectangle newTabWindowBounds = newTab->GetWindowBounds();
-					EsRectangle bounds = ES_RECT_4PD(oldTabBarScreenBounds.l + oldTabDragX - newTabWindowBounds.l, 
-							oldTabBarScreenBounds.t + oldTabDragY - newTabWindowBounds.t, 
-							Width(oldContainerBounds), Height(oldContainerBounds));
-					EsSyscall(ES_SYSCALL_WINDOW_MOVE, newTab->window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_DYNAMIC);
-
-					// Start the drag on the new container.
-					EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, oldContainer->handle, newTab->window->handle, 0, 0);
+					// Transfer the drag to the new container.
+					EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, band->window->handle, newTab->window->handle, 0, 0);
+					ReorderItemDragged(newTab, 0);
+					newTab->dragPosition = putAtStart ? band->currentStyle->insets.l : previousTabOffsetX;
 					newTab->window->pressed = newTab;
 					newTab->window->dragged = newTab;
+					gui.lastClickX = putAtStart ? putAtStartClickX : mousePosition.x;
 					gui.mouseButtonDown = true;
 					gui.draggingStarted = true;
-					gui.lastClickX = mousePosition.x + oldContainerBounds.l - bounds.l;
-					gui.lastClickY = mousePosition.y + oldContainerBounds.t - bounds.t;
+					WindowTabMessage(newTab, message);
 				}
 			}
 		}
