@@ -621,7 +621,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				// TODO Sometimes the tab ends up a few pixels off?
 				newTab->window->pressed = newTab;
 				newTab->window->dragged = newTab;
-				newTab->dragOffset = dragOffset + hoverContainer->tabBand->currentStyle->insets.l;
+				newTab->dragOffset = dragOffset + 2 * hoverContainer->tabBand->currentStyle->insets.l;
 				newTab->dragging = true;
 			}
 		} else {
