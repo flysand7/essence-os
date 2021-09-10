@@ -420,6 +420,7 @@ void HeapDuplicate(void **pointer, size_t *outBytes, const void *data, size_t by
 
 struct EsWindow : EsElement {
 	EsHandle handle;
+	EsObjectID id;
 	EsWindowStyle windowStyle;
 	uint32_t windowWidth, windowHeight;
 
@@ -879,6 +880,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		window->handle = EsSyscall(ES_SYSCALL_WINDOW_CREATE, style, 0, (uintptr_t) window, 0);
 	}
 
+	window->id = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, window->handle, 0, 0, 0);
 	window->Initialise(nullptr, ES_CELL_FILL, ProcessRootMessage, nullptr);
 	window->cName = "window";
 	window->window = window;

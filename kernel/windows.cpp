@@ -61,13 +61,12 @@ struct Window {
 struct WindowManager {
 	void *CreateWindow(Process *process, void *apiWindow, EsWindowStyle style);
 	void *CreateEmbeddedWindow(Process *process, void *apiWindow);
-	Window *FindWindowAtPosition(int cursorX, int cursorY);
+	Window *FindWindowAtPosition(int cursorX, int cursorY, EsObjectID exclude = 0);
 
 	void Initialise();
 
 	void MoveCursor(int64_t xMovement, int64_t yMovement);
 	void ClickCursor(unsigned buttons);
-	void UpdateCursor(int xMovement, int yMovement, unsigned buttons);
 	void PressKey(unsigned scancode);
 
 	void Redraw(EsPoint position, int width, int height, Window *except = nullptr, int startingAt = 0, bool addToModifiedRegion = true);
@@ -239,38 +238,21 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 	}
 }
 
-Window *WindowManager::FindWindowAtPosition(int cursorX, int cursorY) {
+Window *WindowManager::FindWindowAtPosition(int cursorX, int cursorY, EsObjectID exclude) {
 	KMutexAssertLocked(&mutex);
 
 	for (intptr_t i = windows.Length() - 1; i >= 0; i--) {
 		Window *window = windows[i];
 		EsRectangle bounds = ES_RECT_4PD(window->position.x, window->position.y, window->width, window->height);
 
-		if (window->solid && !window->hidden && EsRectangleContains(EsRectangleAdd(bounds, window->solidInsets), cursorX, cursorY)
+		if (window->solid && !window->hidden && exclude != window->id
+				&& EsRectangleContains(EsRectangleAdd(bounds, window->solidInsets), cursorX, cursorY)
 				&& (!window->isMaximised || EsRectangleContains(workArea, cursorX, cursorY))) {
 			return window;
 		}
 	}
 
 	return nullptr;
-}
-
-void WindowManager::UpdateCursor(int xMovement, int yMovement, unsigned buttons) {
-	if (!initialised) {
-		return;
-	}
-
-	if (xMovement || yMovement) {
-		if (xMovement * xMovement + yMovement * yMovement < 10 && buttons != lastButtons) {
-			// This seems to be movement noise generated when the buttons were pressed/released.
-		} else {
-			KMutexAcquire(&mutex);
-			MoveCursor(xMovement, yMovement);
-			KMutexRelease(&mutex);
-		}
-	} 
-
-	ClickCursor(buttons);
 }
 
 void WindowManager::EndEyedrop(bool cancelled) {
@@ -1222,7 +1204,21 @@ void WindowManager::StartEyedrop(uintptr_t object, Window *avoid, uint32_t cance
 }
 
 void KCursorUpdate(int xMovement, int yMovement, unsigned buttons) {
-	windowManager.UpdateCursor(xMovement, yMovement, buttons);
+	if (!windowManager.initialised) {
+		return;
+	}
+
+	if (xMovement || yMovement) {
+		if (xMovement * xMovement + yMovement * yMovement < 10 && buttons != windowManager.lastButtons) {
+			// This seems to be movement noise generated when the buttons were pressed/released.
+		} else {
+			KMutexAcquire(&windowManager.mutex);
+			windowManager.MoveCursor(xMovement, yMovement);
+			KMutexRelease(&windowManager.mutex);
+		}
+	} 
+
+	windowManager.ClickCursor(buttons);
 }
 
 void KKeyPress(unsigned scancode) {

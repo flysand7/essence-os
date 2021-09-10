@@ -775,6 +775,8 @@ bool MMHandlePageFault(MMSpace *space, uintptr_t address, unsigned faultFlags) {
 }
 
 MMRegion *MMReserve(MMSpace *space, size_t bytes, unsigned flags, uintptr_t forcedAddress, bool generateGuardPages) {
+	// TODO Handling EsHeapAllocate failures.
+	
 	MMRegion *outputRegion = nullptr;
 	size_t pagesNeeded = ((bytes + K_PAGE_SIZE - 1) & ~(K_PAGE_SIZE - 1)) / K_PAGE_SIZE;
 

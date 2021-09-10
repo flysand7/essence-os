@@ -780,14 +780,19 @@ void EsInstanceDestroy(EsInstance *instance) {
 	EsElementDestroy(instance->window);
 }
 
-EsInstance *InstanceFromWindowID(uint64_t id) {
+EsWindow *WindowFromWindowID(EsObjectID id) {
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
-		if (EsSyscall(ES_SYSCALL_WINDOW_GET_ID, gui.allWindows[i]->handle, 0, 0, 0) == id) {
-			return gui.allWindows[i]->instance;
+		if (gui.allWindows[i]->id == id) {
+			return gui.allWindows[i];
 		}
 	}
 
 	return nullptr;
+}
+
+EsInstance *InstanceFromWindowID(EsObjectID id) {
+	EsWindow *window = WindowFromWindowID(id);
+	return window ? window->instance : nullptr;
 }
 
 EsError GetMessage(_EsMessageWithObject *message) {

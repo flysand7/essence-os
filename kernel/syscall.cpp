@@ -1144,10 +1144,21 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_TRANSFER_PRESS) {
 	
 	if (windowManager.pressedWindow == oldWindow) {
 		windowManager.pressedWindow = newWindow;
+		newWindow->hoveringOverEmbed = false;
 	}
 
 	KMutexRelease(&windowManager.mutex);
 
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_FIND_BY_POINT) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SCREEN_MODIFY);
+	KMutexAcquire(&windowManager.mutex);
+	Window *window = windowManager.FindWindowAtPosition(argument1 /* x */, argument2 /* y */, argument3 /* exclude */);
+	EsObjectID id = window ? window->id : 0;
+	KMutexRelease(&windowManager.mutex);
+	SYSCALL_WRITE(argument0, &id, sizeof(id));
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

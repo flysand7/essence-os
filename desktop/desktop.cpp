@@ -464,9 +464,9 @@ void WindowTabDestroy(WindowTab *tab) {
 	}
 }
 
-WindowTab *WindowTabMoveToNewContainer(WindowTab *tab) {
+WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *container = nullptr) {
 	// Create the new tab and container window.
-	WindowTab *newTab = WindowTabCreate(ContainerWindowCreate());
+	WindowTab *newTab = WindowTabCreate(container ?: ContainerWindowCreate());
 	if (!newTab) return nullptr;
 
 	// Move ownership of the instance to the new tab.
@@ -480,6 +480,10 @@ WindowTab *WindowTabMoveToNewContainer(WindowTab *tab) {
 	// Destroy the old tab, and activate the new one.
 	WindowTabDestroy(tab); // Deplaces the embedded window from the old container.
 	WindowTabActivate(newTab);
+
+	// If this is an existing container window, make sure it's activated.
+	if (container) EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, newTab->window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
+
 	return newTab;
 }
 
@@ -587,9 +591,39 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		EsElementSetDisabled(band->GetChild(0), true);
 
 		if (band->items.Length() == 1) {
-			// TODO Dragging into other containers.
-			EsPoint screenPosition = EsMouseGetPosition();
-			WindowChangeBounds(RESIZE_MOVE, screenPosition.x, screenPosition.y, &gui.lastClickX, &gui.lastClickY, band->window);
+			// Get the window we're hovering the tab over.
+			EsObjectID hoverWindowID;
+			EsPoint mousePositionOnScreen = EsMouseGetPosition();
+			EsSyscall(ES_SYSCALL_WINDOW_FIND_BY_POINT, (uintptr_t) &hoverWindowID, mousePositionOnScreen.x, mousePositionOnScreen.y, tab->window->id);
+			EsWindow *hoverWindow = WindowFromWindowID(hoverWindowID);
+			bool dragInto = false;
+
+			if (hoverWindow && hoverWindow->windowStyle == ES_WINDOW_CONTAINER) {
+				// Are we hovering over the tab band?
+				ContainerWindow *hoverContainer = (ContainerWindow *) hoverWindow->userData.p;
+				EsRectangle hoverTabBandBounds = hoverContainer->tabBand->GetScreenBounds();
+				dragInto = EsRectangleContains(hoverTabBandBounds, mousePositionOnScreen.x, mousePositionOnScreen.y);
+			}
+
+			if (!dragInto) {
+				// Move the current window.
+				WindowChangeBounds(RESIZE_MOVE, mousePositionOnScreen.x, mousePositionOnScreen.y, &gui.lastClickX, &gui.lastClickY, band->window);
+			} else {
+				ContainerWindow *hoverContainer = (ContainerWindow *) hoverWindow->userData.p;
+				int32_t dragOffset = mousePositionOnScreen.x - tab->GetScreenBounds().l;
+
+				// Move the tab into the new container.
+				EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, tab->window->handle, hoverWindow->handle, 0, 0);
+				EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->window->handle, 0, 0, ES_WINDOW_PROPERTY_EMBED);
+				WindowTab *newTab = WindowTabMoveToNewContainer(tab, hoverContainer);
+
+				// Setup the drag in the new container.
+				// TODO Sometimes the tab ends up a few pixels off?
+				newTab->window->pressed = newTab;
+				newTab->window->dragged = newTab;
+				newTab->dragOffset = dragOffset + hoverContainer->tabBand->currentStyle->insets.l;
+				newTab->dragging = true;
+			}
 		} else {
 			EsPoint mousePosition = EsMouseGetPosition(tab->window);
 			int32_t dragOffThreshold = GetConstantNumber("tabDragOffThreshold");
@@ -598,6 +632,8 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			if (EsRectangleContains(EsRectangleAdd(band->GetWindowBounds(), ES_RECT_1I(-dragOffThreshold)), mousePosition.x, mousePosition.y)) {
 				ReorderItemDragged(tab, message->mouseDragged.newPositionX);
 			} else {
+				// TODO Moving a tab directly from one container to another.
+
 				// If we dragged the tab off the left or right side of the band, put it at the start of the new tab band.
 				bool putAtStart = tab->dragPosition < band->currentStyle->insets.l 
 					|| tab->dragPosition + tab->width > band->width - band->currentStyle->insets.r;
@@ -620,7 +656,10 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 					gui.lastClickX = putAtStart ? putAtStartClickX : mousePosition.x;
 					gui.mouseButtonDown = true;
 					gui.draggingStarted = true;
-					WindowTabMessage(newTab, message);
+
+					// Update the bounds of the new container.
+					EsPoint mousePositionOnScreen = EsMouseGetPosition();
+					WindowChangeBounds(RESIZE_MOVE, mousePositionOnScreen.x, mousePositionOnScreen.y, &gui.lastClickX, &gui.lastClickY, newTab->window);
 				}
 			}
 		}
@@ -975,12 +1014,10 @@ void ShutdownModalCreate() {
 //////////////////////////////////////////////////////
 
 void InstanceForceQuit(EsInstance *, EsElement *element, EsCommand *) {
-	EsObjectID windowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
-
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-		if (instance->tab && instance->tab->notRespondingInstance && instance->tab->notRespondingInstance->embeddedWindowID == windowID) {
+		if (instance->tab && instance->tab->notRespondingInstance && instance->tab->notRespondingInstance->embeddedWindowID == element->window->id) {
 			EsProcessTerminate(instance->processHandle, 1);
 			break;
 		}
@@ -1032,8 +1069,7 @@ void InstanceBlankTabCreate(EsMessage *message) {
 		button->userData = application;
 
 		EsButtonOnCommand(button, [] (EsInstance *, EsElement *element, EsCommand *) {
-			EsObjectID tabID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, element->window->handle, 0, 0, 0);
-			ApplicationInstance *instance = ApplicationInstanceFindByWindowID(tabID);
+			ApplicationInstance *instance = ApplicationInstanceFindByWindowID(element->window->id);
 
 			if (ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance)) {
 				WindowTabActivate(instance->tab, true);
