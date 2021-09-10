@@ -1132,6 +1132,25 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_MOVE) {
 	SYSCALL_RETURN(success ? ES_SUCCESS : ES_ERROR_INVALID_DIMENSIONS, false);
 }
 
+SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_TRANSFER_PRESS) {
+	KObject _oldWindow(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_oldWindow);
+	Window *oldWindow = (Window *) _oldWindow.object;
+	KObject _newWindow(currentProcess, argument1, KERNEL_OBJECT_WINDOW);
+	CHECK_OBJECT(_newWindow);
+	Window *newWindow = (Window *) _newWindow.object;
+
+	KMutexAcquire(&windowManager.mutex);
+	
+	if (windowManager.pressedWindow == oldWindow) {
+		windowManager.pressedWindow = newWindow;
+	}
+
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
 SYSCALL_IMPLEMENT(ES_SYSCALL_CURSOR_POSITION_GET) {
 	EsPoint point = ES_POINT(windowManager.cursorX, windowManager.cursorY);
 	SYSCALL_WRITE(argument0, &point, sizeof(EsPoint));

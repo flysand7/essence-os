@@ -79,7 +79,7 @@ EsElement *WindowGetMainPanel(EsWindow *window);
 int AccessKeyLayerMessage(EsElement *element, EsMessage *message);
 void AccessKeyModeExit();
 int ProcessButtonMessage(EsElement *element, EsMessage *message);
-void UIMousePressReleased(EsWindow *window, EsMessage *message, bool sendClick);
+void UIMouseUp(EsWindow *window, EsMessage *message, bool sendClick);
 void UIMaybeRemoveFocusedElement(EsWindow *window);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int offsetY, EsPoint position);
@@ -860,7 +860,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 	EsMessageMutexCheck();
 
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
-		UIMousePressReleased(gui.allWindows[i], nullptr, false);
+		UIMouseUp(gui.allWindows[i], nullptr, false);
 	}
 
 	EsWindow *window = (EsWindow *) EsHeapAllocate(sizeof(EsWindow), true);
@@ -6063,7 +6063,67 @@ int UIMessageSendPropagateToAncestors(EsElement *element, EsMessage *message, Es
 	return 0;
 }
 
-void UIMousePressReleased(EsWindow *window, EsMessage *message, bool sendClick) {
+void UIMouseDown(EsWindow *window, EsMessage *message) {
+	window->mousePosition.x = message->mouseDown.positionX;
+	window->mousePosition.y = message->mouseDown.positionY;
+
+	AccessKeyModeExit();
+
+	double timeStampMs = EsTimeStampMs();
+
+	if (gui.clickChainStartMs + api.global->clickChainTimeoutMs < timeStampMs
+			|| window->hovered != gui.clickChainElement) {
+		// Start a new click chain.
+		gui.clickChainStartMs = timeStampMs;
+		gui.clickChainCount = 1;
+		gui.clickChainElement = window->hovered;
+	} else {
+		gui.clickChainStartMs = timeStampMs;
+		gui.clickChainCount++;
+	}
+
+	message->mouseDown.clickChainCount = gui.clickChainCount;
+
+	gui.lastClickX = message->mouseDown.positionX;
+	gui.lastClickY = message->mouseDown.positionY;
+	gui.lastClickButton = message->type;
+	gui.mouseButtonDown = true;
+
+	if ((~window->hovered->flags & ES_ELEMENT_DISABLED) && (~window->hovered->state & UI_STATE_BLOCK_INTERACTION)) {
+		// If the hovered element is destroyed in response to one of these messages, 
+		// window->hovered will be set to nullptr, so save the element here.
+		EsElement *element = window->hovered;
+
+		if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+			element->state |= UI_STATE_LEFT_PRESSED;
+		}
+
+		window->pressed = element;
+		EsMessage m = { ES_MSG_PRESSED_START };
+		EsMessageSend(element, &m);
+
+		EsRectangle bounds = element->GetWindowBounds();
+		message->mouseDown.positionX -= bounds.l;
+		message->mouseDown.positionY -= bounds.t;
+
+		if (ES_REJECTED != UIMessageSendPropagateToAncestors(element, message, &window->dragged)) {
+			if (window->dragged && (~window->dragged->flags & ES_ELEMENT_NO_FOCUS_ON_CLICK)) {
+				EsElementFocus(window->dragged, false);
+			}
+		}
+	}
+
+	if (window->hovered != window->focused && window->focused && (~window->focused->state & UI_STATE_LOST_STRONG_FOCUS)) {
+		EsMessage m = { ES_MSG_STRONG_FOCUS_END };
+		window->focused->state |= UI_STATE_LOST_STRONG_FOCUS;
+		EsMessageSend(window->focused, &m);
+	}
+}
+
+void UIMouseUp(EsWindow *window, EsMessage *message, bool sendClick) {
+	gui.mouseButtonDown = false;
+	window->dragged = nullptr;
+
 	if (window->pressed) {
 		EsElement *pressed = window->pressed;
 		window->pressed = nullptr;
@@ -6447,7 +6507,7 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 	if (window->pressed) {
 		if (message->keyboard.scancode == ES_SCANCODE_ESCAPE) {
-			UIMousePressReleased(window, nullptr, false);
+			UIMouseUp(window, nullptr, false);
 			return;
 		}
 	}
@@ -6787,71 +6847,16 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	} else if (message->type == ES_MSG_MOUSE_EXIT) {
 		window->hovering = false;
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_RIGHT_DOWN || message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
-		window->mousePosition.x = message->mouseDown.positionX;
-		window->mousePosition.y = message->mouseDown.positionY;
-
-		AccessKeyModeExit();
-
 		if (gui.mouseButtonDown || window->targetMenu) {
 			goto skipInputMessage;
 		}
 
-		double timeStampMs = EsTimeStampMs();
-
-		if (gui.clickChainStartMs + api.global->clickChainTimeoutMs < timeStampMs
-				|| window->hovered != gui.clickChainElement) {
-			// Start a new click chain.
-			gui.clickChainStartMs = timeStampMs;
-			gui.clickChainCount = 1;
-			gui.clickChainElement = window->hovered;
-		} else {
-			gui.clickChainStartMs = timeStampMs;
-			gui.clickChainCount++;
-		}
-
-		message->mouseDown.clickChainCount = gui.clickChainCount;
-
-		gui.lastClickX = message->mouseDown.positionX;
-		gui.lastClickY = message->mouseDown.positionY;
-		gui.lastClickButton = message->type;
-		gui.mouseButtonDown = true;
-
-		if ((~window->hovered->flags & ES_ELEMENT_DISABLED) && (~window->hovered->state & UI_STATE_BLOCK_INTERACTION)) {
-			// If the hovered element is destroyed in response to one of these messages, 
-			// window->hovered will be set to nullptr, so save the element here.
-			EsElement *element = window->hovered;
-
-			if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
-				element->state |= UI_STATE_LEFT_PRESSED;
-			}
-
-			window->pressed = element;
-			EsMessage m = { ES_MSG_PRESSED_START };
-			EsMessageSend(element, &m);
-
-			EsRectangle bounds = element->GetWindowBounds();
-			message->mouseDown.positionX -= bounds.l;
-			message->mouseDown.positionY -= bounds.t;
-
-			if (ES_REJECTED != UIMessageSendPropagateToAncestors(element, message, &window->dragged)) {
-				if (window->dragged && (~window->dragged->flags & ES_ELEMENT_NO_FOCUS_ON_CLICK)) {
-					EsElementFocus(window->dragged, false);
-				}
-			}
-		}
-
-		if (window->hovered != window->focused && window->focused && (~window->focused->state & UI_STATE_LOST_STRONG_FOCUS)) {
-			EsMessage m = { ES_MSG_STRONG_FOCUS_END };
-			window->focused->state |= UI_STATE_LOST_STRONG_FOCUS;
-			EsMessageSend(window->focused, &m);
-		}
+		UIMouseDown(window, message);
 	} else if (message->type == ES_MSG_MOUSE_LEFT_UP || message->type == ES_MSG_MOUSE_RIGHT_UP || message->type == ES_MSG_MOUSE_MIDDLE_UP) {
 		AccessKeyModeExit();
 
 		if (gui.mouseButtonDown && gui.lastClickButton == message->type - 1) {
-			gui.mouseButtonDown = false;
-			window->dragged = nullptr;
-			UIMousePressReleased(window, message, true);
+			UIMouseUp(window, message, true);
 		}
 	} else if (message->type == ES_MSG_KEY_UP || message->type == ES_MSG_KEY_DOWN) {
 		UIHandleKeyMessage(window, message);

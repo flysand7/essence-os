@@ -464,9 +464,10 @@ void WindowTabDestroy(WindowTab *tab) {
 	}
 }
 
-void WindowTabMoveToNewContainer(WindowTab *tab) {
+WindowTab *WindowTabMoveToNewContainer(WindowTab *tab) {
 	// Create the new tab and container window.
 	WindowTab *newTab = WindowTabCreate(ContainerWindowCreate());
+	if (!newTab) return nullptr;
 
 	// Move ownership of the instance to the new tab.
 	newTab->applicationInstance = tab->applicationInstance;
@@ -479,6 +480,7 @@ void WindowTabMoveToNewContainer(WindowTab *tab) {
 	// Destroy the old tab, and activate the new one.
 	WindowTabDestroy(tab); // Deplaces the embedded window from the old container.
 	WindowTabActivate(newTab);
+	return newTab;
 }
 
 int ContainerWindowMessage(EsElement *element, EsMessage *message) {
@@ -582,14 +584,59 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		message->animate.complete = ReorderItemAnimate(tab, message->animate.deltaMs, "windowTabEntranceDuration");
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
+		EsElementSetDisabled(band->GetChild(0), true);
+
 		if (band->items.Length() == 1) {
+			// TODO Dragging into other containers.
 			EsPoint screenPosition = EsMouseGetPosition();
 			WindowChangeBounds(RESIZE_MOVE, screenPosition.x, screenPosition.y, &gui.lastClickX, &gui.lastClickY, band->window);
 		} else {
-			ReorderItemDragged(tab, message->mouseDragged.newPositionX);
-		}
+			EsRectangle tabBarBounds = tab->parent->GetWindowBounds();
+			EsRectangle tabBounds = tab->GetWindowBounds();
+			int32_t mouseX = message->mouseDragged.newPositionX + tabBounds.l;
+			int32_t mouseY = message->mouseDragged.newPositionY + tabBounds.t;
+			int32_t dragOffThreshold = GetConstantNumber("tabDragOffThreshold");
 
-		EsElementSetDisabled(band->GetChild(0), true);
+			if (EsRectangleContains(EsRectangleAdd(tabBarBounds, ES_RECT_1I(-dragOffThreshold)), mouseX, mouseY)) {
+				ReorderItemDragged(tab, message->mouseDragged.newPositionX);
+			} else {
+				// Save information about the old container.
+				int32_t oldTabDragX = mouseX - tab->dragOffset;
+				int32_t oldTabDragY = mouseY - (gui.lastClickY - tab->offsetY);
+				EsRectangle oldContainerBounds = tab->window->GetScreenBounds();
+				EsRectangle oldTabBarScreenBounds = tab->parent->GetScreenBounds();
+				EsWindow *oldContainer = tab->window;
+				EsPoint mousePosition = EsMouseGetPosition(oldContainer);
+
+				// End the drag on this container.
+				EsMessage m = { .type = ES_MSG_MOUSE_LEFT_UP };
+				UIMouseUp(oldContainer, &m, false);
+
+				// Move the tab to a new container.
+				WindowTab *newTab = WindowTabMoveToNewContainer(tab);
+
+				if (newTab) {
+					// Work out the position of the new container, so that the mouse position within the tab is preserved.
+					newTab->window->width = Width(oldContainerBounds);
+					newTab->window->height = Height(oldContainerBounds);
+					UIWindowLayoutNow(newTab->window, nullptr);
+					EsRectangle newTabWindowBounds = newTab->GetWindowBounds();
+					EsRectangle bounds = ES_RECT_4PD(oldTabBarScreenBounds.l + oldTabDragX - newTabWindowBounds.l, 
+							oldTabBarScreenBounds.t + oldTabDragY - newTabWindowBounds.t, 
+							Width(oldContainerBounds), Height(oldContainerBounds));
+					EsSyscall(ES_SYSCALL_WINDOW_MOVE, newTab->window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_DYNAMIC);
+
+					// Start the drag on the new container.
+					EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, oldContainer->handle, newTab->window->handle, 0, 0);
+					newTab->window->pressed = newTab;
+					newTab->window->dragged = newTab;
+					gui.mouseButtonDown = true;
+					gui.draggingStarted = true;
+					gui.lastClickX = mousePosition.x + oldContainerBounds.l - bounds.l;
+					gui.lastClickY = mousePosition.y + oldContainerBounds.t - bounds.t;
+				}
+			}
+		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_UP) {
 		ReorderItemDragComplete(tab);
 		EsElementSetDisabled(band->GetChild(0), false);
