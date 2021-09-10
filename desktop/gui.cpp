@@ -904,26 +904,6 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		accessKeyLayer->cName = "access key layer";
 		accessKeyLayer->messageUser = AccessKeyLayerMessage;
 		window->state |= UI_STATE_Z_STACK;
-	} else if (style == ES_WINDOW_CONTAINER) {
-		window->windowWidth = GetConstantNumber("windowDefaultWidth");
-		window->windowHeight = GetConstantNumber("windowDefaultHeight");
-		static int cascadeX = -1, cascadeY = -1;
-		EsRectangle workArea;
-		EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_GET, 0, (uintptr_t) &workArea, 0, 0);
-		int cascadeMargin = GetConstantNumber("windowCascadeMargin");
-		int cascadeOffset = GetConstantNumber("windowCascadeOffset");
-		if (cascadeX == -1 || cascadeX + (int) window->windowWidth > workArea.r - cascadeMargin) cascadeX = workArea.l + cascadeMargin;
-		if (cascadeY == -1 || cascadeY + (int) window->windowHeight > workArea.b - cascadeMargin) cascadeY = workArea.t + cascadeMargin;
-		EsRectangle bounds = ES_RECT_4(cascadeX, cascadeX + window->windowWidth, cascadeY, cascadeY + window->windowHeight);
-		if (bounds.r > workArea.r - cascadeMargin) bounds.r = workArea.r - cascadeMargin;
-		if (bounds.b > workArea.b - cascadeMargin) bounds.b = workArea.b - cascadeMargin;
-		cascadeX += cascadeOffset, cascadeY += cascadeOffset;
-		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_FLAGS_DEFAULT);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
-		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_CONTAINER_WINDOW_ROOT);
-		window->SetStyle(ES_STYLE_CONTAINER_WINDOW);
-		EsMessage m = { .type = ES_MSG_UI_SCALE_CHANGED };
-		EsMessageSend(window, &m);
 	} else if (style == ES_WINDOW_INSPECTOR) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
 		window->SetStyle(ES_STYLE_PANEL_INSPECTOR_WINDOW_ROOT);

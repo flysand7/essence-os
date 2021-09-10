@@ -211,7 +211,7 @@ void OpenDocumentOpenReference(EsObjectID id);
 void OpenDocumentCloseReference(EsObjectID id);
 void WallpaperLoad(EsGeneric);
 WindowTab *WindowTabCreate(ContainerWindow *container);
-ContainerWindow *ContainerWindowCreate();
+ContainerWindow *ContainerWindowCreate(int32_t width, int32_t height);
 
 #include "settings.cpp"
 
@@ -464,9 +464,9 @@ void WindowTabDestroy(WindowTab *tab) {
 	}
 }
 
-WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *container = nullptr) {
+WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *container, int32_t width, int32_t height) {
 	// Create the new tab and container window.
-	WindowTab *newTab = WindowTabCreate(container ?: ContainerWindowCreate());
+	WindowTab *newTab = WindowTabCreate(container ?: ContainerWindowCreate(width, height));
 	if (!newTab) return nullptr;
 
 	// Move ownership of the instance to the new tab.
@@ -615,7 +615,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				// Move the tab into the new container.
 				EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, tab->window->handle, hoverWindow->handle, 0, 0);
 				EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->window->handle, 0, 0, ES_WINDOW_PROPERTY_EMBED);
-				WindowTab *newTab = WindowTabMoveToNewContainer(tab, hoverContainer);
+				WindowTab *newTab = WindowTabMoveToNewContainer(tab, hoverContainer, 0, 0);
 
 				// Setup the drag in the new container.
 				// TODO Sometimes the tab ends up a few pixels off?
@@ -644,7 +644,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				UIMouseUp(band->window, &m, false);
 
 				// Move the tab to a new container.
-				WindowTab *newTab = WindowTabMoveToNewContainer(tab);
+				WindowTab *newTab = WindowTabMoveToNewContainer(tab, nullptr, band->window->width, band->window->height);
 
 				if (newTab) {
 					// Transfer the drag to the new container.
@@ -675,7 +675,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 
 		if (tab->container->tabBand->items.Length() > 1) {
 			EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopMoveTabToNewWindow), [] (EsMenu *, EsGeneric context) {
-				WindowTabMoveToNewContainer((WindowTab *) context.p);
+				WindowTabMoveToNewContainer((WindowTab *) context.p, nullptr, 0, 0);
 			}, tab);
 		}
 
@@ -765,12 +765,38 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-ContainerWindow *ContainerWindowCreate() {
+ContainerWindow *ContainerWindowCreate(int32_t width, int32_t height) {
 	ContainerWindow *container = (ContainerWindow *) EsHeapAllocate(sizeof(ContainerWindow), true);
-	container->window = EsWindowCreate(nullptr, ES_WINDOW_CONTAINER);
+	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_CONTAINER);
 	desktop.allContainerWindows.Add(container);
-	container->window->messageUser = ContainerWindowMessage;
-	container->window->userData = container;
+
+	window->messageUser = ContainerWindowMessage;
+	window->userData = container;
+	window->windowWidth = width ?: GetConstantNumber("windowDefaultWidth");
+	window->windowHeight = height ?: GetConstantNumber("windowDefaultHeight");
+
+	static int cascadeX = -1, cascadeY = -1;
+	EsRectangle workArea;
+	EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_GET, 0, (uintptr_t) &workArea, 0, 0);
+	int cascadeMargin = GetConstantNumber("windowCascadeMargin");
+	int cascadeOffset = GetConstantNumber("windowCascadeOffset");
+	if (cascadeX == -1 || cascadeX + (int) window->windowWidth > workArea.r - cascadeMargin) cascadeX = workArea.l + cascadeMargin;
+	if (cascadeY == -1 || cascadeY + (int) window->windowHeight > workArea.b - cascadeMargin) cascadeY = workArea.t + cascadeMargin;
+	EsRectangle bounds = ES_RECT_4(cascadeX, cascadeX + window->windowWidth, cascadeY, cascadeY + window->windowHeight);
+	if (bounds.r > workArea.r - cascadeMargin) bounds.r = workArea.r - cascadeMargin;
+	if (bounds.b > workArea.b - cascadeMargin) bounds.b = workArea.b - cascadeMargin;
+	cascadeX += cascadeOffset, cascadeY += cascadeOffset;
+
+	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_FLAGS_DEFAULT);
+	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
+	
+	window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_CONTAINER_WINDOW_ROOT);
+	window->SetStyle(ES_STYLE_CONTAINER_WINDOW);
+
+	EsMessage m = { .type = ES_MSG_UI_SCALE_CHANGED };
+	EsMessageSend(window, &m);
+
+	container->window = window;
 
 	container->tabBand = (WindowTabBand *) EsHeapAllocate(sizeof(WindowTabBand), true);
 	container->tabBand->container = container;
@@ -1313,7 +1339,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 
 ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
 	ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
-	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate()) : nullptr;
+	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate(0, 0)) : nullptr;
 	if (tab) tab->applicationInstance = instance;
 	instance->title[0] = ' ';
 	instance->titleBytes = 1;
