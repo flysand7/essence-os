@@ -487,6 +487,23 @@ WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *containe
 	return newTab;
 }
 
+int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
+	if (message->type == ES_MSG_KEY_DOWN) {
+		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
+		int scancode = message->keyboard.scancode;
+
+		if (ctrlOnly && scancode == ES_SCANCODE_N) {
+			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
+		} else {
+			return 0;
+		}
+
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
 int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 	ContainerWindow *container = (ContainerWindow *) element->userData.p;
 
@@ -518,8 +535,6 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, container);
 		} else if (ctrlOnly && scancode == ES_SCANCODE_W) {
 			WindowTabClose(container->active);
-		} else if (ctrlOnly && scancode == ES_SCANCODE_N) {
-			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
 		} else if (message->keyboard.modifiers == ES_MODIFIER_FLAG && scancode == ES_SCANCODE_UP_ARROW) {
 			WindowSnap(container->window, false, false, SNAP_EDGE_MAXIMIZE);
 		} else if (message->keyboard.modifiers == ES_MODIFIER_FLAG && scancode == ES_SCANCODE_DOWN_ARROW) {
@@ -541,10 +556,18 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 				WindowSnap(container->window, false, false, SNAP_EDGE_RIGHT);
 			}
 		} else {
+			bool unhandled = true;
+
 			for (uintptr_t i = 0; i < 9; i++) {
 				if (ctrlOnly && scancode == (int) (ES_SCANCODE_1 + i) && container->tabBand->items.Length() > i) {
 					WindowTabActivate((WindowTab *) container->tabBand->items[i]);
+					unhandled = false;
+					break;
 				}
+			}
+
+			if (unhandled) {
+				ProcessGlobalKeyboardShortcuts(element, message);
 			}
 		}
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {
@@ -2034,6 +2057,7 @@ void DesktopSetup() {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, desktop.wallpaperWindow->handle, 
 				ES_WINDOW_SOLID_TRUE | ES_WINDOW_SOLID_NO_BRING_TO_FRONT, 0, ES_WINDOW_PROPERTY_SOLID);
 		desktop.wallpaperWindow->doNotPaint = true;
+		desktop.wallpaperWindow->messageUser = ProcessGlobalKeyboardShortcuts;
 
 		if ((int32_t) desktop.wallpaperWindow->windowWidth != Width(screen) || (int32_t) desktop.wallpaperWindow->windowHeight != Height(screen)) {
 			desktop.wallpaperWindow->windowWidth = Width(screen);
@@ -2527,6 +2551,8 @@ void DesktopMessage(EsMessage *message) {
 		if (instance->destroy) {
 			instance->destroy(instance);
 		}
+	} else if (message->type == ES_MSG_KEY_DOWN) {
+		ProcessGlobalKeyboardShortcuts(nullptr, message);
 	} else if (message->type == MSG_SETUP_DESKTOP_UI || message->type == ES_MSG_UI_SCALE_CHANGED) {
 		DesktopSetup();
 	}

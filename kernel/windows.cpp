@@ -329,9 +329,7 @@ void WindowManager::PressKey(unsigned scancode) {
 		| ((shift | shift2) ? ES_MODIFIER_SHIFT : 0)
 		| ((flag | flag2) ? ES_MODIFIER_FLAG : 0);
 
-	if (activeWindow) {
-		Window *window = activeWindow;
-
+	{
 		EsMessage message;
 		EsMemoryZero(&message, sizeof(EsMessage));
 		message.type = (scancode & K_SCANCODE_KEY_RELEASED) ? ES_MSG_KEY_UP : ES_MSG_KEY_DOWN;
@@ -355,7 +353,11 @@ void WindowManager::PressKey(unsigned scancode) {
 			heldKeys[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
 		}
 
-		SendMessageToWindow(window, &message);
+		if (activeWindow) {
+			SendMessageToWindow(activeWindow, &message);
+		} else {
+			desktopProcess->messageQueue.SendMessage(nullptr, &message);
+		}
 	}
 
 	done:;
