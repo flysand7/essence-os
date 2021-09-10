@@ -77,9 +77,6 @@ DEFINE_INTERFACE_STRING(CommonUnitMilliseconds, " ms");
 
 // Desktop.
 
-DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
-DEFINE_INTERFACE_STRING(DesktopInspectUI, "Inspect UI");
-DEFINE_INTERFACE_STRING(DesktopCenterWindow, "Center in screen");
 DEFINE_INTERFACE_STRING(DesktopNewTabTitle, "New Tab");
 DEFINE_INTERFACE_STRING(DesktopShutdownTitle, "Shutdown");
 DEFINE_INTERFACE_STRING(DesktopShutdownAction, "Shutdown");
@@ -90,6 +87,11 @@ DEFINE_INTERFACE_STRING(DesktopNoSuchApplication, "The requested application cou
 DEFINE_INTERFACE_STRING(DesktopApplicationStartupError, "The requested application could not be started. Your system may be low on resources, or the application files may have been corrupted.");
 DEFINE_INTERFACE_STRING(DesktopNotResponding, "The application is not responding.\nIf you choose to force quit, any unsaved data may be lost.");
 DEFINE_INTERFACE_STRING(DesktopConfirmShutdown, "Are you sure you want to turn off your computer? All applications will be closed.");
+
+DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
+DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindow, "Move to new window");
+DEFINE_INTERFACE_STRING(DesktopInspectUI, "Inspect UI");
+DEFINE_INTERFACE_STRING(DesktopCenterWindow, "Center in screen");
 
 DEFINE_INTERFACE_STRING(DesktopSettingsApplication, "Settings");
 DEFINE_INTERFACE_STRING(DesktopSettingsTitle, "Settings");

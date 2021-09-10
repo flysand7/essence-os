@@ -63,6 +63,7 @@ struct ReorderList : EsElement {
 };
 
 struct WindowTab : ReorderItem {
+	// NOTE Don't forget to update WindowTabMoveToNewContainer when modifying this.
 	struct ContainerWindow *container;
 	struct ApplicationInstance *applicationInstance;
 	struct ApplicationInstance *notRespondingInstance;
@@ -209,6 +210,8 @@ void ConfigurationWriteToFile();
 void OpenDocumentOpenReference(EsObjectID id);
 void OpenDocumentCloseReference(EsObjectID id);
 void WallpaperLoad(EsGeneric);
+WindowTab *WindowTabCreate(ContainerWindow *container);
+ContainerWindow *ContainerWindowCreate();
 
 #include "settings.cpp"
 
@@ -439,6 +442,45 @@ void WindowTabActivate(WindowTab *tab, bool force = false) {
 	}
 }
 
+void WindowTabDestroy(WindowTab *tab) {
+	ContainerWindow *container = tab->container;
+
+	if (container->tabBand->items.Length() == 1) {
+		EsElementDestroy(container->window);
+		EsElementDestroy(container->taskBarButton);
+		desktop.allContainerWindows.FindAndDeleteSwap(container, true);
+	} else {
+		if (container->active == tab) {
+			container->active = nullptr;
+
+			for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
+				if (container->tabBand->items[i] != tab) continue;
+				WindowTabActivate((WindowTab *) container->tabBand->items[i ? (i - 1) : 1]);
+				break;
+			}
+		}
+
+		EsElementDestroy(tab);
+	}
+}
+
+void WindowTabMoveToNewContainer(WindowTab *tab) {
+	// Create the new tab and container window.
+	WindowTab *newTab = WindowTabCreate(ContainerWindowCreate());
+
+	// Move ownership of the instance to the new tab.
+	newTab->applicationInstance = tab->applicationInstance;
+	newTab->notRespondingInstance = tab->notRespondingInstance;
+	EsAssert(tab->applicationInstance->tab == tab);
+	tab->applicationInstance->tab = newTab;
+	tab->applicationInstance = nullptr;
+	tab->notRespondingInstance = nullptr;
+
+	// Destroy the old tab, and activate the new one.
+	WindowTabDestroy(tab); // Deplaces the embedded window from the old container.
+	WindowTabActivate(newTab);
+}
+
 int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 	ContainerWindow *container = (ContainerWindow *) element->userData.p;
 
@@ -558,6 +600,12 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			WindowTabClose((WindowTab *) context.p);
 		}, tab);
 
+		if (tab->container->tabBand->items.Length() > 1) {
+			EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopMoveTabToNewWindow), [] (EsMenu *, EsGeneric context) {
+				WindowTabMoveToNewContainer((WindowTab *) context.p);
+			}, tab);
+		}
+
 		if (EsKeyboardIsShiftHeld()) {
 			EsMenuAddSeparator(menu);
 
@@ -581,10 +629,9 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-WindowTab *WindowTabCreate(ContainerWindow *container, ApplicationInstance *instance) {
+WindowTab *WindowTabCreate(ContainerWindow *container) {
 	WindowTab *tab = (WindowTab *) EsHeapAllocate(sizeof(WindowTab), true);
 	tab->container = container;
-	tab->applicationInstance = instance;
 	tab->Initialise(container->tabBand, ES_CELL_H_SHRINK | ES_CELL_V_BOTTOM, WindowTabMessage, nullptr);
 	tab->cName = "window tab";
 
@@ -1196,7 +1243,8 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 
 ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
 	ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
-	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate(), instance) : nullptr;
+	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate()) : nullptr;
+	if (tab) tab->applicationInstance = instance;
 	instance->title[0] = ' ';
 	instance->titleBytes = 1;
 	instance->tab = tab;
@@ -2227,7 +2275,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 }
 
 void EmbeddedWindowDestroyed(EsObjectID id) {
-	EsMenuCloseAll();
+	EsMenuCloseAll(); // The tab will be destroyed, but menus might be keeping pointers to it.
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(id, true /* remove if found */);
 	if (!instance) return;
 
@@ -2259,25 +2307,7 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 	}
 
 	if (instance->tab) {
-		ContainerWindow *container = instance->tab->container;
-
-		if (container->tabBand->items.Length() == 1) {
-			EsElementDestroy(container->window);
-			EsElementDestroy(container->taskBarButton);
-			desktop.allContainerWindows.FindAndDeleteSwap(container, true);
-		} else {
-			if (container->active == instance->tab) {
-				container->active = nullptr;
-
-				for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
-					if (container->tabBand->items[i] != instance->tab) continue;
-					WindowTabActivate((WindowTab *) container->tabBand->items[i ? (i - 1) : 1]);
-					break;
-				}
-			}
-
-			EsElementDestroy(instance->tab);
-		}
+		WindowTabDestroy(instance->tab);
 	} else if (instance->isUserTask) {
 		desktop.totalUserTaskProgress -= instance->progress;
 		EsElementRepaint(desktop.tasksButton);

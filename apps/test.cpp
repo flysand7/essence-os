@@ -154,6 +154,7 @@ void InitialiseInstance(EsInstance *instance) {
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Hang"), [] (EsInstance *, EsElement *, EsCommand *) { while (true); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait, then crash"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); EsAssert(false); });
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait, then exit"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(1000); EsProcessTerminateCurrent(); });
 
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 2"), [] (EsInstance *, EsElement *, EsCommand *) { 
 		EsSyscall(ES_SYSCALL_WAIT, 0x8000000000000000, 1, 0, 0); 

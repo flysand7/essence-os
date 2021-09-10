@@ -1186,6 +1186,11 @@ void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 	if (embed) {
 		embed->container = this;
 		ResizeEmbed();
+
+		EsMessage message;
+		EsMemoryZero(&message, sizeof(message));
+		message.type = windowManager.activeWindow == this ? ES_MSG_WINDOW_ACTIVATED : ES_MSG_WINDOW_DEACTIVATED;
+		embed->owner->messageQueue.SendMessage(embed->apiWindow, &message);
 	}
 }
 

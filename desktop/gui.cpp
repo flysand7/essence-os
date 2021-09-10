@@ -5289,6 +5289,16 @@ void EsElement::Destroy(bool manual) {
 		}
 	}
 
+	if (state & UI_STATE_MENU_SOURCE) {
+		for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
+			if (gui.allWindows[i]->source == this) {
+				// Close the menu attached to this element.
+				EsElementDestroy(gui.allWindows[i]);
+				break;
+			}
+		}
+	}
+
 	state |= UI_STATE_DESTROYING | UI_STATE_DESTROYING_CHILD | UI_STATE_BLOCK_INTERACTION;
 
 	if (parent) {
@@ -6935,42 +6945,46 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		window->mousePosition.x -= windowBounds.l, window->mousePosition.y -= windowBounds.t;
 		window->hovering = true;
 	} else if (message->type == ES_MSG_WINDOW_DEACTIVATED) {
-		AccessKeyModeExit();
+		if (window->activated) {
+			AccessKeyModeExit();
 
-		if (window->windowStyle == ES_WINDOW_MENU) {
-			window->Destroy();
+			if (window->windowStyle == ES_WINDOW_MENU) {
+				window->Destroy();
+			}
+
+			window->activated = false;
+			window->hovering = false;
+
+			if (window->focused) {
+				window->inactiveFocus = window->focused;
+				window->inactiveFocus->Repaint(true);
+				UIRemoveFocusFromElement(window->focused);
+				window->focused = nullptr;
+			}
+
+			EsMessageSend(window, message);
+			UIMaybeRefreshStyleAll(window);
 		}
-
-		window->activated = false;
-		window->hovering = false;
-
-		if (window->focused) {
-			window->inactiveFocus = window->focused;
-			window->inactiveFocus->Repaint(true);
-			UIRemoveFocusFromElement(window->focused);
-			window->focused = nullptr;
-		}
-
-		EsMessageSend(window, message);
-		UIMaybeRefreshStyleAll(window);
 	} else if (message->type == ES_MSG_WINDOW_ACTIVATED) {
-		AccessKeyModeExit();
+		if (!window->activated) {
+			AccessKeyModeExit();
 
-		gui.leftModifiers = gui.rightModifiers = 0;
-		gui.clickChainStartMs = 0;
+			gui.leftModifiers = gui.rightModifiers = 0;
+			gui.clickChainStartMs = 0;
 
-		window->activated = true;
-		EsMessage m = { ES_MSG_WINDOW_ACTIVATED };
-		EsMessageSend(window, &m);
+			window->activated = true;
+			EsMessage m = { ES_MSG_WINDOW_ACTIVATED };
+			EsMessageSend(window, &m);
 
-		if (!window->focused && window->inactiveFocus) {
-			EsElementFocus(window->inactiveFocus, false);
-			window->inactiveFocus->Repaint(true);
-			window->inactiveFocus = nullptr;
+			if (!window->focused && window->inactiveFocus) {
+				EsElementFocus(window->inactiveFocus, false);
+				window->inactiveFocus->Repaint(true);
+				window->inactiveFocus = nullptr;
+			}
+
+			UIRefreshPrimaryClipboard(window);
+			UIMaybeRefreshStyleAll(window);
 		}
-
-		UIRefreshPrimaryClipboard(window);
-		UIMaybeRefreshStyleAll(window);
 	}
 
 	skipInputMessage:;
