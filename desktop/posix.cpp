@@ -685,9 +685,11 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 }
 
 void EsPOSIXInitialise(int *argc, char ***argv) {
+	EsProcessStartupInformation *startupInformation = ProcessGetStartupInformation();
+
 	// Get the arguments and environment.
 
-	EsHandle environmentHandle = EsSyscall(ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT, ES_CURRENT_PROCESS, CREATION_ARGUMENT_ENVIRONMENT, 0, 0);
+	EsHandle environmentHandle = startupInformation->data.environment;
 	char *environmentBuffer = (char *) "./application\0\0LANG=en_US.UTF-8\0PWD=/\0HOME=/\0PATH=/Applications/POSIX/bin\0TMPDIR=/Applications/POSIX/tmp\0\0";
 
 	if (environmentHandle) {
@@ -739,8 +741,6 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 	}
 
 	// Add the auxillary vectors.
-
-	EsProcessStartupInformation *startupInformation = ProcessGetStartupInformation();
 
 #ifdef ARCH_X86_64
 	Elf64_Phdr *tlsHeader = (Elf64_Phdr *) EsHeapAllocate(sizeof(Elf64_Phdr), true);

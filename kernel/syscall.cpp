@@ -257,6 +257,60 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 	}
 
 	// TODO.
+#if 0
+	Process *process = scheduler.SpawnProcess();
+
+	if (!process) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	process->creationFlags = arguments.flags;
+	process->creationArguments[CREATION_ARGUMENT_MAIN] = arguments.creationArgument.u;
+	process->permissions = arguments.permissions;
+
+	// TODO Free the process object if something fails here.
+
+	if (arguments.environmentBlockBytes) {
+		if (arguments.environmentBlockBytes > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+		SYSCALL_BUFFER((uintptr_t) arguments.environmentBlock, arguments.environmentBlockBytes, 1, false);
+		process->creationArguments[CREATION_ARGUMENT_ENVIRONMENT] = MakeConstantBuffer(arguments.environmentBlock, arguments.environmentBlockBytes, process);
+	} 
+	
+	if (arguments.initialMountPointCount) {
+		if (arguments.initialMountPointCount > ES_MOUNT_POINT_MAX_COUNT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+
+		EsMountPoint *mountPoints = (EsMountPoint *) EsHeapAllocate(arguments.initialMountPointCount * sizeof(EsMountPoint), false, K_FIXED);
+		EsDefer(EsHeapFree(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), K_FIXED));
+		SYSCALL_READ(mountPoints, (uintptr_t) arguments.initialMountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint));
+
+		for (uintptr_t i = 0; i < arguments.initialMountPointCount; i++) {
+			// Open handles to the mount points for the new process.
+			// TODO Handling errors when opening handles.
+			KObject object(currentProcess, mountPoints[i].base, KERNEL_OBJECT_NODE);
+			CHECK_OBJECT(object);
+			if (!mountPoints[i].write) object.flags &= ~_ES_NODE_DIRECTORY_WRITE;
+			OpenHandleToObject(object.object, object.type, object.flags);
+			mountPoints[i].base = process->handleTable.OpenHandle(object.object, object.flags, object.type);
+		}
+
+		process->creationArguments[CREATION_ARGUMENT_INITIAL_MOUNT_POINTS] 
+			= MakeConstantBuffer(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), process);
+	}
+
+	if (!process->StartWithNode((KNode *) executableObject.object)) {
+		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
+		SYSCALL_RETURN(ES_ERROR_UNKNOWN, false);
+	}
+
+	processInformation.pid = process->id;
+	processInformation.mainThread.tid = process->executableMainThread->id;
+
+	processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
+	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
+
+	SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+#endif
 
 	SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 }

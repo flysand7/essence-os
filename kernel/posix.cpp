@@ -45,10 +45,18 @@ struct POSIXThread {
 	MMRegion *_region ## index = MMFindAndPinRegion(currentVMM, (address), (length)); \
 	EsDefer(if (_region ## index) MMUnpinRegion(currentVMM, _region ## index));
 
-#define SYSCALL_HANDLE_POSIX(handle, __object, index) \
-	KObject _object ## index(handleTable, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
-	*((void **) &__object) = _object ## index .object; \
-	if (! _object ## index .valid) return -EBADF; else _object ## index .checked = true; \
+#define SYSCALL_HANDLE_POSIX_2(handle, out) \
+	Handle _ ## out; \
+	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
+	if (status_ ## out == RESOLVE_HANDLE_FAILED) return -EBADF; \
+	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
+	const Handle out = _ ## out
+#define SYSCALL_HANDLE_POSIX(handle, out) \
+	Handle _ ## out; \
+	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
+	if (status_ ## out == RESOLVE_HANDLE_FAILED) return -EBADF; \
+	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
+	POSIXFile *const out = (POSIXFile *) _ ## out.object
 
 #endif
 
@@ -277,8 +285,7 @@ namespace POSIX {
 
 			case ES_POSIX_SYSCALL_GET_POSIX_FD_PATH: {
 				if (syscall.arguments[2] > SYSCALL_BUFFER_LIMIT) return -ENOMEM;
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 2, true);
 				KMutexAcquire(&file->mutex);
 				EsDefer(KMutexRelease(&file->mutex));
@@ -298,8 +305,7 @@ namespace POSIX {
 			} break;
 
 			case SYS_fstat: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], sizeof(struct stat), 1, true);
 				struct stat temp;
 				KMutexAcquire(&file->mutex);
@@ -310,33 +316,30 @@ namespace POSIX {
 			} break;
 
 			case SYS_fcntl: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX_2(syscall.arguments[0], fd);
+				POSIXFile *file = (POSIXFile *) fd.object;
 
 				if (syscall.arguments[1] == F_GETFD) {
-					return _object1.flags;
+					return fd.flags;
 				} else if (syscall.arguments[1] == F_SETFD) {
-					KObject object;
-					uint32_t newFlags = syscall.arguments[2];
-					handleTable->ModifyFlags(syscall.arguments[0], newFlags);
+					handleTable->ModifyFlags(syscall.arguments[0], syscall.arguments[2]);
 				} else if (syscall.arguments[1] == F_GETFL) {
 					return file->posixFlags;
 				} else if (syscall.arguments[1] == F_DUPFD) {
 					// Duplicate with FD_CLOEXEC clear.
 					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, 0);
-					return handleTable->OpenHandle(_object1.object, 0, _object1.type) ?: -ENFILE;
+					return handleTable->OpenHandle(fd.object, 0, fd.type) ?: -ENFILE;
 				} else if (syscall.arguments[1] == F_DUPFD_CLOEXEC) {
 					// Duplicate with FD_CLOEXEC set.
 					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, FD_CLOEXEC);
-					return handleTable->OpenHandle(_object1.object, FD_CLOEXEC, _object1.type) ?: -ENFILE;
+					return handleTable->OpenHandle(fd.object, FD_CLOEXEC, fd.type) ?: -ENFILE;
 				} else {
 					KernelPanic("POSIX::DoSyscall - Unimplemented fcntl %d.\n", syscall.arguments[1]);
 				}
 			} break;
 
 			case SYS_lseek: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 
 				KMutexAcquire(&file->mutex);
 				EsDefer(KMutexRelease(&file->mutex));
@@ -355,8 +358,7 @@ namespace POSIX {
 			} break;
 
 			case SYS_ioctl: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 
 				KMutexAcquire(&file->mutex);
 				EsDefer(KMutexRelease(&file->mutex));
@@ -377,16 +379,14 @@ namespace POSIX {
 			} break;
 
 			case SYS_read: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, false);
 				return Read(file, (void *) syscall.arguments[1], syscall.arguments[2], _region3->flags & MM_REGION_FILE);
 			} break;
 
 			case SYS_readv: {
-				POSIXFile *file;
 				if (syscall.arguments[2] > 1024) return -EINVAL;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2] * sizeof(struct iovec *), 2, false);
 
 				struct iovec *vectors = (struct iovec *) EsHeapAllocate(syscall.arguments[2] * sizeof(struct iovec), false, K_FIXED);
@@ -408,8 +408,7 @@ namespace POSIX {
 			} break;
 
 			case SYS_write: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, true);
 
 				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
@@ -420,9 +419,8 @@ namespace POSIX {
 			} break;
 
 			case SYS_writev: {
-				POSIXFile *file;
 				if (syscall.arguments[2] > 1024) return -EINVAL;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2] * sizeof(struct iovec *), 2, false);
 
 				struct iovec *vectors = (struct iovec *) EsHeapAllocate(syscall.arguments[2] * sizeof(struct iovec), false, K_FIXED);
@@ -504,7 +502,7 @@ namespace POSIX {
 				EsMemoryCopy(path, (void *) syscall.arguments[0], syscall.arguments[1]);
 
 				Process *process = currentThread->posixData->forkProcess;
-				process->creationArguments[CREATION_ARGUMENT_ENVIRONMENT] = MakeConstantBuffer((void *) syscall.arguments[2], syscall.arguments[3], process);
+				process->data.environment = MakeConstantBuffer((void *) syscall.arguments[2], syscall.arguments[3], process);
 				process->posixForking = true;
 				process->permissions = currentProcess->permissions;
 
@@ -512,7 +510,7 @@ namespace POSIX {
 				OpenHandleToObject((void *) syscall.arguments[4], KERNEL_OBJECT_NODE, _ES_NODE_DIRECTORY_WRITE);
 				mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
 				mountPoint.prefixBytes = EsStringFormat(mountPoint.prefix, sizeof(mountPoint.prefix), "|POSIX:");
-				process->creationArguments[CREATION_ARGUMENT_INITIAL_MOUNT_POINTS] = MakeConstantBuffer(&mountPoint, sizeof(EsMountPoint), process);
+				process->data.initialMountPoints = MakeConstantBuffer(&mountPoint, sizeof(EsMountPoint), process);
 
 				// Start the process.
 
@@ -612,8 +610,8 @@ namespace POSIX {
 			} break;
 
 			case SYS_dup2: {
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX_2(syscall.arguments[0], fd);
+				POSIXFile *file = (POSIXFile *) fd.object;
 
 				// Try to close the newfd.
 
@@ -621,9 +619,8 @@ namespace POSIX {
 
 				// Clone the oldfd as newfd.
 
-				OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, _object1.flags);
-				return handleTable->OpenHandle(_object1.object, _object1.flags, _object1.type, 
-						ConvertStandardInputTo3(syscall.arguments[1])) ? 0 : -EBUSY;
+				OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, fd.flags);
+				return handleTable->OpenHandle(fd.object, fd.flags, fd.type, ConvertStandardInputTo3(syscall.arguments[1])) ? 0 : -EBUSY;
 			} break;
 
 			case SYS_pipe2: {
@@ -672,8 +669,7 @@ namespace POSIX {
 
 				if (syscall.arguments[2] > SYSCALL_BUFFER_LIMIT) return -ENOMEM;
 
-				POSIXFile *file;
-				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file, 1);
+				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
 				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, true);
 
 				KMutexAcquire(&file->mutex);
