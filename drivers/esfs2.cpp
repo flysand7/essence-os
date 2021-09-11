@@ -1,7 +1,7 @@
 #include <module.h>
 
 // Filesystem structures and constant definitions.
-#include <util/esfs2.h>
+#include <shared/esfs2.h>
 
 // TODO Calling FSDirectoryEntryFound on all directory entries seen during scanning, even if they're not the target.
 // TODO Informing the block cache when a directory is truncated and its extents are freed.

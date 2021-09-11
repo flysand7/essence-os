@@ -301,6 +301,8 @@ Option options[] = {
 	{ "Emulator.Audio", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Emulator.MemoryMB", OPTION_TYPE_STRING, { .s = "1024" } },
 	{ "Emulator.Cores", OPTION_TYPE_STRING, { .s = "1" } },
+	{ "Emulator.PrimaryDriveMB", OPTION_TYPE_STRING, { .s = "1024" } },
+	{ "Emulator.SecondaryDriveMB", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
 };

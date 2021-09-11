@@ -37,6 +37,7 @@
 #define APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION (1 << 3)
 #define APPLICATION_PERMISSION_SHUTDOWN                  (1 << 4)
 #define APPLICATION_PERMISSION_VIEW_FILE_TYPES           (1 << 5)
+#define APPLICATION_PERMISSION_ALL_DEVICES               (1 << 6)
 
 #define APPLICATION_ID_DESKTOP_BLANK_TAB (-0x70000000)
 #define APPLICATION_ID_DESKTOP_SETTINGS  (-0x70000001)
@@ -1300,7 +1301,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	}
 
 	instance->processID = EsProcessGetID(process);
-	instance->processHandle = EsSyscall(ES_SYSCALL_PROCESS_SHARE, process, ES_CURRENT_PROCESS, 0, 0);
+	instance->processHandle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, process, ES_CURRENT_PROCESS, 0, 0);
 
 	if (startupInformation->documentID) {
 		instance->documentID = startupInformation->documentID;
@@ -1324,7 +1325,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	// Share handles to the file and the startup information buffer.
 
 	if (startupInformation->readHandle) {
-		startupInformation->readHandle = EsSyscall(ES_SYSCALL_NODE_SHARE, startupInformation->readHandle, process, 0, 0);
+		startupInformation->readHandle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, startupInformation->readHandle, process, 0, 0);
 	}
 
 	if (!application->useSingleProcess && !application->createInstance) {
@@ -1651,7 +1652,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 
 		if (m.tabOperation.error == ES_SUCCESS) {
 			document->currentWriter = instance->embeddedWindowID;
-			m.tabOperation.handle = EsSyscall(ES_SYSCALL_NODE_SHARE, fileHandle, instance->processHandle, 0, 0);
+			m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, fileHandle, instance->processHandle, 0, 0);
 			EsHandleClose(fileHandle);
 		}
 	}
@@ -1764,7 +1765,7 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_UPDATED };
 		m.tabOperation.isSource = instance == fromInstance;
 		m.tabOperation.id = instance->embeddedWindowID;
-		m.tabOperation.handle = EsSyscall(ES_SYSCALL_NODE_SHARE, document->readHandle, instance->processHandle, 0, 0);
+		m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, document->readHandle, instance->processHandle, 0, 0);
 		EsMessagePostRemote(instance->processHandle, &m);
 	}
 }
@@ -1828,6 +1829,7 @@ void ConfigurationLoadApplications() {
 
 #define READ_PERMISSION(x, y) if (EsSystemConfigurationGroupReadInteger(group, EsLiteral(x), 0)) application->permissions |= y
 		READ_PERMISSION("permission_all_files", APPLICATION_PERMISSION_ALL_FILES);
+		READ_PERMISSION("permission_all_devices", APPLICATION_PERMISSION_ALL_DEVICES);
 		READ_PERMISSION("permission_manage_processes", APPLICATION_PERMISSION_MANAGE_PROCESSES);
 		READ_PERMISSION("permission_posix_subsystem", APPLICATION_PERMISSION_POSIX_SUBSYSTEM);
 		READ_PERMISSION("permission_run_temporary_application", APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION);
@@ -2199,7 +2201,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 				desktop.nextClipboardFile = handle;
 				desktop.nextClipboardProcessID = message->desktop.processID;
 
-				handle = EsSyscall(ES_SYSCALL_NODE_SHARE, handle, processHandle, 0, 0);
+				handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, processHandle, 0, 0);
 
 				EsHeapFree(path);
 			} else {
@@ -2242,7 +2244,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 
 		if (processHandle) {
 			EsHandle fileHandle = desktop.clipboardFile 
-				? EsSyscall(ES_SYSCALL_NODE_SHARE, desktop.clipboardFile, processHandle, 0, 1 /* ES_FILE_READ_SHARED */) : ES_INVALID_HANDLE;
+				? EsSyscall(ES_SYSCALL_HANDLE_SHARE, desktop.clipboardFile, processHandle, 1 /* ES_FILE_READ_SHARED */, 0) : ES_INVALID_HANDLE;
 			EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
 			EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 			EsHandleClose(processHandle);
@@ -2493,7 +2495,7 @@ void DesktopMessage(EsMessage *message) {
 
 			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) 
 					&& instance->processHandle && !instance->application->notified) {
-				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_NODE_SHARE, rootDirectory, instance->processHandle, 0, 0);
+				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_HANDLE_SHARE, rootDirectory, instance->processHandle, 0, 0);
 				EsMessagePostRemote(instance->processHandle, message);
 				if (instance->application->useSingleProcess) instance->application->notified = true;
 			}
@@ -2518,6 +2520,7 @@ void DesktopMessage(EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
 		desktop.connectedDevices.Add(message->device);
+		// TODO Propagate message.
 	} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
 		for (uintptr_t i = 0; i < desktop.connectedDevices.Length(); i++) {
 			if (desktop.connectedDevices[i].id == message->device.id) {
@@ -2526,6 +2529,8 @@ void DesktopMessage(EsMessage *message) {
 				break;
 			}
 		}
+
+		// TODO Propagate message.
 	} else if (message->type == ES_MSG_SET_SCREEN_RESOLUTION) {
 		if (desktop.setupDesktopUIComplete) {
 			DesktopSetup(); // Refresh desktop UI.

@@ -374,7 +374,9 @@ void Build(bool enableOptimisations, bool compile) {
 			" &" /* don't block */);
 #endif
 
-	Compile((enableOptimisations ? COMPILE_ENABLE_OPTIMISATIONS : 0) | (compile ? 0 : COMPILE_SKIP_COMPILE) | COMPILE_DO_BUILD | COMPILE_FOR_EMULATOR, 1024, NULL);
+	LoadOptions();
+	Compile((enableOptimisations ? COMPILE_ENABLE_OPTIMISATIONS : 0) | (compile ? 0 : COMPILE_SKIP_COMPILE) | COMPILE_DO_BUILD | COMPILE_FOR_EMULATOR, 
+			atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 
 	clock_gettime(CLOCK_REALTIME, &endTime);
 
@@ -442,17 +444,29 @@ void Run(int emulator, int log, int debug) {
 			const char *audioFlags2 = withAudio ? "-soundhw pcspk,hda" : "";
 			unlink("bin/audio.wav");
 
+			const char *secondaryDriveMB = GetOptionString("Emulator.SecondaryDriveMB");
+			char secondaryDriveFlags[256];
+
+			if (secondaryDriveMB) {
+				CallSystemF("dd if=/dev/zero of=bin/drive2 bs=1048576 count=%d", atoi(secondaryDriveMB));
+				snprintf(secondaryDriveFlags, sizeof(secondaryDriveFlags), 
+						"-drive file=bin/drive2,if=none,id=mydisk2,format=raw "
+						"-device nvme,drive=mydisk2,serial=1234 ");
+			} else {
+				secondaryDriveFlags[0] = 0;
+			}
+
 			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
 				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
 
 			CallSystemF("%s %s qemu-system-x86_64 %s %s -m %d -s %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
-					" %s %s %s %s ", 
+					" %s %s %s %s %s ", 
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
-					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2);
+					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags);
 		} break;
 
 		case EMULATOR_BOCHS: {
@@ -1077,7 +1091,8 @@ void DoCommand(const char *l) {
 	} else if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
 		exit(0);
 	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {
-		Compile(COMPILE_FOR_EMULATOR, 1024, NULL);
+		LoadOptions();
+		Compile(COMPILE_FOR_EMULATOR, atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 	} else if (0 == strcmp(l, "build-cross")) {
 		BuildCrossCompiler();
 		SaveConfig();

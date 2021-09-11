@@ -1,6 +1,11 @@
+#define INSTALLER
+#define ES_CRT_WITHOUT_PREFIX
 #include <essence.h>
 #include <ports/lzma/LzmaDec.c>
 #include <shared/hash.cpp>
+#define Log(...)
+#define exit(x) EsThreadTerminate(ES_CURRENT_THREAD)
+#include <shared/esfs2.h>
 
 #define BUFFER_SIZE (1048576)
 #define NAME_MAX (4096)
@@ -52,8 +57,10 @@ bool Decompress(Extractor *e, void *_buffer, size_t bytes) {
 	return true;
 }
 
-EsError Extract(Extractor *e, const char *pathIn, size_t pathInBytes, const char *pathOut, size_t pathOutBytes) {
-	EsMemoryZero(e, sizeof(Extractor));
+EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, size_t pathOutBytes) {
+	Extractor *e = (Extractor *) EsHeapAllocate(sizeof(Extractor), true);
+	if (!e) return ES_ERROR_INSUFFICIENT_RESOURCES;
+	EsDefer(EsHeapFree(e));
 
 	e->fileIn = EsFileOpen(pathIn, pathInBytes, ES_FILE_READ);
 	if (e->fileIn.error != ES_SUCCESS) return e->fileIn.error;
@@ -107,11 +114,18 @@ EsError Extract(Extractor *e, const char *pathIn, size_t pathInBytes, const char
 	return crc64 == actualCRC64 ? ES_SUCCESS : ES_ERROR_CORRUPT_DATA;
 }
 
+void ReadBlock(uint64_t, uint64_t, void *) {
+}
+
+void WriteBlock(uint64_t, uint64_t, void *) {
+}
+
+void WriteBytes(uint64_t, uint64_t, void *) {
+}
+
 void _start() {
 	_init();
 	EsPerformanceTimerPush();
-	Extractor *e = (Extractor *) EsHeapAllocate(sizeof(Extractor), false);
-	EsAssert(ES_SUCCESS == Extract(e, EsLiteral("0:/installer_archive.dat"), EsLiteral("0:/extracted")));
-	EsHeapFree(e);
+	EsAssert(ES_SUCCESS == Extract(EsLiteral("0:/installer_archive.dat"), EsLiteral("0:/extracted")));
 	EsPrint("time: %Fs\n", EsPerformanceTimerPop());
 }

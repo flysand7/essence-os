@@ -129,7 +129,7 @@ File FileOpen(const char *path, char mode) {
 
 #include "../shared/hash.cpp"
 #include "build_common.h"
-#include "esfs2.h"
+#include "../shared/esfs2.h"
 #include "header_generator.c"
 
 // Toolchain flags:
@@ -1159,6 +1159,8 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	ImportNode root = {};
 	CreateImportNode("root", &root);
 
+	// TODO Update this.
+#if 0
 	if (convertFonts) {
 		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Fonts");
 
@@ -1171,6 +1173,7 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 			}
 		}
 	}
+#endif
 
 	MountVolume();
 	Import(root, superblock.root);

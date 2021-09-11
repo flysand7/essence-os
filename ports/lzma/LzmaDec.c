@@ -1228,11 +1228,7 @@ SRes LzmaDec_DecodeToBuf(CLzmaDec *p, Byte *dest, SizeT *destLen, const Byte *sr
     inSize -= inSizeCur;
     *srcLen += inSizeCur;
     outSizeCur = p->dicPos - dicPos;
-#ifdef OS_ESSENCE
-    EsMemoryCopy(dest, p->dic + dicPos, outSizeCur);
-#else
     memcpy(dest, p->dic + dicPos, outSizeCur);
-#endif
     dest += outSizeCur;
     outSize -= outSizeCur;
     *destLen += outSizeCur;

@@ -1899,6 +1899,7 @@ void FSRegisterBlockDevice(KBlockDevice *device) {
 		FSDetectFileSystem((KBlockDevice *) context);
 	}, (uintptr_t) device);
 #endif
+	KDeviceSendConnectedMessage(device, ES_DEVICE_BLOCK);
 }
 
 void FSShutdown() {

@@ -720,17 +720,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 	SYSCALL_RETURN(0, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_SHARE) {
-	KObject buffer(currentProcess, argument0, KERNEL_OBJECT_CONSTANT_BUFFER);
-	CHECK_OBJECT(buffer);
-	ConstantBuffer *object = (ConstantBuffer *) buffer.object;
-
-	KObject process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(process);
-
-	SYSCALL_RETURN(MakeConstantBuffer(object + 1, object->bytes, (Process *) process.object), false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	SYSCALL_BUFFER(argument0, argument2, 1, false);
@@ -741,37 +730,29 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 	SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, (Process *) process.object), false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_SHARE) {
-	// TODO Sort out flags.
-
-	KObject _region(currentProcess, argument0, KERNEL_OBJECT_SHMEM);
-	CHECK_OBJECT(_region);
-	MMSharedRegion *region = (MMSharedRegion *) _region.object;
-
+SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_SHARE) {
+	KObject share(currentProcess, argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS 
+			| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE);
+	CHECK_OBJECT(share);
 	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
 	CHECK_OBJECT(_process);
 	Process *process = (Process *) _process.object;
+	uint32_t sharedFlags = share.flags;
 
-	OpenHandleToObject(region, KERNEL_OBJECT_SHMEM);
+	if (share.type == KERNEL_OBJECT_SHMEM) {
+		sharedFlags = argument2; // TODO Sort out flags.
+	} else if (share.type == KERNEL_OBJECT_NODE) {
+		sharedFlags = (argument2 & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags;
+	} else if (share.type == KERNEL_OBJECT_PIPE) {
+		// TODO Sort out flags.
+	}
 
-	SYSCALL_RETURN(process->handleTable.OpenHandle(region, argument2, KERNEL_OBJECT_SHMEM), false);
+	if (!OpenHandleToObject(share.object, share.type, sharedFlags)) {
+		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
+	} else {
+		SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, sharedFlags, share.type), false);
+	}
 }
-
-#define SYSCALL_SHARE_OBJECT(syscallName, objectType, _sharedFlags) \
-SYSCALL_IMPLEMENT(syscallName) { \
-	KObject share(currentProcess, argument0, objectType); \
-	CHECK_OBJECT(share); \
-	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS); \
-	CHECK_OBJECT(_process); \
-	Process *process = (Process *) _process.object; \
-	uint32_t sharedFlags = _sharedFlags; \
-	if (!OpenHandleToObject(share.object, objectType, sharedFlags)) return ES_ERROR_PERMISSION_NOT_GRANTED; \
-	SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, sharedFlags, objectType), false); \
-}
-
-SYSCALL_SHARE_OBJECT(ES_SYSCALL_PROCESS_SHARE, KERNEL_OBJECT_PROCESS, share.flags);
-SYSCALL_SHARE_OBJECT(ES_SYSCALL_NODE_SHARE, KERNEL_OBJECT_NODE, 
-		(argument3 & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags);
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	if (~currentProcess->permissions & ES_PERMISSION_GET_VOLUME_INFORMATION) {

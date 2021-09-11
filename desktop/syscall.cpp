@@ -288,7 +288,7 @@ EsHandle EsMemoryOpen(size_t size, const char *name, ptrdiff_t nameLength, unsig
 }
 
 EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly) {
-	return EsSyscall(ES_SYSCALL_MEMORY_SHARE, sharedMemoryRegion, targetProcess, readOnly, 0);
+	return EsSyscall(ES_SYSCALL_HANDLE_SHARE, sharedMemoryRegion, targetProcess, readOnly, 0);
 }
 
 void *EsObjectMap(EsHandle sharedMemoryRegion, uintptr_t offset, size_t size, unsigned flags) {
@@ -623,7 +623,7 @@ EsHandle EsProcessOpen(uint64_t pid) {
 
 #ifndef KERNEL
 EsHandle EsConstantBufferShare(EsHandle constantBuffer, EsHandle targetProcess) {
-	return EsSyscall(ES_SYSCALL_CONSTANT_BUFFER_SHARE, constantBuffer, targetProcess, 0, 0);
+	return EsSyscall(ES_SYSCALL_HANDLE_SHARE, constantBuffer, targetProcess, 0, 0);
 }
 
 EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess) {

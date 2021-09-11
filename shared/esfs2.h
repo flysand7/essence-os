@@ -262,50 +262,6 @@ bool DecodeExtent(uint64_t *previousExtentStart, uint64_t *extentCount, uint8_t 
 
 #ifndef KERNEL
 
-typedef struct ImportNode {
-	const char *name, *path;
-	struct ImportNode *children;
-	bool isFile;
-} ImportNode;
-
-ImportNode *ImportNodeFindChild(ImportNode *thisNode, const char *name) {
-	for (uintptr_t i = 0; i < arrlenu(thisNode->children); i++) {
-		if (0 == strcmp(thisNode->children[i].name, name)) {
-			return thisNode->children + i;
-		}
-	}
-
-	return NULL;
-}
-
-void ImportNodeAddFile(ImportNode *thisNode, const char *name, const char *path) {
-	assert(!ImportNodeFindChild(thisNode, name));
-	ImportNode node = {};
-	node.name = name;
-	node.path = path;
-	node.isFile = true;
-	arrput(thisNode->children, node);
-}
-
-ImportNode *ImportNodeMakeDirectory(ImportNode *thisNode, const char *name) {
-	assert(!ImportNodeFindChild(thisNode, name));
-	ImportNode node = {};
-	node.name = name;
-	arrput(thisNode->children, node);
-	return &arrlast(thisNode->children);
-}
-
-void ImportNodeRemoveChild(ImportNode *thisNode, const char *name) {
-	for (uintptr_t i = 0; i < arrlenu(thisNode->children); i++) {
-		if (0 == strcmp(thisNode->children[i].name, name)) {
-			arrdel(thisNode->children, i);
-			return;
-		}
-	}
-
-	assert(false);
-}
-
 uint64_t blockSize;
 Superblock superblock;
 GroupDescriptor *groupDescriptorTable;
@@ -1007,6 +963,13 @@ void Read(char *target, DirectoryEntryReference parentDirectory) {
 }
 #endif
 
+#ifndef INSTALLER
+typedef struct ImportNode {
+	const char *name, *path;
+	struct ImportNode *children;
+	bool isFile;
+} ImportNode;
+
 uint64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 	uint64_t totalSize = 0;
 
@@ -1047,6 +1010,7 @@ uint64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 
 	return totalSize;
 }
+#endif
 
 void Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osInstallation,
 		void *kernel, size_t kernelBytes) {

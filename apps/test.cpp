@@ -1,6 +1,5 @@
 #include <essence.h>
 #include <shared/strings.cpp>
-#include <ports/lzma/LzmaDec.c>
 
 // #include <shared/stb_ds.h>
 
@@ -198,64 +197,8 @@ void InitialiseInstance(EsInstance *instance) {
 	EsCustomElementCreate(panel)->messageUser = TestCanvasMessage;
 }
 
-void *DecompressAllocate(ISzAllocPtr, size_t size) { return EsHeapAllocate(size, false); }
-void DecompressFree(ISzAllocPtr, void *address) { EsHeapFree(address); }
-const ISzAlloc decompressAllocator = { DecompressAllocate, DecompressFree };
-
-void TestDecompress() {
-	EsFileInformation fileIn = EsFileOpen(EsLiteral("0:/test.lzma"), ES_FILE_READ);
-	EsFileInformation fileOut = EsFileOpen(EsLiteral("0:/test.png"), ES_FILE_WRITE);
-	size_t bufferSize = 16384;
-	uint8_t *memory = (uint8_t *) EsHeapAllocate(bufferSize * 2, false);
-
-	if (fileIn.error == ES_SUCCESS && fileOut.error == ES_SUCCESS && memory) {
-		uint8_t header[LZMA_PROPS_SIZE + 8];
-		EsFileReadSync(fileIn.handle, 0, sizeof(header), header);
-
-		CLzmaDec state;
-		LzmaDec_Construct(&state);
-		LzmaDec_Allocate(&state, header, LZMA_PROPS_SIZE, &decompressAllocator);
-		LzmaDec_Init(&state);
-
-		uint8_t *inBuffer = memory + bufferSize * 0;
-		uint8_t *outBuffer = memory + bufferSize * 1;
-
-		size_t inFileOffset = sizeof(header);
-		size_t outFileOffset = 0;
-
-		size_t inBytes = 0;
-		size_t inPosition = 0;
-
-		while (true) {
-			if (inBytes == inPosition) {
-				inBytes = EsFileReadSync(fileIn.handle, inFileOffset, bufferSize, inBuffer);
-				if (!inBytes) break;
-				inPosition = 0;
-				inFileOffset += inBytes;
-			}
-
-			size_t inProcessed = inBytes - inPosition;
-			size_t outProcessed = bufferSize;
-			ELzmaStatus status;
-			LzmaDec_DecodeToBuf(&state, outBuffer, &outProcessed, inBuffer + inPosition, &inProcessed, LZMA_FINISH_ANY, &status);
-
-			EsFileWriteSync(fileOut.handle, outFileOffset, outProcessed, outBuffer);
-			inPosition += inProcessed;
-			outFileOffset += outProcessed;
-		}
-
-		LzmaDec_Free(&state, &decompressAllocator);
-	}
-
-	EsHandleClose(fileIn.handle);
-	EsHandleClose(fileOut.handle);
-	EsHeapFree(memory);
-}
-
 void _start() {
 	_init();
-
-	TestDecompress();
 
 	while (true) {
 		EsMessage *message = EsMessageReceive();
