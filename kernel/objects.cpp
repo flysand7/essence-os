@@ -386,6 +386,33 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 	}
 }
 
+uintptr_t HandleShare(Handle share, Process *process, uint32_t mode, EsHandle at = ES_INVALID_HANDLE) {
+#define HANDLE_SHARE_TYPE_MASK (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS \
+		| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE)
+
+	if ((share.type & HANDLE_SHARE_TYPE_MASK) == 0) {
+		KernelPanic("HandleShare - Invalid object type %x; allowed types are %x.\n", share.type, HANDLE_SHARE_TYPE_MASK);
+	}
+
+	uint32_t sharedFlags = share.flags;
+
+	// TODO Sort out flag modes.
+
+	if (share.type == KERNEL_OBJECT_SHMEM) {
+		sharedFlags = mode; 
+	} else if (share.type == KERNEL_OBJECT_NODE) {
+		sharedFlags = (mode & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags;
+		if (mode & 2) sharedFlags &= ~_ES_NODE_DIRECTORY_WRITE;
+	} else if (share.type == KERNEL_OBJECT_PIPE) {
+	}
+
+	if (!OpenHandleToObject(share.object, share.type, sharedFlags)) {
+		return ES_ERROR_PERMISSION_NOT_GRANTED;
+	} else {
+		return process->handleTable.OpenHandle(share.object, sharedFlags, share.type, at);
+	}
+}
+
 bool HandleTable::CloseHandle(EsHandle handle) {
 	if (handle > HANDLE_TABLE_L1_ENTRIES * HANDLE_TABLE_L2_ENTRIES) {
 		return false;

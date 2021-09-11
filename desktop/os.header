@@ -1248,7 +1248,6 @@ struct EsMountPoint {
 	char prefix[16];
 	size_t prefixBytes;
 	EsHandle base;
-	bool write;
 };
 
 struct EsProcessCreateData {
@@ -1269,6 +1268,7 @@ struct EsProcessStartupInformation {
 struct EsProcessCreationArguments {
 	EsHandle executable;
 	EsHandle *handles; // Duplicated.
+	uint32_t *handleModes; // The share arguments.
 	size_t handleCount;
 	EsProcessCreateData data;
 	uint32_t flags;

@@ -229,13 +229,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 	EsProcessCreationArguments arguments;
 	SYSCALL_READ(&arguments, argument0, sizeof(EsProcessCreationArguments));
 
-	EsProcessInformation processInformation;
-	EsMemoryZero(&processInformation, sizeof(EsProcessInformation));
-
-	if (arguments.handleCount > 65536) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	}
-
 	// Check the permissions.
 
 	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_CREATE);
@@ -256,63 +249,86 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 	}
 
-	// TODO.
-#if 0
-	Process *process = scheduler.SpawnProcess();
+	// Check the handle list.
 
-	if (!process) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	if (arguments.handleCount > SYSCALL_BUFFER_LIMIT / sizeof(Handle)) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	}
 
-	process->creationFlags = arguments.flags;
-	process->creationArguments[CREATION_ARGUMENT_MAIN] = arguments.creationArgument.u;
-	process->permissions = arguments.permissions;
+	EsHandle *inHandles;
+	SYSCALL_READ_HEAP(inHandles, (uintptr_t) arguments.handles, arguments.handleCount * sizeof(EsHandle));
+	uint32_t *inHandleModes;
+	SYSCALL_READ_HEAP(inHandleModes, (uintptr_t) arguments.handleModes, arguments.handleCount * sizeof(uint32_t));
 
-	// TODO Free the process object if something fails here.
+	Handle *handles = (Handle *) EsHeapAllocate(sizeof(Handle) * arguments.handleCount, false, K_PAGED);
 
-	if (arguments.environmentBlockBytes) {
-		if (arguments.environmentBlockBytes > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-		SYSCALL_BUFFER((uintptr_t) arguments.environmentBlock, arguments.environmentBlockBytes, 1, false);
-		process->creationArguments[CREATION_ARGUMENT_ENVIRONMENT] = MakeConstantBuffer(arguments.environmentBlock, arguments.environmentBlockBytes, process);
-	} 
-	
-	if (arguments.initialMountPointCount) {
-		if (arguments.initialMountPointCount > ES_MOUNT_POINT_MAX_COUNT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+	if (!handles && arguments.handleCount) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, K_PAGED);
+	}
 
-		EsMountPoint *mountPoints = (EsMountPoint *) EsHeapAllocate(arguments.initialMountPointCount * sizeof(EsMountPoint), false, K_FIXED);
-		EsDefer(EsHeapFree(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), K_FIXED));
-		SYSCALL_READ(mountPoints, (uintptr_t) arguments.initialMountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint));
+	EsDefer(EsHeapFree(handles, sizeof(Handle) * arguments.handleCount, K_PAGED));
 
-		for (uintptr_t i = 0; i < arguments.initialMountPointCount; i++) {
-			// Open handles to the mount points for the new process.
-			// TODO Handling errors when opening handles.
-			KObject object(currentProcess, mountPoints[i].base, KERNEL_OBJECT_NODE);
-			CHECK_OBJECT(object);
-			if (!mountPoints[i].write) object.flags &= ~_ES_NODE_DIRECTORY_WRITE;
-			OpenHandleToObject(object.object, object.type, object.flags);
-			mountPoints[i].base = process->handleTable.OpenHandle(object.object, object.flags, object.type);
+	EsError error = ES_SUCCESS;
+
+	for (uintptr_t i = 0; i < arguments.handleCount; i++) {
+		if (RESOLVE_HANDLE_NORMAL != currentProcess->handleTable.ResolveHandle(&handles[i], inHandles[i], HANDLE_SHARE_TYPE_MASK)) {
+			handles[i].object = nullptr;
+			error = ES_FATAL_ERROR_INVALID_HANDLE;
 		}
-
-		process->creationArguments[CREATION_ARGUMENT_INITIAL_MOUNT_POINTS] 
-			= MakeConstantBuffer(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), process);
 	}
 
-	if (!process->StartWithNode((KNode *) executableObject.object)) {
-		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
-		SYSCALL_RETURN(ES_ERROR_UNKNOWN, false);
+	// Create the process.
+
+	if (error == ES_SUCCESS) {
+		Process *process = scheduler.SpawnProcess();
+
+		if (!process) {
+			error = ES_ERROR_INSUFFICIENT_RESOURCES;
+		} else {
+			process->creationFlags = arguments.flags;
+			process->data = arguments.data;
+			process->permissions = arguments.permissions;
+
+			// Duplicate handles.
+
+			for (uintptr_t i = 0; i < arguments.handleCount; i++) {
+				EsError error2 = HandleShare(handles[i], process, inHandleModes[i], inHandles[i]);
+
+				if (ES_CHECK_ERROR(error2)) {
+					error = error2;
+					break;
+				}
+			}
+
+			// Start the process.
+
+			if (error != ES_SUCCESS || !process->StartWithNode(executableObject)) {
+				// TODO Confirm that this frees the handle table.
+				error = ES_ERROR_UNKNOWN; // TODO.
+				CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
+			} else {
+				// Write the process information out.
+
+				EsProcessInformation processInformation;
+				EsMemoryZero(&processInformation, sizeof(EsProcessInformation));
+				processInformation.pid = process->id;
+				processInformation.mainThread.tid = process->executableMainThread->id;
+				processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
+				processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
+				SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
+			}
+		}
 	}
 
-	processInformation.pid = process->id;
-	processInformation.mainThread.tid = process->executableMainThread->id;
+	// Close handles.
 
-	processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
-	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
+	for (uintptr_t i = 0; i < arguments.handleCount; i++) {
+		if (handles[i].object) {
+			CloseHandleToObject(handles[i].object, handles[i].type, handles[i].flags);
+		}
+	}
 
-	SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
-	SYSCALL_RETURN(ES_SUCCESS, false);
-#endif
-
-	SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+	SYSCALL_RETURN(error, error >= 0);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_FORCE_UPDATE) {
@@ -716,24 +732,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_SHARE) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS 
-			| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE, share);
+	SYSCALL_HANDLE_2(argument0, HANDLE_SHARE_TYPE_MASK, share);
 	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, Process);
-	uint32_t sharedFlags = share.flags;
-
-	if (share.type == KERNEL_OBJECT_SHMEM) {
-		sharedFlags = argument2; // TODO Sort out flags.
-	} else if (share.type == KERNEL_OBJECT_NODE) {
-		sharedFlags = (argument2 & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags;
-	} else if (share.type == KERNEL_OBJECT_PIPE) {
-		// TODO Sort out flags.
-	}
-
-	if (!OpenHandleToObject(share.object, share.type, sharedFlags)) {
-		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
-	} else {
-		SYSCALL_RETURN(process->handleTable.OpenHandle(share.object, sharedFlags, share.type), false);
-	}
+	SYSCALL_RETURN(HandleShare(share, process, argument2), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {

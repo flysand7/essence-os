@@ -128,7 +128,7 @@ struct Process {
 	char cExecutableName[ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH + 1];
 	EsProcessCreateData data;
 	uint64_t permissions;
-	uint64_t creationFlags; 
+	uint32_t creationFlags; 
 	ProcessType type;
 
 	// Object management:
@@ -144,7 +144,7 @@ struct Process {
 	// Termination:
 	bool allThreadsTerminated;
 	bool terminating;
-	int exitStatus;
+	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
 
 	// Executable state:
@@ -156,6 +156,7 @@ struct Process {
 	// Statistics:
 	uintptr_t cpuTimeSlices, idleTimeSlices;
 
+	// POSIX:
 #ifdef ENABLE_POSIX_SUBSYSTEM
 	bool posixForking;
 	int pgid;

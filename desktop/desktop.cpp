@@ -1233,6 +1233,8 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		arguments.permissions = ES_PERMISSION_WINDOW_MANAGER;
 
 		Array<EsMountPoint> initialMountPoints = {};
+		Array<EsHandle> handleDuplicateList = {};
+		Array<uint32_t> handleModeDuplicateList = {};
 		_EsNodeInformation settingsNode = {};
 
 		if (application->permissions & APPLICATION_PERMISSION_MANAGE_PROCESSES) {
@@ -1246,20 +1248,26 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			arguments.permissions |= ES_PERMISSION_POSIX_SUBSYSTEM;
 
 			MountPoint root = *NodeFindMountPoint(EsLiteral("0:"));
-			root.write = true;
 			root.prefixBytes = EsStringFormat(root.prefix, sizeof(root.prefix), "|POSIX:");
 			initialMountPoints.Add(root);
+
+			handleDuplicateList.Add(root.base);
+			handleModeDuplicateList.Add(0);
 		}
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				initialMountPoints.Add(api.mountPoints[i]);
-				initialMountPoints[i].write = true;
+				handleDuplicateList.Add(api.mountPoints[i].base);
+				handleModeDuplicateList.Add(0);
 			}
 
 			arguments.permissions |= ES_PERMISSION_GET_VOLUME_INFORMATION;
 		} else {
-			initialMountPoints.Add(*NodeFindMountPoint(EsLiteral("|Fonts:")));
+			MountPoint fonts = *NodeFindMountPoint(EsLiteral("|Fonts:"));
+			initialMountPoints.Add(fonts);
+			handleDuplicateList.Add(fonts.base);
+			handleModeDuplicateList.Add(2 /* prevent write */);
 		}
 
 		{
@@ -1270,25 +1278,34 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 				EsMountPoint settings = {};
 				settings.prefixBytes = EsStringFormat(settings.prefix, sizeof(settings.prefix), "|Settings:");
 				settings.base = settingsNode.handle;
-				settings.write = true;
 				initialMountPoints.Add(settings);
+
+				handleDuplicateList.Add(settings.base);
+				handleModeDuplicateList.Add(0);
 			} else {
 				settingsNode.handle = ES_INVALID_HANDLE;
 			}
 		}
 
-#if 0
-		arguments.initialMountPoints = initialMountPoints.array;
-		arguments.initialMountPointCount = initialMountPoints.Length();
-#endif
+		arguments.data.initialMountPoints = EsConstantBufferCreate(initialMountPoints.array, initialMountPoints.Length() * sizeof(EsMountPoint), ES_CURRENT_PROCESS);
+		handleDuplicateList.Add(arguments.data.initialMountPoints);
+		handleModeDuplicateList.Add(0);
 
-		// TODO Update this.
+		arguments.handles = handleDuplicateList.array;
+		arguments.handleModes = handleModeDuplicateList.array;
+		arguments.handleCount = handleDuplicateList.Length();
+		EsAssert(handleDuplicateList.Length() == handleModeDuplicateList.Length());
 
 		error = EsProcessCreate(&arguments, &information); 
 		EsHandleClose(arguments.executable);
 
 		initialMountPoints.Free();
-		if (settingsNode.handle) EsHandleClose(settingsNode.handle);
+		handleDuplicateList.Free();
+		handleModeDuplicateList.Free();
+
+		if (settingsNode.handle) {
+			EsHandleClose(settingsNode.handle);
+		}
 
 		if (!ES_CHECK_ERROR(error)) {
 			process = information.handle;
