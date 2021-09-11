@@ -79,34 +79,14 @@ struct HandleTable {
 	bool CloseHandle(EsHandle handle);
 	void ModifyFlags(EsHandle handle, uint32_t newFlags);
 
-	// Resolve the handle if it is valid and return the type in type.
+	// Resolve the handle if it is valid.
 	// The initial value of type is used as a mask of expected object types for the handle.
-	void ResolveHandle(struct KObject *object, EsHandle handle); 
+#define RESOLVE_HANDLE_FAILED (0)
+#define RESOLVE_HANDLE_NO_CLOSE (1)
+#define RESOLVE_HANDLE_NORMAL (2)
+	uint8_t ResolveHandle(Handle *outHandle, EsHandle inHandle, KernelObjectType typeMask); 
 
 	void Destroy(); 
-};
-
-struct KObject {
-	void Initialise(HandleTable *handleTable, EsHandle _handle, KernelObjectType _type);
-
-	KObject() { EsMemoryZero(this, sizeof(*this)); }
-	KObject(Process *process, EsHandle _handle, KernelObjectType _type);
-	KObject(HandleTable *handleTable, EsHandle _handle, KernelObjectType _type);
-
-	~KObject() {
-		if (!checked && valid) {
-			KernelPanic("KObject - Object not checked!\n");
-		}
-
-		if (parentObject && close) {
-			CloseHandleToObject(parentObject, parentType, parentFlags);
-		}
-	}
-
-	void *object, *parentObject;
-	uint32_t flags, parentFlags;
-	KernelObjectType type, parentType;
-	bool valid, checked, close, softFailure;
 };
 
 void InitialiseObjectManager();
@@ -114,27 +94,6 @@ void InitialiseObjectManager();
 #endif
 
 #ifdef IMPLEMENTATION
-
-KObject::KObject(Process *process, EsHandle _handle, KernelObjectType _type) {
-	EsMemoryZero(this, sizeof(*this));
-	Initialise(&process->handleTable, _handle, _type);
-}
-
-KObject::KObject(HandleTable *handleTable, EsHandle _handle, KernelObjectType _type) {
-	EsMemoryZero(this, sizeof(*this));
-	Initialise(handleTable, _handle, _type);
-}
-
-void KObject::Initialise(HandleTable *handleTable, EsHandle _handle, KernelObjectType _type) {
-	type = _type;
-
-	handleTable->ResolveHandle(this, _handle);
-	parentObject = object, parentType = type, parentFlags = flags;
-
-	if (!valid) {
-		KernelLog(LOG_ERROR, "Object Manager", "invalid handle", "KObject::Initialise - Invalid handle %d for type mask %x.\n", _handle, _type);
-	}
-}
 
 // A lock used to change the handle count on several objects.
 // TODO Make changing handle count lockless wherever possible?
@@ -462,43 +421,48 @@ void HandleTable::ModifyFlags(EsHandle handle, uint32_t newFlags) {
 	_handle->flags = newFlags;
 }
 
-void HandleTable::ResolveHandle(KObject *object, EsHandle handle) {
-	KernelObjectType requestedType = object->type;
-	object->type = COULD_NOT_RESOLVE_HANDLE;
-
+uint8_t HandleTable::ResolveHandle(Handle *outHandle, EsHandle inHandle, KernelObjectType typeMask) {
 	// Special handles.
-	if (handle == ES_CURRENT_THREAD && (requestedType & KERNEL_OBJECT_THREAD)) {
-		object->type = KERNEL_OBJECT_THREAD, object->valid = true, object->object = GetCurrentThread();
-		return;
-	} else if (handle == ES_CURRENT_PROCESS && (requestedType & KERNEL_OBJECT_PROCESS)) {
-		object->type = KERNEL_OBJECT_PROCESS, object->valid = true, object->object = GetCurrentThread()->process;
-		return;
-	} else if (handle == ES_INVALID_HANDLE && (requestedType & KERNEL_OBJECT_NONE)) {
-		object->type = KERNEL_OBJECT_NONE, object->valid = true;
-		return;
+	if (inHandle == ES_CURRENT_THREAD && (typeMask & KERNEL_OBJECT_THREAD)) {
+		outHandle->type = KERNEL_OBJECT_THREAD;
+		outHandle->object = GetCurrentThread();
+		outHandle->flags = 0;
+		return RESOLVE_HANDLE_NO_CLOSE;
+	} else if (inHandle == ES_CURRENT_PROCESS && (typeMask & KERNEL_OBJECT_PROCESS)) {
+		outHandle->type = KERNEL_OBJECT_PROCESS;
+		outHandle->object = GetCurrentThread()->process;
+		outHandle->flags = 0;
+		return RESOLVE_HANDLE_NO_CLOSE;
+	} else if (inHandle == ES_INVALID_HANDLE && (typeMask & KERNEL_OBJECT_NONE)) {
+		outHandle->type = KERNEL_OBJECT_NONE;
+		outHandle->object = nullptr;
+		outHandle->flags = 0;
+		return RESOLVE_HANDLE_NO_CLOSE;
 	}
 
 	// Check that the handle is within the correct bounds.
-	if ((!handle) || handle >= HANDLE_TABLE_L1_ENTRIES * HANDLE_TABLE_L2_ENTRIES) {
-		return;
+	if ((!inHandle) || inHandle >= HANDLE_TABLE_L1_ENTRIES * HANDLE_TABLE_L2_ENTRIES) {
+		return RESOLVE_HANDLE_FAILED;
 	}
 
 	KMutexAcquire(&lock);
 	EsDefer(KMutexRelease(&lock));
 
-	HandleTableL2 *l2 = l1r.t[handle / HANDLE_TABLE_L2_ENTRIES];
-	if (!l2) return;
+	HandleTableL2 *l2 = l1r.t[inHandle / HANDLE_TABLE_L2_ENTRIES];
+	if (!l2) return RESOLVE_HANDLE_FAILED;
 
-	Handle *_handle = l2->t + (handle % HANDLE_TABLE_L2_ENTRIES);
+	Handle *_handle = l2->t + (inHandle % HANDLE_TABLE_L2_ENTRIES);
 
-	if ((_handle->type & requestedType) && (_handle->object)) {
+	if ((_handle->type & typeMask) && (_handle->object)) {
 		// Open a handle to the object so that it can't be destroyed while the system call is still using it.
 		// The handle is closed in the KObject's destructor.
 		if (OpenHandleToObject(_handle->object, _handle->type, _handle->flags)) {
-			object->type = _handle->type, object->object = _handle->object, object->flags = _handle->flags;
-			object->valid = object->close = true;
+			*outHandle = *_handle;
+			return RESOLVE_HANDLE_NORMAL;
 		}
 	}
+
+	return RESOLVE_HANDLE_FAILED;
 }
 
 // TODO Switch the order of flags and type, so that the default value of flags can be 0.

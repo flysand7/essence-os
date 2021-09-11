@@ -115,7 +115,6 @@ bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
 	return true;
 }
 
-#define CHECK_OBJECT(x) if (!x.valid) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, !x.softFailure); else x.checked = true
 #define SYSCALL_BUFFER_LIMIT (64 * 1024 * 1024) // To prevent overflow and DOS attacks.
 #define SYSCALL_BUFFER(address, length, index, write) \
 	MMRegion *_region ## index = MMFindAndPinRegion(currentVMM, (address), (length)); \
@@ -123,18 +122,18 @@ bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
 	EsDefer(if (_region ## index) MMUnpinRegion(currentVMM, _region ## index)); \
 	if (write && (_region ## index->flags & MM_REGION_READ_ONLY) && (~_region ## index->flags & MM_REGION_COPY_ON_WRITE)) \
 		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-#define SYSCALL_HANDLE(handle, type, __object, variableType) \
-	KObject ES_C_PREPROCESSOR_JOIN(_object, __LINE__)(currentProcess, handle, type); \
-	CHECK_OBJECT(ES_C_PREPROCESSOR_JOIN(_object, __LINE__)); \
-	variableType *const __object = (variableType *) (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).object
 #define SYSCALL_HANDLE_2(handle, _type, out) \
-	KObject ES_C_PREPROCESSOR_JOIN(_object, __LINE__)(currentProcess, handle, _type); \
-	CHECK_OBJECT(ES_C_PREPROCESSOR_JOIN(_object, __LINE__)); \
-	const Handle out = { \
-		.object = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).object, \
-		.flags = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).flags, \
-		.type = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).type, \
-	}
+	Handle _ ## out; \
+	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, handle, _type); \
+	if (status_ ## out == RESOLVE_HANDLE_FAILED) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true); \
+	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
+	const Handle out = _ ## out
+#define SYSCALL_HANDLE(handle, _type, out, variableType) \
+	Handle _ ## out; \
+	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, handle, _type); \
+	if (status_ ## out == RESOLVE_HANDLE_FAILED) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true); \
+	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
+	variableType *const out = (variableType *) _ ## out.object
 #define SYSCALL_READ(destination, source, length) \
 	if (!MMArchIsBufferInUserRange(source, length) || !MMArchSafeCopy((uintptr_t) (destination), source, length)) \
 		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
@@ -866,15 +865,22 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 	}
 
 	EsHandle handles[ES_MAX_WAIT_COUNT];
+	KEvent *events[ES_MAX_WAIT_COUNT];
+	Handle _objects[ES_MAX_WAIT_COUNT];
+	uint8_t status[ES_MAX_WAIT_COUNT];
+	bool handleErrors = false;
+	uintptr_t waitReturnValue;
+
 	SYSCALL_READ(handles, argument0, argument1 * sizeof(EsHandle));
 
-	KEvent *events[ES_MAX_WAIT_COUNT];
-	KObject _objects[ES_MAX_WAIT_COUNT] = {};
-
 	for (uintptr_t i = 0; i < argument1; i++) {
-		_objects[i].Initialise(&currentProcess->handleTable, handles[i], 
-				KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_EVENT_SINK);
-		CHECK_OBJECT(_objects[i]);
+		KernelObjectType typeMask = KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_EVENT_SINK;
+		status[i] = currentProcess->handleTable.ResolveHandle(&_objects[i], handles[i], typeMask);
+
+		if (status[i] == RESOLVE_HANDLE_FAILED) {
+			handleErrors = true;
+			continue;
+		}
 
 		void *object = _objects[i].object;
 
@@ -901,28 +907,39 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 		}
 	}
 
-	size_t waitObjectCount = argument1;
-	KTimer timer = {};
+	if (!handleErrors) {
+		size_t waitObjectCount = argument1;
+		KTimer timer = {};
 
-	if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
-		KTimerSet(&timer, argument2);
-		events[waitObjectCount++] = &timer.event;
+		if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
+			KTimerSet(&timer, argument2);
+			events[waitObjectCount++] = &timer.event;
+		}
+
+		currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
+		waitReturnValue = scheduler.WaitEvents(events, waitObjectCount);
+		currentThread->terminatableState = THREAD_IN_SYSCALL;
+
+		if (waitReturnValue == argument1) {
+			waitReturnValue = ES_ERROR_TIMEOUT_REACHED;
+		}
+
+		if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
+			KTimerRemove(&timer);
+		}
 	}
 
-	uintptr_t waitReturnValue;
-	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
-	waitReturnValue = scheduler.WaitEvents(events, waitObjectCount);
-	currentThread->terminatableState = THREAD_IN_SYSCALL;
-
-	if (waitReturnValue == argument1) {
-		waitReturnValue = ES_ERROR_TIMEOUT_REACHED;
+	for (uintptr_t i = 0; i < argument1; i++) {
+		if (status[i] == RESOLVE_HANDLE_NORMAL) {
+			CloseHandleToObject(_objects[i].object, _objects[i].type, _objects[i].flags);
+		}
 	}
 
-	if (argument2 != (uintptr_t) ES_WAIT_NO_TIMEOUT) {
-		KTimerRemove(&timer);
+	if (handleErrors) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
+	} else {
+		SYSCALL_RETURN(waitReturnValue, false);
 	}
-
-	SYSCALL_RETURN(waitReturnValue, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
