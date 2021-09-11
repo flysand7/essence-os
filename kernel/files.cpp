@@ -1546,16 +1546,16 @@ bool FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 		return true;
 	}
 
-	if (device->readOnly && request.operation == K_ACCESS_WRITE) {
+	if (device->information.readOnly && request.operation == K_ACCESS_WRITE) {
 		KernelPanic("FSBlockDeviceAccess - Drive %x is read-only.\n", device);
 	}
 
-	if (request.offset / device->sectorSize > device->sectorCount 
-			|| (request.offset + request.count) / device->sectorSize > device->sectorCount) {
+	if (request.offset / device->information.sectorSize > device->information.sectorCount 
+			|| (request.offset + request.count) / device->information.sectorSize > device->information.sectorCount) {
 		KernelPanic("FSBlockDeviceAccess - Access out of bounds on drive %x.\n", device);
 	}
 
-	if ((request.offset % device->sectorSize) || (request.count % device->sectorSize)) {
+	if ((request.offset % device->information.sectorSize) || (request.count % device->information.sectorSize)) {
 		KernelPanic("FSBlockDeviceAccess - Misaligned access.\n");
 	}
 
@@ -1581,7 +1581,7 @@ bool FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 	r.offset = request.offset;
 
 	while (request.count) {
-		r.count = device->maxAccessSectorCount * device->sectorSize;
+		r.count = device->maxAccessSectorCount * device->information.sectorSize;
 		if (r.count > request.count) r.count = request.count;
 		buffer.offsetBytes = 0;
 		buffer.totalByteCount = r.count;
@@ -1669,25 +1669,28 @@ struct PartitionDevice : KBlockDevice {
 void FSPartitionDeviceAccess(KBlockDeviceAccessRequest request) {
 	PartitionDevice *_device = (PartitionDevice *) request.device;
 	request.device = (KBlockDevice *) _device->parent;
-	request.offset += _device->sectorOffset * _device->sectorSize;
+	request.offset += _device->sectorOffset * _device->information.sectorSize;
 	FSBlockDeviceAccess(request);
 }
 
-void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *cName) {
-	PartitionDevice *child = (PartitionDevice *) KDeviceCreate(cName, parent, sizeof(PartitionDevice));
+void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *model, size_t modelBytes) {
+	PartitionDevice *child = (PartitionDevice *) KDeviceCreate("Partition", parent, sizeof(PartitionDevice));
 	if (!child) return;
 
+	if (modelBytes > sizeof(child->information.model)) modelBytes = sizeof(child->information.model);
+	EsMemoryCopy(child->information.model, model, modelBytes);
+
 	child->parent = parent;
-	child->sectorSize = parent->sectorSize;
+	child->information.sectorSize = parent->information.sectorSize;
 	child->maxAccessSectorCount = parent->maxAccessSectorCount;
 	child->sectorOffset = offset;
-	child->sectorCount = sectorCount;
-	child->noMBR = flags & FS_PARTITION_DEVICE_NO_MBR ? true : false;
-	child->readOnly = parent->readOnly;
+	child->information.sectorCount = sectorCount;
+	child->information.noMBR = flags & FS_PARTITION_DEVICE_NO_MBR ? true : false;
+	child->information.readOnly = parent->information.readOnly;
 	child->access = FSPartitionDeviceAccess;
-	child->cModel = cName;
-	child->nestLevel = parent->nestLevel + 1;
-	child->driveType = parent->driveType;
+	child->information.modelBytes = modelBytes;
+	child->information.nestLevel = parent->information.nestLevel + 1;
+	child->information.driveType = parent->information.driveType;
 
 	FSRegisterBlockDevice(child);
 }
@@ -1697,7 +1700,7 @@ void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOf
 //////////////////////////////////////////
 
 bool FSSignatureCheck(KInstalledDriver *driver, KDevice *device) {
-	uint8_t *block = ((KBlockDevice *) device)->information;
+	uint8_t *block = ((KBlockDevice *) device)->signatureBlock;
 
 	EsINIState s = {};
 	s.buffer = driver->config;
@@ -1723,7 +1726,7 @@ bool FSSignatureCheck(KInstalledDriver *driver, KDevice *device) {
 }
 
 bool FSCheckMBR(KBlockDevice *device) {
-	if (device->information[510] != 0x55 || device->information[511] != 0xAA) {
+	if (device->signatureBlock[510] != 0x55 || device->signatureBlock[511] != 0xAA) {
 		return false;
 	}
 
@@ -1733,23 +1736,23 @@ bool FSCheckMBR(KBlockDevice *device) {
 	bool present[4] = {};
 
 	for (uintptr_t i = 0; i < 4; i++) {
-		if (!device->information[4 + 0x1BE + i * 0x10]) {
+		if (!device->signatureBlock[4 + 0x1BE + i * 0x10]) {
 			continue;
 		}
 
 		offsets[i] =  
-			  ((uint32_t) device->information[0x1BE + i * 0x10 + 8 ] << 0 )
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 9 ] << 8 )
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 10] << 16)
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 11] << 24);
+			  ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 8 ] << 0 )
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 9 ] << 8 )
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 10] << 16)
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 11] << 24);
 		counts[i] =
-			  ((uint32_t) device->information[0x1BE + i * 0x10 + 12] << 0 )
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 13] << 8 )
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 14] << 16)
-			+ ((uint32_t) device->information[0x1BE + i * 0x10 + 15] << 24);
+			  ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 12] << 0 )
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 13] << 8 )
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 14] << 16)
+			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 15] << 24);
 		present[i] = true;
 
-		if (offsets[i] > device->sectorCount || counts[i] > device->sectorCount - offsets[i] || counts[i] < 32) {
+		if (offsets[i] > device->information.sectorCount || counts[i] > device->information.sectorCount - offsets[i] || counts[i] < 32) {
 			KernelLog(LOG_INFO, "FS", "invalid MBR", "Partition %d has offset %d and count %d, which is invalid. Ignoring the rest of the MBR...\n",
 					i, offsets[i], counts[i]);
 			return false;
@@ -1760,7 +1763,7 @@ bool FSCheckMBR(KBlockDevice *device) {
 		if (present[i]) {
 			KernelLog(LOG_INFO, "FS", "MBR partition", "Found MBR partition %d with offset %d and count %d.\n", 
 					i, offsets[i], counts[i]);
-			FSPartitionDeviceCreate(device, offsets[i], counts[i], FS_PARTITION_DEVICE_NO_MBR, "MBR partition");
+			FSPartitionDeviceCreate(device, offsets[i], counts[i], FS_PARTITION_DEVICE_NO_MBR, EsLiteral("MBR partition"));
 		}
 	}
 
@@ -1790,31 +1793,31 @@ bool FSFileSystemInitialise(KFileSystem *fileSystem) {
 }
 
 void FSDetectFileSystem(KBlockDevice *device) {
-	KernelLog(LOG_INFO, "FS", "detect file system", "Detecting file system on block device '%z'.\n", device->cModel);
+	KernelLog(LOG_INFO, "FS", "detect file system", "Detecting file system on block device '%s'.\n", device->information.modelBytes, device->information.model);
 
-	if (device->nestLevel > 4) {
+	if (device->information.nestLevel > 4) {
 		KernelLog(LOG_ERROR, "FS", "file system nest limit", "Reached file system nest limit (4), ignoring device.\n");
 	}
 
-	uint64_t sectorsToRead = (K_SIGNATURE_BLOCK_SIZE + device->sectorSize - 1) / device->sectorSize;
+	uint64_t sectorsToRead = (K_SIGNATURE_BLOCK_SIZE + device->information.sectorSize - 1) / device->information.sectorSize;
 
-	if (sectorsToRead > device->sectorCount) {
+	if (sectorsToRead > device->information.sectorCount) {
 		KernelLog(LOG_ERROR, "FS", "drive too small", "The drive must be at least %D (K_SIGNATURE_BLOCK_SIZE).\n", K_SIGNATURE_BLOCK_SIZE);
 		return;
 	}
 
-	uint8_t *information = (uint8_t *) EsHeapAllocate(sectorsToRead * device->sectorSize, false, K_FIXED);
+	uint8_t *signatureBlock = (uint8_t *) EsHeapAllocate(sectorsToRead * device->information.sectorSize, false, K_FIXED);
 
-	if (!information) {
+	if (!signatureBlock) {
 		return;
 	}
 
-	device->information = information;
+	device->signatureBlock = signatureBlock;
 
-	KDMABuffer dmaBuffer = { (uintptr_t) information };
+	KDMABuffer dmaBuffer = { (uintptr_t) signatureBlock };
 	KBlockDeviceAccessRequest request = {};
 	request.device = device;
-	request.count = sectorsToRead * device->sectorSize;
+	request.count = sectorsToRead * device->information.sectorSize;
 	request.operation = K_ACCESS_READ;
 	request.buffer = &dmaBuffer;
 
@@ -1822,14 +1825,14 @@ void FSDetectFileSystem(KBlockDevice *device) {
 		// We could not access the block device.
 		KernelLog(LOG_ERROR, "FS", "detect fileSystem read failure", "The signature block could not be read on block device %x.\n", device);
 	} else {
-		if (!device->noMBR && FSCheckMBR(device)) {
+		if (!device->information.noMBR && FSCheckMBR(device)) {
 			// Found an MBR.
 		} else {
 			KDeviceAttach(device, "Files", FSSignatureCheck);
 		}
 	}
 
-	EsHeapFree(information, sectorsToRead * device->sectorSize, K_FIXED);
+	EsHeapFree(signatureBlock, sectorsToRead * device->information.sectorSize, K_FIXED);
 	KDeviceCloseHandle(device);
 }
 

@@ -172,8 +172,8 @@ static bool Mount(Volume *volume) {
 		ScanInternal(EsLiteral("ESSENCE.DAT;1"), volume->rootDirectory, &record);
 		record.extentSize.x = (record.extentSize.x + SECTOR_SIZE - 1) / SECTOR_SIZE;
 
-		if (!record.length || record.extentStart.x >= volume->block->sectorCount 
-				|| record.extentSize.x >= volume->block->sectorCount - record.extentStart.x) {
+		if (!record.length || record.extentStart.x >= volume->block->information.sectorCount 
+				|| record.extentSize.x >= volume->block->information.sectorCount - record.extentStart.x) {
 			goto notBoot;
 		}
 
@@ -205,7 +205,7 @@ static bool Mount(Volume *volume) {
 
 		KernelLog(LOG_INFO, "ISO9660", "found boot disc", "Found boot disc. Image at %d/%d.\n",
 				record.extentStart.x, record.extentSize.x);
-		FSPartitionDeviceCreate(volume->block, record.extentStart.x, record.extentSize.x, ES_FLAGS_DEFAULT, "CD-ROM boot partition");
+		FSPartitionDeviceCreate(volume->block, record.extentStart.x, record.extentSize.x, ES_FLAGS_DEFAULT, EsLiteral("CD-ROM boot partition"));
 	}
 
 	notBoot:;
@@ -495,9 +495,9 @@ static void DeviceAttach(KDevice *parent) {
 		return;
 	}
 
-	if (volume->block->sectorSize != SECTOR_SIZE) {
+	if (volume->block->information.sectorSize != SECTOR_SIZE) {
 		KernelLog(LOG_ERROR, "ISO9660", "incorrect sector size", "DeviceAttach - Expected 2KB sectors, but drive's sectors are %D.\n", 
-				volume->block->sectorSize);
+				volume->block->information.sectorSize);
 		KDeviceDestroy(volume);
 		return;
 	}

@@ -404,7 +404,7 @@ static bool Mount(Volume *volume) {
 					sectorsPerFAT * SECTOR_SIZE, K_ACCESS_READ, volume->fat, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read FAT.\n");
 
 		volume->spaceUsed = CountUsedClusters(volume) * superBlock->sectorsPerCluster * superBlock->bytesPerSector;
-		volume->spaceTotal = volume->block->sectorSize * volume->block->sectorCount;
+		volume->spaceTotal = volume->block->information.sectorSize * volume->block->information.sectorCount;
 
 		volume->rootDirectory->driverNode = EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
 		if (!volume->rootDirectory->driverNode) MOUNT_FAILURE("Could not allocate root node.\n");
@@ -461,7 +461,7 @@ static void DeviceAttach(KDevice *parent) {
 		return;
 	}
 
-	if (volume->block->sectorSize != SECTOR_SIZE) {
+	if (volume->block->information.sectorSize != SECTOR_SIZE) {
 		KernelLog(LOG_ERROR, "FAT", "mount failure", "DeviceAttach - Unsupported sector size.\n");
 		KDeviceDestroy(volume);
 		return;

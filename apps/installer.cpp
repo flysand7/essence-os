@@ -1,11 +1,23 @@
 #define INSTALLER
+
 #define ES_CRT_WITHOUT_PREFIX
 #include <essence.h>
-#include <ports/lzma/LzmaDec.c>
+
 #include <shared/hash.cpp>
+#include <ports/lzma/LzmaDec.c>
+
+#include <shared/array.cpp>
+#define IMPLEMENTATION
+#include <shared/array.cpp>
+#undef IMPLEMENTATION
+
 #define Log(...)
 #define exit(x) EsThreadTerminate(ES_CURRENT_THREAD)
 #include <shared/esfs2.h>
+
+Array<EsMessageDevice> connectedDrives;
+
+/////////////////////////////////////////////
 
 #define BUFFER_SIZE (1048576)
 #define NAME_MAX (4096)
@@ -115,17 +127,55 @@ EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, siz
 }
 
 void ReadBlock(uint64_t, uint64_t, void *) {
+	// TODO.
 }
 
 void WriteBlock(uint64_t, uint64_t, void *) {
+	// TODO.
 }
 
 void WriteBytes(uint64_t, uint64_t, void *) {
+	// TODO.
+}
+
+void ConnectedDriveAdd(EsMessageDevice device) {
+	if (device.type != ES_DEVICE_BLOCK) {
+		return;
+	}
+
+	EsBlockDeviceInformation information;
+	EsDeviceControl(device.handle, ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION, 0, &information);
+
+	if (information.nestLevel) {
+		return;
+	}
+
+	connectedDrives.Add(device);
+}
+
+void ConnectedDriveRemove(EsMessageDevice device) {
+	for (uintptr_t i = 0; i < connectedDrives.Length(); i++) {
+		if (connectedDrives[i].id == device.id) {
+			connectedDrives.Delete(i);
+			return;
+		}
+	}
 }
 
 void _start() {
 	_init();
-	EsPerformanceTimerPush();
-	EsAssert(ES_SUCCESS == Extract(EsLiteral("0:/installer_archive.dat"), EsLiteral("0:/extracted")));
-	EsPrint("time: %Fs\n", EsPerformanceTimerPop());
+
+	EsDeviceEnumerate([] (EsMessageDevice device, EsGeneric) {
+		ConnectedDriveAdd(device);
+	}, 0);
+
+	while (true) {
+		EsMessage *message = EsMessageReceive();
+
+		if (message->type == ES_MSG_DEVICE_CONNECTED) {
+			ConnectedDriveAdd(message->device);
+		} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
+			ConnectedDriveRemove(message->device);
+		}
+	}
 }

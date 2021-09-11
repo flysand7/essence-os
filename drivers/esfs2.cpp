@@ -1833,7 +1833,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 		return false;
 	}
 
-	if (volume->block->readOnly) {
+	if (volume->block->information.readOnly) {
 		volume->readOnly = true;
 	}
 
@@ -1846,8 +1846,8 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 
 	ESFS_CHECK_FATAL(0 == EsMemoryCompare(volume->superblock.signature, ESFS_SIGNATURE_STRING, 16), "Invalid superblock signature.");
 	ESFS_CHECK_FATAL(volume->superblock.requiredReadVersion <= ESFS_DRIVER_VERSION, "Incompatible file system version.");
-	ESFS_CHECK_FATAL(superblock->blockSize >= 1024 && superblock->blockSize <= 16384 && (superblock->blockSize % volume->block->sectorSize) == 0, "Invalid block size.");
-	ESFS_CHECK_FATAL(superblock->blockCount * superblock->blockSize / volume->block->sectorSize <= volume->block->sectorCount, "More blocks than drive.");
+	ESFS_CHECK_FATAL(superblock->blockSize >= 1024 && superblock->blockSize <= 16384 && (superblock->blockSize % volume->block->information.sectorSize) == 0, "Invalid block size.");
+	ESFS_CHECK_FATAL(superblock->blockCount * superblock->blockSize / volume->block->information.sectorSize <= volume->block->information.sectorCount, "More blocks than drive.");
 	ESFS_CHECK_FATAL(superblock->blocksUsed <= superblock->blockCount, "More blocks used than exist.");
 	ESFS_CHECK_FATAL(superblock->blocksPerGroup <= 65536 && superblock->blocksPerGroup < superblock->blockCount && superblock->blocksPerGroup >= 1024, "Invalid block group size.");
 	ESFS_CHECK_FATAL((superblock->groupCount - 1) * superblock->blocksPerGroup <= superblock->blockCount, "Invalid number of block groups.");

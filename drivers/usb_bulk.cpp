@@ -98,8 +98,8 @@ void DriveAccess(KBlockDeviceAccessRequest request) {
 	Device *device = drive->device;
 	request.dispatchGroup->Start();
 
-	uint32_t offsetSectors = request.offset / drive->sectorSize;
-	uint32_t countSectors = request.count / drive->sectorSize;
+	uint32_t offsetSectors = request.offset / drive->information.sectorSize;
+	uint32_t countSectors = request.count / drive->information.sectorSize;
 
 	CommandBlock command = {
 		.transferBytes = (uint32_t) request.count,
@@ -194,12 +194,12 @@ void Device::Initialise() {
 
 		drive->device = this;
 		drive->lun = i;
-		drive->sectorSize = sectorBytes;
-		drive->sectorCount = sectorCount;
+		drive->information.sectorSize = sectorBytes;
+		drive->information.sectorCount = sectorCount;
 		drive->maxAccessSectorCount = 262144 / sectorBytes; // TODO How to determine this? What does the USB layer support?
-		drive->readOnly = false; // TODO How to detect this?
+		drive->information.readOnly = false; // TODO How to detect this?
 		drive->access = DriveAccess;
-		drive->driveType = ES_DRIVE_TYPE_USB_MASS_STORAGE;
+		drive->information.driveType = ES_DRIVE_TYPE_USB_MASS_STORAGE;
 
 		FSRegisterBlockDevice(drive);
 	}

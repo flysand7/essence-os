@@ -140,16 +140,16 @@ static bool Mount(Volume *volume) {
 
 	// Load the superblock.
 
-	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(volume->block->sectorSize, false, K_FIXED);
+	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(volume->block->information.sectorSize, false, K_FIXED);
 
 	if (!sectorBuffer) {
 		MOUNT_FAILURE("Could not allocate buffer.\n");
 	}
 
-	EsDefer(EsHeapFree(sectorBuffer, volume->block->sectorSize, K_FIXED));
+	EsDefer(EsHeapFree(sectorBuffer, volume->block->information.sectorSize, K_FIXED));
 
 	{
-		if (!volume->Access(1024, volume->block->sectorSize, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
+		if (!volume->Access(1024, volume->block->information.sectorSize, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not read boot sector.\n");
 		}
 
@@ -169,7 +169,7 @@ static bool Mount(Volume *volume) {
 
 		volume->blockBytes = 1024 << volume->superBlock.blockSizeExponent;
 
-		if (volume->blockBytes < volume->block->sectorSize) {
+		if (volume->blockBytes < volume->block->information.sectorSize) {
 			MOUNT_FAILURE("Block size smaller than drive sector size.\n");
 		}
 	}
@@ -201,14 +201,14 @@ static bool Mount(Volume *volume) {
 
 		uint32_t blockGroup = (inode - 1) / volume->superBlock.inodesPerBlockGroup;
 		uint32_t indexInInodeTable = (inode - 1) % volume->superBlock.inodesPerBlockGroup;
-		uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->sectorSize;
-		uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->sectorSize;
+		uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->information.sectorSize;
+		uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->information.sectorSize;
 
 		BlockGroupDescriptor *blockGroupDescriptor = volume->blockGroupDescriptorTable + blockGroup;
 
 		if (!volume->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
-					+ sectorInInodeTable * volume->block->sectorSize, 
-				volume->block->sectorSize, 
+					+ sectorInInodeTable * volume->block->information.sectorSize, 
+				volume->block->information.sectorSize, 
 				K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not read the inode table.\n");
 		}
@@ -234,7 +234,7 @@ static bool Mount(Volume *volume) {
 }
 
 static uint32_t GetDataBlock(Volume *volume, Inode *node, uint64_t blockIndex, uint8_t *blockBuffer) {
-#define CHECK_BLOCK_INDEX() if (offset == 0 || offset / volume->block->sectorSize > volume->block->sectorCount) { \
+#define CHECK_BLOCK_INDEX() if (offset == 0 || offset / volume->block->information.sectorSize > volume->block->information.sectorCount) { \
 		KernelLog(LOG_ERROR, "Ext2", "invalid block index", "GetDataBlock - Block out of bounds.\n"); return 0; }
 #define GET_DATA_BLOCK_ACCESS_FAILURE() do { KernelLog(LOG_ERROR, "Ext2", "block access failure", "GetDataBlock - Could not read block.\n"); return 0; } while (0)
 
@@ -448,14 +448,14 @@ static EsError Load(KNode *_directory, KNode *node, KNodeMetadata *metadata, con
 
 	uint32_t blockGroup = (inode - 1) / volume->superBlock.inodesPerBlockGroup;
 	uint32_t indexInInodeTable = (inode - 1) % volume->superBlock.inodesPerBlockGroup;
-	uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->sectorSize;
-	uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->sectorSize;
+	uint32_t sectorInInodeTable = (indexInInodeTable * volume->superBlock.inodeStructureBytes) / volume->block->information.sectorSize;
+	uint32_t offsetInSector = (indexInInodeTable * volume->superBlock.inodeStructureBytes) % volume->block->information.sectorSize;
 
 	BlockGroupDescriptor *blockGroupDescriptor = volume->blockGroupDescriptorTable + blockGroup;
 
 	if (!volume->Access(blockGroupDescriptor->inodeTable * volume->blockBytes 
-				+ sectorInInodeTable * volume->block->sectorSize, 
-				volume->block->sectorSize, 
+				+ sectorInInodeTable * volume->block->information.sectorSize, 
+				volume->block->information.sectorSize, 
 				K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT)) {
 		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 	}
@@ -600,9 +600,9 @@ static void DeviceAttach(KDevice *parent) {
 		return;
 	}
 
-	if (volume->block->sectorSize & 0x1FF) {
+	if (volume->block->information.sectorSize & 0x1FF) {
 		KernelLog(LOG_ERROR, "Ext2", "incorrect sector size", "Expected sector size to be a multiple of 512, but drive's sectors are %D.\n", 
-				volume->block->sectorSize);
+				volume->block->information.sectorSize);
 		KDeviceDestroy(volume);
 		return;
 	}

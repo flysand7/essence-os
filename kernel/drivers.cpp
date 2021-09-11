@@ -135,6 +135,7 @@ void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type) {
 	}
 
 	device->flags |= K_DEVICE_VISIBLE_TO_USER;
+	device->type = type;
 
 	KMutexRelease(&deviceTreeMutex);
 

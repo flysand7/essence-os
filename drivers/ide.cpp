@@ -559,11 +559,11 @@ void ATAController::Initialise() {
 			}
 
 			device->index = i;
-			device->sectorSize = isATAPI[i] ? ATAPI_SECTOR_SIZE : ATA_SECTOR_SIZE;
-			device->sectorCount = sectorCount[i];
+			device->information.sectorSize = isATAPI[i] ? ATAPI_SECTOR_SIZE : ATA_SECTOR_SIZE;
+			device->information.sectorCount = sectorCount[i];
 			device->maxAccessSectorCount = isATAPI[i] ? 31 : 64;
-			device->readOnly = isATAPI[i];
-			device->driveType = isATAPI[i] ? ES_DRIVE_TYPE_CDROM : ES_DRIVE_TYPE_HDD;
+			device->information.readOnly = isATAPI[i];
+			device->information.driveType = isATAPI[i] ? ES_DRIVE_TYPE_CDROM : ES_DRIVE_TYPE_HDD;
 
 			device->access = [] (KBlockDeviceAccessRequest request) {
 				request.dispatchGroup->Start();

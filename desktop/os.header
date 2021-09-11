@@ -827,6 +827,7 @@ enum EsSyscallType {
 	ES_SYSCALL_FILE_CONTROL
 	ES_SYSCALL_DIRECTORY_ENUMERATE
 	ES_SYSCALL_VOLUME_GET_INFORMATION
+	ES_SYSCALL_DEVICE_CONTROL
 
 	// Networking.
 
@@ -1126,6 +1127,10 @@ enum EsClipboardFormat {
 	ES_CLIPBOARD_FORMAT_PATH_LIST
 }
 
+enum EsDeviceControlType {
+	ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION
+}
+
 function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
 
 struct EsBuffer {
@@ -1251,7 +1256,7 @@ struct EsMountPoint {
 };
 
 struct EsProcessCreateData {
-	EsHandle environment, initialMountPoints;
+	EsHandle environment, initialMountPoints, initialDevices;
 };
 
 struct EsProcessStartupInformation {
@@ -1860,6 +1865,17 @@ struct EsFontInformation {
 	uint16_t availableWeightsItalic;
 };
 
+struct EsBlockDeviceInformation {
+	size_t sectorSize;
+	EsFileOffset sectorCount;
+	bool noMBR;
+	bool readOnly;
+	uint8_t nestLevel;
+	uint8_t driveType;
+	uint8_t modelBytes;
+	char model[64];
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -1870,6 +1886,7 @@ function_pointer void EsTimerCallback(EsGeneric argument);
 function_pointer void EsMenuCallback(EsMenu *menu, EsGeneric context); 
 function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
 function_pointer void EsMountPointEnumerationCallback(const char *prefix, size_t prefixBytes, EsGeneric context);
+function_pointer void EsDeviceEnumerationCallback(EsMessageDevice device, EsGeneric context);
 function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
 function_pointer void EsUserTaskCallback(EsUserTask *task, EsGeneric data);
@@ -1947,6 +1964,9 @@ function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefix
 function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
 
+function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
+function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, int32_t di, void *dp);
+
 // Processes and threads.
 
 function EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information); 
@@ -1967,8 +1987,8 @@ function void *EsArenaAllocate(EsArena *arena, bool zero); // Not thread-safe.
 function void EsArenaFree(EsArena *arena, void *pointer); // Not thread-safe.
 function void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSize);
 
-function const void *EsBufferRead(struct EsBuffer *buffer, size_t readBytes);
-function bool EsBufferReadInto(struct EsBuffer *buffer, void *destination, size_t readBytes);
+function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes);
+function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes);
 function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
 function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue);
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);

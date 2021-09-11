@@ -113,7 +113,9 @@ struct Timer {
 struct {
 	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
 	EsMutex systemConfigurationMutex;
+
 	Array<MountPoint> mountPoints;
+	Array<EsMessageDevice> connectedDevices;
 	bool foundBootFileSystem;
 	EsProcessStartupInformation *startupInformation;
 	GlobalData *global;
@@ -254,9 +256,19 @@ bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, Es
 }
 
 void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context) {
+	EsMessageMutexCheck();
+	
 	for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 		MountPoint *mountPoint = &api.mountPoints[i];
 		callback(mountPoint->prefix, mountPoint->prefixBytes, context);
+	}
+}
+
+void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) {
+	EsMessageMutexCheck();
+
+	for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
+		callback(api.connectedDevices[i], context);
 	}
 }
 
@@ -1060,6 +1072,17 @@ EsMessage *EsMessageReceive() {
 					return &message.message;
 				}
 			}
+		} else if (type == ES_MSG_DEVICE_CONNECTED) {
+			api.connectedDevices.Add(message.message.device);
+			return &message.message;
+		} else if (type == ES_MSG_DEVICE_DISCONNECTED) {
+			for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
+				if (api.connectedDevices[i].id == message.message.device.id) {
+					EsHandleClose(api.connectedDevices[i].handle);
+					api.connectedDevices.Delete(i);
+					return &message.message;
+				}
+			}
 		} else if (type == ES_MSG_INSTANCE_DESTROY) {
 			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
 
@@ -1262,6 +1285,18 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		EsHeapFree(initialMountPoints);
 		EsHandleClose(initialMountPointsBuffer);
+
+		EsHandle initialDevicesBuffer = api.startupInformation->data.initialDevices;
+		size_t initialDevicesCount = EsConstantBufferGetSize(initialDevicesBuffer) / sizeof(EsMessageDevice);
+		EsMessageDevice *initialDevices = (EsMessageDevice *) EsHeapAllocate(initialDevicesCount * sizeof(EsMessageDevice), false);
+		EsConstantBufferRead(initialDevicesBuffer, initialDevices);
+
+		for (uintptr_t i = 0; i < initialDevicesCount; i++) {
+			api.connectedDevices.Add(initialDevices[i]);
+		}
+
+		EsHeapFree(initialDevices);
+		EsHandleClose(initialDevicesBuffer);
 
 		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
 		EsBuffer responseBuffer = { .canGrow = true };

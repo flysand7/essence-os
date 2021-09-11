@@ -317,8 +317,8 @@ bool NVMeController::Access(struct NVMeDrive *drive, uint64_t offsetBytes, size_
 		KernelLog(LOG_VERBOSE, "NVMe", "start access", "Start access of %d, offset %D, count %D, using slot %d.\n", 
 				drive->nsid, offsetBytes, countBytes, ioSubmissionQueueTail);
 
-		uint64_t offsetSector = offsetBytes / drive->sectorSize;
-		uint64_t countSectors = countBytes / drive->sectorSize;
+		uint64_t offsetSector = offsetBytes / drive->information.sectorSize;
+		uint64_t countSectors = countBytes / drive->information.sectorSize;
 
 		// Build the PRP list.
 
@@ -801,11 +801,11 @@ void NVMeController::Initialise() {
 			device->controller = this;
 			device->nsid = nsid;
 
-			device->sectorSize = sectorBytes;
-			device->sectorCount = capacity / sectorBytes;
+			device->information.sectorSize = sectorBytes;
+			device->information.sectorCount = capacity / sectorBytes;
 			device->maxAccessSectorCount = maximumDataTransferBytes / sectorBytes;
-			device->readOnly = readOnly;
-			device->driveType = ES_DRIVE_TYPE_SSD;
+			device->information.readOnly = readOnly;
+			device->information.driveType = ES_DRIVE_TYPE_SSD;
 
 			device->access = [] (KBlockDeviceAccessRequest request) {
 				NVMeDrive *drive = (NVMeDrive *) request.device;

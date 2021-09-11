@@ -725,9 +725,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-	SYSCALL_BUFFER(argument0, argument2, 1, false);
 	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, Process);
-	SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, process), false);
+
+	if (argument2) {
+		SYSCALL_BUFFER(argument0, argument2, 1, false);
+		SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, process), false);
+	} else {
+		SYSCALL_RETURN(MakeConstantBuffer(nullptr, 0, process), false);
+	}
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_SHARE) {
@@ -748,7 +753,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	EsMemoryZero(&information, sizeof(EsVolumeInformation));
 	EsMemoryCopy(information.label, fileSystem->name, sizeof(fileSystem->name));
 	information.labelBytes = fileSystem->nameBytes;
-	information.driveType = fileSystem->block->driveType;
+	information.driveType = fileSystem->block->information.driveType;
 	information.spaceUsed = fileSystem->spaceUsed;
 	information.spaceTotal = fileSystem->spaceTotal;
 	information.id = fileSystem->objectID;
@@ -1813,6 +1818,24 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_POLL) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_NOTIFY) {
 	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, NetConnection);
 	NetConnectionNotify(netConnection, argument1, argument2);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_DEVICE, device, KDevice);
+
+	if (device->type == ES_DEVICE_BLOCK) {
+		KBlockDevice *block = (KBlockDevice *) device;
+
+		if (argument1 == ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION) {
+			SYSCALL_WRITE(argument3, &block->information, sizeof(EsBlockDeviceInformation));
+		} else {
+			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+		}
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+	}
+
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

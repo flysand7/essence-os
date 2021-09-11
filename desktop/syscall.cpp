@@ -903,3 +903,7 @@ size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes) {
 size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes) {
 	return EsSyscall(ES_SYSCALL_PIPE_WRITE, pipe, (uintptr_t) buffer, bytes, 0);
 }
+
+EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, int32_t di, void *dp) {
+	return EsSyscall(ES_SYSCALL_DEVICE_CONTROL, handle, type, di, (uintptr_t) dp);
+}

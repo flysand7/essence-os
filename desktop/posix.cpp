@@ -534,7 +534,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			double timeStampMs = EsTimeStampMs();
 			uint64_t ns = timeStampMs * 1e6;
 			tp->tv_sec = ns / 1000000000;
-			tp->tv_nsec = (ns % 1000000000) * 1000;
+			tp->tv_nsec = ns % 1000000000;
 		} break;
 
 		case SYS_wait4: {

@@ -175,7 +175,6 @@ struct {
 	Array<InstalledApplication *> installedApplications;
 	Array<ApplicationInstance *> allApplicationInstances;
 	Array<ContainerWindow *> allContainerWindows;
-	Array<EsMessageDevice> connectedDevices;
 
 	InstalledApplication *fileManager;
 
@@ -1233,6 +1232,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		arguments.permissions = ES_PERMISSION_WINDOW_MANAGER;
 
 		Array<EsMountPoint> initialMountPoints = {};
+		Array<EsMessageDevice> initialDevices = {};
 		Array<EsHandle> handleDuplicateList = {};
 		Array<uint32_t> handleModeDuplicateList = {};
 		_EsNodeInformation settingsNode = {};
@@ -1270,6 +1270,14 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			handleModeDuplicateList.Add(2 /* prevent write */);
 		}
 
+		if (application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
+			for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
+				initialDevices.Add(api.connectedDevices[i]);
+				handleDuplicateList.Add(api.connectedDevices[i].handle);
+				handleModeDuplicateList.Add(0);
+			}
+		}
+
 		{
 			error = NodeOpen(application->settingsPath, application->settingsPathBytes, 
 					ES_NODE_DIRECTORY | ES_NODE_CREATE_DIRECTORIES | _ES_NODE_DIRECTORY_WRITE, &settingsNode);
@@ -1291,6 +1299,10 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		handleDuplicateList.Add(arguments.data.initialMountPoints);
 		handleModeDuplicateList.Add(0);
 
+		arguments.data.initialDevices = EsConstantBufferCreate(initialDevices.array, initialDevices.Length() * sizeof(EsMessageDevice), ES_CURRENT_PROCESS);
+		handleDuplicateList.Add(arguments.data.initialDevices);
+		handleModeDuplicateList.Add(0);
+
 		arguments.handles = handleDuplicateList.array;
 		arguments.handleModes = handleModeDuplicateList.array;
 		arguments.handleCount = handleDuplicateList.Length();
@@ -1300,11 +1312,20 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		EsHandleClose(arguments.executable);
 
 		initialMountPoints.Free();
+		initialDevices.Free();
 		handleDuplicateList.Free();
 		handleModeDuplicateList.Free();
 
 		if (settingsNode.handle) {
 			EsHandleClose(settingsNode.handle);
+		}
+
+		if (arguments.data.initialMountPoints) {
+			EsHandleClose(arguments.data.initialMountPoints);
+		}
+
+		if (arguments.data.initialDevices) {
+			EsHandleClose(arguments.data.initialDevices);
 		}
 
 		if (!ES_CHECK_ERROR(error)) {
@@ -2525,12 +2546,15 @@ void DesktopMessage(EsMessage *message) {
 		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
 			desktop.installedApplications[i]->notified = false;
 		}
-	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
+	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
+		EsHandle handle = message->device.handle;
+
 		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 			ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) 
+			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) 
 					&& instance->processHandle && !instance->application->notified) {
+				message->device.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, instance->processHandle, 0, 0);
 				EsMessagePostRemote(instance->processHandle, message);
 				if (instance->application->useSingleProcess) instance->application->notified = true;
 			}
@@ -2539,19 +2563,33 @@ void DesktopMessage(EsMessage *message) {
 		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
 			desktop.installedApplications[i]->notified = false;
 		}
-	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
-		desktop.connectedDevices.Add(message->device);
-		// TODO Propagate message.
-	} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
-		for (uintptr_t i = 0; i < desktop.connectedDevices.Length(); i++) {
-			if (desktop.connectedDevices[i].id == message->device.id) {
-				EsHandleClose(desktop.connectedDevices[i].handle);
-				desktop.connectedDevices.Delete(i);
-				break;
+	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
+		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+			ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+			if (!instance->application) {
+				continue;
+			}
+
+			if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
+				if (~instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
+					continue;
+				}
+			} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
+				if (~instance->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
+					continue;
+				}
+			}
+
+			if (instance->processHandle && !instance->application->notified) {
+				EsMessagePostRemote(instance->processHandle, message);
+				if (instance->application->useSingleProcess) instance->application->notified = true;
 			}
 		}
 
-		// TODO Propagate message.
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			desktop.installedApplications[i]->notified = false;
+		}
 	} else if (message->type == ES_MSG_SET_SCREEN_RESOLUTION) {
 		if (desktop.setupDesktopUIComplete) {
 			DesktopSetup(); // Refresh desktop UI.

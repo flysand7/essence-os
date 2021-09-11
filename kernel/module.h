@@ -551,6 +551,7 @@ struct KDevice {
 #define K_DEVICE_VISIBLE_TO_USER (1 << 1)   // A ES_MSG_DEVICE_CONNECTED message was sent to Desktop for this device.
 	uint8_t flags;
 	uint32_t handles;
+	EsDeviceType type;
 	EsObjectID objectID;
 
 	// These callbacks are called with the deviceTreeMutex locked, and are all optional.
@@ -628,21 +629,16 @@ typedef void (*KDeviceAccessCallbackFunction)(KBlockDeviceAccessRequest request)
 
 struct KBlockDevice : KDevice {
 	KDeviceAccessCallbackFunction access; // Don't call directly; see KFileSystem::Access.
-	size_t sectorSize, maxAccessSectorCount;
-	EsFileOffset sectorCount;
-	bool noMBR; // Set to `true` if this device cannot contain a MBR.
-	bool readOnly;
-	uint8_t nestLevel;
-	uint8_t driveType;
-	const char *cModel;
+	EsBlockDeviceInformation information;
+	size_t maxAccessSectorCount;
 
 	K_PRIVATE
 
-	uint8_t *information; // Signature block. Only valid during fileSystem detection.
+	uint8_t *signatureBlock; // Signature block. Only valid during fileSystem detection.
 };
 
 #define FS_PARTITION_DEVICE_NO_MBR (1 << 0)
-void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *cName);
+void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *name, size_t nameBytes);
 
 // ---------------------------------------------------------------------------------------------------------------
 // PCI.

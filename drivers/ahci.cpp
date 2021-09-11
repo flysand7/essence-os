@@ -835,13 +835,15 @@ void AHCIController::Initialise() {
 		device->controller = this;
 		device->port = i;
 
-		device->sectorSize = ports[i].sectorBytes;
-		device->sectorCount = ports[i].sectorCount;
-		device->maxAccessSectorCount = ports[i].atapi ? (65535 / device->sectorSize) 
-			: ((PRDT_ENTRY_COUNT - 1 /* need one extra if not page aligned */) * K_PAGE_SIZE / device->sectorSize);
-		device->readOnly = ports[i].atapi;
-		device->cModel = ports[i].model;
-		device->driveType = ports[i].atapi ? ES_DRIVE_TYPE_CDROM : ports[i].ssd ? ES_DRIVE_TYPE_SSD : ES_DRIVE_TYPE_HDD;
+		device->information.sectorSize = ports[i].sectorBytes;
+		device->information.sectorCount = ports[i].sectorCount;
+		device->maxAccessSectorCount = ports[i].atapi ? (65535 / device->information.sectorSize) 
+			: ((PRDT_ENTRY_COUNT - 1 /* need one extra if not page aligned */) * K_PAGE_SIZE / device->information.sectorSize);
+		device->information.readOnly = ports[i].atapi;
+		EsAssert(sizeof(ports[i].model) <= sizeof(device->information.model));
+		EsMemoryCopy(device->information.model, ports[i].model, sizeof(ports[i].model));
+		device->information.modelBytes = sizeof(ports[i].model);
+		device->information.driveType = ports[i].atapi ? ES_DRIVE_TYPE_CDROM : ports[i].ssd ? ES_DRIVE_TYPE_SSD : ES_DRIVE_TYPE_HDD;
 
 		device->access = [] (KBlockDeviceAccessRequest request) {
 			AHCIDrive *drive = (AHCIDrive *) request.device;
