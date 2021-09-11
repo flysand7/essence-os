@@ -768,7 +768,6 @@ enum EsSyscallType {
 	ES_SYSCALL_EVENT_SINK_PUSH
 	ES_SYSCALL_PROCESS_CRASH
 	ES_SYSCALL_PROCESS_CREATE
-	ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT
 	ES_SYSCALL_PROCESS_GET_STATE
 	ES_SYSCALL_PROCESS_GET_STATUS
 	ES_SYSCALL_PROCESS_GET_TLS
@@ -1252,22 +1251,28 @@ struct EsMountPoint {
 	bool write;
 };
 
+struct EsProcessCreateData {
+	EsHandle environment, initialMountPoints;
+};
+
+struct EsProcessStartupInformation {
+	bool isDesktop, isBundle;
+	uintptr_t applicationStartAddress;
+	uintptr_t tlsImageStart;
+	uintptr_t tlsImageBytes;
+	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
+	uintptr_t timeStampTicksPerMs;
+	uintptr_t optimalWorkQueueThreadCount;
+	EsProcessCreateData data;
+};
+
 struct EsProcessCreationArguments {
 	EsHandle executable;
-
-	EsHandle *handles;
+	EsHandle *handles; // Duplicated.
 	size_t handleCount;
-
-	const void *environmentBlock;
-	size_t environmentBlockBytes;
-
-	EsGeneric creationArgument;
+	EsProcessCreateData data;
+	uint32_t flags;
 	uint64_t permissions;
-
-	EsMountPoint *initialMountPoints;
-	size_t initialMountPointCount;
-
-	uint64_t flags;
 };
 
 struct EsInstance {

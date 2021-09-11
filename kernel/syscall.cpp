@@ -123,10 +123,18 @@ bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
 	EsDefer(if (_region ## index) MMUnpinRegion(currentVMM, _region ## index)); \
 	if (write && (_region ## index->flags & MM_REGION_READ_ONLY) && (~_region ## index->flags & MM_REGION_COPY_ON_WRITE)) \
 		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-#define SYSCALL_HANDLE(handle, type, __object, index) \
-	KObject _object ## index(currentProcess, handle, type); \
-	CHECK_OBJECT(_object ## index); \
-	*((void **) &__object) = (_object ## index).object;
+#define SYSCALL_HANDLE(handle, type, __object, variableType) \
+	KObject ES_C_PREPROCESSOR_JOIN(_object, __LINE__)(currentProcess, handle, type); \
+	CHECK_OBJECT(ES_C_PREPROCESSOR_JOIN(_object, __LINE__)); \
+	variableType *const __object = (variableType *) (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).object
+#define SYSCALL_HANDLE_2(handle, _type, out) \
+	KObject ES_C_PREPROCESSOR_JOIN(_object, __LINE__)(currentProcess, handle, _type); \
+	CHECK_OBJECT(ES_C_PREPROCESSOR_JOIN(_object, __LINE__)); \
+	const Handle out = { \
+		.object = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).object, \
+		.flags = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).flags, \
+		.type = (ES_C_PREPROCESSOR_JOIN(_object, __LINE__)).type, \
+	}
 #define SYSCALL_READ(destination, source, length) \
 	if (!MMArchIsBufferInUserRange(source, length) || !MMArchSafeCopy((uintptr_t) (destination), source, length)) \
 		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
@@ -219,10 +227,19 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FAULT_RANGE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
-	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_CREATE);
-
 	EsProcessCreationArguments arguments;
 	SYSCALL_READ(&arguments, argument0, sizeof(EsProcessCreationArguments));
+
+	EsProcessInformation processInformation;
+	EsMemoryZero(&processInformation, sizeof(EsProcessInformation));
+
+	if (arguments.handleCount > 65536) {
+		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+	}
+
+	// Check the permissions.
+
+	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_CREATE);
 
 	if (arguments.permissions == ES_PERMISSION_INHERIT) {
 		arguments.permissions = currentProcess->permissions;
@@ -232,81 +249,17 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS, true);
 	}
 
-	KObject executableObject(currentProcess, arguments.executable, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(executableObject);
+	// Check the executable file.
 
-	if (((KNode *) executableObject.object)->directoryEntry->type != ES_NODE_FILE) {
+	SYSCALL_HANDLE(arguments.executable, KERNEL_OBJECT_NODE, executableObject, KNode);
+
+	if (executableObject->directoryEntry->type != ES_NODE_FILE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 	}
 
-	EsProcessInformation processInformation;
-	EsMemoryZero(&processInformation, sizeof(EsProcessInformation));
+	// TODO.
 
-	Process *process = scheduler.SpawnProcess();
-
-	if (!process) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	}
-
-	process->creationFlags = arguments.flags;
-	process->creationArguments[CREATION_ARGUMENT_MAIN] = arguments.creationArgument.u;
-	process->permissions = arguments.permissions;
-
-	// TODO Free the process object if something fails here.
-
-	if (arguments.environmentBlockBytes) {
-		if (arguments.environmentBlockBytes > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-		SYSCALL_BUFFER((uintptr_t) arguments.environmentBlock, arguments.environmentBlockBytes, 1, false);
-		process->creationArguments[CREATION_ARGUMENT_ENVIRONMENT] = MakeConstantBuffer(arguments.environmentBlock, arguments.environmentBlockBytes, process);
-	} 
-	
-	if (arguments.initialMountPointCount) {
-		if (arguments.initialMountPointCount > ES_MOUNT_POINT_MAX_COUNT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-
-		EsMountPoint *mountPoints = (EsMountPoint *) EsHeapAllocate(arguments.initialMountPointCount * sizeof(EsMountPoint), false, K_FIXED);
-		EsDefer(EsHeapFree(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), K_FIXED));
-		SYSCALL_READ(mountPoints, (uintptr_t) arguments.initialMountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint));
-
-		for (uintptr_t i = 0; i < arguments.initialMountPointCount; i++) {
-			// Open handles to the mount points for the new process.
-			// TODO Handling errors when opening handles.
-			KObject object(currentProcess, mountPoints[i].base, KERNEL_OBJECT_NODE);
-			CHECK_OBJECT(object);
-			if (!mountPoints[i].write) object.flags &= ~_ES_NODE_DIRECTORY_WRITE;
-			OpenHandleToObject(object.object, object.type, object.flags);
-			mountPoints[i].base = process->handleTable.OpenHandle(object.object, object.flags, object.type);
-		}
-
-		process->creationArguments[CREATION_ARGUMENT_INITIAL_MOUNT_POINTS] 
-			= MakeConstantBuffer(mountPoints, arguments.initialMountPointCount * sizeof(EsMountPoint), process);
-	}
-
-	if (!process->StartWithNode((KNode *) executableObject.object)) {
-		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
-		SYSCALL_RETURN(ES_ERROR_UNKNOWN, false);
-	}
-
-	processInformation.pid = process->id;
-	processInformation.mainThread.tid = process->executableMainThread->id;
-
-	processInformation.mainThread.handle = currentProcess->handleTable.OpenHandle(process->executableMainThread, 0, KERNEL_OBJECT_THREAD);
-	processInformation.handle = currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS); 
-
-	SYSCALL_WRITE(argument2, &processInformation, sizeof(EsProcessInformation));
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(object);
-
-	Process *process = (Process *) object.object;
-
-	if (argument1 >= sizeof(process->creationArguments) / sizeof(process->creationArguments[0])) {
-		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
-	}
-
-	SYSCALL_RETURN(process->creationArguments[argument1], false);
+	SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_FORCE_UPDATE) {
@@ -327,10 +280,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_FORCE_UPDATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EYEDROP_START) {
-	KObject _avoid(currentProcess, argument1, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_avoid);
-	Window *avoid = (Window *) _avoid.object;
-
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_WINDOW, avoid, Window);
 	windowManager.StartEyedrop(argument0, avoid, argument2);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
@@ -373,8 +323,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CREATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CLOSE) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
 	KMutexAcquire(&windowManager.mutex);
 
 	if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
@@ -392,8 +341,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CLOSE) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 	uint8_t property = argument3;
 
-	KObject _window(currentProcess, argument0, (property & 0x80) ? KERNEL_OBJECT_EMBEDDED_WINDOW : KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, (property & 0x80) ? KERNEL_OBJECT_EMBEDDED_WINDOW : KERNEL_OBJECT_WINDOW, _window);
 	Window *window = (Window *) _window.object;
 	EmbeddedWindow *embed = (EmbeddedWindow *) _window.object;
 
@@ -419,9 +367,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 	} else if (property == ES_WINDOW_PROPERTY_MATERIAL) {
 		window->material = argument1;
 	} else if (property == ES_WINDOW_PROPERTY_EMBED) {
-		KObject _embed(currentProcess, argument1, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE);
-		CHECK_OBJECT(_embed);
-		EmbeddedWindow *embed = (EmbeddedWindow *) _embed.object;
+		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE, embed, EmbeddedWindow);
 		KMutexAcquire(&windowManager.mutex);
 		window->SetEmbed(embed);
 		KMutexRelease(&windowManager.mutex);
@@ -442,8 +388,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		if (embed->container) embed->container->ResizeEmbed();
 		KMutexRelease(&windowManager.mutex);
 	} else if (property == ES_WINDOW_PROPERTY_EMBED_OWNER) {
-		Process *process;
-		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, 2);
+		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, Process);
 		OpenHandleToObject(embed, KERNEL_OBJECT_EMBEDDED_WINDOW);
 		KMutexAcquire(&windowManager.mutex);
 		embed->SetEmbedOwner(process);
@@ -459,9 +404,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_REDRAW) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_window);
-	Window *window = (Window *) _window.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_WINDOW, window, Window);
 	KMutexAcquire(&windowManager.mutex);
 	window->Update(nullptr, true);
 	GraphicsUpdateScreen();
@@ -470,8 +413,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_REDRAW) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
 
 	EsRectangle region;
 	SYSCALL_READ(&region, argument1, sizeof(EsRectangle));
@@ -615,10 +557,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_TERMINATE) {
 	bool self = false;
 
 	{
-		KObject _thread(currentProcess, argument0, KERNEL_OBJECT_THREAD);
-		CHECK_OBJECT(_thread);
-		Thread *thread = (Thread *) _thread.object;
-
+		SYSCALL_HANDLE(argument0, KERNEL_OBJECT_THREAD, thread, Thread);
 		if (thread == currentThread) self = true;
 		else scheduler.TerminateThread(thread);
 	}
@@ -634,10 +573,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_TERMINATE) {
 	bool self = false;
 
 	{
-		KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
-		CHECK_OBJECT(_process);
-		Process *process = (Process *) _process.object;
-
+		SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 		if (process == currentProcess) self = true;
 		else scheduler.TerminateProcess(process, argument1);
 	}
@@ -680,8 +616,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_OPEN) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE, object);
 
 	if (object.type == KERNEL_OBJECT_SHMEM) {
 		// TODO Access permissions and modes.
@@ -723,20 +658,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	SYSCALL_BUFFER(argument0, argument2, 1, false);
-
-	KObject process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(process);
-
-	SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, (Process *) process.object), false);
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, Process);
+	SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, process), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_SHARE) {
-	KObject share(currentProcess, argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS 
-			| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE);
-	CHECK_OBJECT(share);
-	KObject _process(currentProcess, argument1, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(_process);
-	Process *process = (Process *) _process.object;
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS 
+			| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE, share);
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_PROCESS, process, Process);
 	uint32_t sharedFlags = share.flags;
 
 	if (share.type == KERNEL_OBJECT_SHMEM) {
@@ -759,9 +688,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 		SYSCALL_RETURN(0, false);
 	}
 
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *node = (KNode *) object.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, node, KNode);
 	KFileSystem *fileSystem = node->fileSystem;
 
 	EsVolumeInformation information;
@@ -793,12 +720,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 	_EsNodeInformation information;
 	SYSCALL_READ(&information, argument3, sizeof(_EsNodeInformation));
 
-	KNode *directory = nullptr;
-
-	KObject _directory(currentProcess, information.handle, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(_directory);
-
-	directory = (KNode *) _directory.object;
+	SYSCALL_HANDLE_2(information.handle, KERNEL_OBJECT_NODE, _directory);
+	KNode *directory = (KNode *) _directory.object; 
 
 	if (directory->directoryEntry->type != ES_NODE_DIRECTORY) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
@@ -836,15 +759,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *node = (KNode *) object.object;
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_NODE, handle);
+	KNode *node = (KNode *) handle.object; 
 
-	if (object.flags & _ES_NODE_NO_WRITE_BASE) {
+	if (handle.flags & _ES_NODE_NO_WRITE_BASE) {
 		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 	
-	if (node->directoryEntry->type == ES_NODE_FILE && (~object.flags & ES_FILE_WRITE)) {
+	if (node->directoryEntry->type == ES_NODE_FILE && (~handle.flags & ES_FILE_WRITE)) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	}
 
@@ -856,14 +778,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_MOVE) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
-
-	KObject object2(currentProcess, argument1, KERNEL_OBJECT_NODE | KERNEL_OBJECT_NONE);
-	CHECK_OBJECT(object2);
-	KNode *directory = (KNode *) object2.object;
-
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_NODE | KERNEL_OBJECT_NONE, directory, KNode);
 	char *newPath;
 	if (argument3 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	SYSCALL_READ_HEAP(newPath, argument2, argument3);
@@ -873,9 +789,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_MOVE) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_READ_SYNC) {
 	if (!argument2) SYSCALL_RETURN(0, false);
 
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
@@ -889,15 +803,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_READ_SYNC) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_WRITE_SYNC) {
 	if (!argument2) SYSCALL_RETURN(0, false);
 		
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_NODE, handle);
+	KNode *file = (KNode *) handle.object; 
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
 	SYSCALL_BUFFER(argument3, argument2, 1, true /* write */);
 
-	if (object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
+	if (handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 		size_t result = FSFileWriteSync(file, (void *) argument3, argument1, argument2, 
 				(_region1->flags & MM_REGION_FILE) ? FS_FILE_ACCESS_USER_BUFFER_MAPPED : 0);
 		SYSCALL_RETURN(result, false);
@@ -907,21 +820,18 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_WRITE_SYNC) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_GET_SIZE) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 	SYSCALL_RETURN(file->directoryEntry->totalSize, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_RESIZE) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_NODE, handle);
+	KNode *file = (KNode *) handle.object; 
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
-	if (object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
+	if (handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 		SYSCALL_RETURN(FSFileResize(file, argument1), false);
 	} else {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
@@ -929,17 +839,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_RESIZE) {
 }
 					     
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SET) {
-	KObject _event(currentProcess, argument0, KERNEL_OBJECT_EVENT);
-	CHECK_OBJECT(_event);
-	KEvent *event = (KEvent *) _event.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, KEvent);
 	KEventSet(event, false, true);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_RESET) {
-	KObject _event(currentProcess, argument0, KERNEL_OBJECT_EVENT);
-	CHECK_OBJECT(_event);
-	KEvent *event = (KEvent *) _event.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, KEvent);
 	KEventReset(event);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
@@ -1020,8 +926,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
 
 	uint32_t imageWidth = (argument2 >> 16) & 0xFF;
 	uint32_t imageHeight = (argument2 >> 24) & 0xFF;
@@ -1081,10 +986,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_MOVE) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_window);
-
-	Window *window = (Window *) _window.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_WINDOW, window, Window);
 
 	bool success = true;
 
@@ -1114,12 +1016,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_MOVE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_TRANSFER_PRESS) {
-	KObject _oldWindow(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_oldWindow);
-	Window *oldWindow = (Window *) _oldWindow.object;
-	KObject _newWindow(currentProcess, argument1, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_newWindow);
-	Window *newWindow = (Window *) _newWindow.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_WINDOW, oldWindow, Window);
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_WINDOW, newWindow, Window);
 
 	KMutexAcquire(&windowManager.mutex);
 	
@@ -1205,8 +1103,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
 
 	EsRectangle rectangle;
 	EsMemoryZero(&rectangle, sizeof(EsRectangle));
@@ -1236,12 +1133,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_WINDOW, window, Window);
 	_EsMessageWithObject m;
 	EsMemoryZero(&m, sizeof(_EsMessageWithObject));
 	KMutexAcquire(&windowManager.mutex);
-	Window *window = (Window *) _window.object;
 	m.object = window->apiWindow;
 	EsMemoryCopy(&m.message, &window->lastEmbedKeyboardMessage, sizeof(EsMessage));
 	window->lastEmbedKeyboardMessage.type = ES_MSG_INVALID;
@@ -1251,10 +1146,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_PAUSE) {
-	KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(_process);
-	Process *process = (Process *) _process.object;
-
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 	scheduler.PauseProcess(process, (bool) argument1);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
@@ -1265,15 +1157,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CRASH) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_POST) {
-	KObject object(currentProcess, argument2, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(object);
-	void *process = object.object;
+	SYSCALL_HANDLE(argument2, KERNEL_OBJECT_PROCESS, process, Process);
 
 	_EsMessageWithObject message;
 	SYSCALL_READ(&message.message, argument0, sizeof(EsMessage));
 	message.object = (void *) argument1;
 
-	if (((Process *) process)->messageQueue.SendMessage(&message)) {
+	if (process->messageQueue.SendMessage(&message)) {
 		SYSCALL_RETURN(ES_SUCCESS, false);
 	} else {
 		SYSCALL_RETURN(ES_ERROR_MESSAGE_QUEUE_FULL, false);
@@ -1281,8 +1171,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_POST) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_GET_ID) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(object);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS, object);
 
 	if (object.type == KERNEL_OBJECT_THREAD) {
 		SYSCALL_RETURN(((Thread *) object.object)->id, false);
@@ -1303,9 +1192,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_GET_ID) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_STACK_SIZE) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_THREAD);
-	CHECK_OBJECT(object);
-	Thread *thread = (Thread *) object.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_THREAD, thread, Thread);
 
 	SYSCALL_WRITE(argument1, &thread->userStackCommit, sizeof(thread->userStackCommit));
 	SYSCALL_WRITE(argument2, &thread->userStackReserve, sizeof(thread->userStackReserve));
@@ -1335,9 +1222,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_STACK_SIZE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DIRECTORY_ENUMERATE) {
-	KObject _node(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(_node);
-	KNode *node = (KNode *) _node.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, node, KNode);
 	
 	if (node->directoryEntry->type != ES_NODE_DIRECTORY) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
@@ -1348,9 +1233,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DIRECTORY_ENUMERATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_CONTROL) {
-	KObject object(currentProcess, argument0, KERNEL_OBJECT_NODE);
-	CHECK_OBJECT(object);
-	KNode *file = (KNode *) object.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
 
 	if (file->directoryEntry->type != ES_NODE_FILE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
@@ -1380,18 +1263,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_BATCH) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_READ) {
-	KObject _buffer(currentProcess, argument0, KERNEL_OBJECT_CONSTANT_BUFFER);
-	CHECK_OBJECT(_buffer);
-	ConstantBuffer *buffer = (ConstantBuffer *) _buffer.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_CONSTANT_BUFFER, buffer, ConstantBuffer);
 	if (!argument1) SYSCALL_RETURN(buffer->bytes, false);
 	SYSCALL_WRITE(argument1, buffer + 1, buffer->bytes);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
-	KObject _process(currentProcess, argument0, KERNEL_OBJECT_PROCESS);
-	CHECK_OBJECT(_process);
-	Process *process = (Process *) _process.object;
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 
 	EsProcessState state;
 	EsMemoryZero(&state, sizeof(EsProcessState));
@@ -1414,8 +1293,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SHUTDOWN) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_ID) {
-	KObject _window(currentProcess, argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW);
-	CHECK_OBJECT(_window);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
 
 	if (_window.type == KERNEL_OBJECT_WINDOW) {
 		SYSCALL_RETURN(((Window *) _window.object)->id, false);
@@ -1553,11 +1431,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 	if (argument1 > DESKTOP_MESSAGE_SIZE_LIMIT) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	SYSCALL_READ_HEAP(buffer, argument0, argument1);
 
-	KObject _window(currentProcess, argument2, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE);
-	CHECK_OBJECT(_window);
-
-	KObject _pipe(currentProcess, argument3, KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE);
-	CHECK_OBJECT(_pipe);
+	SYSCALL_HANDLE_2(argument2, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE, _window);
+	SYSCALL_HANDLE_2(argument3, KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE, _pipe);
 
 	EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
 	Pipe *pipe = (Pipe *) _pipe.object;
@@ -1596,15 +1471,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
 	SYSCALL_READ(&syscall, argument0, sizeof(_EsPOSIXSyscall));
 
 	if (syscall.index == 2 /* open */ || syscall.index == 59 /* execve */) {
-		KObject node(currentProcess, syscall.arguments[4], KERNEL_OBJECT_NODE);
-		CHECK_OBJECT(node);
+		SYSCALL_HANDLE_2(syscall.arguments[4], KERNEL_OBJECT_NODE, node);
 		syscall.arguments[4] = (long) node.object;
 		if (~node.flags & _ES_NODE_DIRECTORY_WRITE) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
 		long result = POSIX::DoSyscall(syscall, userStackPointer);
 		SYSCALL_RETURN(result, false);
 	} else if (syscall.index == 109 /* setpgid */) {
-		KObject process(currentProcess, syscall.arguments[0], KERNEL_OBJECT_PROCESS);
-		CHECK_OBJECT(process);
+		SYSCALL_HANDLE_2(syscall.arguments[0], KERNEL_OBJECT_PROCESS, process);
 		syscall.arguments[0] = (long) process.object;
 		long result = POSIX::DoSyscall(syscall, userStackPointer);
 		SYSCALL_RETURN(result, false);
@@ -1620,8 +1493,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
 #endif
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATUS) {
-	Process *process;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, 1);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 	SYSCALL_RETURN(process->exitStatus, false);
 }
 
@@ -1639,16 +1511,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_CREATE) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
 	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
-	Pipe *pipe;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, Pipe);
 	SYSCALL_BUFFER(argument1, argument2, 2, false);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, false, true), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {
 	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
-	Pipe *pipe;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, 1);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, Pipe);
 	SYSCALL_BUFFER(argument1, argument2, 2, true /* write */);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, true, true), false);
 }
@@ -1667,10 +1537,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_CREATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_FORWARD) {
-	KEvent *event;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, 1);
-	EventSink *sink;
-	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EVENT_SINK, sink, 2);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, KEvent);
+	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
 	EsGeneric data = argument2;
 
 	bool error = false, limitExceeded = false;
@@ -1718,8 +1586,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_FORWARD) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_POP) {
-	EventSink *sink;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, 1);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
 
 	bool empty = false, overflow = false;
 	EsGeneric data = {};
@@ -1754,8 +1621,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_POP) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_PUSH) {
-	EventSink *sink;
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, 1);
+	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
 	KSpinlockAcquire(&scheduler.lock);
 	EsError result = sink->Push(argument1);
 	KSpinlockRelease(&scheduler.lock);
@@ -1863,8 +1729,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_OPEN) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_POLL) {
 	SYSCALL_BUFFER(argument0, sizeof(EsConnection), 0, true /* write */);
 	EsConnection *connection = (EsConnection *) argument0;
-	NetConnection *netConnection;
-	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, 1);
+	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, NetConnection);
 
 	connection->receiveWritePointer = netConnection->receiveWritePointer;
 	connection->sendReadPointer = netConnection->sendReadPointer;
@@ -1875,8 +1740,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_POLL) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_NOTIFY) {
-	NetConnection *netConnection;
-	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, 1);
+	SYSCALL_HANDLE(argument3, KERNEL_OBJECT_CONNECTION, netConnection, NetConnection);
 	NetConnectionNotify(netConnection, argument1, argument2);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }

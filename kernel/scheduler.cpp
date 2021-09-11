@@ -126,7 +126,7 @@ struct Process {
 	// Creation information:
 	KNode *executableNode;
 	char cExecutableName[ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH + 1];
-	uintptr_t creationArguments[4];
+	EsProcessCreateData data;
 	uint64_t permissions;
 	uint64_t creationFlags; 
 	ProcessType type;
@@ -630,6 +630,7 @@ void NewProcess() {
 			startupInformation->tlsBytes = application.tlsBytes;
 			startupInformation->timeStampTicksPerMs = timeStampTicksPerMs;
 			startupInformation->optimalWorkQueueThreadCount = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
+			EsMemoryCopy(&startupInformation->data, &thisProcess->data, sizeof(EsProcessCreateData));
 		}
 	}
 

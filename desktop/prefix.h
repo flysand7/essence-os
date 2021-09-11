@@ -22,9 +22,7 @@
 // Scoped defer: http://www.gingerbill.org/article/defer-in-cpp.html
 template <typename F> struct _EsDefer4 { F f; _EsDefer4(F f) : f(f) {} ~_EsDefer4() { f(); } };
 template <typename F> _EsDefer4<F> _EsDeferFunction(F f) { return _EsDefer4<F>(f); }
-#define EsDEFER_1(x, y) x ## y
-#define EsDEFER_2(x, y) EsDEFER_1(x, y)
-#define EsDEFER_3(x) EsDEFER_2(x, __COUNTER__)
+#define EsDEFER_3(x) ES_C_PREPROCESSOR_JOIN(x, __COUNTER__)
 #define _EsDefer5(code) auto EsDEFER_3(_defer_) = _EsDeferFunction([&](){code;})
 #define EsDefer(code) _EsDefer5(code)
 
@@ -77,6 +75,9 @@ ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int 
 #define EsCRTsetjmp(x) _EsCRTsetjmp(&(x))
 #define EsCRTlongjmp(x, y) _EsCRTlongjmp(&(x), (y))
 #endif
+
+#define _ES_C_PREPROCESSOR_JOIN(x, y) x ## y
+#define ES_C_PREPROCESSOR_JOIN(x, y) _ES_C_PREPROCESSOR_JOIN(x, y)
 
 #define EsContainerOf(type, member, pointer) ((type *) ((uint8_t *) pointer - offsetof(type, member)))
 
@@ -244,16 +245,6 @@ ES_EXTERN_C void _start();
 
 #if defined(ES_API) || defined(KERNEL)
 
-struct EsProcessStartupInformation {
-	bool isDesktop, isBundle;
-	uintptr_t applicationStartAddress;
-	uintptr_t tlsImageStart;
-	uintptr_t tlsImageBytes;
-	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
-	uintptr_t timeStampTicksPerMs;
-	uintptr_t optimalWorkQueueThreadCount;
-};
-
 struct _EsPOSIXSyscall {
 	intptr_t index;
 	intptr_t arguments[7];
@@ -292,10 +283,6 @@ struct BundleFile {
 #define K_OS_FOLDER K_BOOT_DRIVE "/Essence"
 #define K_DESKTOP_EXECUTABLE K_OS_FOLDER "/Desktop.esx"
 #define K_SYSTEM_CONFIGURATION K_OS_FOLDER "/Default.ini"
-
-#define CREATION_ARGUMENT_MAIN (0)
-#define CREATION_ARGUMENT_ENVIRONMENT (1)
-#define CREATION_ARGUMENT_INITIAL_MOUNT_POINTS (2)
 
 #define WINDOW_SET_BITS_NORMAL (0)
 #define WINDOW_SET_BITS_SCROLL_HORIZONTAL (1)

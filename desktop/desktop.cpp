@@ -1277,8 +1277,12 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			}
 		}
 
+#if 0
 		arguments.initialMountPoints = initialMountPoints.array;
 		arguments.initialMountPointCount = initialMountPoints.Length();
+#endif
+
+		// TODO Update this.
 
 		error = EsProcessCreate(&arguments, &information); 
 		EsHandleClose(arguments.executable);

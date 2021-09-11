@@ -1251,7 +1251,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		SettingsUpdateGlobalAndWindowManager();
 	} else {
-		EsHandle initialMountPointsBuffer = EsSyscall(ES_SYSCALL_PROCESS_GET_CREATION_ARGUMENT, ES_CURRENT_PROCESS, CREATION_ARGUMENT_INITIAL_MOUNT_POINTS, 0, 0);
+		EsHandle initialMountPointsBuffer = api.startupInformation->data.initialMountPoints;
 		size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);
 		EsMountPoint *initialMountPoints = (EsMountPoint *) EsHeapAllocate(initialMountPointCount * sizeof(EsMountPoint), false);
 		EsConstantBufferRead(initialMountPointsBuffer, initialMountPoints);
