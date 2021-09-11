@@ -557,7 +557,7 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 }
 
 void SettingsPageTheme(EsElement *element, SettingsPage *page) {
-	// TODO.
+	// TODO Fonts, theme file, etc.
 
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 

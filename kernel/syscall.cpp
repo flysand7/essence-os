@@ -303,7 +303,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 			// Start the process.
 
 			if (error != ES_SUCCESS || !process->StartWithNode(executableObject)) {
-				// TODO Confirm that this frees the handle table.
 				error = ES_ERROR_UNKNOWN; // TODO.
 				CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
 			} else {

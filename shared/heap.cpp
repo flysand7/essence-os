@@ -45,7 +45,7 @@ static uintptr_t HeapCalculateIndex(uintptr_t size) {
 }
 
 #ifdef MEMORY_LEAK_DETECTOR
-extern "C" uint64_t ProcessorRBPRead();
+extern "C" uint64_t ProcessorGetRBP();
 
 struct MemoryLeakDetectorEntry {
 	void *address;
@@ -122,7 +122,7 @@ static void MemoryLeakDetectorAdd(EsHeap *heap, void *address, size_t bytes) {
 		entry->bytes = bytes;
 		entry->seenCount = 0;
 
-		uint64_t rbp = ProcessorRBPRead();
+		uint64_t rbp = ProcessorGetRBP();
 		uintptr_t traceDepth = 0;
 
 		while (rbp && traceDepth < sizeof(entry->stack) / sizeof(entry->stack[0])) {

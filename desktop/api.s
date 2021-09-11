@@ -80,8 +80,8 @@ ProcessorCheckStackAlignment:
 	jne	$
 	ret
 
-[global ProcessorRBPRead]
-ProcessorRBPRead:
+[global ProcessorGetRBP]
+ProcessorGetRBP:
 	mov	rax,rbp
 	ret
 
