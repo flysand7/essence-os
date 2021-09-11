@@ -1214,6 +1214,11 @@ EsError FSNodeTraverseLayer(uintptr_t *sectionEnd,
 
 	const char *name = path + sectionStart;
 	size_t nameBytes = *sectionEnd - sectionStart;
+
+	if (!nameBytes) {
+		return ES_ERROR_PATH_NOT_TRAVERSABLE;
+	}
+
 	AVLKey key = MakeLongKey(name, nameBytes);
 	FSDirectoryEntry *entry = nullptr;
 	AVLItem<FSDirectoryEntry> *treeItem = nullptr;

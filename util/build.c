@@ -26,6 +26,7 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <spawn.h>
+#include "../shared/hash.cpp"
 
 #define ColorHighlight "\033[0;36m"
 #define ColorNormal "\033[0m"
@@ -987,6 +988,46 @@ void AddressToLine(const char *symbolFile) {
 	}
 }
 
+void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *path2, uint64_t *crc64) {
+	char path[4096], path3[4096];
+	snprintf(path, sizeof(path), "%s%s", path1, path2);
+
+	DIR *directory = opendir(path);
+	struct dirent *entry;
+
+	while ((entry = readdir(directory))) {
+		if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
+			continue;
+		}
+
+		snprintf(path, sizeof(path), "%s%s/%s", path1, path2, entry->d_name);
+		snprintf(path3, sizeof(path3), "%s/%s", path2, entry->d_name);
+
+		struct stat s = {};
+		lstat(path, &s);
+
+		if (S_ISDIR(s.st_mode)) {
+			GatherFilesForInstallerArchive(file, path1, path3, crc64);
+		} else if (S_ISREG(s.st_mode)) {
+			size_t _length;
+			void *data = LoadFile(path, &_length);
+			printf("%s, %d KB\n", path3, (int) (_length / 1000));
+			uint64_t length = _length;
+			fwrite(&length, 1, sizeof(length), file);
+			uint16_t pathBytes = strlen(path3);
+			fwrite(&pathBytes, 1, sizeof(pathBytes), file);
+			fwrite(path3, 1, pathBytes, file);
+			fwrite(data, 1, length, file);
+			*crc64 = CalculateCRC64(data, length, *crc64);
+			free(data);
+		} else {
+			printf("skipping: %s\n", path3);
+		}
+	}
+
+	closedir(directory);
+}
+
 void BuildAndRun(bool optimise, bool compile, bool debug, int emulator) {
 	Build(optimise, compile);
 
@@ -1044,6 +1085,22 @@ void DoCommand(const char *l) {
 		exit(0);
 	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
 		BuildUtilities();
+	} else if (0 == strcmp(l, "make-installer-archive")) {
+		CallSystem("gcc -O3 -o bin/lzma ports/lzma/LzmaUtil.c ports/lzma/LzmaDec.c ports/lzma/LzmaEnc.c "
+				"ports/lzma/7zStream.c ports/lzma/Threads.c ports/lzma/LzFindMt.c ports/lzma/LzFind.c "
+				"ports/lzma/7zFile.c ports/lzma/Alloc.c ports/lzma/CpuArch.c -pthread");
+		FILE *f = fopen("bin/temp.dat", "wb");
+		uint64_t crc64 = 0;
+		GatherFilesForInstallerArchive(f, "root", "", &crc64);
+		fwrite(&crc64, 1, sizeof(crc64), f);
+		uint32_t sizeMB = ftell(f) / 1000000;
+		fclose(f);
+		printf("Compressing %d MB...\n", sizeMB);
+		CallSystem("bin/lzma e bin/temp.dat bin/installer_archive.dat");
+		struct stat s = {};
+		lstat("bin/installer_archive.dat", &s);
+		printf("Compressed to %d MB.\n", (uint32_t) (s.st_size / 1000000));
+		unlink("bin/temp.dat");
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();
 		CallSystem("bin/config_editor");

@@ -1030,6 +1030,7 @@ void LinkKernel() {
 
 	Execute(toolchainCXX, "-T", "util/linker/kernel64.ld", "-o", "bin/Kernel", "bin/kernel_symbols.o", "bin/kernel_all.o", "-mno-red-zone", ArgString(kernelLinkFlags));
 	Execute(toolchainStrip, "-o", "bin/Kernel.esx", "--strip-all", "bin/Kernel");
+	CopyFile("bin/Kernel.esx", "root/Essence/Kernel.esx", false);
 }
 
 void BuildKernel(Application *application) {
@@ -1157,15 +1158,6 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 
 	ImportNode root = {};
 	CreateImportNode("root", &root);
-	CreateImportNode("res/Sample Images", ImportNodeMakeDirectory(&root, "Sample Images"));
-
-	{
-		ImportNode child = {};
-		child.isFile = true;
-		child.name = "A Study in Scarlet.txt";
-		child.path = "res/A Study in Scarlet.txt";
-		arrput(root.children, child);
-	}
 
 	if (convertFonts) {
 		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Fonts");

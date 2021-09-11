@@ -62,7 +62,7 @@ void QueueRepaint() {
 
 	if (!repaintQueued) {
 		repaintQueued = true;
-		EsElementRepaint(instance->display, true, {});
+		EsElementRepaint(instance->display);
 	}
 
 	EsMessageMutexRelease();
@@ -219,7 +219,7 @@ void SetDimensions(int width, int height) {
 	instance->vmemWidth = width;
 	instance->vmemHeight = height;
 	instance->vmem = (uint32_t *) EsHeapReallocate(instance->vmem, width * height * 4, true);
-	EsElementRepaint(instance->display, true, {});
+	EsElementRepaint(instance->display);
 }
 
 void MessageLoopThread(EsGeneric) {

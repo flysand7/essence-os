@@ -176,7 +176,7 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 		return false;
 	}
 
-	// PNGRead the IHDR chunk.
+	// Read the IHDR chunk.
 
 	const uint32_t *ihdrSize = (const uint32_t *) PNGRead(reader, sizeof(uint32_t));
 	const uint32_t *ihdrType = (const uint32_t *) PNGRead(reader, sizeof(uint32_t));
