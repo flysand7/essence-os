@@ -447,7 +447,7 @@ void Run(int emulator, int log, int debug) {
 			const char *secondaryDriveMB = GetOptionString("Emulator.SecondaryDriveMB");
 			char secondaryDriveFlags[256];
 
-			if (secondaryDriveMB) {
+			if (secondaryDriveMB && atoi(secondaryDriveMB)) {
 				CallSystemF("dd if=/dev/zero of=bin/drive2 bs=1048576 count=%d", atoi(secondaryDriveMB));
 				snprintf(secondaryDriveFlags, sizeof(secondaryDriveFlags), 
 						"-drive file=bin/drive2,if=none,id=mydisk2,format=raw "

@@ -1134,6 +1134,7 @@ enum EsDeviceControlType {
 	ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION = 0x1001
 	ES_DEVICE_CONTROL_BLOCK_READ            = 0x1002
 	ES_DEVICE_CONTROL_BLOCK_WRITE           = 0x1003
+	ES_DEVICE_CONTROL_BLOCK_DETECT_FS       = 0x1004 // Detect file systems. All existing file systems must have been unmounted.
 }
 
 function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
@@ -1508,6 +1509,7 @@ struct EsVolumeInformation {
 	EsObjectID id;
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
+	EsUniqueIdentifier installationIdentifier; // Currently only supported by EsFS.
 };
 
 // User interface messages.

@@ -1,3 +1,5 @@
+// TODO Report errors.
+// TODO GPT support.
 // TODO Handle crashing?
 // TODO Write any modified settings during installation.
 
@@ -84,6 +86,9 @@ bool onWaitScreen, startedInstallation;
 EsBlockDeviceInformation blockDeviceInformation;
 EsHandle driveHandle;
 EsFileOffset partitionOffset;
+EsUniqueIdentifier installationIdentifier;
+EsMountPoint newFileSystemMountPoint;
+EsHandle mountNewFileSystemEvent;
 
 /////////////////////////////////////////////
 
@@ -479,8 +484,6 @@ EsError Install() {
 	m.user.context1.u = 6;
 	EsMessagePost(nullptr, &m);
 
-	EsUniqueIdentifier installationIdentifier;
-
 	for (int i = 0; i < 16; i++) {
 		installationIdentifier.d[i] = EsRandomU8();
 	}
@@ -488,22 +491,31 @@ EsError Install() {
 	Format(partitionBytes, interfaceString_InstallerVolumeLabel, installationIdentifier, kernel, kernelBytes);
 	FlushWriteBuffer();
 
-	m.user.context1.u = 10;
+	m.user.context1.u = 8;
 	EsMessagePost(nullptr, &m);
 
-	// TODO Mount the new partition.
+	// Mount the new partition and extract the archive to it.
 
-	// Extract the archive.
-	// TODO Extract to the new partition.
+	EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_DETECT_FS, nullptr, nullptr);
 
-	error = Extract(EsLiteral("0:/installer_archive.dat"), EsLiteral("0:/test"));
+	m.user.context1.u = 9;
+	EsMessagePost(nullptr, &m);
+
+	if (ES_ERROR_TIMEOUT_REACHED == (EsError) EsWait(&mountNewFileSystemEvent, 1, 10000)) {
+		return ES_ERROR_TIMEOUT_REACHED;
+	}
+
+	error = Extract(EsLiteral("0:/installer_archive.dat"), newFileSystemMountPoint.prefix, newFileSystemMountPoint.prefixBytes);
 	if (error != ES_SUCCESS) return error;
 
 	return ES_SUCCESS;
 }
 
 void InstallThread(EsGeneric) {
-	Install();
+	EsPerformanceTimerPush();
+	EsError error = Install();
+	EsAssert(error == ES_SUCCESS); // TODO Reporting errors.
+	EsPrint("Installation finished in %Fs. Extracted %D from the archive.\n", EsPerformanceTimerPop(), metadata->totalUncompressedBytes);
 
 	EsMessage m = { MSG_SET_PROGRESS };
 	m.user.context1.u = 100;
@@ -591,6 +603,8 @@ void _start() {
 
 	metadata = (InstallerMetadata *) EsFileReadAll(EsLiteral("0:/installer_metadata.dat"), nullptr);
 	EsAssert(metadata);
+
+	mountNewFileSystemEvent = EsEventCreate(true);
 
 	EsWindow *window = EsWindowCreate(_EsInstanceCreate(sizeof(EsInstance), nullptr), ES_WINDOW_PLAIN);
 	EsHandle handle = _EsWindowGetHandle(window);
@@ -717,6 +731,24 @@ void _start() {
 		} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
 			if (!startedInstallation) {
 				ConnectedDriveRemove(message->device);
+			}
+		} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
+			EsVolumeInformation information;
+
+			if (EsMountPointGetVolumeInformation(message->registerFileSystem.mountPoint->prefix, message->registerFileSystem.mountPoint->prefixBytes, &information)) {
+				bool isBootable = false;
+
+				for (uintptr_t i = 0; i < sizeof(EsUniqueIdentifier); i++) {
+					if (information.installationIdentifier.d[i]) {
+						isBootable = true;
+						break;
+					}
+				}
+
+				if (isBootable && 0 == EsMemoryCompare(&information.installationIdentifier, &installationIdentifier, sizeof(EsUniqueIdentifier))) {
+					newFileSystemMountPoint = *message->registerFileSystem.mountPoint;
+					EsEventSet(mountNewFileSystemEvent);
+				}
 			}
 		} else if (message->type == MSG_SET_PROGRESS) {
 			if (progress != message->user.context1.u) {

@@ -2110,6 +2110,19 @@ MMSpace *MMGetCurrentProcessSpace() {
 	return GetCurrentThread()->process->vmm;
 }
 
+bool MMFaultRange(uintptr_t address, uintptr_t byteCount) {
+	uintptr_t start = address & ~(K_PAGE_SIZE - 1);
+	uintptr_t end = (address + byteCount - 1) & ~(K_PAGE_SIZE - 1);
+
+	for (uintptr_t page = start; page <= end; page += K_PAGE_SIZE) {
+		if (!MMArchHandlePageFault(page, ES_FLAGS_DEFAULT)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress) {
 	if (ProcessorAreInterruptsEnabled()) {
 		KernelPanic("MMArchRemap - Cannot remap address with interrupts enabled (does not invalidate the page on other processors).\n");

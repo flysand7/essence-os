@@ -213,16 +213,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_COMMIT) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FAULT_RANGE) {
-	uintptr_t start = argument0 & ~(K_PAGE_SIZE - 1);
-	uintptr_t end = (argument0 + argument1 - 1) & ~(K_PAGE_SIZE - 1);
-
-	for (uintptr_t page = start; page <= end; page += K_PAGE_SIZE) {
-		if (!MMArchHandlePageFault(page, ES_FLAGS_DEFAULT)) {
-			SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-		}
-	}
-
-	SYSCALL_RETURN(ES_SUCCESS, false);
+	bool success = MMFaultRange(argument0, argument1);
+	SYSCALL_RETURN(success ? ES_SUCCESS : ES_FATAL_ERROR_INVALID_BUFFER, !success);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
@@ -758,6 +750,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	information.spaceTotal = fileSystem->spaceTotal;
 	information.id = fileSystem->objectID;
 	information.flags = fileSystem->write ? ES_FLAGS_DEFAULT : ES_VOLUME_READ_ONLY;
+	information.installationIdentifier = fileSystem->installationIdentifier;
 
 	SYSCALL_WRITE(argument1, &information, sizeof(EsVolumeInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -1837,6 +1830,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 			EsFileOffset parameters[2];
 			SYSCALL_READ(parameters, dq, sizeof(EsFileOffset) * 2);
 			SYSCALL_BUFFER(dp, parameters[1], 1, !write /* whether the buffer will be written to */);
+
+			// Since the request is not done via the cache, we need to fault the pages in.
+			// TODO Formalize this notion in the memory manager with page locking.
+			if (!MMFaultRange(dp, parameters[1])) {
+				SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
+			}
+
 			KBlockDeviceAccessRequest request = {};
 			request.device = block;
 			request.offset = parameters[0];
@@ -1845,6 +1845,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 			request.buffer = &dmaBuffer;
 			request.flags = FS_BLOCK_ACCESS_SOFT_ERRORS;
 			SYSCALL_RETURN(FSBlockDeviceAccess(request), false);
+		} else if (type == ES_DEVICE_CONTROL_BLOCK_DETECT_FS) {
+			KDeviceOpenHandle(block);
+			FSDetectFileSystem(block); // Closes handle.
 		} else {
 			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 		}

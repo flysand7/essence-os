@@ -68,6 +68,7 @@ EsError FSFileControl(KNode *node, uint32_t flags);
 bool FSTrimCachedNode(MMObjectCache *);
 bool FSTrimCachedDirectoryEntry(MMObjectCache *);
 EsError FSBlockDeviceAccess(KBlockDeviceAccessRequest request);
+void FSDetectFileSystem(KBlockDevice *device);
 
 struct {
 	KWriterLock fileSystemsLock;
@@ -1771,6 +1772,14 @@ bool FSFileSystemInitialise(KFileSystem *fileSystem) {
 }
 
 void FSDetectFileSystem(KBlockDevice *device) {
+	KMutexAcquire(&device->detectFileSystemMutex);
+	EsDefer(KMutexRelease(&device->detectFileSystemMutex));
+
+	if (device->children.Length()) {
+		// The file system or partitions on the device have already been detected and mounted.
+		return;
+	}
+
 	KernelLog(LOG_INFO, "FS", "detect file system", "Detecting file system on block device '%s'.\n", device->information.modelBytes, device->information.model);
 
 	if (device->information.nestLevel > 4) {
@@ -1786,31 +1795,30 @@ void FSDetectFileSystem(KBlockDevice *device) {
 
 	uint8_t *signatureBlock = (uint8_t *) EsHeapAllocate(sectorsToRead * device->information.sectorSize, false, K_FIXED);
 
-	if (!signatureBlock) {
-		return;
-	}
+	if (signatureBlock) {
+		device->signatureBlock = signatureBlock;
 
-	device->signatureBlock = signatureBlock;
+		KDMABuffer dmaBuffer = { (uintptr_t) signatureBlock };
+		KBlockDeviceAccessRequest request = {};
+		request.device = device;
+		request.count = sectorsToRead * device->information.sectorSize;
+		request.operation = K_ACCESS_READ;
+		request.buffer = &dmaBuffer;
 
-	KDMABuffer dmaBuffer = { (uintptr_t) signatureBlock };
-	KBlockDeviceAccessRequest request = {};
-	request.device = device;
-	request.count = sectorsToRead * device->information.sectorSize;
-	request.operation = K_ACCESS_READ;
-	request.buffer = &dmaBuffer;
-
-	if (ES_SUCCESS != FSBlockDeviceAccess(request)) {
-		// We could not access the block device.
-		KernelLog(LOG_ERROR, "FS", "detect fileSystem read failure", "The signature block could not be read on block device %x.\n", device);
-	} else {
-		if (!device->information.noMBR && FSCheckMBR(device)) {
-			// Found an MBR.
+		if (ES_SUCCESS != FSBlockDeviceAccess(request)) {
+			// We could not access the block device.
+			KernelLog(LOG_ERROR, "FS", "detect fileSystem read failure", "The signature block could not be read on block device %x.\n", device);
 		} else {
-			KDeviceAttach(device, "Files", FSSignatureCheck);
+			if (!device->information.noMBR && FSCheckMBR(device)) {
+				// Found an MBR.
+			} else {
+				KDeviceAttach(device, "Files", FSSignatureCheck);
+			}
 		}
+
+		EsHeapFree(signatureBlock, sectorsToRead * device->information.sectorSize, K_FIXED);
 	}
 
-	EsHeapFree(signatureBlock, sectorsToRead * device->information.sectorSize, K_FIXED);
 	KDeviceCloseHandle(device);
 }
 
@@ -1819,6 +1827,8 @@ void FSDetectFileSystem(KBlockDevice *device) {
 //////////////////////////////////////////
 
 void FSRegisterBootFileSystem(KFileSystem *fileSystem, EsUniqueIdentifier identifier) {
+	fileSystem->installationIdentifier = identifier;
+
 	if (!EsMemoryCompare(&identifier, &installationID, sizeof(EsUniqueIdentifier))) {
 		KWriterLockTake(&fs.fileSystemsLock, K_LOCK_EXCLUSIVE);
 

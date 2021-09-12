@@ -635,6 +635,7 @@ struct KBlockDevice : KDevice {
 	K_PRIVATE
 
 	uint8_t *signatureBlock; // Signature block. Only valid during fileSystem detection.
+	KMutex detectFileSystemMutex;
 };
 
 #define FS_PARTITION_DEVICE_NO_MBR (1 << 0)
@@ -881,6 +882,7 @@ struct KFileSystem : KDevice {
 
 	KMutex moveMutex;
 	bool isBootFileSystem, unmounting;
+	EsUniqueIdentifier installationIdentifier;
 	volatile uint64_t totalHandleCount;
 	CCSpace cacheSpace;
 
