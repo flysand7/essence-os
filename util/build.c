@@ -1002,7 +1002,7 @@ void AddressToLine(const char *symbolFile) {
 	}
 }
 
-void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *path2, uint64_t *crc64) {
+void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *path2, uint64_t *crc64, uint64_t *totalUncompressedSize) {
 	char path[4096], path3[4096];
 	snprintf(path, sizeof(path), "%s%s", path1, path2);
 
@@ -1021,7 +1021,7 @@ void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *p
 		lstat(path, &s);
 
 		if (S_ISDIR(s.st_mode)) {
-			GatherFilesForInstallerArchive(file, path1, path3, crc64);
+			GatherFilesForInstallerArchive(file, path1, path3, crc64, totalUncompressedSize);
 		} else if (S_ISREG(s.st_mode)) {
 			size_t _length;
 			void *data = LoadFile(path, &_length);
@@ -1033,6 +1033,7 @@ void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *p
 			fwrite(path3, 1, pathBytes, file);
 			fwrite(data, 1, length, file);
 			*crc64 = CalculateCRC64(data, length, *crc64);
+			*totalUncompressedSize += length;
 			free(data);
 		} else {
 			printf("skipping: %s\n", path3);
@@ -1105,8 +1106,8 @@ void DoCommand(const char *l) {
 				"ports/lzma/7zStream.c ports/lzma/Threads.c ports/lzma/LzFindMt.c ports/lzma/LzFind.c "
 				"ports/lzma/7zFile.c ports/lzma/Alloc.c ports/lzma/CpuArch.c -pthread");
 		FILE *f = fopen("bin/temp.dat", "wb");
-		uint64_t crc64 = 0;
-		GatherFilesForInstallerArchive(f, "root", "", &crc64);
+		uint64_t crc64 = 0, uncompressed = 0;
+		GatherFilesForInstallerArchive(f, "root", "", &crc64, &uncompressed);
 		fwrite(&crc64, 1, sizeof(crc64), f);
 		uint32_t sizeMB = ftell(f) / 1000000;
 		fclose(f);
@@ -1116,6 +1117,9 @@ void DoCommand(const char *l) {
 		lstat("bin/installer_archive.dat", &s);
 		printf("Compressed to %d MB.\n", (uint32_t) (s.st_size / 1000000));
 		unlink("bin/temp.dat");
+		f = fopen("bin/installer_metadata.dat", "ab");
+		fwrite(&uncompressed, 1, sizeof(uncompressed), f);
+		fclose(f);
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();
 		CallSystem("bin/config_editor");

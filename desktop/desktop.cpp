@@ -177,6 +177,7 @@ struct {
 	Array<ContainerWindow *> allContainerWindows;
 
 	InstalledApplication *fileManager;
+	InstalledApplication *installer;
 
 	EsObjectID currentDocumentID;
 	HashStore<EsObjectID, OpenDocument> openDocuments;
@@ -187,7 +188,7 @@ struct {
 
 	bool shutdownWindowOpen;
 	bool setupDesktopUIComplete;
-	int installationState;
+	uint8_t installationState;
 
 	EsHandle nextClipboardFile;
 	EsObjectID nextClipboardProcessID;
@@ -1882,6 +1883,8 @@ void ConfigurationLoadApplications() {
 
 		if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("is_file_manager"))) {
 			desktop.fileManager = application;
+		} else if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("is_installer"))) {
+			desktop.installer = application;
 		}
 	}
 
@@ -2160,23 +2163,25 @@ void DesktopSetup() {
 			EsButtonOnCommand(shutdownButton, [] (EsInstance *, EsElement *, EsCommand *) {
 				ShutdownModalCreate();
 			});
-		}
-	}
 
-	if (!desktop.setupDesktopUIComplete) {
-		// Launch the first application.
+			// Launch the first application.
 
-		char *firstApplication = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("first_application"));
+			char *firstApplication = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("first_application"));
 
-		if (firstApplication && firstApplication[0]) {
-			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-				if (desktop.installedApplications[i]->cName && 0 == EsCRTstrcmp(desktop.installedApplications[i]->cName, firstApplication)) {
-					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
+			if (firstApplication && firstApplication[0]) {
+				for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+					if (desktop.installedApplications[i]->cName && 0 == EsCRTstrcmp(desktop.installedApplications[i]->cName, firstApplication)) {
+						ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
+					}
 				}
 			}
-		}
 
-		EsHeapFree(firstApplication);
+			EsHeapFree(firstApplication);
+		}
+	} else if (desktop.installationState == INSTALLATION_STATE_INSTALLER) {
+		if (!desktop.setupDesktopUIComplete) {
+			ApplicationInstanceCreate(desktop.installer->id, nullptr, nullptr, true /* hidden */);
+		}
 	}
 
 #ifdef CHECK_FOR_NOT_RESPONDING
@@ -2185,37 +2190,6 @@ void DesktopSetup() {
 		EsTimerSet(2500, CheckForegroundWindowResponding, 0); 
 	}
 #endif
-
-	if (desktop.setupDesktopUIComplete) {
-	} else if (desktop.installationState == INSTALLATION_STATE_NONE) {
-#if 0
-		// Play the startup sound.
-
-		EsThreadCreate([] (EsGeneric) {
-			size_t pathBytes;
-			char *path = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("startup_sound"), &pathBytes);
-
-			if (path) {
-				PlaySound(path, pathBytes);
-				EsHeapFree(path);
-			}
-		}, nullptr, 0);
-#endif
-	} else if (desktop.installationState == INSTALLATION_STATE_INSTALLER) {
-		// Start the installer.
-
-		EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_PLAIN);
-
-		EsRectangle screen;
-		EsSyscall(ES_SYSCALL_SCREEN_BOUNDS_GET, 0, (uintptr_t) &screen, 0, 0);
-		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &screen, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
-
-		EsPanel *root = EsPanelCreate(window, ES_PANEL_VERTICAL | ES_CELL_PUSH | ES_CELL_CENTER, ES_STYLE_INSTALLER_ROOT);
-		EsTextDisplayCreate(root, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0, EsLiteral("Essence Installation"));
-
-		// TODO.
-	}
 
 	desktop.setupDesktopUIComplete = true;
 }

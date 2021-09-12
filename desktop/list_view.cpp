@@ -2437,6 +2437,28 @@ bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data) {
 	return found;
 }
 
+bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data) {
+	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
+	EsMessageMutexCheck();
+	EsListViewIndex index;
+	bool found = EsListViewFixedItemFindIndex(view, data, &index);
+
+	if (found) {
+		EsListViewRemove(view, 0, index, 1);
+		ListViewFixedItem item = view->fixedItems[index];
+
+		for (uintptr_t i = 0; i < item.otherColumns.Length(); i++) {
+			EsHeapFree(item.otherColumns[i].string);
+		}
+
+		EsHeapFree(item.firstColumn.string);
+		item.otherColumns.Free();
+		view->fixedItems.Delete(index);
+	}
+
+	return found;
+}
+	
 bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 	EsMessageMutexCheck();

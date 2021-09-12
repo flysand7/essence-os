@@ -305,6 +305,7 @@ Option options[] = {
 	{ "Emulator.SecondaryDriveMB", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
+	{ "General.installation_state", OPTION_TYPE_STRING, { .s = "0" } },
 };
 
 char *previousOptionsBuffer;

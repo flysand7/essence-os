@@ -880,7 +880,7 @@ int PlacesViewCallback(EsElement *element, EsMessage *message) {
 			} else {
 				Drive *drive = &drives[index - 1];
 				EsBufferFormat(message->getContent.buffer, "%s", drive->information.labelBytes, drive->information.label);
-				message->getContent.icon = IconFromDriveType(drive->information.driveType);
+				message->getContent.icon = EsIconIDFromDriveType(drive->information.driveType);
 			}
 		} else if (group == PLACES_VIEW_GROUP_BOOKMARKS) {
 			if (index == 0) {

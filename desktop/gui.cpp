@@ -5130,6 +5130,11 @@ EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags, const EsSt
 	return display;
 }
 
+void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID) {
+	display->iconID = iconID;
+	EsElementRepaint(display);
+}
+
 // --------------------------------- Sliders.
 
 struct EsSlider : EsElement {
@@ -5459,6 +5464,10 @@ void EsWindowSetTitle(EsWindow *window, const char *title, ptrdiff_t titleBytes)
 	char buffer[4096];
 	size_t bytes = EsStringFormat(buffer, 4096, "%c%s%s", DESKTOP_MSG_SET_TITLE, titleBytes, title, applicationNameBytes, applicationName);
 	MessageDesktop(buffer, bytes, window->handle);
+}
+
+EsHandle EsWindowGetHandle(EsWindow *window) {
+	return window->handle;
 }
 
 EsError EsMouseSetPosition(EsWindow *relativeWindow, int x, int y) {

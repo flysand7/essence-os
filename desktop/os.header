@@ -2082,6 +2082,7 @@ function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle
 function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes);
 
 function uint32_t EsIconIDFromString(STRING string = BLANK_STRING);
+function uint32_t EsIconIDFromDriveType(uint8_t driveType);
 
 function uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *width, uint32_t *height, int imageChannels);
 
@@ -2335,6 +2336,7 @@ function void EsWindowSwitchToolbar(EsWindow *window, EsElement *toolbar, EsTran
 function void EsWindowSetIcon(EsWindow *window, uint32_t iconID);
 function void EsWindowSetTitle(EsWindow *window, STRING title = BLANK_STRING);
 function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsElement *big, int widthThreshold, int heightThreshold); // Switch between elements when the window size goes below a threshold.
+function EsHandle EsWindowGetHandle(EsWindow *window); // For internal use only.
 
 function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
@@ -2409,6 +2411,7 @@ function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier
 // Static displays.
 
 function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, uint32_t iconID = 0);
+function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 
 function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride);
@@ -2466,6 +2469,7 @@ function void EsListViewRemove(EsListView *view, EsListViewIndex group, EsListVi
 function void EsListViewRemoveAll(EsListView *view, EsListViewIndex group);
 // (Fixed items.)
 function EsListViewIndex EsListViewFixedItemInsert(EsListView *view, STRING string = BLANK_STRING, EsGeneric data = ES_NULL, EsListViewIndex index = -1, uint32_t iconID = 0);
+function bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function void EsListViewFixedItemAddString(EsListView *view, EsListViewIndex index, STRING string = BLANK_STRING); // For additional columns.
 function bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index); // Returns false if the item was not found.
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.

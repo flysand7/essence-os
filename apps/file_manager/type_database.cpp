@@ -96,11 +96,3 @@ FileType *FolderEntryGetType(Folder *folder, FolderEntry *entry) {
 		return &knownFileTypes[index ? index : KNOWN_FILE_TYPE_UNKNOWN];
 	}
 }
-
-uint32_t IconFromDriveType(uint8_t driveType) {
-	if (driveType == ES_DRIVE_TYPE_HDD             ) return ES_ICON_DRIVE_HARDDISK;
-	if (driveType == ES_DRIVE_TYPE_SSD             ) return ES_ICON_DRIVE_HARDDISK_SOLIDSTATE;
-	if (driveType == ES_DRIVE_TYPE_CDROM           ) return ES_ICON_MEDIA_OPTICAL;
-	if (driveType == ES_DRIVE_TYPE_USB_MASS_STORAGE) return ES_ICON_DRIVE_REMOVABLE_MEDIA_USB;
-	return ES_ICON_DRIVE_HARDDISK;
-}

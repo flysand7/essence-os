@@ -168,7 +168,7 @@ void FormatPopupCreate(Instance *instance) {
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 		EsListViewFixedItemInsert(list, INTERFACE_STRING(CommonFormatPlainText), 0);
 		EsListViewFixedItemInsert(list, "C/C++", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
-		EsListViewFixedItemInsert(list, "Ini file", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
+		EsListViewFixedItemInsert(list, "Ini", -1, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
 		EsListViewFixedItemSelect(list, instance->syntaxHighlightingLanguage);
 
 		list->messageUser = [] (EsElement *element, EsMessage *message) {

@@ -758,15 +758,17 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 		}
 	}
 
-	apiInstance->mainWindowHandle = message->createInstance.window;
-	instance->window = EsWindowCreate(instance, ES_WINDOW_NORMAL);
-	EsWindowSetTitle(instance->window, nullptr, 0);
+	if (message) {
+		apiInstance->mainWindowHandle = message->createInstance.window;
+		instance->window = EsWindowCreate(instance, ES_WINDOW_NORMAL);
+		EsWindowSetTitle(instance->window, nullptr, 0);
 
-	if (apiInstance->startupInformation && apiInstance->startupInformation->readHandle) {
-		InstanceCreateFileStore(apiInstance, apiInstance->startupInformation->readHandle);
-		InstancePostOpenMessage(instance, false);
-		EsWindowSetTitle(instance->window, apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes);
-		EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
+		if (apiInstance->startupInformation && apiInstance->startupInformation->readHandle) {
+			InstanceCreateFileStore(apiInstance, apiInstance->startupInformation->readHandle);
+			InstancePostOpenMessage(instance, false);
+			EsWindowSetTitle(instance->window, apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes);
+			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
+		}
 	}
 
 	return instance;
@@ -1435,6 +1437,14 @@ double EsPerformanceTimerPop() {
 
 	EsSpinlockRelease(&api.performanceTimerStackLock);
 	return result;
+}
+
+uint32_t EsIconIDFromDriveType(uint8_t driveType) {
+	if (driveType == ES_DRIVE_TYPE_HDD             ) return ES_ICON_DRIVE_HARDDISK;
+	if (driveType == ES_DRIVE_TYPE_SSD             ) return ES_ICON_DRIVE_HARDDISK_SOLIDSTATE;
+	if (driveType == ES_DRIVE_TYPE_CDROM           ) return ES_ICON_MEDIA_OPTICAL;
+	if (driveType == ES_DRIVE_TYPE_USB_MASS_STORAGE) return ES_ICON_DRIVE_REMOVABLE_MEDIA_USB;
+	return ES_ICON_DRIVE_HARDDISK;
 }
 
 uint32_t EsIconIDFromString(const char *string, ptrdiff_t stringBytes) {

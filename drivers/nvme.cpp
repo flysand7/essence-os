@@ -46,6 +46,7 @@ struct NVMeController : KDevice {
 	uint64_t maximumDataTransferBytes;
 	uint32_t rtd3EntryLatencyUs;
 	uint16_t maximumOutstandingCommands;
+	char model[40];
 
 	uint8_t *adminCompletionQueue, *adminSubmissionQueue;
 	uint32_t adminCompletionQueueHead, adminSubmissionQueueTail;
@@ -610,6 +611,7 @@ void NVMeController::Initialise() {
 		maximumDataTransferBytes = identifyData[77] ? (1 << (12 + identifyData[77] + (((capabilities >> 48) & 0xF)))) : 0;
 		rtd3EntryLatencyUs = *(uint32_t *) (identifyData + 88);
 		maximumOutstandingCommands = *(uint16_t *) (identifyData + 514);
+		EsMemoryCopy(model, &identifyData[24], sizeof(model));
 
 		if (rtd3EntryLatencyUs > 250 * 1000) {
 			rtd3EntryLatencyUs = 250 * 1000; // Maximum shutdown delay: 250ms.
@@ -624,7 +626,7 @@ void NVMeController::Initialise() {
 		KernelLog(LOG_INFO, "NVMe", "controller identify data", "Controller identify reported the following information: "
 				"serial number - '%s', model number - '%s', firmware revision - '%s', "
 				"maximum data transfer - %D, RTD3 entry latency - %dus, maximum outstanding commands - %d.\n",
-				20, identifyData + 4, 40, identifyData + 24, 8, identifyData + 64,
+				20, identifyData + 4, sizeof(model), model, 8, identifyData + 64,
 				maximumDataTransferBytes, rtd3EntryLatencyUs, maximumOutstandingCommands);
 
 		if (maximumDataTransferBytes == 0 || maximumDataTransferBytes >= 2097152) {
@@ -788,7 +790,7 @@ void NVMeController::Initialise() {
 
 			bool readOnly = identifyData[4096 + 99] & (1 << 0);
 
-			KernelLog(LOG_INFO, "NVMe", "namespace identified", "Identifier namespace %d with sectors of size %D, and a capacity of %D.%z\n",
+			KernelLog(LOG_INFO, "NVMe", "namespace identified", "Identified namespace %d with sectors of size %D, and a capacity of %D.%z\n",
 					nsid, sectorBytes, capacity, readOnly ? " The namespace is read-only." : "");
 
 			NVMeDrive *device = (NVMeDrive *) KDeviceCreate("NVMe namespace", this, sizeof(NVMeDrive));
@@ -801,11 +803,15 @@ void NVMeController::Initialise() {
 			device->controller = this;
 			device->nsid = nsid;
 
+			device->maxAccessSectorCount = maximumDataTransferBytes / sectorBytes;
 			device->information.sectorSize = sectorBytes;
 			device->information.sectorCount = capacity / sectorBytes;
-			device->maxAccessSectorCount = maximumDataTransferBytes / sectorBytes;
 			device->information.readOnly = readOnly;
 			device->information.driveType = ES_DRIVE_TYPE_SSD;
+			
+			EsAssert(sizeof(device->information.model) >= sizeof(model));
+			device->information.modelBytes = sizeof(model);
+			EsMemoryCopy(device->information.model, model, 40);
 
 			device->access = [] (KBlockDeviceAccessRequest request) {
 				NVMeDrive *drive = (NVMeDrive *) request.device;

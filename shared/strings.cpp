@@ -5,6 +5,7 @@
 
 #define ELLIPSIS "…"
 #define HYPHENATION_POINT "‧"
+#define SYSTEM_BRAND_SHORT "Essence"
 
 // Common.
 
@@ -52,7 +53,7 @@ DEFINE_INTERFACE_STRING(CommonDriveSSD, "SSD");
 DEFINE_INTERFACE_STRING(CommonDriveCDROM, "CD-ROM");
 DEFINE_INTERFACE_STRING(CommonDriveUSBMassStorage, "USB drive");
 
-DEFINE_INTERFACE_STRING(CommonSystemBrand, "Essence Alpha v0.1");
+DEFINE_INTERFACE_STRING(CommonSystemBrand, SYSTEM_BRAND_SHORT " Alpha v0.1");
 
 DEFINE_INTERFACE_STRING(CommonListViewType, "List view");
 DEFINE_INTERFACE_STRING(CommonListViewTypeThumbnails, "Thumbnails");
@@ -275,6 +276,19 @@ DEFINE_INTERFACE_STRING(Game2048GameOverExplanation, "There are no valid moves l
 DEFINE_INTERFACE_STRING(Game2048NewGame, "New game");
 DEFINE_INTERFACE_STRING(Game2048HighScore, "High score: \aw6]%d\a]");
 DEFINE_INTERFACE_STRING(Game2048NewHighScore, "You reached a new high score!");
+
+// Installer.
+
+DEFINE_INTERFACE_STRING(InstallerTitle, SYSTEM_BRAND_SHORT " Installer");
+DEFINE_INTERFACE_STRING(InstallerDrivesList, "Select the drive to install on:");
+DEFINE_INTERFACE_STRING(InstallerDrivesSelectHint, "Choose a drive from the list on the left.");
+DEFINE_INTERFACE_STRING(InstallerDriveRemoved, "The drive was disconnected.");
+DEFINE_INTERFACE_STRING(InstallerDriveReadOnly, "This drive is read-only. You cannot install " SYSTEM_BRAND_SHORT " on this drive.");
+DEFINE_INTERFACE_STRING(InstallerDriveNotEnoughSpace, "This drive does not have enough space to install " SYSTEM_BRAND_SHORT ".");
+DEFINE_INTERFACE_STRING(InstallerDriveOkay, SYSTEM_BRAND_SHORT " can be installed on this drive.");
+DEFINE_INTERFACE_STRING(InstallerInstall, "Install");
+DEFINE_INTERFACE_STRING(InstallerViewLicenses, "Licenses");
+DEFINE_INTERFACE_STRING(InstallerGoBack, "Back");
 
 // TODO System Monitor.
 
