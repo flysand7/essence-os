@@ -112,7 +112,7 @@ static bool Mount(Volume *volume) {
 	uintptr_t descriptorIndex = 0;
 
 	while (true) {
-		if (!volume->Access(32768 + SECTOR_SIZE * descriptorIndex, SECTOR_SIZE, K_ACCESS_READ, &volume->primaryDescriptor, ES_FLAGS_DEFAULT)) {
+		if (ES_SUCCESS != volume->Access(32768 + SECTOR_SIZE * descriptorIndex, SECTOR_SIZE, K_ACCESS_READ, &volume->primaryDescriptor, ES_FLAGS_DEFAULT)) {
 			MOUNT_FAILURE("Could not access descriptor list.\n");
 		}	
 
@@ -188,7 +188,7 @@ static bool Mount(Volume *volume) {
 
 		EsDefer(EsHeapFree(firstSector, SECTOR_SIZE, K_FIXED));
 
-		if (!volume->Access(record.extentStart.x * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, firstSector, ES_FLAGS_DEFAULT)) {
+		if (ES_SUCCESS != volume->Access(record.extentStart.x * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, firstSector, ES_FLAGS_DEFAULT)) {
 			goto notBoot;
 		}	
 
@@ -214,7 +214,7 @@ static bool Mount(Volume *volume) {
 }
 
 static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset count) {
-#define READ_FAILURE(message) do { KernelLog(LOG_ERROR, "ISO9660", "read failure", "Read - " message); return ES_ERROR_UNKNOWN; } while (0)
+#define READ_FAILURE(message, error) do { KernelLog(LOG_ERROR, "ISO9660", "read failure", "Read - " message); return error; } while (0)
 
 	FSNode *file = (FSNode *) node->driverNode;
 	Volume *volume = file->volume;
@@ -222,7 +222,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(SECTOR_SIZE, false, K_FIXED);
 
 	if (!sectorBuffer) {
-		READ_FAILURE("Could not allocate sector buffer.\n");
+		READ_FAILURE("Could not allocate sector buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 	}
 
 	EsDefer(EsHeapFree(sectorBuffer, SECTOR_SIZE, K_FIXED));
@@ -235,9 +235,8 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 
 	while (count) {
 		if (offset || count < SECTOR_SIZE) {
-			if (!volume->Access(lba * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT)) {
-				READ_FAILURE("Could not read file sector.\n");
-			}
+			EsError error = volume->Access(lba * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, sectorBuffer, ES_FLAGS_DEFAULT);
+			if (error != ES_SUCCESS) READ_FAILURE("Could not read file sector.\n", error);
 
 			uint64_t bytesToRead = (count > SECTOR_SIZE - offset) ? (SECTOR_SIZE - offset) : count;
 			EsMemoryCopy(outputBuffer, sectorBuffer + offset, bytesToRead);
@@ -245,11 +244,8 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 			lba++, count -= bytesToRead, offset = 0, outputBuffer += bytesToRead;
 		} else {
 			uint64_t sectorsToRead = count / SECTOR_SIZE;
-
-			if (!volume->Access(lba * SECTOR_SIZE, sectorsToRead * SECTOR_SIZE, K_ACCESS_READ, outputBuffer, ES_FLAGS_DEFAULT)) {
-				READ_FAILURE("Could not read file sectors.\n");
-			}
-
+			EsError error = volume->Access(lba * SECTOR_SIZE, sectorsToRead * SECTOR_SIZE, K_ACCESS_READ, outputBuffer, ES_FLAGS_DEFAULT);
+			if (error != ES_SUCCESS) READ_FAILURE("Could not read file sectors.\n", error);
 			lba += sectorsToRead, count -= SECTOR_SIZE * sectorsToRead, outputBuffer += SECTOR_SIZE * sectorsToRead;
 		}
 	}
@@ -258,7 +254,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 }
 
 static EsError Enumerate(KNode *node) {
-#define ENUMERATE_FAILURE(message) do { KernelLog(LOG_ERROR, "ISO9660", "enumerate failure", "Enumerate - " message); return false; } while (0)
+#define ENUMERATE_FAILURE(message, error) do { KernelLog(LOG_ERROR, "ISO9660", "enumerate failure", "Enumerate - " message); return error; } while (0)
 
 	FSNode *directory = (FSNode *) node->driverNode;
 	Volume *volume = directory->volume;
@@ -268,7 +264,7 @@ static EsError Enumerate(KNode *node) {
 	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(SECTOR_SIZE, false, K_FIXED);
 
 	if (!sectorBuffer) {
-		ENUMERATE_FAILURE("Could not allocate sector buffer.\n");
+		ENUMERATE_FAILURE("Could not allocate sector buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 	}
 
 	EsDefer(EsHeapFree(sectorBuffer, SECTOR_SIZE, K_FIXED));
@@ -277,10 +273,10 @@ static EsError Enumerate(KNode *node) {
 	uint32_t remainingBytes = directory->record.extentSize.x;
 
 	while (remainingBytes) {
-		bool accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
+		EsError accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
 
-		if (!accessResult) {
-			ENUMERATE_FAILURE("Could not read sector.\n");
+		if (accessResult != ES_SUCCESS) {
+			ENUMERATE_FAILURE("Could not read sector.\n", accessResult);
 		}
 
 		uintptr_t positionInSector = 0;
@@ -293,7 +289,7 @@ static EsError Enumerate(KNode *node) {
 			}
 
 			if (positionInSector + record->length > SECTOR_SIZE || record->length < sizeof(DirectoryRecord)) {
-				ENUMERATE_FAILURE("Invalid directory record.\n");
+				ENUMERATE_FAILURE("Invalid directory record.\n", ES_ERROR_CORRUPT_DATA);
 			}
 
 			if (record->fileNameBytes <= 2) {
@@ -348,7 +344,7 @@ static EsError Enumerate(KNode *node) {
 }
 
 static EsError ScanInternal(const char *name, size_t nameBytes, KNode *_directory, DirectoryRecord *_record) {
-#define SCAN_FAILURE(message) do { KernelLog(LOG_ERROR, "ISO9660", "scan failure", "Scan - " message); return ES_ERROR_UNKNOWN; } while (0)
+#define SCAN_FAILURE(message, error) do { KernelLog(LOG_ERROR, "ISO9660", "scan failure", "Scan - " message); return error; } while (0)
 
 	// Check for invalid characters.
 
@@ -370,7 +366,7 @@ static EsError ScanInternal(const char *name, size_t nameBytes, KNode *_director
 	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(SECTOR_SIZE, false, K_FIXED);
 
 	if (!sectorBuffer) {
-		SCAN_FAILURE("Could not allocate sector buffer.\n");
+		SCAN_FAILURE("Could not allocate sector buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 	}
 
 	EsDefer(EsHeapFree(sectorBuffer, SECTOR_SIZE, K_FIXED));
@@ -379,10 +375,10 @@ static EsError ScanInternal(const char *name, size_t nameBytes, KNode *_director
 	uint32_t remainingBytes = directory->record.extentSize.x;
 
 	while (remainingBytes) {
-		bool accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
+		EsError accessResult = volume->Access(currentSector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
 
-		if (!accessResult) {
-			SCAN_FAILURE("Could not read sector.\n");
+		if (accessResult != ES_SUCCESS) {
+			SCAN_FAILURE("Could not read sector.\n", accessResult);
 		}
 
 		uintptr_t positionInSector = 0;
@@ -395,7 +391,7 @@ static EsError ScanInternal(const char *name, size_t nameBytes, KNode *_director
 			}
 
 			if (positionInSector + record->length > SECTOR_SIZE || record->length < sizeof(DirectoryRecord)) {
-				SCAN_FAILURE("Invalid directory record.\n");
+				SCAN_FAILURE("Invalid directory record.\n", ES_ERROR_CORRUPT_DATA);
 			}
 
 			if (record->fileNameBytes <= 2) {
@@ -464,9 +460,8 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 
 	EsDefer(EsHeapFree(sectorBuffer, SECTOR_SIZE, K_FIXED));
 
-	if (!volume->Access(reference.sector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT)) {
-		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
-	}
+	EsError error = volume->Access(reference.sector * SECTOR_SIZE, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) sectorBuffer, ES_FLAGS_DEFAULT);
+	if (error != ES_SUCCESS) return error;
 
 	FSNode *data = (FSNode *) EsHeapAllocate(sizeof(FSNode), true, K_FIXED);
 

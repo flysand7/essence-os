@@ -851,7 +851,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_READ_SYNC) {
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
-	SYSCALL_BUFFER(argument3, argument2, 1, false);
+	SYSCALL_BUFFER(argument3, argument2, 1, true /* we're writing into this buffer */);
 
 	size_t result = FSFileReadSync(file, (void *) argument3, argument1, argument2, 
 			(_region1->flags & MM_REGION_FILE) ? FS_FILE_ACCESS_USER_BUFFER_MAPPED : 0);
@@ -866,7 +866,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_WRITE_SYNC) {
 
 	if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
-	SYSCALL_BUFFER(argument3, argument2, 1, true /* write */);
+	SYSCALL_BUFFER(argument3, argument2, 1, false);
 
 	if (handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
 		size_t result = FSFileWriteSync(file, (void *) argument3, argument1, argument2, 
@@ -1823,12 +1823,28 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONNECTION_NOTIFY) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_DEVICE, device, KDevice);
+	EsDeviceControlType type = (EsDeviceControlType) argument1;
+	uintptr_t dp = argument2, dq = argument3;
 
 	if (device->type == ES_DEVICE_BLOCK) {
 		KBlockDevice *block = (KBlockDevice *) device;
 
-		if (argument1 == ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION) {
-			SYSCALL_WRITE(argument3, &block->information, sizeof(EsBlockDeviceInformation));
+		if (type == ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION) {
+			SYSCALL_WRITE(dp, &block->information, sizeof(EsBlockDeviceInformation));
+		} else if (type == ES_DEVICE_CONTROL_BLOCK_READ || type == ES_DEVICE_CONTROL_BLOCK_WRITE) {
+			bool write = type == ES_DEVICE_CONTROL_BLOCK_WRITE;
+			KDMABuffer dmaBuffer = { dp, block->information.sectorSize };
+			EsFileOffset parameters[2];
+			SYSCALL_READ(parameters, dq, sizeof(EsFileOffset) * 2);
+			SYSCALL_BUFFER(dp, parameters[1], 1, !write /* whether the buffer will be written to */);
+			KBlockDeviceAccessRequest request = {};
+			request.device = block;
+			request.offset = parameters[0];
+			request.count = parameters[1];
+			request.operation = write ? K_ACCESS_WRITE : K_ACCESS_READ;
+			request.buffer = &dmaBuffer;
+			request.flags = FS_BLOCK_ACCESS_SOFT_ERRORS;
+			SYSCALL_RETURN(FSBlockDeviceAccess(request), false);
 		} else {
 			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 		}

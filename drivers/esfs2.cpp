@@ -8,14 +8,15 @@
 // TODO Renaming directories does not work?
 // TODO ESFS_CHECK_XXX are used to report out of memory errors, which shouldn't report KERNEL_PROBLEM_DAMAGED_FILESYSTEM.
 
-#define ESFS_CHECK(x, y)             if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return false; }
-#define ESFS_CHECK_ERROR(x, y)       if ((x) != ES_SUCCESS) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return x; }
-#define ESFS_CHECK_TO_ERROR(x, y, z) if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return z; }
-#define ESFS_CHECK_VA(x, y, ...)     if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n", __VA_ARGS__); return false; }
-#define ESFS_CHECK_RETURN(x, y)      if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return; }
-#define ESFS_CHECK_CORRUPT(x, y)     if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return ES_ERROR_CORRUPT_DATA; }
-#define ESFS_CHECK_FATAL(x, y)       if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", "Mount - " y "\n"); return false; }
-#define ESFS_CHECK_READ_ONLY(x, y)   if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "mount read only", "Mount - " y " Mounting as read only.\n"); volume->readOnly = true; }
+#define ESFS_CHECK(x, y)                 if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return false; }
+#define ESFS_CHECK_ERROR(x, y)           if ((x) != ES_SUCCESS) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return x; }
+#define ESFS_CHECK_TO_ERROR(x, y, z)     if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return z; }
+#define ESFS_CHECK_VA(x, y, ...)         if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n", __VA_ARGS__); return false; }
+#define ESFS_CHECK_RETURN(x, y)          if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return; }
+#define ESFS_CHECK_CORRUPT(x, y)         if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return ES_ERROR_CORRUPT_DATA; }
+#define ESFS_CHECK_FATAL(x, y)           if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", "Mount - " y "\n"); return false; }
+#define ESFS_CHECK_READ_ONLY(x, y)       if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "mount read only", "Mount - " y " Mounting as read only.\n"); volume->readOnly = true; }
+#define ESFS_CHECK_ERROR_READ_ONLY(x, y) if ((x) != ES_SUCCESS) { KernelLog(LOG_ERROR, "EsFS", "mount read only", "Mount - " y " Mounting as read only.\n"); volume->readOnly = true; }
 
 struct Volume : KFileSystem {
 	Superblock superblock;
@@ -38,9 +39,9 @@ struct FSNode {
 static bool AccessBlock(Volume *volume, uint64_t index, uint64_t count, void *buffer, uint64_t flags, int driveAccess) {
 	// TODO Return EsError.
 	Superblock *superblock = &volume->superblock;
-	bool result = volume->Access(index * superblock->blockSize, count * superblock->blockSize, driveAccess, buffer, flags, nullptr);
-	ESFS_CHECK(result, "AccessBlock - Could not access blocks.");
-	return result;
+	EsError error = volume->Access(index * superblock->blockSize, count * superblock->blockSize, driveAccess, buffer, flags, nullptr);
+	ESFS_CHECK_ERROR(error, "AccessBlock - Could not access blocks.");
+	return error == ES_SUCCESS;
 }
 
 static bool ValidateIndexVertex(Superblock *superblock, IndexVertex *vertex) {
@@ -67,7 +68,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 	uint64_t nameHash = CalculateCRC64(name, nameLength);
 	IndexVertex *vertex = (IndexVertex *) buffer;
 
-	if (!AccessBlock(volume, rootBlock, 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+	if (!AccessBlock(volume, rootBlock, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 	}
 
@@ -84,7 +85,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 			if (i == vertex->count || keys[i].value > nameHash) {
 				if (keys[i].child) {
 					// The directory is in the child.
-					if (!AccessBlock(volume, keys[i].child, 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+					if (!AccessBlock(volume, keys[i].child, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 					else goto nextVertex;
 				} else {
 					// We couldn't find the entry.
@@ -173,7 +174,7 @@ static bool ReadWrite(FSNode *file, uint64_t offset, uint64_t count, uint8_t *bu
 	uint64_t accessBlockFlags = 0;
 
 	if (file->type == ES_NODE_DIRECTORY) {
-		accessBlockFlags |= BLOCK_ACCESS_CACHED;
+		accessBlockFlags |= FS_BLOCK_ACCESS_CACHED;
 	}
 
 	uint8_t *blockBuffer = !needBlockBuffer ? nullptr : (uint8_t *) EsHeapAllocate(superblock->blockSize, false, K_FIXED);
@@ -344,7 +345,7 @@ static void Sync(KNode *_directory, KNode *node) {
 	EsDefer(EsHeapFree(blockBuffer, 0, K_FIXED));
 	ESFS_CHECK_RETURN(blockBuffer, "Sync - Could not allocate block buffer.");
 
-	if (!AccessBlock(volume, file->reference.block, 1, blockBuffer, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+	if (!AccessBlock(volume, file->reference.block, 1, blockBuffer, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Sync - Could not read reference block.\n");
 		return;
 	}
@@ -355,7 +356,7 @@ static void Sync(KNode *_directory, KNode *node) {
 
 	EsMemoryCopy(blockBuffer + file->reference.offsetIntoBlock, &file->entry, sizeof(DirectoryEntry));
 
-	if (!AccessBlock(volume, file->reference.block, 1, blockBuffer, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
+	if (!AccessBlock(volume, file->reference.block, 1, blockBuffer, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Sync - Could not write reference block.\n");
 		return;
 	}
@@ -528,7 +529,7 @@ static bool AllocateExtent(Volume *volume, uint64_t nearby, uint64_t increaseBlo
 
 	{
 		if (target->blockBitmap) {
-			if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+			if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 				return false;
 			}
 
@@ -571,7 +572,7 @@ static bool AllocateExtent(Volume *volume, uint64_t nearby, uint64_t increaseBlo
 			bitmap[i / 8] |= 1 << (i % 8);
 		}
 
-		if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
+		if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
 			return false;
 		}
 
@@ -634,7 +635,7 @@ static bool FreeExtent(Volume *volume, uint64_t extentStart, uint64_t extentCoun
 	ESFS_CHECK(bitmap, "FreeExtent - Could not allocate buffer for block bitmap.");
 	ESFS_CHECK(target->blockBitmap, "FreeExtent - Group descriptor does not have block bitmap.");
 	ESFS_CHECK(target->blocksUsed >= extentCount, "FreeExtent - Group descriptor indicates fewer blocks are used than are given in this extent.");
-	ESFS_CHECK(AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "FreeExtent - Could not read block bitmap.");
+	ESFS_CHECK(AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "FreeExtent - Could not read block bitmap.");
 	ESFS_CHECK(ValidateBlockBitmap(target, bitmap, superblock), "FreeExtent - Invalid block bitmap.");
 
 	// Clear the bits representing the freed blocks.
@@ -648,7 +649,7 @@ static bool FreeExtent(Volume *volume, uint64_t extentStart, uint64_t extentCoun
 
 	// Write out the modified bitmap and update the group descriptor.
 
-	if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
+	if (!AccessBlock(volume, target->blockBitmap, superblock->blocksPerGroupBlockBitmap, bitmap, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE)) {
 		return false;
 	}
 
@@ -946,7 +947,7 @@ static bool IndexModifyKey(Volume *volume, uint64_t newKey, DirectoryEntryRefere
 	IndexVertex *vertex = (IndexVertex *) buffer;
 	uint64_t block;
 
-	if (!AccessBlock(volume, (block = rootBlock), 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+	if (!AccessBlock(volume, (block = rootBlock), 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 		return false;
 	}
 
@@ -963,7 +964,7 @@ static bool IndexModifyKey(Volume *volume, uint64_t newKey, DirectoryEntryRefere
 			if (i == vertex->count || keys[i].value > newKey) {
 				if (keys[i].child) {
 					// The directory is in the child.
-					if (!AccessBlock(volume, (block = keys[i].child), 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return false;
+					if (!AccessBlock(volume, (block = keys[i].child), 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return false;
 					else goto nextVertex;
 				} else {
 					// We couldn't find the entry.
@@ -976,7 +977,7 @@ static bool IndexModifyKey(Volume *volume, uint64_t newKey, DirectoryEntryRefere
 						"IndexModifyKey - Invalid key entry.");
 				keys[i].data = reference;
 				vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-				return AccessBlock(volume, block, 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE);
+				return AccessBlock(volume, block, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE);
 			}
 		}
 
@@ -1021,7 +1022,7 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 		next:;
 
 		if (!skipFirst) {
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexAddKey - Could not read index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexAddKey - Could not read index.");
 
 			if (!ValidateIndexVertex(superblock, vertex)) {
 				return false;
@@ -1108,7 +1109,7 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 			parent->keys[0].child = blocks[1];
 			*rootBlock = blocks[0];
 		} else {
-			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexAddKey - Could not read index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexAddKey - Could not read index.");
 		}
 
 		IndexKey *parentKeys = (IndexKey *) ((uint8_t *) parent + parent->offset);
@@ -1155,8 +1156,8 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 
 		sibling->checksum = 0; sibling->checksum = CalculateCRC32(sibling, superblock->blockSize);
 		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-		ESFS_CHECK(AccessBlock(volume, siblingBlock, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
-		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
+		ESFS_CHECK(AccessBlock(volume, siblingBlock, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
+		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
 
 		// Check if the parent vertex is full.
 
@@ -1167,7 +1168,7 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 	// Write the block.
 
 	vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-	ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
+	ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
 
 	return true;
 }
@@ -1193,7 +1194,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		next:;
 		int i;
 
-		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 		if (!ValidateIndexVertex(superblock, vertex)) return false;
 
 		for (i = 0; i <= vertex->count; i++) {
@@ -1224,7 +1225,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		blocks[++depth] = ESFS_VERTEX_KEY(vertex, position + 1)->child;
 
 		while (true) {
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, search, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, search, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 			if (!ValidateIndexVertex(superblock, search)) return false;
 
 			if (ESFS_VERTEX_KEY(search, 0)->child) {
@@ -1237,7 +1238,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		ESFS_VERTEX_KEY(vertex, position)->data  = ESFS_VERTEX_KEY(search, 0)->data;
 
 		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-		ESFS_CHECK(AccessBlock(volume, blocks[startDepth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+		ESFS_CHECK(AccessBlock(volume, blocks[startDepth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 		EsMemoryCopy(vertex, search, superblock->blockSize);
 		position = 0;
@@ -1256,7 +1257,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 	if (vertex->count >= (vertex->maxCount - 1) / 2) {
 		// EsPrint("Vertex has enough keys, exiting...\n");
 		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 		return true;
 	}
 
@@ -1273,7 +1274,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		} else {
 			// EsPrint("Vertex is at root, exiting...\n");
 			vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 		}
 
 		return true; 
@@ -1283,7 +1284,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 
 	uint8_t *buffer2 = blockBuffers + 1 * superblock->blockSize;
 	IndexVertex *parent = (IndexVertex *) buffer2;
-	ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+	ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 	if (!ValidateIndexVertex(superblock, parent)) return false;
 
 	int positionInParent = -1;
@@ -1301,7 +1302,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 	IndexVertex *sibling = (IndexVertex *) buffer3;
 
 	if (positionInParent) {
-		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 
 		if (sibling->count > (sibling->maxCount - 1) / 2) {
 			// Steal left.
@@ -1320,16 +1321,16 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
 			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize);
 
-			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
-			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 			return true;
 		}
 	}
 
 	if (positionInParent != parent->count) {
-		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent + 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent + 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 
 		if (sibling->count > (sibling->maxCount - 1) / 2) {
 			// Steal right.
@@ -1348,9 +1349,9 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
 			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize);
 
-			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent + 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
-			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent + 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth - 1], 1, parent, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 			return true;
 		}
@@ -1363,10 +1364,10 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 			EsMemoryCopy(sibling, vertex, superblock->blockSize);
 			positionInParent = 1;
 			blocks[depth] = ESFS_VERTEX_KEY(parent, positionInParent)->child;
-			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 			if (!ValidateIndexVertex(superblock, vertex)) return false;
 		} else {
-			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
+			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "IndexRemoveKey - Could not read index.");
 			if (!ValidateIndexVertex(superblock, sibling)) return false;
 		}
 
@@ -1389,7 +1390,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		}
 
 		sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
-		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
+		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 		EsMemoryCopy(vertex, parent, superblock->blockSize);
 		depth--;
@@ -1416,7 +1417,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 
 	// EsPrint("\tpositionOfLastEntry = %d\n\tThis node Reference = %d/%d\n", positionOfLastEntry, file->reference.block, file->reference.offsetIntoBlock);
 
-	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, BLOCK_ACCESS_CACHED, K_ACCESS_READ), "Remove - Could not load the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "Remove - Could not load the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 	ESFS_CHECK_TO_ERROR(ReadWrite(directory, positionOfLastEntry & ~(superblock->blockSize - 1), superblock->blockSize, 
 				blockBuffers + superblock->blockSize, false, false), "Remove - Could not load the last block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 	ESFS_CHECK_TO_ERROR(0 == EsMemoryCompare(blockBuffers + file->reference.offsetIntoBlock, &file->entry, sizeof(DirectoryEntry)), "Remove - Inconsistent file entry.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
@@ -1424,7 +1425,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 	DirectoryEntry *movedEntry = (DirectoryEntry *) (blockBuffers + superblock->blockSize + (positionOfLastEntry & (superblock->blockSize - 1)));
 	DirectoryEntry *deletedEntry = (DirectoryEntry *) (blockBuffers + file->reference.offsetIntoBlock);
 	EsMemoryCopy(deletedEntry, movedEntry, sizeof(DirectoryEntry));
-	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "Remove - Could not save the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "Remove - Could not save the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 
 	// Step 2: Update the node for the moved entry.
 
@@ -1490,7 +1491,7 @@ static EsError Remove(KNode *_directory, KNode *node) {
 		
 		if (attribute->indexRootBlock) {
 			IndexVertex *vertex = (IndexVertex *) blockBuffers;
-			ESFS_CHECK_TO_ERROR(AccessBlock(volume, attribute->indexRootBlock, 1, vertex, BLOCK_ACCESS_CACHED, K_ACCESS_READ), 
+			ESFS_CHECK_TO_ERROR(AccessBlock(volume, attribute->indexRootBlock, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), 
 					"Remove - Could not access index root.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 			ESFS_CHECK_TO_ERROR(!vertex->count, "Remove - Index was not empty (although it should be as the directory is empty).", ES_ERROR_CORRUPT_DATA);
 			KWriterLockTake(&volume->blockBitmapLock, K_LOCK_EXCLUSIVE);
@@ -1719,7 +1720,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 	if (!blockBuffer) return ES_ERROR_INSUFFICIENT_RESOURCES;
 	EsDefer(EsHeapFree(blockBuffer, 0, K_FIXED));
 
-	if (!AccessBlock(directory->volume, reference.block, 1, blockBuffer, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+	if (!AccessBlock(directory->volume, reference.block, 1, blockBuffer, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Load - Could not load directory entry.\n");
 		return ES_ERROR_UNKNOWN;
 	}
@@ -1781,7 +1782,7 @@ static EsError Scan(const char *name, size_t nameLength, KNode *_directory) {
 
 	// EsPrint("\t%d/%d\n", reference.block, reference.offsetIntoBlock);
 
-	if (!AccessBlock(volume, reference.block, 1, blockBuffer, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+	if (!AccessBlock(volume, reference.block, 1, blockBuffer, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Scan - Could not load directory entry.\n");
 		return ES_ERROR_UNKNOWN;
 	}
@@ -1828,7 +1829,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 
 	Superblock *superblock = &volume->superblock;
 
-	if (!volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_READ, (uint8_t *) superblock, ES_FLAGS_DEFAULT)) {
+	if (ES_SUCCESS != volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_READ, (uint8_t *) superblock, ES_FLAGS_DEFAULT)) {
 		KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Mount - Could not read superblock.\n");
 		return false;
 	}
@@ -1869,7 +1870,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 		superblock->mounted = true;
 		superblock->checksum = 0;
 		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock));
-		ESFS_CHECK_READ_ONLY(volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, 
+		ESFS_CHECK_ERROR_READ_ONLY(volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, 
 					K_ACCESS_WRITE, (uint8_t *) superblock, ES_FLAGS_DEFAULT), "Could not mark volume as mounted.");
 	}
 
@@ -1879,7 +1880,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 		volume->groupDescriptorTable = (GroupDescriptor *) EsHeapAllocate((superblock->groupCount * sizeof(GroupDescriptor) + superblock->blockSize - 1), false, K_FIXED);
 
 		if (!AccessBlock(volume, superblock->gdtFirstBlock, (superblock->groupCount * sizeof(GroupDescriptor) + superblock->blockSize - 1) / superblock->blockSize, 
-					volume->groupDescriptorTable, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+					volume->groupDescriptorTable, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 			EsHeapFree(volume->groupDescriptorTable, 0, K_FIXED);
 			ESFS_CHECK_FATAL(false, "Could not read group descriptor table.");
 		}
@@ -1900,7 +1901,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 		{
 			DirectoryEntryReference rootReference = superblock->root;
 
-			if (!AccessBlock(volume, rootReference.block, 1, blockBuffer, BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
+			if (!AccessBlock(volume, rootReference.block, 1, blockBuffer, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
 				KernelLog(LOG_ERROR, "EsFS", "drive access failure", "Mount - Could not load root directory.\n");
 				goto failure;
 			}
@@ -1940,7 +1941,7 @@ static void Unmount(KFileSystem *fileSystem) {
 
 	if (!volume->readOnly) {
 		AccessBlock(volume, superblock->gdtFirstBlock, (superblock->groupCount * sizeof(GroupDescriptor) + superblock->blockSize - 1) / superblock->blockSize, 
-				volume->groupDescriptorTable, BLOCK_ACCESS_CACHED, K_ACCESS_WRITE);
+				volume->groupDescriptorTable, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE);
 
 		superblock->mounted = false;
 		superblock->checksum = 0;

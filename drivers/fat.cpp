@@ -152,10 +152,9 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 	DirectoryEntry entry;
 
 	if (!directory->rootDirectory) {
-		if (!volume->Access((reference.cluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
-					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
-			return ES_ERROR_UNKNOWN;
-		}
+		EsError error = volume->Access((reference.cluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+				superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
+		if (error != ES_SUCCESS) return error;
 
 		entry = *(DirectoryEntry *) (clusterBuffer + reference.offset);
 	} else {
@@ -177,7 +176,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 }
 
 static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset count) {
-#define READ_FAILURE(message) do { KernelLog(LOG_ERROR, "FAT", "read failure", "Read - " message); return ES_ERROR_UNKNOWN; } while (0)
+#define READ_FAILURE(message, error) do { KernelLog(LOG_ERROR, "FAT", "read failure", "Read - " message); return error; } while (0)
 
 	FSNode *file = (FSNode *) node->driverNode;
 	Volume *volume = file->volume;
@@ -185,7 +184,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 
 	uint8_t *clusterBuffer = (uint8_t *) EsHeapAllocate(superBlock->sectorsPerCluster * SECTOR_SIZE, false, K_FIXED);
 	EsDefer(EsHeapFree(clusterBuffer, 0, K_FIXED));
-	if (!clusterBuffer) READ_FAILURE("Could not allocate cluster buffer.\n");
+	if (!clusterBuffer) READ_FAILURE("Could not allocate cluster buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 
 	uint8_t *outputBuffer = (uint8_t *) _buffer;
 	uint64_t firstCluster = offset / (SECTOR_SIZE * superBlock->sectorsPerCluster);
@@ -197,11 +196,10 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 		uint32_t bytesFromThisCluster = superBlock->sectorsPerCluster * SECTOR_SIZE - offset;
 		if (bytesFromThisCluster > count) bytesFromThisCluster = count;
 
-		if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
-					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, 
-					(uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
-			READ_FAILURE("Could not read cluster.\n");
-		}
+		EsError error = volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+				superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, 
+				(uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
+		if (error != ES_SUCCESS) READ_FAILURE("Could not read cluster.\n", error);
 
 		EsMemoryCopy(outputBuffer, clusterBuffer + offset, bytesFromThisCluster);
 		count -= bytesFromThisCluster, outputBuffer += bytesFromThisCluster, offset = 0;
@@ -212,8 +210,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 }
 
 static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
-#define SCAN_FAILURE(message) do { KernelLog(LOG_ERROR, "FAT", "scan failure", "Scan - " message); return ES_ERROR_UNKNOWN; } while (0)
-#define SCAN_FAILURE_2(message) do { KernelLog(LOG_ERROR, "FAT", "scan failure", "Scan - " message); goto failure; } while (0)
+#define SCAN_FAILURE(message, error) do { KernelLog(LOG_ERROR, "FAT", "scan failure", "Scan - " message); return error; } while (0)
 
 	uint8_t name[] = "           "; 
 
@@ -235,17 +232,16 @@ static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
 
 	uint8_t *clusterBuffer = (uint8_t *) EsHeapAllocate(superBlock->sectorsPerCluster * SECTOR_SIZE, false, K_FIXED);
 	EsDefer(EsHeapFree(clusterBuffer, 0, K_FIXED));
-	if (!clusterBuffer) SCAN_FAILURE("Could not allocate cluster buffer.\n");
+	if (!clusterBuffer) SCAN_FAILURE("Could not allocate cluster buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 
 	uint32_t currentCluster = directory->entry.firstClusterLow + (directory->entry.firstClusterHigh << 16);
 	uintptr_t directoryPosition = 0;
 
 	while (currentCluster < volume->terminateCluster) {
 		if (!directory->rootDirectory) {
-			if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
-						superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
-				SCAN_FAILURE("Could not read cluster.\n");
-			}
+			EsError error = volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
+			if (error != ES_SUCCESS) SCAN_FAILURE("Could not read cluster.\n", error);
 		}
 
 		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(DirectoryEntry); i++, directoryPosition++) {
@@ -294,7 +290,7 @@ static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
 }
 
 static EsError Enumerate(KNode *node) {
-#define ENUMERATE_FAILURE(message) do { KernelLog(LOG_ERROR, "FAT", "enumerate failure", "Enumerate - " message); return ES_ERROR_UNKNOWN; } while (0)
+#define ENUMERATE_FAILURE(message, error) do { KernelLog(LOG_ERROR, "FAT", "enumerate failure", "Enumerate - " message); return error; } while (0)
 
 	FSNode *directory = (FSNode *) node->driverNode;
 	Volume *volume = directory->volume;
@@ -302,17 +298,16 @@ static EsError Enumerate(KNode *node) {
 
 	uint8_t *clusterBuffer = (uint8_t *) EsHeapAllocate(superBlock->sectorsPerCluster * SECTOR_SIZE, false, K_FIXED);
 	EsDefer(EsHeapFree(clusterBuffer, 0, K_FIXED));
-	if (!clusterBuffer) ENUMERATE_FAILURE("Could not allocate cluster buffer.\n");
+	if (!clusterBuffer) ENUMERATE_FAILURE("Could not allocate cluster buffer.\n", ES_ERROR_INSUFFICIENT_RESOURCES);
 
 	uint32_t currentCluster = directory->entry.firstClusterLow + (directory->entry.firstClusterHigh << 16);
 	uint64_t directoryPosition = 0;
 
 	while (currentCluster < volume->terminateCluster) {
 		if (!directory->rootDirectory) {
-			if (!volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
-						superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT)) {
-				ENUMERATE_FAILURE("Could not read cluster.\n");
-			}
+			EsError error = volume->Access((currentCluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
+					superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
+			if (error != ES_SUCCESS) ENUMERATE_FAILURE("Could not read cluster.\n", error);
 		}
 
 		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(DirectoryEntry); i++, directoryPosition++) {
@@ -370,8 +365,10 @@ static bool Mount(Volume *volume) {
 #define MOUNT_FAILURE(message) do { KernelLog(LOG_ERROR, "FAT", "mount failure", "Mount - " message); goto failure; } while (0)
 
 	{
+		EsError error;
 		SuperBlockCommon *superBlock = &volume->superBlock;
-		if (!volume->Access(0, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) superBlock, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read superBlock.\n");
+		error = volume->Access(0, SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) superBlock, ES_FLAGS_DEFAULT); 
+		if (error != ES_SUCCESS) MOUNT_FAILURE("Could not read super block.\n");
 
 		uint32_t sectorCount = superBlock->totalSectors ?: superBlock->largeSectorCount;
 		uint32_t clusterCount = sectorCount / superBlock->sectorsPerCluster;
@@ -400,8 +397,8 @@ static bool Mount(Volume *volume) {
 
 		volume->fat = (uint8_t *) EsHeapAllocate(sectorsPerFAT * SECTOR_SIZE, true, K_FIXED);
 		if (!volume->fat) MOUNT_FAILURE("Could not allocate FAT.\n");
-		if (!volume->Access(superBlock->reservedSectors * SECTOR_SIZE, 
-					sectorsPerFAT * SECTOR_SIZE, K_ACCESS_READ, volume->fat, ES_FLAGS_DEFAULT)) MOUNT_FAILURE("Could not read FAT.\n");
+		error = volume->Access(superBlock->reservedSectors * SECTOR_SIZE, sectorsPerFAT * SECTOR_SIZE, K_ACCESS_READ, volume->fat, ES_FLAGS_DEFAULT);
+		if (error != ES_SUCCESS) MOUNT_FAILURE("Could not read FAT.\n");
 
 		volume->spaceUsed = CountUsedClusters(volume) * superBlock->sectorsPerCluster * superBlock->bytesPerSector;
 		volume->spaceTotal = volume->block->information.sectorSize * volume->block->information.sectorCount;
@@ -426,10 +423,9 @@ static bool Mount(Volume *volume) {
 			root->rootDirectory = (DirectoryEntry *) EsHeapAllocate(rootDirectorySectors * SECTOR_SIZE, true, K_FIXED);
 			volume->rootDirectoryEntries = root->rootDirectory;
 
-			if (!volume->Access(rootDirectoryOffset * SECTOR_SIZE, rootDirectorySectors * SECTOR_SIZE, 
-						K_ACCESS_READ, (uint8_t *) root->rootDirectory, ES_FLAGS_DEFAULT)) {
-				MOUNT_FAILURE("Could not read root directory.\n");
-			}
+			error = volume->Access(rootDirectoryOffset * SECTOR_SIZE, rootDirectorySectors * SECTOR_SIZE, 
+					K_ACCESS_READ, (uint8_t *) root->rootDirectory, ES_FLAGS_DEFAULT);
+			if (error != ES_SUCCESS) MOUNT_FAILURE("Could not read root directory.\n");
 
 			for (uintptr_t i = 0; i < superBlock->rootDirectoryEntries; i++) {
 				if (root->rootDirectory[i].name[0] == 0xE5 || root->rootDirectory[i].attributes == 0x0F || (root->rootDirectory[i].attributes & 0x08)) continue;

@@ -125,9 +125,12 @@ File FileOpen(const char *path, char mode) {
 
 #define Log(...) fprintf(stderr, __VA_ARGS__)
 
+#define EsFileOffset uint64_t
+
 #endif
 
 #include "../shared/hash.cpp"
+#include "../shared/partitions.cpp"
 #include "build_common.h"
 #include "../shared/esfs2.h"
 #include "header_generator.c"
@@ -1105,16 +1108,7 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 
 	uint32_t partitions[16] = { 0x80 /* bootable */, 0x83 /* type */, 0x800 /* offset */, (uint32_t) ((partitionSize / 0x200) - 0x800) /* sector count */ };
 	uint16_t bootSignature = 0xAA55;
-
-	uint32_t headsPerCylinder = 256, sectorsPerTrack = 63;
-	uint32_t partitionOffsetCylinder = (partitions[2] / sectorsPerTrack) / headsPerCylinder;
-	uint32_t partitionOffsetHead = (partitions[2] / sectorsPerTrack) % headsPerCylinder;
-	uint32_t partitionOffsetSector = (partitions[2] % sectorsPerTrack) + 1;
-	uint32_t partitionSizeCylinder = (partitions[3] / sectorsPerTrack) / headsPerCylinder;
-	uint32_t partitionSizeHead = (partitions[3] / sectorsPerTrack) % headsPerCylinder;
-	uint32_t partitionSizeSector = (partitions[3] % sectorsPerTrack) + 1;
-	partitions[0] |= (partitionOffsetHead << 8) | (partitionOffsetSector << 16) | (partitionOffsetCylinder << 24) | ((partitionOffsetCylinder >> 8) << 16);
-	partitions[1] |= (partitionSizeHead << 8) | (partitionSizeSector << 16) | (partitionSizeCylinder << 24) | ((partitionSizeCylinder >> 8) << 16);
+	MBRFixPartition(partitions);
 
 	FileWrite(f, 64, partitions);
 	FileWrite(f, 2, &bootSignature);

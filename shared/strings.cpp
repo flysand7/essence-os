@@ -279,16 +279,29 @@ DEFINE_INTERFACE_STRING(Game2048NewHighScore, "You reached a new high score!");
 
 // Installer.
 
-DEFINE_INTERFACE_STRING(InstallerTitle, SYSTEM_BRAND_SHORT " Installer");
+DEFINE_INTERFACE_STRING(InstallerTitle, "Install " SYSTEM_BRAND_SHORT);
 DEFINE_INTERFACE_STRING(InstallerDrivesList, "Select the drive to install on:");
 DEFINE_INTERFACE_STRING(InstallerDrivesSelectHint, "Choose a drive from the list on the left.");
 DEFINE_INTERFACE_STRING(InstallerDriveRemoved, "The drive was disconnected.");
 DEFINE_INTERFACE_STRING(InstallerDriveReadOnly, "This drive is read-only. You cannot install " SYSTEM_BRAND_SHORT " on this drive.");
 DEFINE_INTERFACE_STRING(InstallerDriveNotEnoughSpace, "This drive does not have enough space to install " SYSTEM_BRAND_SHORT ".");
+DEFINE_INTERFACE_STRING(InstallerDriveCouldNotRead, "The drive could not be accessed. It may not be working correctly.");
+DEFINE_INTERFACE_STRING(InstallerDriveAlreadyHasPartitions, "The drive already has data on it. To prevent data loss, you cannot install " SYSTEM_BRAND_SHORT " on this drive.");
+DEFINE_INTERFACE_STRING(InstallerDriveUnsupported, "This drive uses unsupported features. You cannot install " SYSTEM_BRAND_SHORT " on this drive.");
 DEFINE_INTERFACE_STRING(InstallerDriveOkay, SYSTEM_BRAND_SHORT " can be installed on this drive.");
 DEFINE_INTERFACE_STRING(InstallerInstall, "Install");
 DEFINE_INTERFACE_STRING(InstallerViewLicenses, "Licenses");
 DEFINE_INTERFACE_STRING(InstallerGoBack, "Back");
+DEFINE_INTERFACE_STRING(InstallerFinish, "Finish");
+DEFINE_INTERFACE_STRING(InstallerCustomizeOptions, "Customize your computer.");
+DEFINE_INTERFACE_STRING(InstallerCustomizeOptionsHint, "More options will be available in Settings.");
+DEFINE_INTERFACE_STRING(InstallerUserName, "User name:");
+DEFINE_INTERFACE_STRING(InstallerSystemFont, "System font:");
+DEFINE_INTERFACE_STRING(InstallerFontDefault, "Default");
+DEFINE_INTERFACE_STRING(InstallerProgressMessage, "Installing, please wait" ELLIPSIS "\nDo not turn off your computer.\nProgress: \aw6]");
+DEFINE_INTERFACE_STRING(InstallerCompleteFromOther, "Installation has completed successfully. Remove the installation disk, and restart your computer.");
+DEFINE_INTERFACE_STRING(InstallerCompleteFromUSB, "Installation has completed successfully. Disconnect the installation USB, and restart your computer.");
+DEFINE_INTERFACE_STRING(InstallerVolumeLabel, "Essence HD");
 
 // TODO System Monitor.
 

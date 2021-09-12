@@ -243,7 +243,7 @@ ES_EXTERN_C void _start();
 
 // --------- Internal APIs:
 
-#if defined(ES_API) || defined(KERNEL)
+#if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)
 
 struct _EsPOSIXSyscall {
 	intptr_t index;

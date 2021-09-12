@@ -1252,7 +1252,9 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 	int width = Width(bounds), height = Height(bounds);
 	double ratio = (double) height / (double) width;
 
-	if (!to) {
+	if (type == ES_TRANSITION_FADE_IN || type == ES_TRANSITION_FADE_OUT || type == ES_TRANSITION_FADE_VIA_TRANSPARENT) {
+		return bounds;
+	} else if (!to) {
 		if (type == ES_TRANSITION_SLIDE_UP) {
 			return ES_RECT_4(bounds.l, bounds.r, 
 					bounds.t - progress * height / 2, bounds.b - progress * height / 2);
@@ -1283,8 +1285,6 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 		} else if (type == ES_TRANSITION_ZOOM_IN_LIGHT) {
 			return ES_RECT_4(bounds.l - 5 * progress, bounds.r + 5 * progress, 
 					bounds.t - 5 * progress * ratio, bounds.b + 5 * progress * ratio);
-		} else if (type == ES_TRANSITION_FADE_IN || type == ES_TRANSITION_FADE_OUT) {
-			return bounds;
 		} else if (type == ES_TRANSITION_SLIDE_UP_OVER) {
 			return ES_RECT_4(bounds.l, bounds.r, 
 					bounds.t - progress * height / 4, bounds.b - progress * height / 4);
@@ -1329,8 +1329,6 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 		} else if (type == ES_TRANSITION_ZOOM_IN_LIGHT) {
 			return ES_RECT_4(bounds.l + 5 * (1 - progress), bounds.r - 5 * (1 - progress) + 0.5, 
 					bounds.t + 5 * (1 - progress) * ratio, bounds.b - 5 * (1 - progress) * ratio + 0.5);
-		} else if (type == ES_TRANSITION_FADE_IN || type == ES_TRANSITION_FADE_OUT) {
-			return bounds;
 		} else if (type == ES_TRANSITION_SLIDE_UP_OVER) {
 			return ES_RECT_4(bounds.l, bounds.r, 
 					bounds.t + (1 - progress) * height / 2, bounds.b + (1 - progress) * height / 2); 
@@ -1353,6 +1351,14 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, EsRectangle bounds, EsTransitionType type, double progress, bool to) {
 	if (type == ES_TRANSITION_FADE_OUT && to) {
 		return;
+	}
+
+	if (type == ES_TRANSITION_FADE_VIA_TRANSPARENT) {
+		if (to) {
+			progress = ClampDouble(0.0, 1.0, progress * 2.0 - 1.0);
+		} else {
+			progress = ClampDouble(0.0, 1.0, progress * 2.0);
+		}
 	}
 
 	EsRectangle destinationRegion = UIGetTransitionEffectRectangle(bounds, type, progress, to);
@@ -5466,7 +5472,7 @@ void EsWindowSetTitle(EsWindow *window, const char *title, ptrdiff_t titleBytes)
 	MessageDesktop(buffer, bytes, window->handle);
 }
 
-EsHandle EsWindowGetHandle(EsWindow *window) {
+EsHandle _EsWindowGetHandle(EsWindow *window) {
 	return window->handle;
 }
 
@@ -5958,10 +5964,21 @@ void UIScaleChanged(EsElement *element, EsMessage *message) {
 	EsMessageMutexCheck();
 
 	element->RefreshStyle(nullptr, false, true);
+	element->state |= UI_STATE_RELAYOUT | UI_STATE_RELAYOUT_CHILD;
 	EsMessageSend(element, message);
 
 	for (uintptr_t i = 0; i < element->children.Length(); i++) {
 		UIScaleChanged(element->children[i], message);
+	}
+}
+
+void _EsUISetFont(EsFontFamily id) {
+	fontManagement.sans = id;
+	EsMessage m = { ES_MSG_UI_SCALE_CHANGED };
+
+	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
+		UIScaleChanged(gui.allWindows[i], &m);
+		UIWindowNeedsUpdate(gui.allWindows[i]);
 	}
 }
 

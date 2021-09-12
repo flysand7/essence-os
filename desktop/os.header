@@ -329,6 +329,8 @@ define ES_ERROR_ILLEGAL_PATH			(-69)
 define ES_ERROR_NODE_NOT_LOADED			(-71)
 define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
 define ES_ERROR_CANCELLED			(-73)
+define ES_ERROR_BLOCK_ACCESS_INVALID		(-74)
+define ES_ERROR_DEVICE_REMOVED			(-75)
 
 define ES_INVALID_HANDLE 		((EsHandle) (0))
 define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
@@ -1090,6 +1092,7 @@ enum EsTransitionType {
 	ES_TRANSITION_REVEAL_DOWN
 	ES_TRANSITION_FADE_IN
 	ES_TRANSITION_FADE_OUT
+	ES_TRANSITION_FADE_VIA_TRANSPARENT
 	ES_TRANSITION_SLIDE_UP_OVER
 	ES_TRANSITION_SLIDE_DOWN_OVER
 	ES_TRANSITION_SLIDE_UP_UNDER
@@ -1128,7 +1131,9 @@ enum EsClipboardFormat {
 }
 
 enum EsDeviceControlType {
-	ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION
+	ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION = 0x1001
+	ES_DEVICE_CONTROL_BLOCK_READ            = 0x1002
+	ES_DEVICE_CONTROL_BLOCK_WRITE           = 0x1003
 }
 
 function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
@@ -1965,7 +1970,7 @@ function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, Es
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
 
 function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
-function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, int32_t di, void *dp);
+function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq);
 
 // Processes and threads.
 
@@ -2109,6 +2114,7 @@ function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 		EsTextStyle *baseStyle);
 
 function void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context);
+function bool EsFontDatabaseLookupByName(STRING name, EsFontInformation *information); // Returns false if the font does not exist in the database.
 function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information); // Returns false if the font does not exist in the database.
 function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
 
@@ -2336,7 +2342,6 @@ function void EsWindowSwitchToolbar(EsWindow *window, EsElement *toolbar, EsTran
 function void EsWindowSetIcon(EsWindow *window, uint32_t iconID);
 function void EsWindowSetTitle(EsWindow *window, STRING title = BLANK_STRING);
 function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsElement *big, int widthThreshold, int heightThreshold); // Switch between elements when the window size goes below a threshold.
-function EsHandle EsWindowGetHandle(EsWindow *window); // For internal use only.
 
 function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
@@ -2353,6 +2358,10 @@ function EsElement *EsDialogShow(EsWindow *window);
 function EsElement *EsDialogShowAlert(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT); // Returns the button container.
 
 function void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings = ES_NULL);
+
+// For internal use only.
+function EsHandle _EsWindowGetHandle(EsWindow *window); 
+function void _EsUISetFont(EsFontFamily id);
 
 // Buttons.
 

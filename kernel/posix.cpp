@@ -380,7 +380,7 @@ namespace POSIX {
 
 			case SYS_read: {
 				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
-				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, false);
+				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, true);
 				return Read(file, (void *) syscall.arguments[1], syscall.arguments[2], _region3->flags & MM_REGION_FILE);
 			} break;
 
@@ -398,7 +398,7 @@ namespace POSIX {
 
 				for (uintptr_t i = 0; i < (uintptr_t) syscall.arguments[2]; i++) {
 					if (!vectors[i].iov_len) continue;
-					SYSCALL_BUFFER_POSIX((uintptr_t) vectors[i].iov_base, vectors[i].iov_len, 3, false);
+					SYSCALL_BUFFER_POSIX((uintptr_t) vectors[i].iov_base, vectors[i].iov_len, 3, true);
 					intptr_t result = Read(file, vectors[i].iov_base, vectors[i].iov_len, _region3->flags & MM_REGION_FILE);
 					if (result < 0) return result; 
 					bytesRead += result;
@@ -409,7 +409,7 @@ namespace POSIX {
 
 			case SYS_write: {
 				SYSCALL_HANDLE_POSIX(syscall.arguments[0], file);
-				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, true);
+				SYSCALL_BUFFER_POSIX(syscall.arguments[1], syscall.arguments[2], 3, false);
 
 				if (file->type == POSIX_FILE_NORMAL && !(file->openFlags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 					return -EACCES;
@@ -437,7 +437,7 @@ namespace POSIX {
 				for (uintptr_t i = 0; i < (uintptr_t) syscall.arguments[2]; i++) {
 					if (!vectors[i].iov_len) continue;
 					// EsPrint("writev %d: %x/%d\n", i, vectors[i].iov_base, vectors[i].iov_len);
-					SYSCALL_BUFFER_POSIX((uintptr_t) vectors[i].iov_base, vectors[i].iov_len, 3, true);
+					SYSCALL_BUFFER_POSIX((uintptr_t) vectors[i].iov_base, vectors[i].iov_len, 3, false);
 					intptr_t result = Write(file, vectors[i].iov_base, vectors[i].iov_len, _region3->flags & MM_REGION_FILE);
 					if (result < 0) return result; 
 					bytesWritten += result;

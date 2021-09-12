@@ -540,6 +540,20 @@ EsFontFamily FontGetStandardFamily(EsFontFamily family) {
 	}
 }
 
+bool EsFontDatabaseLookupByName(const char *name, ptrdiff_t nameBytes, EsFontInformation *information) {
+	FontInitialise();
+	EsMemoryZero(information, sizeof(EsFontInformation));
+
+	for (uintptr_t i = 0; i < fontManagement.database.Length(); i++) {
+		if (0 == EsStringCompare(name, nameBytes, fontManagement.database[i].name, fontManagement.database[i].nameBytes)) {
+			EsMemoryCopy(information, &fontManagement.database[i], sizeof(EsFontInformation));
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) {
 	FontInitialise();
 	EsMemoryZero(information, sizeof(EsFontInformation));

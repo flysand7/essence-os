@@ -519,7 +519,10 @@ void AccessNode(DirectoryEntry *node, void *buffer, uint64_t offsetIntoFile, uin
 	}
 
 	uint8_t blockBuffer[superblock.blockSize];
-	ReadBlock(block, 1, blockBuffer);
+
+	if (read || count != superblock.blockSize) {
+		ReadBlock(block, 1, blockBuffer);
+	}
 
 	if (read) {
 		memcpy(buffer, blockBuffer + offset, count);

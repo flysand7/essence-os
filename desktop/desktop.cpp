@@ -489,7 +489,9 @@ WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *containe
 }
 
 int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
-	if (message->type == ES_MSG_KEY_DOWN) {
+	if (desktop.installationState) {
+		// Do not process global keyboard shortcuts if the installer is running.
+	} else if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
 		int scancode = message->keyboard.scancode;
 
@@ -1254,6 +1256,10 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 
 			handleDuplicateList.Add(root.base);
 			handleModeDuplicateList.Add(0);
+		}
+
+		if (application->permissions & APPLICATION_PERMISSION_SHUTDOWN) {
+			arguments.permissions |= ES_PERMISSION_SHUTDOWN;
 		}
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {

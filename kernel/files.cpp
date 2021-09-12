@@ -52,6 +52,12 @@ struct FSFile : KNode {
 	KWriterLock resizeLock; // Take exclusive for resizing or flushing.
 };
 
+struct KDMABuffer {
+	uintptr_t virtualAddress;
+	size_t totalByteCount;
+	uintptr_t offsetBytes;
+};
+
 EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode);
 void FSNodeCloseHandle(KNode *node, uint32_t flags);
 EsError FSNodeDelete(KNode *node);
@@ -61,6 +67,7 @@ ptrdiff_t FSDirectoryEnumerateChildren(KNode *node, K_USER_BUFFER EsDirectoryChi
 EsError FSFileControl(KNode *node, uint32_t flags);
 bool FSTrimCachedNode(MMObjectCache *);
 bool FSTrimCachedDirectoryEntry(MMObjectCache *);
+EsError FSBlockDeviceAccess(KBlockDeviceAccessRequest request);
 
 struct {
 	KWriterLock fileSystemsLock;
@@ -1489,12 +1496,6 @@ bool FSTrimCachedNode(MMObjectCache *cache) {
 // DMA transfer buffers.
 //////////////////////////////////////////
 
-struct KDMABuffer {
-	uintptr_t virtualAddress;
-	size_t totalByteCount;
-	uintptr_t offsetBytes;
-};
-
 uintptr_t KDMABufferGetVirtualAddress(KDMABuffer *buffer) {
 	return buffer->virtualAddress;
 }
@@ -1539,29 +1540,33 @@ KDMASegment KDMABufferNextSegment(KDMABuffer *buffer, bool peek) {
 // Block devices.
 //////////////////////////////////////////
 
-bool FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
+EsError FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 	KBlockDevice *device = request.device;
 
 	if (!request.count) {
-		return true;
+		return ES_SUCCESS;
 	}
 
 	if (device->information.readOnly && request.operation == K_ACCESS_WRITE) {
+		if (request.flags & FS_BLOCK_ACCESS_SOFT_ERRORS) return ES_ERROR_BLOCK_ACCESS_INVALID;
 		KernelPanic("FSBlockDeviceAccess - Drive %x is read-only.\n", device);
 	}
 
 	if (request.offset / device->information.sectorSize > device->information.sectorCount 
 			|| (request.offset + request.count) / device->information.sectorSize > device->information.sectorCount) {
+		if (request.flags & FS_BLOCK_ACCESS_SOFT_ERRORS) return ES_ERROR_BLOCK_ACCESS_INVALID;
 		KernelPanic("FSBlockDeviceAccess - Access out of bounds on drive %x.\n", device);
 	}
 
 	if ((request.offset % device->information.sectorSize) || (request.count % device->information.sectorSize)) {
+		if (request.flags & FS_BLOCK_ACCESS_SOFT_ERRORS) return ES_ERROR_BLOCK_ACCESS_INVALID;
 		KernelPanic("FSBlockDeviceAccess - Misaligned access.\n");
 	}
 
 	KDMABuffer buffer = *request.buffer;
 
 	if (buffer.virtualAddress & 3) {
+		if (request.flags & FS_BLOCK_ACCESS_SOFT_ERRORS) return ES_ERROR_BLOCK_ACCESS_INVALID;
 		KernelPanic("FSBlockDeviceAccess - Buffer must be DWORD aligned.\n");
 	}
 
@@ -1593,20 +1598,20 @@ bool FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 	}
 
 	if (request.dispatchGroup == &fakeDispatchGroup) {
-		return fakeDispatchGroup.Wait();
+		return fakeDispatchGroup.Wait() ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
 	} else {
-		return true;
+		return ES_SUCCESS;
 	}
 }
 
 EsError FSReadIntoBlockCache(CCSpace *cache, void *buffer, EsFileOffset offset, EsFileOffset count) {
 	KFileSystem *fileSystem = EsContainerOf(KFileSystem, cacheSpace, cache);
-	return fileSystem->Access(offset, count, K_ACCESS_READ, buffer, ES_FLAGS_DEFAULT, nullptr) ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+	return fileSystem->Access(offset, count, K_ACCESS_READ, buffer, ES_FLAGS_DEFAULT, nullptr);
 }
 
 EsError FSWriteFromBlockCache(CCSpace *cache, const void *buffer, EsFileOffset offset, EsFileOffset count) {
 	KFileSystem *fileSystem = EsContainerOf(KFileSystem, cacheSpace, cache);
-	return fileSystem->Access(offset, count, K_ACCESS_WRITE, (void *) buffer, ES_FLAGS_DEFAULT, nullptr) ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+	return fileSystem->Access(offset, count, K_ACCESS_WRITE, (void *) buffer, ES_FLAGS_DEFAULT, nullptr);
 }
 
 const CCSpaceCallbacks fsBlockCacheCallbacks = {
@@ -1614,19 +1619,19 @@ const CCSpaceCallbacks fsBlockCacheCallbacks = {
 	.writeFrom = FSWriteFromBlockCache,
 };
 
-bool KFileSystem::Access(EsFileOffset offset, size_t count, int operation, void *buffer, uint32_t flags, KWorkGroup *dispatchGroup) {
+EsError KFileSystem::Access(EsFileOffset offset, size_t count, int operation, void *buffer, uint32_t flags, KWorkGroup *dispatchGroup) {
 	if (this->flags & K_DEVICE_REMOVED) {
 		if (dispatchGroup) {
 			dispatchGroup->Start();
 			dispatchGroup->End(false);
 		}
 
-		return false;
+		return ES_ERROR_DEVICE_REMOVED;
 	}
 	
 	bool blockDeviceCachedEnabled = true;
 
-	if (blockDeviceCachedEnabled && (flags & BLOCK_ACCESS_CACHED)) {
+	if (blockDeviceCachedEnabled && (flags & FS_BLOCK_ACCESS_CACHED)) {
 		if (dispatchGroup) {
 			dispatchGroup->Start();
 		}
@@ -1643,7 +1648,7 @@ bool KFileSystem::Access(EsFileOffset offset, size_t count, int operation, void 
 			dispatchGroup->End(result == ES_SUCCESS);
 		}
 
-		return result == ES_SUCCESS;
+		return result;
 	} else {
 		KDMABuffer dmaBuffer = { (uintptr_t) buffer, count };
 		KBlockDeviceAccessRequest request = {};
@@ -1726,48 +1731,21 @@ bool FSSignatureCheck(KInstalledDriver *driver, KDevice *device) {
 }
 
 bool FSCheckMBR(KBlockDevice *device) {
-	if (device->signatureBlock[510] != 0x55 || device->signatureBlock[511] != 0xAA) {
+	MBRPartition partitions[4];
+
+	if (MBRGetPartitions(device->signatureBlock, device->information.sectorCount, partitions)) {
+		for (uintptr_t i = 0; i < 4; i++) {
+			if (partitions[i].present) {
+				KernelLog(LOG_INFO, "FS", "MBR partition", "Found MBR partition %d with offset %d and count %d.\n", 
+						i, partitions[i].offset, partitions[i].count);
+				FSPartitionDeviceCreate(device, partitions[i].offset, partitions[i].count, FS_PARTITION_DEVICE_NO_MBR, EsLiteral("MBR partition"));
+			}
+		}
+
+		return true;
+	} else {
 		return false;
 	}
-
-	KernelLog(LOG_INFO, "FS", "probing MBR", "First sector on device looks like an MBR...\n");
-
-	uint32_t offsets[4], counts[4];
-	bool present[4] = {};
-
-	for (uintptr_t i = 0; i < 4; i++) {
-		if (!device->signatureBlock[4 + 0x1BE + i * 0x10]) {
-			continue;
-		}
-
-		offsets[i] =  
-			  ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 8 ] << 0 )
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 9 ] << 8 )
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 10] << 16)
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 11] << 24);
-		counts[i] =
-			  ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 12] << 0 )
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 13] << 8 )
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 14] << 16)
-			+ ((uint32_t) device->signatureBlock[0x1BE + i * 0x10 + 15] << 24);
-		present[i] = true;
-
-		if (offsets[i] > device->information.sectorCount || counts[i] > device->information.sectorCount - offsets[i] || counts[i] < 32) {
-			KernelLog(LOG_INFO, "FS", "invalid MBR", "Partition %d has offset %d and count %d, which is invalid. Ignoring the rest of the MBR...\n",
-					i, offsets[i], counts[i]);
-			return false;
-		}
-	}
-
-	for (uintptr_t i = 0; i < 4; i++) {
-		if (present[i]) {
-			KernelLog(LOG_INFO, "FS", "MBR partition", "Found MBR partition %d with offset %d and count %d.\n", 
-					i, offsets[i], counts[i]);
-			FSPartitionDeviceCreate(device, offsets[i], counts[i], FS_PARTITION_DEVICE_NO_MBR, EsLiteral("MBR partition"));
-		}
-	}
-
-	return true;
 }
 
 bool FSFileSystemInitialise(KFileSystem *fileSystem) {
@@ -1821,7 +1799,7 @@ void FSDetectFileSystem(KBlockDevice *device) {
 	request.operation = K_ACCESS_READ;
 	request.buffer = &dmaBuffer;
 
-	if (!FSBlockDeviceAccess(request)) {
+	if (ES_SUCCESS != FSBlockDeviceAccess(request)) {
 		// We could not access the block device.
 		KernelLog(LOG_ERROR, "FS", "detect fileSystem read failure", "The signature block could not be read on block device %x.\n", device);
 	} else {

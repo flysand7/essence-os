@@ -843,11 +843,11 @@ struct KFileSystem : KDevice {
 
 	// Only use this for file system metadata that isn't cached in a Node. 
 	// This must be used consistently, i.e. if you ever read a region cached, then you must always write that region cached, and vice versa.
-#define BLOCK_ACCESS_CACHED (1) 
+#define FS_BLOCK_ACCESS_CACHED (1) 
+#define FS_BLOCK_ACCESS_SOFT_ERRORS (2)
 	// Access the block device. Returns true on success.
 	// Offset and count must be sector aligned. Buffer must be DWORD aligned.
-	// TODO Make this return EsError.
-	bool Access(EsFileOffset offset, size_t count, int operation, void *buffer, uint32_t flags, KWorkGroup *dispatchGroup = nullptr);
+	EsError Access(EsFileOffset offset, size_t count, int operation, void *buffer, uint32_t flags, KWorkGroup *dispatchGroup = nullptr);
 
 	// Fill these fields in before registering the file system:
 
