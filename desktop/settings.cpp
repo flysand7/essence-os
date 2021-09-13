@@ -134,6 +134,7 @@ void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
 	api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
+	api.global->enableHoverState = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("enable_hover_state"));
 
 	{
 		float newUIScale = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("ui_scale")) * 0.01f;
@@ -637,7 +638,6 @@ void SettingsColorButtonCommand(EsInstance *, EsElement *element, EsCommand *) {
 	EsMutexRelease(&api.systemConfigurationMutex);
 	SettingsWindowColorUpdated();
 	desktop.configurationModified = true;
-	ConfigurationWriteToFile();
 }
 
 void SettingsPageTheme(EsElement *element, SettingsPage *page) {
@@ -653,7 +653,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 
 	EsPanel *table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, "Wallpaper:", -1); 
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsThemeWallpaper)); 
 
 	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE);
 	size_t currentWallpaperBytes;
@@ -685,7 +685,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 		return 0;
 	};
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, "Window color:", -1); 
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsThemeWindowColor)); 
 	EsPanel *panel = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_HORIZONTAL);
 	uint8_t windowColor = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("window_color"));
 
@@ -696,6 +696,9 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 		button->messageUser = SettingsColorButtonMessage;
 		EsButtonOnCommand(button, SettingsColorButtonCommand);
 	}
+
+	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsThemeEnableHoverState), 'H', "general", "enable_hover_state");
 }
 
 SettingsPage settingsPages[] = {

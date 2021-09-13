@@ -133,6 +133,10 @@ DEFINE_INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany, "Many");
 
 DEFINE_INTERFACE_STRING(DesktopSettingsDisplayUIScale, "Interface scale:");
 
+DEFINE_INTERFACE_STRING(DesktopSettingsThemeWindowColor, "Window color:");
+DEFINE_INTERFACE_STRING(DesktopSettingsThemeEnableHoverState, "Highlight the item the cursor is over");
+DEFINE_INTERFACE_STRING(DesktopSettingsThemeWallpaper, "Wallpaper");
+
 // File operations.
 
 DEFINE_INTERFACE_STRING(FileCannotSave, "The document was not saved.");

@@ -1793,7 +1793,7 @@ bool EsElement::RefreshStyleState() {
 		if (((state & UI_STATE_LEFT_PRESSED) && ((state & UI_STATE_HOVERED) || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) 
 				|| (state & UI_STATE_MENU_SOURCE)) {
 			styleStateFlags |= THEME_PRIMARY_STATE_PRESSED;
-		} else if (((state & UI_STATE_HOVERED) && !window->pressed) || (window && window->pressed == this)) {
+		} else if (((state & UI_STATE_HOVERED) && !window->pressed && api.global->enableHoverState) || (window && window->pressed == this)) {
 			styleStateFlags |= THEME_PRIMARY_STATE_HOVERED;
 		} else {
 			styleStateFlags |= THEME_PRIMARY_STATE_IDLE;
