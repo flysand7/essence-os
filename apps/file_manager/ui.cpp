@@ -820,6 +820,8 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCut), EsCommandByID(instance, ES_COMMAND_CUT));
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(instance, ES_COMMAND_COPY));
+		EsMenuAddSeparator(menu);
+		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(FileManagerRenameAction), &instance->commandRename);
 		EsMenuShow(menu);
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);

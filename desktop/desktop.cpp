@@ -1661,6 +1661,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		document.pathBytes = nameBytes;
 		document.readHandle = file.handle;
 		document.id = ++desktop.currentDocumentID;
+		document.referenceCount++;
 		*desktop.openDocuments.Put(&document.id) = document;
 
 		instance->documentID = document.id;

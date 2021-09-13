@@ -1167,6 +1167,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 					apiInstance->startupInformation->filePathBytes, apiInstance->startupInformation->filePath); 
 			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, message, messageBytes);
 			EsHeapFree(message);
+			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
 		} else {
 			const char *errorMessage = interfaceString_FileSaveErrorUnknown;
 

@@ -6060,7 +6060,10 @@ int UIMessageSendPropagateToAncestors(EsElement *element, EsMessage *message, Es
 		int response = EsMessageSend(element, message);
 
 		if (response) {
-			if (handler) *handler = element;
+			if (handler && (~element->state & UI_STATE_DESTROYING)) {
+				*handler = element;
+			}
+
 			return response;
 		}
 
