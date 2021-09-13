@@ -2067,6 +2067,7 @@ function double EsTimeStampMs();
 // Graphics.
 
 function uint32_t EsColorBlend(uint32_t under, uint32_t over, bool fullAlpha);
+function bool EsColorIsLight(uint32_t color); // Returns true if you should black to draw atop the color.
 function uint32_t EsColorConvertToRGB(float h, float s, float v); // 0 <= hue < 6; 0 <= saturation <= 1; 0 <= value <= 1.
 function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v);
 function uint32_t EsColorParse(STRING string);

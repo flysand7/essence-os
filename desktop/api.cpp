@@ -1275,6 +1275,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		EsHeapFree(path);
 
 		SettingsUpdateGlobalAndWindowManager();
+		SettingsWindowColorUpdated();
 	} else {
 		EsHandle initialMountPointsBuffer = api.startupInformation->data.initialMountPoints;
 		size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);

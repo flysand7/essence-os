@@ -196,6 +196,14 @@ bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v) {
 	}
 }
 
+bool EsColorIsLight(uint32_t color) {
+	float r = (color & 0xFF0000) >> 16;
+	float g = (color & 0x00FF00) >>  8;
+	float b = (color & 0x0000FF) >>  0;
+	float brightness = EsCRTsqrt(r * r * 0.241f + g * g * 0.691f + b * b * 0.068f);
+	return brightness >= 180.0f;
+}
+
 /////////////////////////////////
 // Standard mathematical functions.
 /////////////////////////////////

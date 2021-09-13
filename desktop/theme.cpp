@@ -110,7 +110,7 @@ typedef struct ThemeGradientStop {
 typedef struct ThemePaintLinearGradient {
 	float transform[3];
 	uint8_t stopCount;
-	int8_t useGammaInterpolation : 1, useDithering : 1, useSystemHue : 1;
+	int8_t useGammaInterpolation : 1, useDithering : 1, useSystemColor : 1;
 	uint8_t repeatMode;
 	uint8_t _unused0;
 	// Followed by gradient stops.
@@ -368,7 +368,7 @@ struct {
 	EsPaintTarget cursors;
 	float scale;
 	HashStore<UIStyleKey, struct UIStyle *> loadedStyles;
-	float systemHue;
+	float systemHue, systemSaturation, systemValue, systemHueShift;
 } theming;
 #endif
 
@@ -630,12 +630,13 @@ void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gr
 		uint32_t color1 = stop1->color;
 
 #ifndef IN_DESIGNER
-		if (gradient->useSystemHue) {
+		if (gradient->useSystemColor) {
 			float h, h2, s, v;
 			EsColorConvertToHSV(color0, &h, &s, &v);
-			color0 = (color0 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue, s, v);
+			color0 = (color0 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue, s * theming.systemSaturation, v * theming.systemValue);
 			EsColorConvertToHSV(color1, &h2, &s, &v);
-			color1 = (color1 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue + (h2 - h), s, v);
+			color1 = (color1 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue + (h2 - h) * theming.systemHueShift, 
+					s * theming.systemSaturation, v * theming.systemValue);
 		}
 #endif
 

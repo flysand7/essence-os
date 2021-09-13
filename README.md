@@ -11,7 +11,6 @@ To support development, you can donate to my Patreon: https://www.patreon.com/na
 ## Features
 
 Kernel
-* Audio mixer.
 * Filesystem independent cache manager.
 * Memory manager with shared memory, memory-mapped files and multithreaded paging zeroing and working set balancing.
 * Networking stack for TCP/IP.
@@ -19,6 +18,7 @@ Kernel
 * On-demand module loading.
 * Virtual filesystem.
 * Window manager.
+* Audio mixer. (being rewritten)
 * Optional POSIX subsystem, capable of running GCC and some Busybox tools.
 
 Applications
@@ -52,7 +52,9 @@ Desktop
 
 ## Discussion
 
-Visit https://essence.handmade.network/forums.
+Join our Discord server: https://discord.gg/skeP9ZGDK8
+
+Alternatively, visit the forums (not very active): https://essence.handmade.network/forums.
 
 ## Building
 

@@ -51,6 +51,16 @@ const EsStyle styleSettingsGroupContainer2 = {
 	},
 };
 
+const uint32_t windowColors[] = {
+	0xFF0032, // Strawberry.
+	0xFF7F24, // Bronze.
+	0x77FFD4, // Grass.
+	0x448CF5, // Ocean.
+	0xAC00FF, // Violet.
+	0xE8ECF9, // Polar.
+	0xB7BBC5, // Space. TODO Looks bad deactivated.
+};
+
 const EsStyle styleSettingsGroupContainer3 = {
 	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
 
@@ -74,8 +84,8 @@ const EsStyle styleSettingsNumberTextbox = {
 const EsStyle styleSettingsTable = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
-		.gapMajor = 5,
-		.gapMinor = 5,
+		.gapMajor = 7,
+		.gapMinor = 7,
 	},
 };
 
@@ -556,10 +566,82 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
 }
 
+int SettingsColorButtonMessage(EsElement *element, EsMessage *message) {
+	if (message->type == ES_MSG_PAINT_BACKGROUND) {
+		// HACK This assumes a lot about the workings of the radiobox style...
+
+		EsRectangle bounds = EsPainterBoundsClient(message->painter);
+		bounds.r = bounds.l + 14 * EsElementGetScaleFactor(element);
+		bounds = EsRectangleFit(bounds, ES_RECT_2S(1, 1), true);
+		uint32_t cornerRadius = Width(bounds);
+		uint32_t cornerRadii[4] = { cornerRadius, cornerRadius, cornerRadius, cornerRadius };
+		int32_t borderSize = 1 * EsElementGetScaleFactor(element);
+
+		uint32_t color = EsColorBlend(windowColors[element->userData.u] | 0xFF000000, 0x20FFFFFF, false);
+		if (element->window->pressed == element) color = EsColorBlend(color, 0x40000000, false);
+		EsDrawRoundedRectangle(message->painter, bounds, color, EsColorBlend(color, 0x40000000, false), ES_RECT_1(borderSize), cornerRadii);
+
+		if (EsButtonGetCheck((EsButton *) element) == ES_CHECK_CHECKED) {
+			int32_t inset = 4 * EsElementGetScaleFactor(element);
+			uint32_t bulletColor = EsColorIsLight(color) ? 0xFF000000 : 0xFFFFFFFF;
+			EsDrawRoundedRectangle(message->painter, EsRectangleAdd(bounds, ES_RECT_1I(inset)), bulletColor, 0, ES_RECT_1(0), cornerRadii);
+		}
+
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
+void SettingsWindowColorUpdated() {
+	uint8_t index = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("window_color"));
+
+	if (index > sizeof(windowColors) / sizeof(windowColors[0])) {
+		index = 0;
+	}
+
+	EsColorConvertToHSV(windowColors[index], &theming.systemHue, &theming.systemSaturation, &theming.systemValue);
+
+	if (theming.systemHue > 0.3f && theming.systemHue < 3.3f) {
+		theming.systemHueShift = -1.5f;
+	} else {
+		theming.systemHueShift = 1.0f;
+	}
+
+	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
+		if (gui.allWindows[i]->windowStyle == ES_WINDOW_CONTAINER) {
+			gui.allWindows[i]->Repaint(true);
+			UIWindowNeedsUpdate(gui.allWindows[i]);
+		}
+	}
+}
+
+void SettingsColorButtonCommand(EsInstance *, EsElement *element, EsCommand *) {
+	if (EsButtonGetCheck((EsButton *) element) != ES_CHECK_CHECKED) {
+		return;
+	}
+
+	EsMutexAcquire(&api.systemConfigurationMutex);
+	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup("general", -1, true);
+
+	if (group) {
+		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, "window_color", -1, true);
+
+		if (item) {
+			EsHeapFree(item->value);
+			item->value = (char *) EsHeapAllocate(65, true);
+			item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, element->userData.u);
+		}
+	}
+
+	EsMutexRelease(&api.systemConfigurationMutex);
+	SettingsWindowColorUpdated();
+	desktop.configurationModified = true;
+	ConfigurationWriteToFile();
+}
+
 void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	// TODO Fonts, theme file, etc.
-
-	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
 	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
@@ -569,10 +651,15 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
 	EsPanelSetBands(table, 2);
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, "Wallpaper:", -1); 
+
 	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE);
+	size_t currentWallpaperBytes;
+	char *currentWallpaper = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("wallpaper"), &currentWallpaperBytes);
+	EsTextboxInsert(textbox, currentWallpaper, currentWallpaperBytes);
+	EsHeapFree(currentWallpaper);
 
 	textbox->messageUser = [] (EsElement *element, EsMessage *message) {
 		if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
@@ -597,6 +684,18 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 
 		return 0;
 	};
+
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, "Window color:", -1); 
+	EsPanel *panel = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_HORIZONTAL);
+	uint8_t windowColor = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("window_color"));
+
+	for (uintptr_t i = 0; i < sizeof(windowColors) / sizeof(windowColors[0]); i++) {
+		EsButton *button = EsButtonCreate(panel, ES_CELL_H_LEFT | ES_BUTTON_RADIOBOX | ES_ELEMENT_NO_FOCUS_ON_CLICK);
+		if (windowColor == i) EsButtonSetCheck(button, ES_CHECK_CHECKED);
+		button->userData.u = i;
+		button->messageUser = SettingsColorButtonMessage;
+		EsButtonOnCommand(button, SettingsColorButtonCommand);
+	}
 }
 
 SettingsPage settingsPages[] = {

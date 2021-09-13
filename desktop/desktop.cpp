@@ -1953,7 +1953,7 @@ void ConfigurationWriteToFile() {
 			if (ES_SUCCESS == EsPathDelete(EsLiteral(K_SYSTEM_CONFIGURATION))) {
 				if (ES_SUCCESS == EsPathMove(EsLiteral(K_SYSTEM_CONFIGURATION "_"), EsLiteral(K_SYSTEM_CONFIGURATION))) {
 					EsPrint("ConfigurationWriteToFile - New configuration successfully written.\n");
-					desktop.configurationModified = true;
+					desktop.configurationModified = false;
 				} else {
 					EsPrint("ConfigurationWriteToFile - Error while moving to final path.\n");
 				}
@@ -1986,44 +1986,6 @@ void WallpaperLoad(EsGeneric) {
 		EsRectangle region = ES_RECT_2S(desktop.wallpaperWindow->windowWidth, desktop.wallpaperWindow->windowHeight);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_BITS, desktop.wallpaperWindow->handle, (uintptr_t) &region, (uintptr_t) buffer, 0);
 		EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, true, 0, 0, 0);
-
-		// Work out the most common hue on the wallpaper, and set the system hue.
-
-		uint32_t hueBuckets[36] = {};
-		uint32_t hueSelected = 0;
-
-		for (uintptr_t i = 0; i < desktop.wallpaperWindow->windowWidth * desktop.wallpaperWindow->windowHeight; i += 7) {
-			float h, s, v;
-			EsColorConvertToHSV(((uint32_t *) buffer)[i], &h, &s, &v);
-			uintptr_t bucket = (uintptr_t) (h * 6);
-			hueBuckets[bucket] += 2;
-			hueBuckets[bucket == 35 ? 0 : (bucket + 1)] += 1;
-			hueBuckets[bucket == 0 ? 35 : (bucket - 1)] += 1;
-		}
-
-		for (uintptr_t i = 1; i < 36; i++) {
-			if (hueBuckets[i] > hueBuckets[hueSelected]) {
-				hueSelected = i;
-			}
-		}
-
-		theming.systemHue = hueSelected / 6.0f;
-		if (theming.systemHue < 0) theming.systemHue += 6.0f;
-
-		EsHeapFree(buffer);
-
-		// Tell all container windows to redraw with the new system hue.
-
-		EsMessageMutexAcquire();
-
-		for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
-			if (gui.allWindows[i]->windowStyle == ES_WINDOW_CONTAINER) {
-				gui.allWindows[i]->Repaint(true);
-				UIWindowNeedsUpdate(gui.allWindows[i]);
-			}
-		}
-
-		EsMessageMutexRelease();
 	}
 
 	// TODO Fade wallpaper in.

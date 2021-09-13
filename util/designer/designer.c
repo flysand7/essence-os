@@ -707,7 +707,7 @@ void PaintLinearGradientOp(RfState *state, RfItem *item, void *pointer) {
 		EXPORT_FIELD(PaintLinearGradient, gradient, ThemePaintLinearGradient, themeGradient, transformStart, transform[2]);
 		themeGradient.useGammaInterpolation = gradient->useGammaInterpolation;
 		themeGradient.useDithering = gradient->useDithering;
-		themeGradient.useSystemHue = gradient->useSystemHue;
+		themeGradient.useSystemColor = gradient->useSystemHue;
 		themeGradient.stopCount = arrlenu(gradient->stops);
 		themeGradient.repeatMode = gradient->repeat == GRADIENT_REPEAT_CLAMP ? RAST_REPEAT_CLAMP
 			: gradient->repeat == GRADIENT_REPEAT_NORMAL ? RAST_REPEAT_NORMAL
