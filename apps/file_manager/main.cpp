@@ -590,6 +590,29 @@ void _start() {
 
 			EsHandleClose(message->user.context1.u);
 			EsHeapFree(_path);
+		} else if (message->type == ES_MSG_FILE_MANAGER_PATH_MOVED) {
+			char *data = (char *) EsHeapAllocate(message->user.context2.u, false);
+			uintptr_t *bytes = (uintptr_t *) data;
+			char *paths = data + sizeof(size_t) * 2;
+			EsConstantBufferRead(message->user.context1.u, data); 
+			String oldPath = StringFromLiteralWithSize(paths, bytes[0]);
+			String newPath = StringFromLiteralWithSize(paths + bytes[0], bytes[1]);
+			FolderPathMoved(oldPath, newPath, false);
+			size_t pathSectionCount;
+
+			pathSectionCount = PathCountSections(oldPath);
+
+			for (uintptr_t i = 0; i < pathSectionCount; i++) {
+				FolderFileUpdatedAtPath(PathGetParent(oldPath, i + 1), nullptr);
+			}
+
+			pathSectionCount = PathCountSections(newPath);
+
+			for (uintptr_t i = 0; i < pathSectionCount; i++) {
+				FolderFileUpdatedAtPath(PathGetParent(newPath, i + 1), nullptr);
+			}
+
+			EsHeapFree(data);
 		} else if (message->type == MESSAGE_BLOCKING_TASK_COMPLETE) {
 			Instance *instance = (Instance *) message->user.context1.p;
 			if (message->user.context2.u == instance->blockingTaskID) BlockingTaskComplete(instance);

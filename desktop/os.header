@@ -331,6 +331,7 @@ define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-72)
 define ES_ERROR_CANCELLED			(-73)
 define ES_ERROR_BLOCK_ACCESS_INVALID		(-74)
 define ES_ERROR_DEVICE_REMOVED			(-75)
+define ES_ERROR_TOO_MANY_FILES_WITH_NAME	(-76)
 
 define ES_INVALID_HANDLE 		((EsHandle) (0))
 define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
@@ -467,6 +468,10 @@ define ES_PANEL_V_SCROLL_AUTO		(1 << 7)
 define ES_PANEL_VERTICAL		(0) // Default.
 define ES_PANEL_HORIZONTAL		(1 << 8) 
 define ES_PANEL_REVERSE 		(1 << 9) // Reverse layout is not supported with ES_PANEL_TABLE yet.
+
+// For ES_PANEL_SWITCHER.
+define ES_PANEL_SWITCHER_MEASURE_SHOWN   (0 << 15) // Use the shown child to determine size.
+define ES_PANEL_SWITCHER_MEASURE_LARGEST (1 << 15) // Use the largest child to determine size.
 
 // For ES_PANEL_TABLE.
 // TODO Implement these!
@@ -968,6 +973,7 @@ enum EsMessageType {
 	ES_MSG_INSTANCE_DOCUMENT_RENAMED	= 0x4A04
 	ES_MSG_INSTANCE_DOCUMENT_UPDATED	= 0x4A05
 	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x4A06
+	ES_MSG_INSTANCE_RENAME_RESPONSE		= 0x4A07
 
 	// Debugger messages:
 	ES_MSG_APPLICATION_CRASH		= 0x4C00
@@ -986,6 +992,7 @@ enum EsMessageType {
 
 	// File Manager messages:
 	ES_MSG_FILE_MANAGER_FILE_MODIFIED	= 0x5100
+	ES_MSG_FILE_MANAGER_PATH_MOVED		= 0x5101
 
 	// Textbox messages:
 	ES_MSG_TEXTBOX_UPDATED			= 0x5200

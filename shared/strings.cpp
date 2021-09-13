@@ -141,6 +141,9 @@ DEFINE_INTERFACE_STRING(DesktopSettingsThemeWallpaper, "Wallpaper");
 
 DEFINE_INTERFACE_STRING(FileCannotSave, "The document was not saved.");
 DEFINE_INTERFACE_STRING(FileCannotOpen, "The file could not be opened.");
+DEFINE_INTERFACE_STRING(FileCannotRename, "The file could not be renamed.");
+
+DEFINE_INTERFACE_STRING(FileRenameSuccess, "Renamed");
 
 DEFINE_INTERFACE_STRING(FileSaveErrorFileDeleted, "Another application deleted the file.");
 DEFINE_INTERFACE_STRING(FileSaveErrorCorrupt, "The file has been corrupted, and it cannot be modified.");
@@ -149,7 +152,8 @@ DEFINE_INTERFACE_STRING(FileSaveErrorTooLarge, "The drive does not support files
 DEFINE_INTERFACE_STRING(FileSaveErrorConcurrentAccess, "Another application is modifying the file.");
 DEFINE_INTERFACE_STRING(FileSaveErrorDriveFull, "The drive is full. Try deleting some files to free up space.");
 DEFINE_INTERFACE_STRING(FileSaveErrorResourcesLow, "The system is low on resources. Close some applcations and try again.");
-DEFINE_INTERFACE_STRING(FileSaveErrorAlreadyExists, "Too many files already have the same name.");
+DEFINE_INTERFACE_STRING(FileSaveErrorAlreadyExists, "There is already a file with this name.");
+DEFINE_INTERFACE_STRING(FileSaveErrorTooManyFiles, "Too many files already have the same name.");
 DEFINE_INTERFACE_STRING(FileSaveErrorUnknown, "An unknown error occurred. Please try again later.");
 
 DEFINE_INTERFACE_STRING(FileLoadErrorCorrupt, "The file has been corrupted, and it cannot be opened.");

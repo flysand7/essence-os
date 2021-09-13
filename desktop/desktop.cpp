@@ -1624,7 +1624,7 @@ EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes, ui
 	return file.error;
 }
 
-void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *newName, size_t newNameBytes) {
+void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *newName, size_t newNameBytes, bool failIfAlreadyExists) {
 	if (!instance->processHandle) return;
 	
 	EsMessage m = {};
@@ -1640,9 +1640,9 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		EsHeapFree(folder);
 		size_t nameBytes = EsPathFindUniqueName(name, folderBytes + newNameBytes, folderBytes + newNameBytes + 32);
 
-		if (!nameBytes) {
+		if (!nameBytes || (failIfAlreadyExists && nameBytes != folderBytes + newNameBytes)) {
 			EsHeapFree(name);
-			m.tabOperation.error = ES_ERROR_FILE_ALREADY_EXISTS;
+			m.tabOperation.error = nameBytes ? ES_ERROR_FILE_ALREADY_EXISTS : ES_ERROR_TOO_MANY_FILES_WITH_NAME;
 			EsMessagePostRemote(instance->processHandle, &m);
 			return;
 		}
@@ -1710,21 +1710,9 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	EsMessagePostRemote(instance->processHandle, &m);
 }
 
-void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const uint8_t *buffer, size_t embedWindowMessageBytes) {
+void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char *oldPath, size_t oldPathBytes, const char *newPath, size_t newPathBytes) {
 	// TODO Update the location of installed applications and other things in the configuration.
 	// TODO Replace fromApplication with something better.
-
-	uintptr_t oldPathBytes, newPathBytes;
-	EsMemoryCopy(&oldPathBytes, buffer + 1, sizeof(uintptr_t));
-	EsMemoryCopy(&newPathBytes, buffer + 1 + sizeof(uintptr_t), sizeof(uintptr_t));
-
-	if (oldPathBytes >= 0x4000 || newPathBytes >= 0x4000
-			|| oldPathBytes + newPathBytes + sizeof(uintptr_t) * 2 + 1 != embedWindowMessageBytes) {
-		return;
-	}
-
-	const char *oldPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2;
-	const char *newPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes;
 
 	EsObjectID documentID = 0;
 
@@ -1768,6 +1756,20 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const uint
 		m.tabOperation.handle = EsConstantBufferCreate(newPath + newNameOffset, newPathBytes - newNameOffset, instance->processHandle); 
 		m.tabOperation.bytes = newPathBytes - newNameOffset;
 		EsMessagePostRemote(instance->processHandle, &m);
+	}
+
+	if (fromApplication != desktop.fileManager && desktop.fileManager && desktop.fileManager->singleProcessHandle) {
+		char *data = (char *) EsHeapAllocate(sizeof(size_t) * 2 + oldPathBytes + newPathBytes, false);
+		EsMemoryCopy(data + 0, &oldPathBytes, sizeof(size_t));
+		EsMemoryCopy(data + sizeof(size_t), &newPathBytes, sizeof(size_t));
+		EsMemoryCopy(data + sizeof(size_t) * 2, oldPath, oldPathBytes);
+		EsMemoryCopy(data + sizeof(size_t) * 2 + oldPathBytes, newPath, newPathBytes);
+		EsMessage m = {};
+		m.type = ES_MSG_FILE_MANAGER_PATH_MOVED;
+		m.user.context2 = sizeof(size_t) * 2 + oldPathBytes + newPathBytes;
+		m.user.context1 = EsConstantBufferCreate(data, m.user.context2.u, desktop.fileManager->singleProcessHandle); 
+		EsMessagePostRemote(desktop.fileManager->singleProcessHandle, &m);
+		EsHeapFree(data);
 	}
 }
 
@@ -2253,7 +2255,19 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
 		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
-			InstanceAnnouncePathMoved(application, buffer, message->desktop.bytes);
+			uintptr_t oldPathBytes, newPathBytes;
+			EsMemoryCopy(&oldPathBytes, buffer + 1, sizeof(uintptr_t));
+			EsMemoryCopy(&newPathBytes, buffer + 1 + sizeof(uintptr_t), sizeof(uintptr_t));
+
+			if (oldPathBytes >= 0x4000 || newPathBytes >= 0x4000
+					|| oldPathBytes + newPathBytes + sizeof(uintptr_t) * 2 + 1 != message->desktop.bytes) {
+				return;
+			}
+
+			const char *oldPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2;
+			const char *newPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes;
+
+			InstanceAnnouncePathMoved(application, oldPath, oldPathBytes, newPath, newPathBytes);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_START_USER_TASK && pipe) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
@@ -2335,7 +2349,39 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsElementRepaint(desktop.tasksButton);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE) {
-		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1);
+		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1, false);
+	} else if (buffer[0] == DESKTOP_MSG_RENAME) {
+		const char *newName = (const char *) buffer + 1;
+		size_t newNameBytes = message->desktop.bytes - 1;
+		OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
+
+		if (!instance->documentID) {
+			ApplicationInstanceRequestSave(instance, newName, newNameBytes, true);
+		} else if (document) {
+			size_t folderBytes = 0, oldPathBytes, newPathBytes;
+
+			for (uintptr_t i = 0; i < document->pathBytes; i++) {
+				if (document->path[i] == '/') {
+					folderBytes = i;
+				}
+			}
+
+			char *oldPath = EsStringAllocateAndFormat(&oldPathBytes, "%s", document->pathBytes, document->path);
+			char *newPath = EsStringAllocateAndFormat(&newPathBytes, "%s/%s", folderBytes, document->path, newNameBytes, newName);
+
+			EsMessage m = {};
+			m.type = ES_MSG_INSTANCE_RENAME_RESPONSE;
+			m.tabOperation.id = instance->embeddedWindowID;
+			m.tabOperation.error = EsPathMove(oldPath, oldPathBytes, newPath, newPathBytes);
+			EsMessagePostRemote(instance->processHandle, &m);
+
+			if (m.tabOperation.error == ES_SUCCESS) {
+				InstanceAnnouncePathMoved(nullptr, oldPath, oldPathBytes, newPath, newPathBytes);
+			}
+
+			EsHeapFree(oldPath);
+			EsHeapFree(newPath);
+		}
 	} else if (buffer[0] == DESKTOP_MSG_COMPLETE_SAVE) {
 		ApplicationInstanceCompleteSave(instance);
 	} else if (buffer[0] == DESKTOP_MSG_SHOW_IN_FILE_MANAGER) {

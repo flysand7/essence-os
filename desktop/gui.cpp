@@ -1072,105 +1072,6 @@ void EsMenuCloseAll() {
 	}
 }
 
-// --------------------------------- File menu.
-
-const EsStyle styleFileMenuDocumentInformationPanel1 = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
-		.insets = ES_RECT_4(10, 10, 5, 5),
-		.gapMajor = 5,
-	},
-};
-
-const EsStyle styleFileMenuDocumentInformationPanel2 = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR,
-		.gapMajor = 5,
-	},
-};
-
-void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
-	// TODO Make this user-customizable?
-
-	// const EsFileMenuSettings *settings = (const EsFileMenuSettings *) element->userData.p;
-	APIInstance *instance = (APIInstance *) _instance->_private;
-	EsAssert(instance->instanceClass == ES_INSTANCE_CLASS_EDITOR);
-	EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
-	bool newDocument = !instance->startupInformation || !instance->startupInformation->filePath;
-
-	EsMenu *menu = EsMenuCreate(element, ES_FLAGS_DEFAULT);
-	if (!menu) return;
-	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
-	if (!panel1) goto show;
-
-	{
-		// TODO Get this icon from the file type database?
-		// 	We'll probably need Desktop to send this via EsApplicationStartupInformation and when the file is renamed.
-
-		EsIconDisplayCreate(panel1, ES_FLAGS_DEFAULT, 0, editorSettings->documentIconID);
-		EsSpacerCreate(panel1, ES_FLAGS_DEFAULT, 0, 5, 0);
-
-		EsPanel *panel2 = EsPanelCreate(panel1, ES_FLAGS_DEFAULT, &styleFileMenuDocumentInformationPanel2);
-		if (!panel2) goto show;
-		EsPanel *panel3 = EsPanelCreate(panel2, ES_PANEL_HORIZONTAL | ES_PANEL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
-		if (!panel3) goto show;
-		
-		if (newDocument) {
-			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
-					editorSettings->newDocumentTitle, editorSettings->newDocumentTitleBytes);
-		} else {
-			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
-					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
-		}
-
-		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR); // TODO.
-		if (!renameButton) goto show;
-		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
-
-		if (!newDocument) {
-			EsPanel *panel4 = EsPanelCreate(panel2, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
-			if (!panel4) goto show;
-			EsPanelSetBands(panel4, 2 /* columns */);
-
-			char buffer[64];
-			size_t bytes;
-
-			bytes = EsStringFormat(buffer, sizeof(buffer), "%D", EsFileStoreGetSize(instance->fileStore));
-			EsTextDisplayCreate(panel4, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL_SECONDARY, INTERFACE_STRING(CommonFileMenuFileSize));
-			EsTextDisplayCreate(panel4, ES_CELL_H_LEFT, ES_STYLE_TEXT_LABEL, buffer, bytes);
-
-			// TODO Modification date, author, etc.
-		}
-	}
-
-	EsMenuAddSeparator(menu);
-
-	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR) {
-		if (instance->commandSave.disabled) {
-			EsMenuAddItem(menu, ES_ELEMENT_DISABLED, INTERFACE_STRING(CommonFileUnchanged));
-		} else {
-			EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileSave), &instance->commandSave);
-		}
-
-		EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileMakeCopy)); // TODO.
-		EsMenuAddSeparator(menu);
-	}
-
-	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
-	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
-	EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
-
-	show: EsMenuShow(menu);
-}
-
-void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings) {
-	EsButton *button = EsButtonCreate(element, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
-	if (!button) return;
-	button->accessKey = 'F';
-	button->userData = (void *) settings;
-	EsButtonOnCommand(button, FileMenuCreate);
-}
-
 // --------------------------------- Paint targets.
 
 bool EsPaintTargetTake(EsPaintTarget *target, size_t width, size_t height, bool hasAlphaChannel = true) {
@@ -3132,7 +3033,8 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 
 				for (uintptr_t i = 0; i < element->GetChildCount(); i++) {
 					EsElement *child = element->GetChild(i);
-					if (child->flags & (ES_ELEMENT_HIDDEN | ES_ELEMENT_NON_CLIENT)) continue;
+					if (child->flags & ES_ELEMENT_NON_CLIENT) continue;
+					if ((child->flags & ES_ELEMENT_HIDDEN) && (~panel->flags & ES_PANEL_SWITCHER_MEASURE_LARGEST)) continue;
 					int size = child->GetWidth(message->measure.height);
 					if (size > maximum) maximum = size;
 				}
@@ -3153,7 +3055,8 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 
 				for (uintptr_t i = 0; i < element->GetChildCount(); i++) {
 					EsElement *child = element->GetChild(i);
-					if (child->flags & (ES_ELEMENT_HIDDEN | ES_ELEMENT_NON_CLIENT)) continue;
+					if (child->flags & ES_ELEMENT_NON_CLIENT) continue;
+					if ((child->flags & ES_ELEMENT_HIDDEN) && (~panel->flags & ES_PANEL_SWITCHER_MEASURE_LARGEST)) continue;
 					int size = child->GetHeight(message->measure.width);
 					if (size > maximum) maximum = size;
 				}
@@ -5235,6 +5138,183 @@ EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 	slider->steps = steps;
 	EsSliderSetValue(slider, value, false);
 	return slider;
+}
+
+// --------------------------------- File menu.
+
+const EsStyle styleFileMenuDocumentInformationPanel1 = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.insets = ES_RECT_4(10, 10, 5, 5),
+		.gapMajor = 5,
+	},
+};
+
+const EsStyle styleFileMenuDocumentInformationPanel2 = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_GAP_MAJOR,
+		.gapMajor = 5,
+	},
+};
+
+const EsStyle styleFileMenuNameTextbox = {
+	.inherit = ES_STYLE_TEXTBOX_TRANSPARENT,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
+		.preferredWidth = 0,
+	},
+};
+
+int FileMenuNameTextboxMessage(EsElement *element, EsMessage *message) {
+	if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
+		APIInstance *instance = (APIInstance *) element->instance->_private;
+
+		if (!message->endEdit.rejected) {
+			size_t newNameBytes;
+			char *newName = EsTextboxGetContents(instance->fileMenuNameTextbox, &newNameBytes);
+			uint8_t *buffer = (uint8_t *) EsHeapAllocate(1 + newNameBytes, false);
+			buffer[0] = DESKTOP_MSG_RENAME;
+			EsMemoryCopy(buffer + 1, newName, newNameBytes);
+			MessageDesktop(buffer, 1 + newNameBytes, element->instance->window->handle);
+			EsHeapFree(buffer);
+			EsHeapFree(newName);
+			EsElementDestroy(element->window);
+		} else {
+			EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNamePanel, ES_TRANSITION_SLIDE_DOWN);
+		}
+
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
+void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
+	APIInstance *instance = (APIInstance *) _instance->_private;
+	EsTextboxClear(instance->fileMenuNameTextbox, false);
+
+	uintptr_t extensionOffset = 0;
+	const char *initialName = nullptr;
+	ptrdiff_t initialNameBytes = 0;
+
+	if (instance->startupInformation && instance->startupInformation->filePathBytes) {
+		initialName = instance->startupInformation->filePath; 
+		initialNameBytes = instance->startupInformation->filePathBytes;
+	} else {
+		EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
+		initialName = editorSettings->newDocumentFileName;
+		initialNameBytes = editorSettings->newDocumentFileNameBytes;
+	}
+
+	if (initialNameBytes == -1) {
+		initialNameBytes = EsCStringLength(initialName);
+	}
+
+	EsTextboxInsert(instance->fileMenuNameTextbox, initialName, initialNameBytes, false);
+
+	for (intptr_t i = 1; i < initialNameBytes; i++) {
+		if (initialName[i] == '.') {
+			extensionOffset = i;
+		}
+	}
+
+	EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNameTextbox, ES_TRANSITION_SLIDE_UP);
+	EsElementFocus(instance->fileMenuNameTextbox);
+	EsTextboxStartEdit(instance->fileMenuNameTextbox);
+	if (extensionOffset) EsTextboxSetSelection(instance->fileMenuNameTextbox, 0, 0, 0, extensionOffset);
+	instance->fileMenuNameTextbox->messageUser = FileMenuNameTextboxMessage;
+}
+
+void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
+	// TODO Make this user-customizable?
+
+	// const EsFileMenuSettings *settings = (const EsFileMenuSettings *) element->userData.p;
+	APIInstance *instance = (APIInstance *) _instance->_private;
+	EsAssert(instance->instanceClass == ES_INSTANCE_CLASS_EDITOR);
+	EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
+	bool newDocument = !instance->startupInformation || !instance->startupInformation->filePath;
+
+	EsMenu *menu = EsMenuCreate(element, ES_FLAGS_DEFAULT);
+	if (!menu) return;
+	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
+	if (!panel1) goto show;
+
+	{
+		// TODO Get this icon from the file type database?
+		// 	We'll probably need Desktop to send this via EsApplicationStartupInformation and when the file is renamed.
+
+		EsIconDisplayCreate(panel1, ES_FLAGS_DEFAULT, 0, editorSettings->documentIconID);
+		EsSpacerCreate(panel1, ES_FLAGS_DEFAULT, 0, 5, 0);
+
+		EsPanel *panel2 = EsPanelCreate(panel1, ES_FLAGS_DEFAULT, &styleFileMenuDocumentInformationPanel2);
+		if (!panel2) goto show;
+		EsPanel *switcher = EsPanelCreate(panel2, ES_PANEL_H_LEFT | ES_PANEL_SWITCHER | ES_PANEL_SWITCHER_MEASURE_LARGEST);
+		if (!switcher) goto show;
+		EsPanel *panel3 = EsPanelCreate(switcher, ES_PANEL_HORIZONTAL | ES_PANEL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+		if (!panel3) goto show;
+
+		instance->fileMenuNameTextbox = EsTextboxCreate(switcher, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED, &styleFileMenuNameTextbox);
+
+		instance->fileMenuNameSwitcher = switcher;
+		instance->fileMenuNamePanel = panel3;
+		EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNamePanel, ES_TRANSITION_NONE);
+		
+		if (newDocument) {
+			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
+					editorSettings->newDocumentTitle, editorSettings->newDocumentTitleBytes);
+		} else {
+			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
+					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
+		}
+
+		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR); // TODO.
+		if (!renameButton) goto show;
+		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
+		EsButtonOnCommand(renameButton, FileMenuRename);
+
+		if (!newDocument) {
+			EsPanel *panel4 = EsPanelCreate(panel2, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+			if (!panel4) goto show;
+			EsPanelSetBands(panel4, 2 /* columns */);
+
+			char buffer[64];
+			size_t bytes;
+
+			bytes = EsStringFormat(buffer, sizeof(buffer), "%D", EsFileStoreGetSize(instance->fileStore));
+			EsTextDisplayCreate(panel4, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL_SECONDARY, INTERFACE_STRING(CommonFileMenuFileSize));
+			EsTextDisplayCreate(panel4, ES_CELL_H_LEFT, ES_STYLE_TEXT_LABEL, buffer, bytes);
+
+			// TODO Modification date, author, etc.
+		}
+	}
+
+	EsMenuAddSeparator(menu);
+
+	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR) {
+		if (instance->commandSave.disabled) {
+			EsMenuAddItem(menu, ES_ELEMENT_DISABLED, INTERFACE_STRING(CommonFileUnchanged));
+		} else {
+			EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileSave), &instance->commandSave);
+		}
+
+		EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileMakeCopy)); // TODO.
+		EsMenuAddSeparator(menu);
+	}
+
+	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
+	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
+	EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
+
+	show: EsMenuShow(menu);
+}
+
+void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings) {
+	EsButton *button = EsButtonCreate(element, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
+	if (!button) return;
+	button->accessKey = 'F';
+	button->userData = (void *) settings;
+	EsButtonOnCommand(button, FileMenuCreate);
 }
 
 // --------------------------------- Message loop and core UI infrastructure.

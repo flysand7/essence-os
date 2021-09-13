@@ -63,6 +63,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
 #define DESKTOP_MSG_START_USER_TASK           (16)
 #define DESKTOP_MSG_SET_PROGRESS              (17)
+#define DESKTOP_MSG_RENAME                    (18)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -218,6 +219,11 @@ struct APIInstance {
 		EsInstanceClassEditorSettings editorSettings;
 		EsInstanceClassViewerSettings viewerSettings;
 	};
+
+	// For the file menu.
+	EsPanel *fileMenuNameSwitcher;
+	EsPanel *fileMenuNamePanel;
+	EsTextbox *fileMenuNameTextbox;
 };
 
 MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
@@ -982,6 +988,41 @@ EsMessage *EsMessageReceive() {
 					EsHandleClose(message.message.tabOperation.handle);
 				}
 			}
+		} else if (type == ES_MSG_INSTANCE_RENAME_RESPONSE) {
+			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
+
+			if (instance) {
+				if (message.message.tabOperation.error == ES_SUCCESS) {
+					EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
+					EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, INTERFACE_STRING(FileRenameSuccess));
+				} else {
+					const char *errorMessage = interfaceString_FileSaveErrorUnknown;
+
+					switch (message.message.tabOperation.error) {
+						case ES_ERROR_FILE_DOES_NOT_EXIST: 
+						case ES_ERROR_NODE_DELETED: 
+						case ES_ERROR_PERMISSION_NOT_GRANTED: 
+						case ES_ERROR_INCORRECT_NODE_TYPE:
+							errorMessage = interfaceString_FileSaveErrorFileDeleted;
+							break;
+						case ES_ERROR_DRIVE_ERROR_FILE_DAMAGED:
+							errorMessage = interfaceString_FileSaveErrorCorrupt;
+							break;
+						case ES_ERROR_DRIVE_CONTROLLER_REPORTED:
+							errorMessage = interfaceString_FileSaveErrorDrive;
+							break;
+						case ES_ERROR_INSUFFICIENT_RESOURCES:
+							errorMessage = interfaceString_FileSaveErrorResourcesLow;
+							break;
+						case ES_ERROR_FILE_ALREADY_EXISTS:
+							errorMessage = interfaceString_FileSaveErrorAlreadyExists;
+							break;
+					}
+
+					EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotRename), 
+							errorMessage, -1, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
+				}
+			}
 		} else if (type == ES_MSG_INSTANCE_DOCUMENT_RENAMED) {
 			char *buffer = (char *) EsHeapAllocate(message.message.tabOperation.bytes, false);
 
@@ -1201,6 +1242,9 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 					break;
 				case ES_ERROR_FILE_ALREADY_EXISTS:
 					errorMessage = interfaceString_FileSaveErrorAlreadyExists;
+					break;
+				case ES_ERROR_TOO_MANY_FILES_WITH_NAME:
+					errorMessage = interfaceString_FileSaveErrorTooManyFiles;
 					break;
 			}
 
