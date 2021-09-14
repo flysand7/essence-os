@@ -1,12 +1,8 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
 #include <shared/strings.cpp>
-
 #include <shared/hash_table.cpp>
 #include <shared/array.cpp>
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#undef IMPLEMENTATION
 
 // TODO Possible candidates for moving in the core API:
 // 	- String/paths utils
@@ -239,6 +235,7 @@ void ListItemCreated(EsElement *element, uintptr_t index, bool fromFolderRename)
 FolderEntry *FolderAddEntry(Folder *folder, const char *_name, size_t nameBytes, EsDirectoryChild *information, uint64_t id = 0);
 void FolderAddEntries(Folder *folder, EsDirectoryChild *buffer, size_t entryCount);
 uint32_t NamespaceDefaultGetFileType(String);
+void ThumbnailGenerateIfNeeded(Folder *folder, FolderEntry *entry, bool fromFolderRename, bool modified);
 
 Array<Drive> drives;
 EsMutex drivesMutex;

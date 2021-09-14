@@ -287,6 +287,7 @@ Option options[] = {
 	{ "Flag._ALWAYS_USE_VBE", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Dependency.ACPICA", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_image", OPTION_TYPE_BOOL, { .b = true } },
+	{ "Dependency.stb_image_write", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_sprintf", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.HarfBuzz", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.FreeType", OPTION_TYPE_BOOL, { .b = true } },

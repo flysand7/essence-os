@@ -2521,14 +2521,18 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			char *oldPath = EsStringAllocateAndFormat(&oldPathBytes, "%s", document->pathBytes, document->path);
 			char *newPath = EsStringAllocateAndFormat(&newPathBytes, "%s/%s", folderBytes, document->path, newNameBytes, newName);
 
-			EsMessage m = {};
-			m.type = ES_MSG_INSTANCE_RENAME_RESPONSE;
-			m.tabOperation.id = instance->embeddedWindowID;
-			m.tabOperation.error = EsPathMove(oldPath, oldPathBytes, newPath, newPathBytes);
-			EsMessagePostRemote(instance->process->handle, &m);
+			if (oldPathBytes == newPathBytes && 0 == EsMemoryCompare(oldPath, newPath, oldPathBytes)) {
+				// Same name.
+			} else {
+				EsMessage m = {};
+				m.type = ES_MSG_INSTANCE_RENAME_RESPONSE;
+				m.tabOperation.id = instance->embeddedWindowID;
+				m.tabOperation.error = EsPathMove(oldPath, oldPathBytes, newPath, newPathBytes);
+				EsMessagePostRemote(instance->process->handle, &m);
 
-			if (m.tabOperation.error == ES_SUCCESS) {
-				InstanceAnnouncePathMoved(nullptr, oldPath, oldPathBytes, newPath, newPathBytes);
+				if (m.tabOperation.error == ES_SUCCESS) {
+					InstanceAnnouncePathMoved(nullptr, oldPath, oldPathBytes, newPath, newPathBytes);
+				}
 			}
 
 			EsHeapFree(oldPath);

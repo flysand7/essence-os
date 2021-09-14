@@ -1,10 +1,6 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
-
 #include <shared/array.cpp>
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#undef IMPLEMENTATION
 
 // TODO Single instance.
 // TODO Sorting lists.

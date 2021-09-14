@@ -189,6 +189,9 @@ DEFINE_INTERFACE_STRING(ImageEditorPickTool, "Pick tool");
 
 DEFINE_INTERFACE_STRING(ImageEditorUnsupportedFormat, "The image is in an unsupported format. Try opening it with another application.");
 
+DEFINE_INTERFACE_STRING(ImageEditorNewFileName, "untitled.png");
+DEFINE_INTERFACE_STRING(ImageEditorNewDocument, "New bitmap image");
+
 DEFINE_INTERFACE_STRING(ImageEditorTitle, "Image Editor");
 
 // Text Editor.

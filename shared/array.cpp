@@ -1,4 +1,4 @@
-#ifndef IMPLEMENTATION
+#ifndef ARRAY_IMPLEMENTATION_ONLY
 
 struct _ArrayHeader {
 	size_t length, allocated;
@@ -71,7 +71,9 @@ struct Array {
 	}
 };
 
-#else
+#endif
+
+#ifndef ARRAY_DEFINITIONS_ONLY
 
 bool _ArrayMaybeInitialise(void **array, size_t itemSize, EsHeap *heap) {
 	if (*array) return true;

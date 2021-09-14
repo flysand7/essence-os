@@ -1691,7 +1691,7 @@ struct EsMessageGetBreadcrumb {
 };
 
 struct EsMessageEndEdit {
-	bool rejected;
+	bool rejected, unchanged;
 };
 
 // Instance messages.
@@ -1706,6 +1706,7 @@ struct EsMessageInstanceOpen {
 struct EsMessageInstanceSave {
 	ES_INSTANCE_TYPE *instance;
 	EsFileStore *file;
+	STRING name;
 };
 
 struct EsMessageInstanceDestroy {

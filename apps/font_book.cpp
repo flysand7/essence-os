@@ -1,16 +1,13 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
+#include <shared/array.cpp>
+#include <shared/strings.cpp>
 
 // TODO Previewing font files from the database.
 // TODO Installing fonts.
 // TODO Character map.
 // TODO Searching/filtering fonts.
 // TODO Single instance.
-
-#include <shared/array.cpp>
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#include <shared/strings.cpp>
 
 #define SETTINGS_FILE "|Settings:/Default.ini"
 

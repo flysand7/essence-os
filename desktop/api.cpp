@@ -9,9 +9,10 @@
 
 #ifdef USE_STB_IMAGE
 #define STB_IMAGE_IMPLEMENTATION
-#define STBI_MALLOC(sz)           EsCRTmalloc(sz)
-#define STBI_REALLOC(p,newsz)     EsCRTrealloc(p,newsz)
-#define STBI_FREE(p)              EsCRTfree(p)
+#define STBI_MALLOC(sz) EsCRTmalloc(sz)
+#define STBI_REALLOC(p,newsz) EsCRTrealloc(p,newsz)
+#define STBI_FREE(p) EsCRTfree(p)
+#define STBI_ASSERT(x) EsAssert(x)
 #define STBI_NO_STDIO
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
@@ -36,10 +37,6 @@
 #include <shared/math.cpp>
 #include <shared/strings.cpp>
 #include <shared/common.cpp>
-
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#undef IMPLEMENTATION
 
 struct EnumString { const char *cName; int value; };
 #include <bin/enum_strings_array.h>
@@ -969,6 +966,10 @@ EsMessage *EsMessageReceive() {
 				m.instanceSave.file->type = FILE_STORE_HANDLE;
 				m.instanceSave.file->handles = 1;
 				m.instanceSave.instance = InstanceFromWindowID(message.message.tabOperation.id);
+
+				APIInstance *instance = (APIInstance *) m.instanceSave.instance->_private;
+				m.instanceSave.name = instance->startupInformation->filePath;
+				m.instanceSave.nameBytes = instance->startupInformation->filePathBytes;
 
 				if (m.instanceSave.file->error == ES_SUCCESS) {
 					EsMemoryCopy(&message.message, &m, sizeof(EsMessage));

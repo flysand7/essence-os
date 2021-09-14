@@ -125,6 +125,7 @@ KSpinlock ipiLock;
 #include <shared/heap.cpp>
 #include <shared/arena.cpp>
 #else
+#define ARRAY_IMPLEMENTATION_ONLY
 #include <shared/array.cpp>
 #include <shared/partitions.cpp>
 #endif

@@ -5174,7 +5174,7 @@ int FileMenuNameTextboxMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
 		APIInstance *instance = (APIInstance *) element->instance->_private;
 
-		if (!message->endEdit.rejected) {
+		if (!message->endEdit.rejected && !message->endEdit.unchanged) {
 			size_t newNameBytes;
 			char *newName = EsTextboxGetContents(instance->fileMenuNameTextbox, &newNameBytes);
 			uint8_t *buffer = (uint8_t *) EsHeapAllocate(1 + newNameBytes, false);

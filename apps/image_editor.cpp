@@ -15,14 +15,17 @@
 
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
-
 #include <shared/array.cpp>
 #include <shared/strings.cpp>
 
-#ifdef OS_ESSENCE
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#endif
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STBI_WRITE_NO_STDIO
+#define STBIW_MEMMOVE EsCRTmemmove
+#define STBIW_MALLOC(sz) EsCRTmalloc(sz)
+#define STBIW_REALLOC(p,newsz) EsCRTrealloc(p,newsz)
+#define STBIW_FREE(p) EsCRTfree(p)
+#define STBIW_ASSERT EsAssert
+#include <shared/stb_image_write.h>
 
 #define TILE_SIZE (128)
 
@@ -63,6 +66,12 @@ struct Instance : EsInstance {
 	EsRectangle modifiedBounds;
 	float previousPointX, previousPointY;
 	bool dragged;
+};
+
+const EsInstanceClassEditorSettings editorSettings = {
+	INTERFACE_STRING(ImageEditorNewFileName),
+	INTERFACE_STRING(ImageEditorNewDocument),
+	ES_ICON_IMAGE_X_GENERIC,
 };
 
 const EsStyle styleBitmapSizeTextbox = {
@@ -433,7 +442,7 @@ int CanvasMessage(EsElement *element, EsMessage *message) {
 			EsRectangle rectangle = instance->modifiedBounds;
 			rectangle.l += painter->offsetX, rectangle.r += painter->offsetX;
 			rectangle.t += painter->offsetY, rectangle.b += painter->offsetY;
-			EsDrawBlock(painter, rectangle, 0xFF000000 | EsColorWellGetRGB(instance->colorWell));
+			EsDrawBlock(painter, EsRectangleIntersection(rectangle, area), 0xFF000000 | EsColorWellGetRGB(instance->colorWell));
 		}
 	} else if ((message->type == ES_MSG_MOUSE_LEFT_DRAG || message->type == ES_MSG_MOUSE_MOVED) 
 			&& EsMouseIsLeftHeld() && instance->commandBrush.check == ES_CHECK_CHECKED) {
@@ -691,6 +700,7 @@ void MenuImage(Instance *instance, EsElement *element, EsCommand *) {
 void InstanceCreate(EsMessage *message) {
 	Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(ImageEditorTitle));
 	EsElement *toolbar = EsWindowGetToolbar(instance->window);
+	EsInstanceSetClassEditor(instance, &editorSettings);
 
 	// Register commands.
 
@@ -706,6 +716,7 @@ void InstanceCreate(EsMessage *message) {
 
 	EsButton *button;
 
+	EsToolbarAddFileMenu(toolbar);
 	button = EsButtonCreate(toolbar, ES_BUTTON_DROPDOWN, ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG, INTERFACE_STRING(ImageEditorImage));
 	EsButtonSetIcon(button, ES_ICON_IMAGE_X_GENERIC);
 	button->accessKey = 'I';
@@ -755,7 +766,7 @@ void InstanceCreate(EsMessage *message) {
 
 	EsPanel *section = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 	EsTextDisplayCreate(section, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(ImageEditorPropertyColor));
-	instance->colorWell = EsColorWellCreate(section, ES_FLAGS_DEFAULT, 0);
+	instance->colorWell = EsColorWellCreate(section, ES_FLAGS_DEFAULT, 0xFFFF0000);
 	instance->colorWell->accessKey = 'C';
 	EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 
@@ -790,7 +801,22 @@ void InstanceCreate(EsMessage *message) {
 	ImageCopyFromPaintTarget(instance, &instance->image, painter.clip);
 }
 
+void WriteCallback(void *context, void *data, int size) {
+	EsBufferWrite((EsBuffer *) context, data, size);
+}
+
+void SwapRedAndBlueChannels(uint32_t *bits, size_t width, size_t height, size_t stride) {
+	for (uintptr_t i = 0; i < height; i++) {
+		for (uintptr_t j = 0; j < width; j++) {
+			uint32_t *pixel = &bits[i * stride / 4 + j];
+			*pixel = (*pixel & 0xFF00FF00) | (((*pixel >> 16) | (*pixel << 16)) & 0x00FF00FF);
+		}
+	}
+}
+
 void _start() {
+	_init();
+
 	while (true) {
 		EsMessage *message = EsMessageReceive();
 
@@ -831,6 +857,47 @@ void _start() {
 
 			EsHeapFree(bits);
 			EsInstanceOpenComplete(message, true);
+		} else if (message->type == ES_MSG_INSTANCE_SAVE) {
+			Instance *instance = message->instanceSave.instance;
+
+			uintptr_t extensionOffset = message->instanceSave.nameBytes;
+
+			while (extensionOffset) {
+				if (message->instanceSave.name[extensionOffset - 1] == '.') {
+					break;
+				} else {
+					extensionOffset--;
+				}
+			}
+
+			const char *extension = extensionOffset ? message->instanceSave.name + extensionOffset : "png";
+			size_t extensionBytes = extensionOffset ? message->instanceSave.nameBytes - extensionOffset : 3;
+
+			uint32_t *bits;
+			size_t width, height, stride;
+			EsPaintTargetStartDirectAccess(instance->bitmap, &bits, &width, &height, &stride);
+			EsAssert(stride == width * 4); // TODO Other strides.
+			SwapRedAndBlueChannels(bits, width, height, stride); // stbi_write uses the other order. We swap back below.
+
+			uint8_t _buffer[4096];
+			EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+			buffer.fileStore = message->instanceSave.file;
+
+			if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpg"))
+					|| 0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpeg"))) {
+				stbi_write_jpg_to_func(WriteCallback, &buffer, width, height, 4, bits, 90);
+			} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("bmp"))) {
+				stbi_write_bmp_to_func(WriteCallback, &buffer, width, height, 4, bits);
+			} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("tga"))) {
+				stbi_write_tga_to_func(WriteCallback, &buffer, width, height, 4, bits);
+			} else {
+				stbi_write_png_to_func(WriteCallback, &buffer, width, height, 4, bits, stride);
+			}
+
+			SwapRedAndBlueChannels(bits, width, height, stride); // Swap back.
+			EsBufferFlushToFileStore(&buffer);
+			EsPaintTargetEndDirectAccess(instance->bitmap);
+			EsInstanceSaveComplete(message, true);
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			Instance *instance = message->instanceDestroy.instance;
 			EsPaintTargetDestroy(instance->bitmap);

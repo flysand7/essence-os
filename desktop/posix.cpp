@@ -6,6 +6,7 @@
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
 
+#define ARRAY_DEFINITIONS_ONLY
 #include <shared/array.cpp>
 
 extern "C" void *ProcessorTLSRead(uintptr_t offset);

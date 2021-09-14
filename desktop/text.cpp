@@ -3179,9 +3179,12 @@ void EsTextboxStartEdit(EsTextbox *textbox) {
 
 void TextboxEndEdit(EsTextbox *textbox, bool reject) {
 	if ((textbox->flags & ES_TEXTBOX_EDIT_BASED) && textbox->editing) {
+		TextboxSetActiveLine(textbox, -1);
 		textbox->editing = false;
 		EsMessage m = { ES_MSG_TEXTBOX_EDIT_END };
 		m.endEdit.rejected = reject;
+		m.endEdit.unchanged = textbox->dataBytes == textbox->editStartContentBytes 
+			&& 0 == EsMemoryCompare(textbox->data, textbox->editStartContent, textbox->dataBytes);
 
 		if (reject || ES_REJECTED == EsMessageSend(textbox, &m)) {
 			EsTextboxSelectAll(textbox);

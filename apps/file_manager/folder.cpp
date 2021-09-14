@@ -355,14 +355,19 @@ void FolderDetachInstance(Instance *instance) {
 	folder->referenceCount--;
 
 	if (!folder->referenceCount) {
-		EsAssert(!folder->attachedInstances.Length());
-		foldersWithNoAttachedInstances.Add(folder);
+		if (folder->refreshing) {
+			loadedFolders.FindAndDeleteSwap(folder, true);
+			FolderDestroy(folder);
+		} else {
+			EsAssert(!folder->attachedInstances.Length());
+			foldersWithNoAttachedInstances.Add(folder);
 
-		if (foldersWithNoAttachedInstances.Length() > MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES) {
-			Folder *leastRecentlyUsed = foldersWithNoAttachedInstances[0];
-			loadedFolders.FindAndDeleteSwap(leastRecentlyUsed, true);
-			foldersWithNoAttachedInstances.Delete(0);
-			FolderDestroy(leastRecentlyUsed);
+			if (foldersWithNoAttachedInstances.Length() > MAXIMUM_FOLDERS_WITH_NO_ATTACHED_INSTANCES) {
+				Folder *leastRecentlyUsed = foldersWithNoAttachedInstances[0];
+				loadedFolders.FindAndDeleteSwap(leastRecentlyUsed, true);
+				foldersWithNoAttachedInstances.Delete(0);
+				FolderDestroy(leastRecentlyUsed);
+			}
 		}
 	}
 }
@@ -418,6 +423,8 @@ void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t n
 
 	FolderEntry *entry = FolderAddEntry(folder, name, nameBytes, information, id);
 	ListEntry listEntry = { .entry = entry };
+
+	ThumbnailGenerateIfNeeded(folder, entry, false, true /* modified */);
 
 	for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
 		Instance *instance = folder->attachedInstances[i];

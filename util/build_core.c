@@ -1266,6 +1266,8 @@ int main(int argc, char **argv) {
 					strcat(kernelCompileFlags, " -DUSE_ACPICA ");
 				} else if (0 == strcmp(s.key, "Dependency.stb_image") && atoi(s.value)) {
 					strcat(commonCompileFlags, " -DUSE_STB_IMAGE ");
+				} else if (0 == strcmp(s.key, "Dependency.stb_image_write") && atoi(s.value)) {
+					strcat(commonCompileFlags, " -DUSE_STB_IMAGE_WRITE ");
 				} else if (0 == strcmp(s.key, "Dependency.stb_sprintf") && atoi(s.value)) {
 					strcat(commonCompileFlags, " -DUSE_STB_SPRINTF ");
 				} else if (0 == strcmp(s.key, "Dependency.HarfBuzz") && atoi(s.value)) {

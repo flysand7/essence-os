@@ -545,7 +545,7 @@ void ThumbnailResize(uint32_t *bits, uint32_t originalWidth, uint32_t originalHe
 	}
 }
 
-void ListItemGenerateThumbnailTask(Instance *, Task *task) {
+void ThumbnailGenerateTask(Instance *, Task *task) {
 	EsMessageMutexAcquire();
 	Thumbnail *thumbnail = thumbnailCache.Get(&task->id);
 	bool cancelTask = !thumbnail || thumbnail->referenceCount == 0;
@@ -619,7 +619,7 @@ void ListItemGenerateThumbnailTask(Instance *, Task *task) {
 	EsMessageMutexRelease();
 }
 
-void ListItemGenerateThumbnailTaskComplete(Instance *, Task *task) {
+void ThumbnailGenerateTaskComplete(Instance *, Task *task) {
 	Thumbnail *thumbnail = thumbnailCache.Get(&task->id);
 
 	if (thumbnail) {
@@ -637,11 +637,47 @@ void ListItemGenerateThumbnailTaskComplete(Instance *, Task *task) {
 	StringDestroy(&task->string);
 }
 
-Thumbnail *ListItemGetThumbnail(EsElement *element) {
-	Instance *instance = element->instance;
-	ListEntry *entry = &instance->listContents[EsListViewGetIndexFromItem(element)];
-	Thumbnail *thumbnail = thumbnailCache.Get(&entry->entry->id);
-	return thumbnail;
+void ThumbnailGenerateIfNeeded(Folder *folder, FolderEntry *entry, bool fromFolderRename, bool modified) {
+	FileType *fileType = FolderEntryGetType(folder, entry);
+
+	if (!fileType->hasThumbnailGenerator) {
+		return; // The file type does not support thumbnail generation.
+	}
+
+	Thumbnail *thumbnail;
+
+	// TODO Remove from LRU if needed.
+
+	if (modified) {
+		thumbnail = thumbnailCache.Get(&entry->id);
+
+		if (!thumbnail || (!thumbnail->generatingTasksInProgress && !thumbnail->bits)) {
+			return; // The thumbnail is not in use.
+		}
+	} else {
+		thumbnail = thumbnailCache.Put(&entry->id);
+
+		if (!fromFolderRename) {
+			thumbnail->referenceCount++;
+		}
+
+		if ((thumbnail->generatingTasksInProgress && !fromFolderRename) || thumbnail->bits) {
+			return; // The thumbnail is already being/has already been generated.
+		}
+	}
+
+	thumbnail->generatingTasksInProgress++;
+
+	String path = StringAllocateAndFormat("%s%s", STRFMT(folder->path), STRFMT(entry->GetInternalName()));
+
+	Task task = {
+		.string = path,
+		.id = entry->id,
+		.callback = ThumbnailGenerateTask,
+		.then = ThumbnailGenerateTaskComplete,
+	};
+
+	NonBlockingTaskQueue(task);
 }
 
 void ListItemCreated(EsElement *element, uintptr_t index, bool fromFolderRename) {
@@ -651,38 +687,14 @@ void ListItemCreated(EsElement *element, uintptr_t index, bool fromFolderRename)
 		return; // The current view does not display thumbnails.
 	}
 
-	ListEntry *listEntry = &instance->listContents[index];
-	FolderEntry *entry = listEntry->entry;
-	FileType *fileType = FolderEntryGetType(instance->folder, entry);
+	ThumbnailGenerateIfNeeded(instance->folder, instance->listContents[index].entry, fromFolderRename, false /* not modified */);
+}
 
-	if (!fileType->hasThumbnailGenerator) {
-		return; // The file type does not support thumbnail generation.
-	}
-
-	Thumbnail *thumbnail = thumbnailCache.Put(&entry->id);
-
-	if (!fromFolderRename) {
-		thumbnail->referenceCount++;
-	}
-
-	// TODO Remove from LRU if needed.
-
-	if ((thumbnail->generatingTasksInProgress && !fromFolderRename) || thumbnail->bits) {
-		return; // The thumbnail is already being/has already been generated.
-	}
-
-	thumbnail->generatingTasksInProgress++;
-
-	String path = StringAllocateAndFormat("%s%s", STRFMT(instance->path), STRFMT(entry->GetInternalName()));
-
-	Task task = {
-		.string = path,
-		.id = entry->id,
-		.callback = ListItemGenerateThumbnailTask,
-		.then = ListItemGenerateThumbnailTaskComplete,
-	};
-
-	NonBlockingTaskQueue(task);
+Thumbnail *ListItemGetThumbnail(EsElement *element) {
+	Instance *instance = element->instance;
+	ListEntry *entry = &instance->listContents[EsListViewGetIndexFromItem(element)];
+	Thumbnail *thumbnail = thumbnailCache.Get(&entry->entry->id);
+	return thumbnail;
 }
 
 int ListItemMessage(EsElement *element, EsMessage *message) {

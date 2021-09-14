@@ -1,13 +1,8 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
-
 #include <shared/strings.cpp>
+#include <shared/array.cpp>
 #include <ports/md4c/md4c.c>
-
-#include <shared/array.cpp>
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#undef IMPLEMENTATION
 
 // TODO Inline code background?
 

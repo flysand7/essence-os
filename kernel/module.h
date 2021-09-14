@@ -448,7 +448,9 @@ void *MMMapShared(MMSpace *space, MMSharedRegion *sharedRegion, uintptr_t offset
 // Panics on failure.
 void MMCheckUnusable(uintptr_t physicalStart, size_t bytes);
 
+#define ARRAY_DEFINITIONS_ONLY
 #include <shared/array.cpp>
+#undef ARRAY_DEFINITIONS_ONLY
 
 typedef SimpleList MMObjectCacheItem;
 

@@ -11,12 +11,8 @@
 #include <shared/hash.cpp>
 #include <shared/strings.cpp>
 #include <shared/partitions.cpp>
+#include <shared/array.cpp>
 #include <ports/lzma/LzmaDec.c>
-
-#include <shared/array.cpp>
-#define IMPLEMENTATION
-#include <shared/array.cpp>
-#undef IMPLEMENTATION
 
 #define Log(...)
 // TODO Error handling.
