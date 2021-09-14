@@ -2830,6 +2830,10 @@ void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) 
 	if (newScroll < 0) newScroll = 0;
 	else if (newScroll > limit[axis]) newScroll = limit[axis];
 	if (newScroll == position[axis]) return;
+
+	// Since we might be about to fast scroll, make sure the bits we are scrolling are valid.
+	UIWindowPaintNow(parent->window, nullptr, false);
+
 	double previous = position[axis];
 	position[axis] = newScroll;
 	if (bar[axis]) ScrollbarSetPosition(bar[axis], position[axis], false, false);
@@ -6089,7 +6093,7 @@ void EsElementRepaint(EsElement *element, const EsRectangle *region) {
 }
 
 void EsElementRepaintForScroll(EsElement *element, EsMessage *message) {
-	// TODO Support custom borders sizes.
+	// TODO Support custom border sizes.
 
 	EsRectangle borders = ES_RECT_4(element->internalOffsetLeft, element->internalOffsetRight, 
 			element->internalOffsetTop, element->internalOffsetBottom);

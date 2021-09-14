@@ -505,6 +505,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 	if (argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL || argument3 == WINDOW_SET_BITS_SCROLL_HORIZONTAL) {
 		ptrdiff_t scrollDelta = argument2;
 		bool scrollVertical = argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL;
+		EsRectangle originalRegion = region;
 
 		if (scrollVertical) {
 			if (scrollDelta < 0) region.b += scrollDelta;
@@ -522,7 +523,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 				|| region.l >= region.r || region.t >= region.b) {
 		} else {
 			surface->Scroll(region, scrollDelta, scrollVertical);
-			window->Update(&region, true);
+			window->Update(&originalRegion, true);
 			window->queuedScrollUpdate = true;
 			// Don't update the screen until the rest of the window is painted.
 		}

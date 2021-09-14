@@ -222,7 +222,11 @@ void Surface::Scroll(EsRectangle region, ptrdiff_t delta, bool vertical) {
 				}
 			}
 		} else {
-			// TODO.
+			for (intptr_t i = region.t; i < region.b; i++) {
+				for (intptr_t j = region.r - 1; j >= region.l; j--) {
+					((uint32_t *) bits)[j - delta + i * stride / 4] = ((uint32_t *) bits)[j + i * stride / 4];
+				}
+			}
 		}
 	}
 }
