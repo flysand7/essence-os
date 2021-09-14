@@ -861,6 +861,16 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 			EsSyscall(ES_SYSCALL_WINDOW_MOVE, band->window->handle, (uintptr_t) &newBounds, 0, ES_FLAGS_DEFAULT);
 		}, band);
 
+		EsMenuAddItem(menu, band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, 
+				band->items.Length() > 1 ? interfaceString_DesktopCloseAllTabs : interfaceString_DesktopCloseWindow, -1, 
+				[] (EsMenu *, EsGeneric context) {
+			WindowTabBand *band = (WindowTabBand *) context.p;
+
+			for (uintptr_t i = 0; i < band->items.Length(); i++) {
+				WindowTabClose((WindowTab *) band->items[i]);
+			}
+		}, band);
+
 		EsMenuShow(menu);
 	} else {
 		return ReorderListMessage(band, message);

@@ -93,6 +93,8 @@ DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
 DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindow, "Move to new window");
 DEFINE_INTERFACE_STRING(DesktopInspectUI, "Inspect UI");
 DEFINE_INTERFACE_STRING(DesktopCenterWindow, "Center in screen");
+DEFINE_INTERFACE_STRING(DesktopCloseWindow, "Close window");
+DEFINE_INTERFACE_STRING(DesktopCloseAllTabs, "Close all tabs");
 
 DEFINE_INTERFACE_STRING(DesktopSettingsApplication, "Settings");
 DEFINE_INTERFACE_STRING(DesktopSettingsTitle, "Settings");
