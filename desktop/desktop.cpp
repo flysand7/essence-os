@@ -568,7 +568,7 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
 		int scancode = message->keyboard.scancode;
 
-		if (ctrlOnly && scancode == ES_SCANCODE_N) {
+		if (ctrlOnly && scancode == ES_SCANCODE_N && !message->keyboard.repeat) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
 		} else if (message->keyboard.modifiers == (ES_MODIFIER_CTRL | ES_MODIFIER_FLAG) && scancode == ES_SCANCODE_D) {
 			if (!desktop.inspectorOpen) {
@@ -612,9 +612,9 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 			if (tab == -1) tab = container->tabBand->items.Length() - 1;
 			if (tab == (int) container->tabBand->items.Length()) tab = 0;
 			WindowTabActivate((WindowTab *) container->tabBand->items[tab]);
-		} else if (ctrlOnly && scancode == ES_SCANCODE_T) {
+		} else if (ctrlOnly && scancode == ES_SCANCODE_T && !message->keyboard.repeat) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, container);
-		} else if (ctrlOnly && scancode == ES_SCANCODE_W) {
+		} else if (ctrlOnly && scancode == ES_SCANCODE_W && !message->keyboard.repeat) {
 			WindowTabClose(container->active);
 		} else if (message->keyboard.modifiers == ES_MODIFIER_FLAG && scancode == ES_SCANCODE_UP_ARROW) {
 			WindowSnap(container->window, false, false, SNAP_EDGE_MAXIMIZE);
@@ -851,6 +851,35 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(band, ES_MENU_AT_CURSOR);
 
+		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, 
+				band->items.Length() > 1 ? interfaceString_DesktopCloseAllTabs : interfaceString_DesktopCloseWindow, -1, 
+				[] (EsMenu *, EsGeneric context) {
+			WindowTabBand *band = (WindowTabBand *) context.p;
+
+			for (uintptr_t i = 0; i < band->items.Length(); i++) {
+				WindowTabClose((WindowTab *) band->items[i]);
+			}
+		}, band);
+
+		EsMenuAddSeparator(menu);
+
+		EsMenuAddItem(menu, band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT,
+				INTERFACE_STRING(DesktopMaximiseWindow), [] (EsMenu *, EsGeneric context) {
+			WindowSnap((EsWindow *) context.p, false, false, SNAP_EDGE_MAXIMIZE);
+		}, band->window);
+
+		EsMenuAddItem(menu, band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT,
+				INTERFACE_STRING(DesktopMinimiseWindow), [] (EsMenu *, EsGeneric context) {
+			EsSyscall(ES_SYSCALL_WINDOW_MOVE, ((EsWindow *) context.p)->handle, 0, 0, ES_WINDOW_MOVE_HIDDEN);
+		}, band->window);
+
+		EsMenuAddItem(menu, !band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT,
+				INTERFACE_STRING(DesktopRestoreWindow), [] (EsMenu *, EsGeneric context) {
+			WindowRestore((EsWindow *) context.p);
+		}, band->window);
+
+		EsMenuAddSeparator(menu);
+
 		EsMenuAddItem(menu, band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, 
 				INTERFACE_STRING(DesktopCenterWindow), [] (EsMenu *, EsGeneric context) {
 			WindowTabBand *band = (WindowTabBand *) context.p;
@@ -861,15 +890,15 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 			EsSyscall(ES_SYSCALL_WINDOW_MOVE, band->window->handle, (uintptr_t) &newBounds, 0, ES_FLAGS_DEFAULT);
 		}, band);
 
-		EsMenuAddItem(menu, band->window->isMaximised ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, 
-				band->items.Length() > 1 ? interfaceString_DesktopCloseAllTabs : interfaceString_DesktopCloseWindow, -1, 
-				[] (EsMenu *, EsGeneric context) {
-			WindowTabBand *band = (WindowTabBand *) context.p;
+		EsMenuAddItem(menu, ES_FLAGS_DEFAULT,
+				INTERFACE_STRING(DesktopSnapWindowLeft), [] (EsMenu *, EsGeneric context) {
+			WindowSnap((EsWindow *) context.p, false, false, SNAP_EDGE_LEFT);
+		}, band->window);
 
-			for (uintptr_t i = 0; i < band->items.Length(); i++) {
-				WindowTabClose((WindowTab *) band->items[i]);
-			}
-		}, band);
+		EsMenuAddItem(menu, ES_FLAGS_DEFAULT,
+				INTERFACE_STRING(DesktopSnapWindowRight), [] (EsMenu *, EsGeneric context) {
+			WindowSnap((EsWindow *) context.p, false, false, SNAP_EDGE_RIGHT);
+		}, band->window);
 
 		EsMenuShow(menu);
 	} else {
@@ -1139,7 +1168,7 @@ void ShutdownModalCreate() {
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &screen, 0, ES_WINDOW_PROPERTY_BLUR_BOUNDS);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
-	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_LIGHT_BLUR, 0, ES_WINDOW_PROPERTY_MATERIAL);
+	// EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_LIGHT_BLUR, 0, ES_WINDOW_PROPERTY_MATERIAL);
 
 	// Setup the UI.
 

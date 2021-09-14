@@ -92,9 +92,14 @@ DEFINE_INTERFACE_STRING(DesktopConfirmShutdown, "Are you sure you want to turn o
 DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
 DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindow, "Move to new window");
 DEFINE_INTERFACE_STRING(DesktopInspectUI, "Inspect UI");
-DEFINE_INTERFACE_STRING(DesktopCenterWindow, "Center in screen");
 DEFINE_INTERFACE_STRING(DesktopCloseWindow, "Close window");
 DEFINE_INTERFACE_STRING(DesktopCloseAllTabs, "Close all tabs");
+DEFINE_INTERFACE_STRING(DesktopMaximiseWindow, "Fill screen");
+DEFINE_INTERFACE_STRING(DesktopRestoreWindow, "Restore position");
+DEFINE_INTERFACE_STRING(DesktopMinimiseWindow, "Hide");
+DEFINE_INTERFACE_STRING(DesktopCenterWindow, "Center in screen");
+DEFINE_INTERFACE_STRING(DesktopSnapWindowLeft, "Move to left side");
+DEFINE_INTERFACE_STRING(DesktopSnapWindowRight, "Move to right side");
 
 DEFINE_INTERFACE_STRING(DesktopSettingsApplication, "Settings");
 DEFINE_INTERFACE_STRING(DesktopSettingsTitle, "Settings");

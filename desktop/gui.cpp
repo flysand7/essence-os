@@ -5272,7 +5272,7 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
 		}
 
-		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR); // TODO.
+		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR);
 		if (!renameButton) goto show;
 		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
 		EsButtonOnCommand(renameButton, FileMenuRename);
@@ -5293,22 +5293,22 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 		}
 	}
 
-	EsMenuAddSeparator(menu);
+	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR && !newDocument) {
+		EsMenuAddSeparator(menu);
 
-	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR) {
 		if (instance->commandSave.disabled) {
 			EsMenuAddItem(menu, ES_ELEMENT_DISABLED, INTERFACE_STRING(CommonFileUnchanged));
 		} else {
 			EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileSave), &instance->commandSave);
 		}
 
-		EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileMakeCopy)); // TODO.
+		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileMakeCopy)); // TODO.
 		EsMenuAddSeparator(menu);
-	}
 
-	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
-	EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
-	EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
+		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
+		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
+		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
+	}
 
 	show: EsMenuShow(menu);
 }
