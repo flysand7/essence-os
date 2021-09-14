@@ -1,7 +1,4 @@
 // TODO Tabs:
-//	- Dragging out of the window.
-//	- Dragging onto other windows.
-//	- Keyboard shortcuts.
 //	- New tab page - search; recent files.
 // 	- Right click menu.
 // 	- Duplicate tabs.
@@ -119,9 +116,7 @@ struct InstalledApplication {
 	bool useSingleInstance;
 	struct ApplicationInstance *singleInstance;
 	uint64_t permissions;
-	size_t openInstanceCount; // Only used if useSingleProcess is true.
-	EsHandle singleProcessHandle; 
-	bool notified; // Temporary flag.
+	struct ApplicationProcess *singleProcess;
 	EsFileOffset totalSize; // 0 if uncalculated.
 };
 
@@ -135,6 +130,13 @@ struct CrashedTabInstance : CommonDesktopInstance {
 struct BlankTabInstance : CommonDesktopInstance {
 };
 
+struct ApplicationProcess {
+	EsObjectID id;
+	EsHandle handle;
+	InstalledApplication *application;
+	size_t instanceCount;
+};
+
 struct ApplicationInstance {
 	// User interface.
 	WindowTab *tab; // nullptr for notRespondingInstance and user tasks.
@@ -143,8 +145,8 @@ struct ApplicationInstance {
 
 	// Currently loaded application.
 	InstalledApplication *application;
-	EsObjectID documentID, processID;
-	EsHandle processHandle;
+	EsObjectID documentID;
+	ApplicationProcess *process;
 	bool isUserTask;
 
 	// Metadata.
@@ -152,6 +154,15 @@ struct ApplicationInstance {
 	size_t titleBytes;
 	uint32_t iconID;
 	double progress;
+};
+
+const EsStyle styleSmallParagraph = {
+	.inherit = ES_STYLE_TEXT_PARAGRAPH,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_TEXT_SIZE,
+		.textSize = 8,
+	},
 };
 
 const EsStyle styleNewTabContent = {
@@ -174,6 +185,7 @@ const EsStyle styleButtonGroupContainer = {
 struct {
 	Array<InstalledApplication *> installedApplications;
 	Array<ApplicationInstance *> allApplicationInstances;
+	Array<ApplicationProcess *> allApplicationProcesses;
 	Array<ContainerWindow *> allContainerWindows;
 
 	InstalledApplication *fileManager;
@@ -199,6 +211,12 @@ struct {
 
 	Array<ApplicationInstance *> allOngoingUserTasks;
 	double totalUserTaskProgress;
+
+#define SHUTDOWN_TIMEOUT (3000) // Maximum time to wait for applications to exit.
+	EsHandle shutdownReady; // Set when all applications have exited.
+	bool inShutdown;
+
+	bool inspectorOpen;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -421,13 +439,68 @@ int ReorderListMessage(EsElement *_list, EsMessage *message) {
 }
 
 //////////////////////////////////////////////////////
+// Desktop Inspector:
+//////////////////////////////////////////////////////
+
+void DesktopInspectorThread(EsGeneric) {
+	EsMessageMutexAcquire();
+	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_PLAIN);
+	EsRectangle screen;
+	EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_GET, 0, (uintptr_t) &screen, 0, 0);
+	screen.l = screen.r - 400;
+	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &screen, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
+	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_FLAGS_DEFAULT, 0, ES_WINDOW_PROPERTY_SOLID);
+	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 180, 0, ES_WINDOW_PROPERTY_ALPHA);
+	EsPanel *panel = EsPanelCreate(window, ES_CELL_FILL, ES_STYLE_PANEL_FILLED);
+	EsMessageMutexRelease();
+
+	while (true) {
+		EsMessageMutexAcquire();
+		EsElementDestroyContents(panel);
+		char buffer[256];
+		size_t bytes;
+
+		EsTextDisplayCreate(panel, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING1, "Desktop Inspector");
+		EsSpacerCreate(panel, ES_CELL_H_FILL, 0, 0, 5);
+
+		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+			ApplicationInstance *instance = desktop.allApplicationInstances[i];
+			bytes = EsStringFormat(buffer, sizeof(buffer), "inst: eid %d, title '%s', pid %d, docid %d, app '%z'%z", 
+					instance->embeddedWindowID, instance->titleBytes, instance->title, instance->process->id, 
+					instance->documentID, instance->application->cName, instance->isUserTask ? ", utask" : "");
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+		}
+
+		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+			ApplicationProcess *process = desktop.allApplicationProcesses[i];
+			bytes = EsStringFormat(buffer, sizeof(buffer), "proc: pid %d, app '%z', instances %d", 
+					process->id, process->application ? process->application->cName : "??", process->instanceCount);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+		}
+
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			InstalledApplication *application = desktop.installedApplications[i];
+			bytes = EsStringFormat(buffer, sizeof(buffer), "app: '%z'%z%z%z, spid %d, seid %d", 
+					application->cName, application->temporary ? ", temp" : "", application->useSingleProcess ? ", 1proc" : "",
+					application->useSingleInstance ? ", 1inst" : "",  
+					application->singleProcess ? application->singleProcess->id : 0,
+					application->singleInstance ? application->singleInstance->embeddedWindowID : 0);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+		}
+
+		EsMessageMutexRelease();
+		EsSleep(500);
+	}
+}
+
+//////////////////////////////////////////////////////
 // Container windows:
 //////////////////////////////////////////////////////
 
 void WindowTabClose(WindowTab *tab) {
 	if (tab->notRespondingInstance) {
 		// The application is not responding, so force quit the process.
-		EsProcessTerminate(tab->applicationInstance->processHandle, 1);
+		EsProcessTerminate(tab->applicationInstance->process->handle, 1);
 	} else {
 		ApplicationInstanceClose(tab->applicationInstance);
 	}
@@ -497,6 +570,11 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 
 		if (ctrlOnly && scancode == ES_SCANCODE_N) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
+		} else if (message->keyboard.modifiers == (ES_MODIFIER_CTRL | ES_MODIFIER_FLAG) && scancode == ES_SCANCODE_D) {
+			if (!desktop.inspectorOpen) {
+				desktop.inspectorOpen = true;
+				EsThreadCreate(DesktopInspectorThread, nullptr, 0);
+			}
 		} else {
 			return 0;
 		}
@@ -713,7 +791,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				ApplicationInstance *instance = tab->applicationInstance;
 				EsMessage m = { ES_MSG_TAB_INSPECT_UI };
 				m.tabOperation.id = instance->embeddedWindowID;
-				EsMessagePostRemote(instance->processHandle, &m);
+				EsMessagePostRemote(instance->process->handle, &m);
 			}, tab);
 		}
 
@@ -1008,6 +1086,33 @@ int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
+void Shutdown(uintptr_t action) {
+	// TODO This doesn't wait for Desktop instances.
+
+	if (desktop.inShutdown) {
+		return;
+	}
+
+	if (!desktop.allApplicationProcesses.Length()) {
+		// No applications are open, so we can shut down immediately.
+		EsSyscall(ES_SYSCALL_SHUTDOWN, action, 0, 0, 0);
+	}
+
+	desktop.inShutdown = true;
+	desktop.shutdownReady = EsEventCreate(true);
+
+	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+		// Tell all applications to close.
+		ApplicationInstanceClose(desktop.allApplicationInstances[i]);
+	}
+
+	EsThreadCreate([] (EsGeneric action) {
+		// Shut down either when all applications exit, or after the timeout.
+		EsWait(&desktop.shutdownReady, 1, SHUTDOWN_TIMEOUT); 
+		EsSyscall(ES_SYSCALL_SHUTDOWN, action.u, 0, 0, 0);
+	}, nullptr, action);
+}
+
 void ShutdownModalCreate() {
 	if (desktop.shutdownWindowOpen) {
 		return;
@@ -1048,11 +1153,11 @@ void ShutdownModalCreate() {
 	// Setup command callbacks when the buttons are pressed.
 
 	EsButtonOnCommand(shutdownButton, [] (EsInstance *, EsElement *, EsCommand *) {
-		EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_POWER_OFF, 0, 0, 0);
+		Shutdown(SHUTDOWN_ACTION_POWER_OFF);
 	});
 
 	EsButtonOnCommand(restartButton, [] (EsInstance *, EsElement *, EsCommand *) {
-		EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_RESTART, 0, 0, 0);
+		Shutdown(SHUTDOWN_ACTION_RESTART);
 	});
 
 	EsButtonOnCommand(cancelButton, [] (EsInstance *, EsElement *element, EsCommand *) {
@@ -1070,7 +1175,7 @@ void InstanceForceQuit(EsInstance *, EsElement *element, EsCommand *) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
 		if (instance->tab && instance->tab->notRespondingInstance && instance->tab->notRespondingInstance->embeddedWindowID == element->window->id) {
-			EsProcessTerminate(instance->processHandle, 1);
+			EsProcessTerminate(instance->process->handle, 1);
 			break;
 		}
 	}
@@ -1155,15 +1260,46 @@ void ApplicationInstanceClose(ApplicationInstance *instance) {
 	// TODO Force closing not responding instances.
 	EsMessage m = { ES_MSG_TAB_CLOSE_REQUEST };
 	m.tabOperation.id = instance->embeddedWindowID;
-	EsMessagePostRemote(instance->processHandle, &m);
+	EsMessagePostRemote(instance->process->handle, &m);
+}
+
+void ApplicationInstanceCleanup(ApplicationInstance *instance) {
+	if (instance->documentID) {
+		OpenDocumentCloseReference(instance->documentID);
+		instance->documentID = 0;
+	}
+
+	InstalledApplication *application = instance->application;
+
+	if (application && application->singleInstance == instance) {
+		application->singleInstance = nullptr;
+	}
+
+	if (instance->process) {
+		EsAssert(instance->process->instanceCount);
+		instance->process->instanceCount--;
+
+		if (!instance->process->instanceCount) {
+			EsMessage m = { ES_MSG_APPLICATION_EXIT };
+			EsMessagePostRemote(instance->process->handle, &m);
+		}
+	}
+
+	instance->process = nullptr;
+	instance->application = nullptr;
 }
 
 bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
+	if (desktop.inShutdown) {
+		return false;
+	}
+
 	InstalledApplication *application = nullptr;
 
 	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
 		if (desktop.installedApplications[i]->id == applicationID) {
 			application = desktop.installedApplications[i];
+			break;
 		}
 	}
 
@@ -1190,34 +1326,29 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		instance->tab->notRespondingInstance = nullptr;
 	}
 
-	if (instance->processHandle) {
-		EsHandleClose(instance->processHandle);
-		instance->processID = 0;
-		instance->processHandle = ES_INVALID_HANDLE;
-	}
-
-	if (instance->documentID) {
-		OpenDocumentCloseReference(instance->documentID);
-		instance->documentID = 0;
-	}
+	ApplicationInstanceCleanup(instance);
 
 	instance->application = application;
 
-	if (application->useSingleProcess && application->singleProcessHandle) {
-		EsProcessState state;
-		EsProcessGetState(application->singleProcessHandle, &state); 
-
-		if (state.flags & (ES_PROCESS_STATE_ALL_THREADS_TERMINATED | ES_PROCESS_STATE_TERMINATING | ES_PROCESS_STATE_CRASHED)) {
-			EsHandleClose(application->singleProcessHandle);
-			application->singleProcessHandle = ES_INVALID_HANDLE;
-		}
-	}
-
-	EsHandle process = application->singleProcessHandle;
+	ApplicationProcess *process = application->singleProcess;
 
 	if (application->createInstance) {
-		process = ES_CURRENT_PROCESS;
-	} else if (!application->useSingleProcess || process == ES_INVALID_HANDLE) {
+		EsObjectID desktopProcessID = EsProcessGetID(ES_CURRENT_PROCESS);
+
+		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+			if (desktop.allApplicationProcesses[i]->id == desktopProcessID) {
+				process = desktop.allApplicationProcesses[i];
+				break;
+			}
+		}
+
+		if (!process) {
+			process = (ApplicationProcess *) EsHeapAllocate(sizeof(ApplicationProcess), true);
+			process->handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, ES_CURRENT_PROCESS, ES_CURRENT_PROCESS, 0, 0);
+			process->id = desktopProcessID;
+			desktop.allApplicationProcesses.Add(process);
+		}
+	} else if (!process) {
 		EsProcessInformation information;
 		EsProcessCreationArguments arguments = {};
 
@@ -1336,8 +1467,13 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		}
 
 		if (!ES_CHECK_ERROR(error)) {
-			process = information.handle;
 			EsHandleClose(information.mainThread.handle);
+
+			process = (ApplicationProcess *) EsHeapAllocate(sizeof(ApplicationProcess), true);
+			process->handle = information.handle;
+			process->id = information.pid;
+			process->application = application;
+			desktop.allApplicationProcesses.Add(process);
 		} else {
 			EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
@@ -1346,11 +1482,11 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	}
 
 	if (application->useSingleProcess) {
-		application->singleProcessHandle = process;
+		application->singleProcess = process;
 	}
 
-	instance->processID = EsProcessGetID(process);
-	instance->processHandle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, process, ES_CURRENT_PROCESS, 0, 0);
+	instance->process = process;
+	process->instanceCount++;
 
 	if (startupInformation->documentID) {
 		instance->documentID = startupInformation->documentID;
@@ -1374,33 +1510,23 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	// Share handles to the file and the startup information buffer.
 
 	if (startupInformation->readHandle) {
-		startupInformation->readHandle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, startupInformation->readHandle, process, 0, 0);
-	}
-
-	if (!application->useSingleProcess && !application->createInstance) {
-		startupInformation->flags |= ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS;
+		startupInformation->readHandle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, startupInformation->readHandle, process->handle, 0, 0);
 	}
 
 	uint8_t *createInstanceDataBuffer = ApplicationStartupInformationToBuffer(startupInformation, &m.createInstance.dataBytes);
-	m.createInstance.data = EsConstantBufferCreate(createInstanceDataBuffer, m.createInstance.dataBytes, process);
+	m.createInstance.data = EsConstantBufferCreate(createInstanceDataBuffer, m.createInstance.dataBytes, process->handle);
 	EsHeapFree(createInstanceDataBuffer);
 
 	EsHandle handle = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
 	instance->embeddedWindowHandle = handle;
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, 0xFF000000 | GetConstantNumber("windowFillColor"), 0, ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR);
 	instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, handle, 0, 0, 0);
-	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, process, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
+	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, process->handle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
 
 	if (application->createInstance) {
 		application->createInstance(&m);
 	} else {
-		EsMessagePostRemote(process, &m);
-
-		if (!application->useSingleProcess) {
-			EsHandleClose(process);
-		} else {
-			application->openInstanceCount++;
-		}
+		EsMessagePostRemote(process->handle, &m);
 	}
 
 	if (application->useSingleInstance) {
@@ -1432,7 +1558,6 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupI
 
 void ApplicationTemporaryDestroy(InstalledApplication *application) {
 	if (!application->temporary) return;
-	EsAssert(!application->singleProcessHandle);
 
 	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
 		if (desktop.installedApplications[i] == application) {
@@ -1449,6 +1574,27 @@ void ApplicationTemporaryDestroy(InstalledApplication *application) {
 	EsAssert(false);
 }
 
+ApplicationProcess *ApplicationProcessFindByPID(EsObjectID pid, bool removeIfFound = false) {
+	for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+		ApplicationProcess *process = desktop.allApplicationProcesses[i];
+
+		if (process->id == pid) {
+			if (removeIfFound) {
+				desktop.allApplicationProcesses.DeleteSwap(i);
+			}
+
+			return process;
+		}
+	}
+
+	return nullptr;
+}
+
+InstalledApplication *ApplicationFindByPID(EsObjectID pid) {
+	ApplicationProcess *process = ApplicationProcessFindByPID(pid);
+	return process ? process->application : nullptr;
+}
+
 void ApplicationInstanceCrashed(EsMessage *message) {
 	EsHandle processHandle = EsProcessOpen(message->crash.pid);
 	EsAssert(processHandle); // Since the process is paused, it cannot be removed.
@@ -1461,10 +1607,21 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 		: EnumLookupNameFromValue(enumStrings_EsSyscallType, state.crashReason.duringSystemCall);
 	EsPrint("Process %d has crashed with error %z, during system call %z.\n", state.id, fatalErrorString, systemCallString);
 
+	InstalledApplication *application = ApplicationFindByPID(message->crash.pid);
+
+	if (application) {
+		if (application->singleProcess && application->singleProcess->id == message->crash.pid) {
+			application->singleProcess = nullptr;
+		}
+
+		application->singleInstance = nullptr;
+		ApplicationTemporaryDestroy(application);
+	}
+
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-		if (instance->processID == message->crash.pid) {
+		if (instance->process->id == message->crash.pid) {
 			if (instance->tab) {
 				ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, nullptr, instance);
 				WindowTabActivate(instance->tab, true);
@@ -1472,55 +1629,37 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 		}
 	}
 
-	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-		if (desktop.installedApplications[i]->useSingleProcess && desktop.installedApplications[i]->singleProcessHandle
-				&& EsProcessGetID(desktop.installedApplications[i]->singleProcessHandle) == message->crash.pid) {
-			EsHandleClose(desktop.installedApplications[i]->singleProcessHandle);
-			desktop.installedApplications[i]->singleProcessHandle = ES_INVALID_HANDLE;
-			desktop.installedApplications[i]->singleInstance = nullptr;
-			desktop.installedApplications[i]->openInstanceCount = 0;
-			ApplicationTemporaryDestroy(desktop.installedApplications[i]);
-			break;
-		}
-	}
-
 	EsProcessTerminate(processHandle, 1); 
 	EsHandleClose(processHandle);
-}
-
-InstalledApplication *ApplicationFindByPID(EsObjectID pid) {
-	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-		ApplicationInstance *instance = desktop.allApplicationInstances[i];
-
-		if (instance->processID == pid) {
-			return instance->application;
-		}
-	}
-
-	return nullptr;
 }
 
 void ApplicationProcessTerminated(EsObjectID pid) {
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
-		if (instance->processID != pid) {
-			continue;
+		if (instance->process->id == pid) {
+			EmbeddedWindowDestroyed(instance->embeddedWindowID);
+			i--; // EmbeddedWindowDestroyed removes it from the array.
 		}
-
-		EmbeddedWindowDestroyed(instance->embeddedWindowID);
 	}
 
-	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-		if (desktop.installedApplications[i]->useSingleProcess && desktop.installedApplications[i]->singleProcessHandle
-				&& EsProcessGetID(desktop.installedApplications[i]->singleProcessHandle) == pid) {
-			EsHandleClose(desktop.installedApplications[i]->singleProcessHandle);
-			desktop.installedApplications[i]->singleProcessHandle = ES_INVALID_HANDLE;
-			desktop.installedApplications[i]->singleInstance = nullptr;
-			desktop.installedApplications[i]->openInstanceCount = 0;
-			ApplicationTemporaryDestroy(desktop.installedApplications[i]);
-			break;
+	ApplicationProcess *process = ApplicationProcessFindByPID(pid, true /* remove from array */);
+
+	if (process) {
+		InstalledApplication *application = process->application;
+
+		if (application) {
+			if (application->singleProcess && application->singleProcess->id == pid) {
+				application->singleProcess = nullptr;
+			}
+
+			application->singleInstance = nullptr;
+			ApplicationTemporaryDestroy(application);
 		}
+
+		EsAssert(!process->instanceCount);
+		EsHandleClose(process->handle);
+		EsHeapFree(process);
 	}
 
 	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
@@ -1529,6 +1668,10 @@ void ApplicationProcessTerminated(EsObjectID pid) {
 		if (document->currentWriter == pid) {
 			document->currentWriter = 0;
 		}
+	}
+
+	if (!desktop.allApplicationProcesses.Length() && desktop.inShutdown) {
+		EsEventSet(desktop.shutdownReady);
 	}
 }
 
@@ -1625,7 +1768,7 @@ EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes, ui
 }
 
 void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *newName, size_t newNameBytes, bool failIfAlreadyExists) {
-	if (!instance->processHandle) return;
+	if (!instance->process) return;
 	
 	EsMessage m = {};
 	m.type = ES_MSG_INSTANCE_SAVE_RESPONSE;
@@ -1643,7 +1786,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		if (!nameBytes || (failIfAlreadyExists && nameBytes != folderBytes + newNameBytes)) {
 			EsHeapFree(name);
 			m.tabOperation.error = nameBytes ? ES_ERROR_FILE_ALREADY_EXISTS : ES_ERROR_TOO_MANY_FILES_WITH_NAME;
-			EsMessagePostRemote(instance->processHandle, &m);
+			EsMessagePostRemote(instance->process->handle, &m);
 			return;
 		}
 
@@ -1652,7 +1795,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		if (file.error != ES_SUCCESS) {
 			EsHeapFree(name);
 			m.tabOperation.error = file.error;
-			EsMessagePostRemote(instance->processHandle, &m);
+			EsMessagePostRemote(instance->process->handle, &m);
 			return;
 		}
 
@@ -1679,9 +1822,9 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 
 			EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
 			m.tabOperation.id = instance->embeddedWindowID;
-			m.tabOperation.handle = EsConstantBufferCreate(name + nameOffset, nameBytes - nameOffset, instance->processHandle); 
+			m.tabOperation.handle = EsConstantBufferCreate(name + nameOffset, nameBytes - nameOffset, instance->process->handle); 
 			m.tabOperation.bytes = nameBytes - nameOffset;
-			EsMessagePostRemote(instance->processHandle, &m);
+			EsMessagePostRemote(instance->process->handle, &m);
 		}
 	}
 
@@ -1702,12 +1845,12 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 
 		if (m.tabOperation.error == ES_SUCCESS) {
 			document->currentWriter = instance->embeddedWindowID;
-			m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, fileHandle, instance->processHandle, 0, 0);
+			m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, fileHandle, instance->process->handle, 0, 0);
 			EsHandleClose(fileHandle);
 		}
 	}
 
-	EsMessagePostRemote(instance->processHandle, &m);
+	EsMessagePostRemote(instance->process->handle, &m);
 }
 
 void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char *oldPath, size_t oldPathBytes, const char *newPath, size_t newPathBytes) {
@@ -1749,16 +1892,16 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 
 		if (instance->documentID != documentID) continue;
 		if (instance->application == fromApplication) continue;
-		if (!instance->processHandle) continue;
+		if (!instance->process) continue;
 
 		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
 		m.tabOperation.id = instance->embeddedWindowID;
-		m.tabOperation.handle = EsConstantBufferCreate(newPath + newNameOffset, newPathBytes - newNameOffset, instance->processHandle); 
+		m.tabOperation.handle = EsConstantBufferCreate(newPath + newNameOffset, newPathBytes - newNameOffset, instance->process->handle); 
 		m.tabOperation.bytes = newPathBytes - newNameOffset;
-		EsMessagePostRemote(instance->processHandle, &m);
+		EsMessagePostRemote(instance->process->handle, &m);
 	}
 
-	if (fromApplication != desktop.fileManager && desktop.fileManager && desktop.fileManager->singleProcessHandle) {
+	if (fromApplication != desktop.fileManager && desktop.fileManager && desktop.fileManager->singleProcess) {
 		char *data = (char *) EsHeapAllocate(sizeof(size_t) * 2 + oldPathBytes + newPathBytes, false);
 		EsMemoryCopy(data + 0, &oldPathBytes, sizeof(size_t));
 		EsMemoryCopy(data + sizeof(size_t), &newPathBytes, sizeof(size_t));
@@ -1767,8 +1910,8 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 		EsMessage m = {};
 		m.type = ES_MSG_FILE_MANAGER_PATH_MOVED;
 		m.user.context2 = sizeof(size_t) * 2 + oldPathBytes + newPathBytes;
-		m.user.context1 = EsConstantBufferCreate(data, m.user.context2.u, desktop.fileManager->singleProcessHandle); 
-		EsMessagePostRemote(desktop.fileManager->singleProcessHandle, &m);
+		m.user.context1 = EsConstantBufferCreate(data, m.user.context2.u, desktop.fileManager->singleProcess->handle); 
+		EsMessagePostRemote(desktop.fileManager->singleProcess->handle, &m);
 		EsHeapFree(data);
 	}
 }
@@ -1800,25 +1943,25 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 
 	document->currentWriter = 0;
 
-	if (desktop.fileManager->singleProcessHandle) {
+	if (desktop.fileManager->singleProcess) {
 		EsMessage m = {};
 		m.type = ES_MSG_FILE_MANAGER_FILE_MODIFIED;
-		m.user.context1 = EsConstantBufferCreate(document->path, document->pathBytes, desktop.fileManager->singleProcessHandle); 
+		m.user.context1 = EsConstantBufferCreate(document->path, document->pathBytes, desktop.fileManager->singleProcess->handle); 
 		m.user.context2 = document->pathBytes;
-		EsMessagePostRemote(desktop.fileManager->singleProcessHandle, &m);
+		EsMessagePostRemote(desktop.fileManager->singleProcess->handle, &m);
 	}
 
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
 		if (instance->documentID != document->id) continue;
-		if (!instance->processHandle) continue;
+		if (!instance->process) continue;
 
 		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_UPDATED };
 		m.tabOperation.isSource = instance == fromInstance;
 		m.tabOperation.id = instance->embeddedWindowID;
-		m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, document->readHandle, instance->processHandle, 0, 0);
-		EsMessagePostRemote(instance->processHandle, &m);
+		m.tabOperation.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, document->readHandle, instance->process->handle, 0, 0);
+		EsMessagePostRemote(instance->process->handle, &m);
 	}
 }
 
@@ -1831,6 +1974,7 @@ void ConfigurationLoadApplications() {
 
 	{
 		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		application->cName = (char *) "(blank tab)";
 		application->id = APPLICATION_ID_DESKTOP_BLANK_TAB;
 		application->hidden = true;
 		application->createInstance = InstanceBlankTabCreate;
@@ -1849,6 +1993,7 @@ void ConfigurationLoadApplications() {
 
 	{
 		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		application->cName = (char *) "(crashed tab)";
 		application->id = APPLICATION_ID_DESKTOP_CRASHED;
 		application->hidden = true;
 		application->createInstance = InstanceCrashedTabCreate;
@@ -2014,12 +2159,12 @@ ApplicationInstance *ApplicationInstanceFindForeground() {
 void CheckForegroundWindowResponding(EsGeneric) {
 	ApplicationInstance *instance = ApplicationInstanceFindForeground();
 	EsTimerSet(2500, CheckForegroundWindowResponding, 0); 
-	if (!instance) return;
+	if (!instance || !instance->process) return;
 
 	WindowTab *tab = instance->tab;
 
 	EsProcessState state;
-	EsProcessGetState(instance->processHandle, &state);
+	EsProcessGetState(instance->process->handle, &state);
 
 	if (state.flags & ES_PROCESS_STATE_PINGED) {
 		if (tab->notRespondingInstance) {
@@ -2042,7 +2187,7 @@ void CheckForegroundWindowResponding(EsGeneric) {
 			EsMessage m;
 			EsMemoryZero(&m, sizeof(EsMessage));
 			m.type = ES_MSG_PING;
-			EsMessagePostRemote(instance->processHandle, &m); 
+			EsMessagePostRemote(instance->process->handle, &m); 
 		}
 	}
 }
@@ -2215,10 +2360,10 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 
 			ApplicationInstance *foreground = ApplicationInstanceFindForeground();
 
-			if (foreground && foreground->processHandle) {
+			if (foreground && foreground->process) {
 				EsMessage m = { ES_MSG_PRIMARY_CLIPBOARD_UPDATED };
 				m.tabOperation.id = foreground->embeddedWindowID;
-				EsMessagePostRemote(foreground->processHandle, &m);
+				EsMessagePostRemote(foreground->process->handle, &m);
 			}
 		} else {
 			EsHandleClose(desktop.nextClipboardFile);
@@ -2270,11 +2415,13 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			InstanceAnnouncePathMoved(application, oldPath, oldPathBytes, newPath, newPathBytes);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_START_USER_TASK && pipe) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+		ApplicationProcess *process = ApplicationProcessFindByPID(message->desktop.processID);
 
-		if (!application) {
+		if (!process || !process->instanceCount) {
 			return;
 		}
+
+		InstalledApplication *application = process->application;
 
 		// HACK User tasks use an embedded window object for IPC.
 		// 	This allows us to basically treat them like other instances.
@@ -2303,14 +2450,9 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		instance->isUserTask = true;
 		instance->embeddedWindowHandle = windowHandle;
 		instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, windowHandle, 0, 0, 0);
-		instance->processHandle = processHandle;
-		instance->processID = message->desktop.processID;
+		instance->process = process;
+		instance->process->instanceCount++;
 		instance->application = application;
-
-		if (application->singleProcessHandle) {
-			EsAssert(application->openInstanceCount);
-			application->openInstanceCount++;
-		}
 
 		EsHandle targetWindowHandle = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, windowHandle, processHandle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
 		EsBufferWrite(pipe, &targetWindowHandle, sizeof(targetWindowHandle));
@@ -2373,7 +2515,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			m.type = ES_MSG_INSTANCE_RENAME_RESPONSE;
 			m.tabOperation.id = instance->embeddedWindowID;
 			m.tabOperation.error = EsPathMove(oldPath, oldPathBytes, newPath, newPathBytes);
-			EsMessagePostRemote(instance->processHandle, &m);
+			EsMessagePostRemote(instance->process->handle, &m);
 
 			if (m.tabOperation.error == ES_SUCCESS) {
 				InstanceAnnouncePathMoved(nullptr, oldPath, oldPathBytes, newPath, newPathBytes);
@@ -2433,31 +2575,8 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 	if (!instance) return;
 
 	EsHandleClose(instance->embeddedWindowHandle);
-	if (instance->processHandle) EsHandleClose(instance->processHandle);
 
-	if (instance->documentID) {
-		OpenDocumentCloseReference(instance->documentID);
-	}
-
-	InstalledApplication *application = instance->application;
-
-	if (application && application->singleInstance) {
-		application->singleInstance = nullptr;
-	}
-
-	if (application && application->singleProcessHandle) {
-		EsAssert(application->openInstanceCount);
-		application->openInstanceCount--;
-
-		if (!application->openInstanceCount && application->useSingleProcess) {
-			EsMessage m = { ES_MSG_APPLICATION_EXIT };
-			EsMessagePostRemote(application->singleProcessHandle, &m);
-			EsHandleClose(application->singleProcessHandle);
-			application->singleProcessHandle = ES_INVALID_HANDLE;
-			ApplicationTemporaryDestroy(application);
-			application = nullptr;
-		}
-	}
+	ApplicationInstanceCleanup(instance);
 
 	if (instance->tab) {
 		WindowTabDestroy(instance->tab);
@@ -2521,63 +2640,44 @@ void DesktopMessage(EsMessage *message) {
 	} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
 		EsHandle rootDirectory = message->registerFileSystem.rootDirectory;
 
-		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-			ApplicationInstance *instance = desktop.allApplicationInstances[i];
+		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+			ApplicationProcess *process = desktop.allApplicationProcesses[i];
 
-			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) 
-					&& instance->processHandle && !instance->application->notified) {
-				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_HANDLE_SHARE, rootDirectory, instance->processHandle, 0, 0);
-				EsMessagePostRemote(instance->processHandle, message);
-				if (instance->application->useSingleProcess) instance->application->notified = true;
+			if (process->application && (process->application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_HANDLE_SHARE, rootDirectory, process->handle, 0, 0);
+				EsMessagePostRemote(process->handle, message);
 			}
-		}
-
-		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-			desktop.installedApplications[i]->notified = false;
 		}
 	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
 		EsHandle handle = message->device.handle;
 
-		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-			ApplicationInstance *instance = desktop.allApplicationInstances[i];
+		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+			ApplicationProcess *process = desktop.allApplicationProcesses[i];
 
-			if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) 
-					&& instance->processHandle && !instance->application->notified) {
-				message->device.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, instance->processHandle, 0, 0);
-				EsMessagePostRemote(instance->processHandle, message);
-				if (instance->application->useSingleProcess) instance->application->notified = true;
+			if (process->application && (process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES)) {
+				message->device.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, process->handle, 0, 0);
+				EsMessagePostRemote(process->handle, message);
 			}
 		}
-
-		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-			desktop.installedApplications[i]->notified = false;
-		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
-		for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-			ApplicationInstance *instance = desktop.allApplicationInstances[i];
+		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+			ApplicationProcess *process = desktop.allApplicationProcesses[i];
 
-			if (!instance->application) {
+			if (!process->application) {
 				continue;
 			}
 
 			if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
-				if (~instance->application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
+				if (~process->application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
 					continue;
 				}
 			} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
-				if (~instance->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
+				if (~process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
 					continue;
 				}
 			}
 
-			if (instance->processHandle && !instance->application->notified) {
-				EsMessagePostRemote(instance->processHandle, message);
-				if (instance->application->useSingleProcess) instance->application->notified = true;
-			}
-		}
-
-		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-			desktop.installedApplications[i]->notified = false;
+			EsMessagePostRemote(process->handle, message);
 		}
 	} else if (message->type == ES_MSG_SET_SCREEN_RESOLUTION) {
 		if (desktop.setupDesktopUIComplete) {

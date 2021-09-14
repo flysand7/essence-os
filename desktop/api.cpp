@@ -139,8 +139,6 @@ struct {
 	uintptr_t performanceTimerStackCount;
 
 	ThreadLocalStorage firstThreadLocalStorage;
-
-	size_t openInstanceCount; // Also counts user tasks.
 } api;
 
 ptrdiff_t tlsStorageOffset;
@@ -159,6 +157,7 @@ EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
 void FileStoreCloseHandle(EsFileStore *fileStore);
 EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
+void ApplicationProcessTerminated(EsObjectID pid);
 
 #include "syscall.cpp"
 
@@ -742,7 +741,6 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 	APIInstance *apiInstance = InstanceSetup(instance);
 	apiInstance->applicationName = applicationName;
 	apiInstance->applicationNameBytes = applicationNameBytes;
-	api.openInstanceCount++;
 
 	if (message && message->createInstance.data != ES_INVALID_HANDLE && message->createInstance.dataBytes > 1) {
 		apiInstance->startupInformation = (EsApplicationStartupInformation *) EsHeapAllocate(message->createInstance.dataBytes, false);
@@ -854,33 +852,30 @@ EsMessage *EsMessageReceive() {
 			EsAssert(message.message.instanceSave.file->operationComplete);
 			FileStoreCloseHandle(message.message.instanceSave.file);
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
+			if (api.startupInformation->isDesktop) {
+				// Desktop tracks the number of instances it owns, so it needs to know when it exits.
+				ApplicationProcessTerminated(EsProcessGetID(ES_CURRENT_PROCESS));
+			} else {
 #ifdef DEBUG_BUILD
-			FontDatabaseFree();
-			FreeUnusedStyles(true /* include permanent styles */);
-			theming.loadedStyles.Free();
-			SystemConfigurationUnload();
-			api.mountPoints.Free();
-			api.postBox.Free();
-			api.timers.Free();
-			gui.animatingElements.Free();
-			gui.accessKeys.entries.Free();
-			gui.allWindows.Free();
-			calculator.Free();
-			HashTableFree(&gui.keyboardShortcutNames, false);
-			MemoryLeakDetectorCheckpoint(&heap);
-			EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
+				FontDatabaseFree();
+				FreeUnusedStyles(true /* include permanent styles */);
+				theming.loadedStyles.Free();
+				SystemConfigurationUnload();
+				api.mountPoints.Free();
+				api.postBox.Free();
+				api.timers.Free();
+				gui.animatingElements.Free();
+				gui.accessKeys.entries.Free();
+				gui.allWindows.Free();
+				calculator.Free();
+				HashTableFree(&gui.keyboardShortcutNames, false);
+				MemoryLeakDetectorCheckpoint(&heap);
+				EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
-			EsProcessTerminateCurrent();
-		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
-			api.openInstanceCount--;
-
-			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
-
-			if (instance->startupInformation && (instance->startupInformation->flags & ES_APPLICATION_STARTUP_SINGLE_INSTANCE_IN_PROCESS)
-					&& !api.openInstanceCount) {
-				EsMessage m = { ES_MSG_APPLICATION_EXIT };
-				EsMessagePost(nullptr, &m);
+				EsProcessTerminateCurrent();
 			}
+		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
+			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
 
 			if (instance->startupInformation) {
 				EsHeapFree((void *) instance->startupInformation->filePath);
@@ -1723,8 +1718,6 @@ void UserTaskThread(EsGeneric _task) {
 	EsUserTask *task = (EsUserTask *) _task.p;
 	task->callback(task, task->data);
 	EsMessageMutexAcquire();
-	api.openInstanceCount--; 
-	// TODO Send ES_MSG_APPLICATION_EXIT if needed.
 	EsMessageMutexRelease();
 	EsSyscall(ES_SYSCALL_WINDOW_CLOSE, task->taskHandle, 0, 0, 0);
 	EsHandleClose(task->taskHandle);
@@ -1791,7 +1784,6 @@ EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, const char 
 
 	if (error == ES_SUCCESS) {
 		EsHandleClose(information.handle);
-		api.openInstanceCount++;
 	} else {
 		EsSyscall(ES_SYSCALL_WINDOW_CLOSE, task->taskHandle, 0, 0, 0);
 		EsHandleClose(task->taskHandle);

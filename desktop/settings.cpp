@@ -146,17 +146,8 @@ void SettingsUpdateGlobalAndWindowManager() {
 			EsMemoryZero(&m, sizeof(EsMessage));
 			m.type = ES_MSG_UI_SCALE_CHANGED;
 
-			for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-				ApplicationInstance *instance = desktop.allApplicationInstances[i];
-
-				if (instance->processHandle && !instance->application->notified) {
-					EsMessagePostRemote(instance->processHandle, &m);
-					if (instance->application->useSingleProcess) instance->application->notified = true;
-				}
-			}
-
-			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-				desktop.installedApplications[i]->notified = false;
+			for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+				EsMessagePostRemote(desktop.allApplicationProcesses[i]->handle, &m);
 			}
 		}
 	}
