@@ -640,8 +640,7 @@ struct KBlockDevice : KDevice {
 	KMutex detectFileSystemMutex;
 };
 
-#define FS_PARTITION_DEVICE_NO_MBR (1 << 0)
-void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *name, size_t nameBytes);
+void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, uint32_t flags, const char *name, size_t nameBytes);
 
 // ---------------------------------------------------------------------------------------------------------------
 // PCI.

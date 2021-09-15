@@ -90,7 +90,7 @@ struct ElfSectionHeader {
 	uint64_t entrySize;
 };
 
-struct ElfProgramHeader{
+struct ElfProgramHeader {
 	uint32_t type; // 0 = unused, 1 = load, 2 = dynamic, 3 = interp, 4 = note
 	uint32_t flags; // 1 = executable, 2 = writable, 4 = readable
 	uint64_t fileOffset;

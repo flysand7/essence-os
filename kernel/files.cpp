@@ -1679,7 +1679,8 @@ void FSPartitionDeviceAccess(KBlockDeviceAccessRequest request) {
 	FSBlockDeviceAccess(request);
 }
 
-void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, unsigned flags, const char *model, size_t modelBytes) {
+void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOffset sectorCount, uint32_t flags, const char *model, size_t modelBytes) {
+	(void) flags;
 	PartitionDevice *child = (PartitionDevice *) KDeviceCreate("Partition", parent, sizeof(PartitionDevice));
 	if (!child) return;
 
@@ -1691,7 +1692,6 @@ void FSPartitionDeviceCreate(KBlockDevice *parent, EsFileOffset offset, EsFileOf
 	child->maxAccessSectorCount = parent->maxAccessSectorCount;
 	child->sectorOffset = offset;
 	child->information.sectorCount = sectorCount;
-	child->information.noMBR = flags & FS_PARTITION_DEVICE_NO_MBR ? true : false;
 	child->information.readOnly = parent->information.readOnly;
 	child->access = FSPartitionDeviceAccess;
 	child->information.modelBytes = modelBytes;
@@ -1739,7 +1739,26 @@ bool FSCheckMBR(KBlockDevice *device) {
 			if (partitions[i].present) {
 				KernelLog(LOG_INFO, "FS", "MBR partition", "Found MBR partition %d with offset %d and count %d.\n", 
 						i, partitions[i].offset, partitions[i].count);
-				FSPartitionDeviceCreate(device, partitions[i].offset, partitions[i].count, FS_PARTITION_DEVICE_NO_MBR, EsLiteral("MBR partition"));
+				FSPartitionDeviceCreate(device, partitions[i].offset, partitions[i].count, ES_FLAGS_DEFAULT, EsLiteral("MBR partition"));
+			}
+		}
+
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool FSCheckGPT(KBlockDevice *device) {
+	GPTPartition *partitions = (GPTPartition *) EsHeapAllocate(sizeof(GPTPartition) * GPT_PARTITION_COUNT, false, K_FIXED);
+	EsDefer(EsHeapFree(partitions, sizeof(GPTPartition) * GPT_PARTITION_COUNT, K_FIXED));
+
+	if (GPTGetPartitions(device->signatureBlock, device->information.sectorCount, device->information.sectorSize, partitions)) {
+		for (uintptr_t i = 0; i < GPT_PARTITION_COUNT; i++) {
+			if (partitions[i].present) {
+				KernelLog(LOG_INFO, "FS", "GPT partition", "Found GPT partition %d with offset %d and count %d%z.\n", 
+						i, partitions[i].offset, partitions[i].count, partitions[i].isESP ? "; this is the ESP" : "");
+				FSPartitionDeviceCreate(device, partitions[i].offset, partitions[i].count, ES_FLAGS_DEFAULT, EsLiteral("GPT partition"));
 			}
 		}
 
@@ -1809,7 +1828,9 @@ void FSDetectFileSystem(KBlockDevice *device) {
 			// We could not access the block device.
 			KernelLog(LOG_ERROR, "FS", "detect fileSystem read failure", "The signature block could not be read on block device %x.\n", device);
 		} else {
-			if (!device->information.noMBR && FSCheckMBR(device)) {
+			if (!device->information.nestLevel && FSCheckGPT(device)) {
+				// Found a GPT.
+			} else if (!device->information.nestLevel && FSCheckMBR(device)) {
 				// Found an MBR.
 			} else {
 				KDeviceAttach(device, "Files", FSSignatureCheck);

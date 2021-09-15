@@ -78,8 +78,10 @@ run_kernel64:
 	mov	rcx,[rbx + 24]
 
 	; Map the first MB at 0xFFFFFE0000000000 --> 0xFFFFFE0000100000 
-	mov	rax,[0xFFFFFF7FBFDFE000]
-	mov	[0xFFFFFF7FBFDFEFE0],rax
+	mov	rdi,0xFFFFFF7FBFDFE000
+	mov	rax,[rdi]
+	mov	rdi,0xFFFFFF7FBFDFEFE0
+	mov	[rdi],rax
 	mov	rax,cr3
 	mov	cr3,rax
 

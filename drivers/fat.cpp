@@ -488,7 +488,6 @@ static void DeviceAttach(KDevice *parent) {
 		}
 	}
 
-	volume->rootDirectory->driverNode = volume->root;
 	volume->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
 	volume->nodeDataBytes = sizeof(FSNode);
 

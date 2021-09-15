@@ -1051,6 +1051,8 @@ void BuildBootloader(Application *application) {
 	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot3.d", "-fbin", 
 			"boot/x86/loader.s", "-obin/stage2", 
 			"-Pboot/x86/esfs-stage2.s", (forEmulator && !bootUseVBE) ? "" : "-D BOOT_USE_VBE");
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot4.d", "-fbin", 
+			"boot/x86/uefi_loader.s", "-obin/uefi_loader");
 }
 
 File _drive;
@@ -1097,6 +1099,10 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	for (int i = 0; i < 16; i++) {
 		installationIdentifier.d[i] = rand();
 	}
+
+	File iid = FileOpen("bin/iid.dat", 'w');
+	FileWrite(iid, 16, &installationIdentifier);
+	FileClose(iid);
 
 	File f = FileOpen(driveFile, 'w');
 
@@ -1446,6 +1452,7 @@ int main(int argc, char **argv) {
 			ADD_DEPENDENCY_FILE(application, "bin/boot1.d", "Boot1");
 			ADD_DEPENDENCY_FILE(application, "bin/boot2.d", "Boot2");
 			ADD_DEPENDENCY_FILE(application, "bin/boot3.d", "Boot3");
+			ADD_DEPENDENCY_FILE(application, "bin/boot4.d", "Boot4");
 			arrput(applications, application);
 		}
 

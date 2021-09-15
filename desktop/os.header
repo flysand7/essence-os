@@ -1882,7 +1882,6 @@ struct EsFontInformation {
 struct EsBlockDeviceInformation {
 	size_t sectorSize;
 	EsFileOffset sectorCount;
-	bool noMBR;
 	bool readOnly;
 	uint8_t nestLevel;
 	uint8_t driveType;
