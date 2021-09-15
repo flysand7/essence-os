@@ -736,7 +736,10 @@ void ArchShutdown(uintptr_t action) {
 #else
 void ArchShutdown(uintptr_t action) {
 	if (action == SHUTDOWN_ACTION_RESTART) ArchResetCPU();
-	KernelPanic("It's now safe to turn off your computer.\n");
+	StartDebugOutput();
+	EsPrint("\nIt's now safe to turn off your computer.\n");
+	ProcessorDisableInterrupts();
+	ProcessorHalt();
 }
 #endif
 
