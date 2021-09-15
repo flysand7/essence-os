@@ -3,66 +3,9 @@
 // TODO Long file names.
 
 #include <module.h>
+#include <shared/fat.cpp>
 
 #define SECTOR_SIZE (512)
-
-struct SuperBlockCommon {
-	uint8_t _unused0[11];
-	uint16_t bytesPerSector;
-	uint8_t sectorsPerCluster;
-	uint16_t reservedSectors;
-	uint8_t fatCount;
-	uint16_t rootDirectoryEntries;
-	uint16_t totalSectors;
-	uint8_t mediaDescriptor;
-	uint16_t sectorsPerFAT16;
-	uint16_t sectorsPerTrack;
-	uint16_t heads;
-	uint32_t hiddenSectors;
-	uint32_t largeSectorCount;
-} ES_STRUCT_PACKED;
-
-struct SuperBlock16 : SuperBlockCommon {
-	uint8_t deviceID;
-	uint8_t flags;
-	uint8_t signature;
-	uint32_t serial;
-	uint8_t label[11];
-	uint64_t systemIdentifier;
-	uint8_t _unused1[450];
-} ES_STRUCT_PACKED;
-
-struct SuperBlock32 : SuperBlockCommon {
-	uint32_t sectorsPerFAT32;
-	uint16_t flags;
-	uint16_t version;
-	uint32_t rootDirectoryCluster;
-	uint16_t fsInfoSector;
-	uint16_t backupBootSector;
-	uint8_t _unused0[12];
-	uint8_t deviceID;
-	uint8_t flags2;
-	uint8_t signature;
-	uint32_t serial;
-	uint8_t label[11];
-	uint64_t systemIdentifier;
-	uint8_t _unused1[422];
-} ES_STRUCT_PACKED;
-
-struct DirectoryEntry {
-	uint8_t name[11];
-	uint8_t attributes;
-	uint8_t _reserved0;
-	uint8_t creationTimeSeconds;
-	uint16_t creationTime;
-	uint16_t creationDate;
-	uint16_t accessedDate;
-	uint16_t firstClusterHigh;
-	uint16_t modificationTime;
-	uint16_t modificationDate;
-	uint16_t firstClusterLow;
-	uint32_t fileSizeBytes;
-} ES_STRUCT_PACKED;
 
 struct Volume : KFileSystem {
 	union {
@@ -82,7 +25,7 @@ struct Volume : KFileSystem {
 #define TYPE_FAT32 (32)
 	int type;
 
-	DirectoryEntry *rootDirectoryEntries;
+	FATDirectoryEntry *rootDirectoryEntries;
 };
 
 struct DirectoryEntryReference {
@@ -91,11 +34,11 @@ struct DirectoryEntryReference {
 
 struct FSNode {
 	Volume *volume;
-	DirectoryEntry entry;
+	FATDirectoryEntry entry;
 
 	// The root directory is loaded during fileSystem mount.
 	// If this is non-null, run directory data from here.
-	DirectoryEntry *rootDirectory;
+	FATDirectoryEntry *rootDirectory;
 };
 
 static uint32_t NextCluster(Volume *volume, uint32_t currentCluster) {
@@ -149,14 +92,14 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 	EsDefer(EsHeapFree(clusterBuffer, 0, K_FIXED));
 
 	DirectoryEntryReference reference = *(DirectoryEntryReference *) entryData;
-	DirectoryEntry entry;
+	FATDirectoryEntry entry;
 
 	if (!directory->rootDirectory) {
 		EsError error = volume->Access((reference.cluster * superBlock->sectorsPerCluster + volume->sectorOffset) * SECTOR_SIZE, 
 				superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
 		if (error != ES_SUCCESS) return error;
 
-		entry = *(DirectoryEntry *) (clusterBuffer + reference.offset);
+		entry = *(FATDirectoryEntry *) (clusterBuffer + reference.offset);
 	} else {
 		entry = directory->rootDirectory[reference.offset];
 	}
@@ -244,8 +187,8 @@ static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
 			if (error != ES_SUCCESS) SCAN_FAILURE("Could not read cluster.\n", error);
 		}
 
-		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(DirectoryEntry); i++, directoryPosition++) {
-			DirectoryEntry *entry = directory->rootDirectory ? (directory->rootDirectory + directoryPosition) : ((DirectoryEntry *) clusterBuffer + i);
+		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(FATDirectoryEntry); i++, directoryPosition++) {
+			FATDirectoryEntry *entry = directory->rootDirectory ? (directory->rootDirectory + directoryPosition) : ((FATDirectoryEntry *) clusterBuffer + i);
 			if (entry->name[0] == 0xE5 || entry->attributes == 0x0F || (entry->attributes & 8)) goto nextEntry;
 			if (!entry->name[0]) return ES_ERROR_FILE_DOES_NOT_EXIST;
 
@@ -268,7 +211,7 @@ static EsError Scan(const char *_name, size_t nameLength, KNode *node) {
 
 					while (currentCluster < volume->terminateCluster) {
 						currentCluster = NextCluster(volume, currentCluster);
-						metadata.directoryChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(DirectoryEntry);
+						metadata.directoryChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(FATDirectoryEntry);
 					}
 				}
 
@@ -310,8 +253,8 @@ static EsError Enumerate(KNode *node) {
 			if (error != ES_SUCCESS) ENUMERATE_FAILURE("Could not read cluster.\n", error);
 		}
 
-		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(DirectoryEntry); i++, directoryPosition++) {
-			DirectoryEntry *entry = directory->rootDirectory ? (directory->rootDirectory + directoryPosition) : ((DirectoryEntry *) clusterBuffer + i);
+		for (uintptr_t i = 0; i < superBlock->sectorsPerCluster * SECTOR_SIZE / sizeof(FATDirectoryEntry); i++, directoryPosition++) {
+			FATDirectoryEntry *entry = directory->rootDirectory ? (directory->rootDirectory + directoryPosition) : ((FATDirectoryEntry *) clusterBuffer + i);
 			if (entry->name[0] == 0xE5 || entry->attributes == 0x0F || (entry->attributes & 8)) continue;
 
 			if (!entry->name[0]) {
@@ -391,7 +334,7 @@ static bool Mount(Volume *volume) {
 		}
 
 		uint32_t rootDirectoryOffset = superBlock->reservedSectors + superBlock->fatCount * sectorsPerFAT;
-		uint32_t rootDirectorySectors = (superBlock->rootDirectoryEntries * sizeof(DirectoryEntry) + (SECTOR_SIZE - 1)) / SECTOR_SIZE;
+		uint32_t rootDirectorySectors = (superBlock->rootDirectoryEntries * sizeof(FATDirectoryEntry) + (SECTOR_SIZE - 1)) / SECTOR_SIZE;
 
 		volume->sectorOffset = rootDirectoryOffset + rootDirectorySectors - 2 * superBlock->sectorsPerCluster;
 
@@ -417,10 +360,10 @@ static bool Mount(Volume *volume) {
 
 			while (currentCluster < volume->terminateCluster) {
 				currentCluster = NextCluster(volume, currentCluster);
-				volume->rootDirectoryInitialChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(DirectoryEntry);
+				volume->rootDirectoryInitialChildren += SECTOR_SIZE * superBlock->sectorsPerCluster / sizeof(FATDirectoryEntry);
 			}
 		} else {
-			root->rootDirectory = (DirectoryEntry *) EsHeapAllocate(rootDirectorySectors * SECTOR_SIZE, true, K_FIXED);
+			root->rootDirectory = (FATDirectoryEntry *) EsHeapAllocate(rootDirectorySectors * SECTOR_SIZE, true, K_FIXED);
 			volume->rootDirectoryEntries = root->rootDirectory;
 
 			error = volume->Access(rootDirectoryOffset * SECTOR_SIZE, rootDirectorySectors * SECTOR_SIZE, 
@@ -479,7 +422,7 @@ static void DeviceAttach(KDevice *parent) {
 		volume->nameBytes = sizeof(volume->sb32.label);
 		EsMemoryCopy(volume->name, volume->sb32.label, volume->nameBytes);
 	} else {
-		if (volume->rootDirectoryEntries[0].attributes & 8) {
+		if ((volume->rootDirectoryEntries[0].attributes & 8) && (volume->rootDirectoryEntries[0].attributes != 0x0F)) {
 			volume->nameBytes = sizeof(volume->rootDirectoryEntries[0].name);
 			EsMemoryCopy(volume->name, volume->rootDirectoryEntries[0].name, volume->nameBytes);
 		} else {

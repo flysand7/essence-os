@@ -12,6 +12,7 @@
 #include <shared/strings.cpp>
 #include <shared/partitions.cpp>
 #include <shared/array.cpp>
+#include <shared/fat.cpp>
 #include <ports/lzma/LzmaDec.c>
 
 #define Log(...)
@@ -67,6 +68,7 @@ EsListView *drivesList;
 EsPanel *driveInformation;
 EsObjectID selectedDriveID;
 EsButton *installButton;
+EsButton *useMBRCheckbox;
 EsButton *finishButton;
 EsPanel *switcher;
 EsPanel *panelInstallOptions;
@@ -78,10 +80,13 @@ EsTextbox *userNameTextbox;
 EsTextDisplay *progressDisplay;
 const char *cSelectedFont;
 uint8_t progress;
-bool onWaitScreen, startedInstallation;
+bool onWaitScreen;
+bool startedInstallation;
+bool useMBR;
 EsBlockDeviceInformation blockDeviceInformation;
 EsHandle driveHandle;
 EsFileOffset partitionOffset;
+EsFileOffset partitionBytes;
 EsUniqueIdentifier installationIdentifier;
 EsMountPoint newFileSystemMountPoint;
 EsHandle mountNewFileSystemEvent;
@@ -312,6 +317,7 @@ void ConnectedDriveRemove(EsMessageDevice device) {
 		EsTextDisplayCreate(driveInformation, ES_CELL_H_FILL | ES_CELL_V_FILL, &styleDrivesSelectHint, INTERFACE_STRING(InstallerDriveRemoved));
 		selectedDriveID = 0;
 		EsElementSetDisabled(installButton, true);
+		EsElementSetDisabled(useMBRCheckbox, true);
 	}
 
 	for (uintptr_t i = 0; i < connectedDrives.Length(); i++) {
@@ -343,30 +349,47 @@ void ConnectedDriveSelect(uintptr_t index) {
 	EsIconDisplay *statusIcon = EsIconDisplayCreate(messageRow, ES_CELL_V_TOP, ES_STYLE_ICON_DISPLAY_SMALL, ES_ICON_DIALOG_INFORMATION);
 	EsSpacerCreate(messageRow, ES_CELL_V_FILL, 0, 8, 0);
 
-	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(information.sectorSize, false);
-	EsFileOffset parameters[2] = { 0, information.sectorSize };
-	EsError readError = EsDeviceControl(device.handle, ES_DEVICE_CONTROL_BLOCK_READ, sectorBuffer, parameters);
+	uint8_t *signatureBlock = (uint8_t *) EsHeapAllocate(K_SIGNATURE_BLOCK_SIZE, false);
+	EsFileOffset parameters[2] = { 0, K_SIGNATURE_BLOCK_SIZE };
+	EsError readError = EsDeviceControl(device.handle, ES_DEVICE_CONTROL_BLOCK_READ, signatureBlock, parameters);
 	bool alreadyHasPartitions = false;
 
 	if (readError == ES_SUCCESS && information.sectorSize >= 0x200) {
-		// TODO Support GPT.
-		MBRPartition partitions[4];
+		{
+			MBRPartition partitions[4];
 
-		if (MBRGetPartitions(sectorBuffer, information.sectorCount, partitions)) {
-			for (uintptr_t i = 0; i < 4; i++) {
-				if (partitions[i].present) {
-					alreadyHasPartitions = true;
+			if (MBRGetPartitions(signatureBlock, information.sectorCount, partitions)) {
+				for (uintptr_t i = 0; i < 4; i++) {
+					if (partitions[i].present) {
+						alreadyHasPartitions = true;
+					}
+				}
+			}
+		}
+
+		{
+			GPTPartition partitions[GPT_PARTITION_COUNT];
+
+			if (GPTGetPartitions(signatureBlock, information.sectorCount, information.sectorSize, partitions)) {
+				for (uintptr_t i = 0; i < GPT_PARTITION_COUNT; i++) {
+					if (partitions[i].present) {
+						alreadyHasPartitions = true;
+					}
 				}
 			}
 		}
 	}
 
-	EsHeapFree(sectorBuffer);
+	EsHeapFree(signatureBlock);
 
 	bool showCapacity = false;
 
+	// Sector sizes up to 4KB should be possible on GPT, but this hasn't been tested yet.
+#if 0
+	if (information.sectorSize < 0x200 || information.sectorSize > 0x1000) {
+#else
 	if (information.sectorSize != 0x200) {
-		// TODO Allow other sector sizes if a GPT is being used.
+#endif
 		EsIconDisplaySetIcon(statusIcon, ES_ICON_DIALOG_ERROR);
 		EsTextDisplayCreate(messageRow, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerDriveUnsupported));
 	} else if (readError != ES_SUCCESS) {
@@ -388,6 +411,8 @@ void ConnectedDriveSelect(uintptr_t index) {
 		showCapacity = true;
 	}
 
+	EsElementSetEnabled(useMBRCheckbox, information.sectorSize == 0x200);
+
 	if (showCapacity) {
 		// TODO Localization.
 		char buffer[128];
@@ -401,47 +426,16 @@ void ConnectedDriveSelect(uintptr_t index) {
 
 /////////////////////////////////////////////
 
-EsError Install() {
-	EsMessage m = { MSG_SET_PROGRESS };
-	EsError error;
-
-	size_t mbrBytes, stage1Bytes, stage2Bytes, kernelBytes;
-	void *mbr = EsFileReadAll(EsLiteral("0:/mbr.dat"), &mbrBytes);
-	void *stage1 = EsFileReadAll(EsLiteral("0:/stage1.dat"), &stage1Bytes);
-	void *stage2 = EsFileReadAll(EsLiteral("0:/stage2.dat"), &stage2Bytes);
-
-	EsMessageDevice drive = {};
-
-	for (uintptr_t i = 0; i < connectedDrives.Length(); i++) {
-		if (connectedDrives[i].id == selectedDriveID) {
-			drive = connectedDrives[i];
-		}
-	}
-
-	EsAssert(drive.handle);
-	EsBlockDeviceInformation driveInformation = ConnectedDriveGetInformation(drive.handle);
-	blockDeviceInformation = driveInformation;
-	driveHandle = drive.handle;
-
-	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(driveInformation.sectorSize, false);
-	if (!sectorBuffer) return ES_ERROR_INSUFFICIENT_RESOURCES;
-
-	size_t bootloaderSectors = (stage1Bytes + stage2Bytes + driveInformation.sectorSize - 1) / driveInformation.sectorSize;
-	uint8_t *bootloader = (uint8_t *) EsHeapAllocate(bootloaderSectors * driveInformation.sectorSize, true);
-	EsMemoryCopy(bootloader, stage1, stage1Bytes);
-	EsMemoryCopy(bootloader + stage1Bytes, stage2, stage2Bytes);
-
-	m.user.context1.u = 1;
-	EsMessagePost(nullptr, &m);
-
+EsError InstallMBR(EsBlockDeviceInformation driveInformation, uint8_t *sectorBuffer, EsMessageDevice drive, 
+		void *mbr, EsMessage m, uint8_t *bootloader, size_t bootloaderSectors) {
 	// Create the partition table.
-	// TODO GPT.
 	// TODO Adding new entries to existing tables.
 
 	EsAssert(driveInformation.sectorSize == 0x200);
+	EsError error;
 
 	partitionOffset = 0x800;
-	EsFileOffset partitionBytes = driveInformation.sectorSize * (driveInformation.sectorCount - partitionOffset);
+	partitionBytes = driveInformation.sectorSize * (driveInformation.sectorCount - partitionOffset);
 
 	uint32_t partitions[16] = { 0x80 /* bootable */, 0x83 /* type */ };
 	uint16_t bootSignature = 0xAA55;
@@ -473,15 +467,335 @@ EsError Install() {
 	m.user.context1.u = 4;
 	EsMessagePost(nullptr, &m);
 
-	// Format the partition.
+	return ES_SUCCESS;
+}
 
+void GenerateGUID(uint8_t *destination) {
+	for (uintptr_t i = 0; i < 16; i++) {
+		destination[i] = EsRandomU8();
+	}
+
+	destination[7] = 0x40 | (destination[6] & 0x0F);
+	destination[8] = 0x80 | (destination[6] & 0x3F);
+}
+
+EsError FATAddFile(FATDirectoryEntry *directory, size_t directoryEntries, uint16_t *fat, 
+		EsFileOffset totalSectors, EsFileOffset sectorOffset, bool isDirectory,
+		const char *name, void *file, size_t fileBytes, EsHandle driveHandle) {
+	// Allocate the sector extent.
+
+	EsFileOffset sectorFirst = 0;
+	size_t sectorCount = (fileBytes + blockDeviceInformation.sectorSize - 1) / blockDeviceInformation.sectorSize;
+
+	for (uintptr_t i = 2; i < totalSectors - sectorOffset + 2; i++) {
+		if (!fat[i]) {
+			sectorFirst = i;
+			break;
+		}
+	}
+
+	EsAssert(sectorFirst);
+
+	for (uintptr_t i = 0; i < sectorCount; i++) {
+		fat[sectorFirst + i] = i == sectorCount - 1 ? 0xFFF8 : sectorFirst + i + 1;
+	}
+
+	// Write out the file contents.
+
+	uint8_t *buffer = (uint8_t *) EsHeapAllocate(sectorCount * blockDeviceInformation.sectorSize, true);
+	EsMemoryCopy(buffer, file, fileBytes);
+	EsFileOffset parameters[2] = {};
+	parameters[0] = (sectorFirst + sectorOffset) * blockDeviceInformation.sectorSize;
+	parameters[1] = sectorCount * blockDeviceInformation.sectorSize;
+	EsError error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_WRITE, buffer, parameters);
+	EsHeapFree(buffer);
+	if (error != ES_SUCCESS) return error;
+
+	// Create the directory entry.
+
+	FATDirectoryEntry *entry = nullptr;
+
+	for (uintptr_t i = 0; i < directoryEntries; i++) {
+		if (!directory[i].name[0]) {
+			entry = directory + i;
+			break;
+		}
+	}
+
+	EsAssert(entry);
+	EsMemoryCopy(entry->name, name, 11);
+	entry->firstClusterHigh = sectorFirst >> 16;
+	entry->firstClusterLow = sectorFirst & 0xFFFF;
+	entry->fileSizeBytes = isDirectory ? 0 : fileBytes;
+	entry->attributes = isDirectory ? 0x10 : 0x00;
+	entry->creationDate = 33;
+	entry->accessedDate = 33;
+	entry->modificationDate = 33;
+
+	return ES_SUCCESS;
+}
+
+EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice drive, EsMessage m,
+		void *uefi1, size_t uefi1Bytes, void *uefi2, size_t uefi2Bytes) {
+	// Create the partition table.
+	// TODO Adding new entries to existing tables.
+
+	const uint8_t espGUID[] = { 0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B };
+	const uint8_t dataGUID[] = { 0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4 };
+
+	EsError error;
+	EsFileOffset parameters[2] = {};
+
+	size_t partitionEntryCount = 0x80;
+	size_t tableSectors = (partitionEntryCount * sizeof(GPTEntry) + driveInformation.sectorSize - 1) / driveInformation.sectorSize;
+
+	ProtectiveMBR *mbr = (ProtectiveMBR *) EsHeapAllocate(driveInformation.sectorSize, true);
+	uint32_t mbrEntry[4];
+	mbrEntry[0] = 0x00020000;
+	mbrEntry[1] = 0xFFFFFFEE;
+	mbrEntry[2] = 0x00000001;
+	mbrEntry[3] = driveInformation.sectorCount > 0xFFFFFFFF ? 0xFFFFFFFF : driveInformation.sectorCount - 1;
+	mbr->signature = 0xAA55;
+	EsMemoryCopy(mbr->entry, mbrEntry, 16);
+
+	GPTHeader *header = (GPTHeader *) EsHeapAllocate(driveInformation.sectorSize, true);
+	EsMemoryCopy(header->signature, "EFI PART", 8);
+	header->revision = 0x00010000;
+	header->headerBytes = 0x5C;
+	header->headerSelfLBA = 1;
+	header->headerBackupLBA = driveInformation.sectorCount - 1;
+	header->firstUsableLBA = 2 + tableSectors;
+	header->lastUsableLBA = driveInformation.sectorCount - 2;
+	GenerateGUID(header->driveGUID);
+	header->tableLBA = 2;
+	header->partitionEntryCount = partitionEntryCount;
+	header->partitionEntryBytes = sizeof(GPTEntry);
+
+	GPTEntry *partitionTable = (GPTEntry *) EsHeapAllocate(partitionEntryCount * sizeof(GPTEntry), true);
+	EsMemoryCopy(partitionTable[0].typeGUID, espGUID, 16);
+	GenerateGUID(partitionTable[0].partitionGUID);
+	partitionTable[0].firstLBA = header->firstUsableLBA;
+	partitionTable[0].lastLBA = partitionTable[0].firstLBA + 16777216 / driveInformation.sectorSize - 1;
+	EsMemoryCopy(partitionTable[1].typeGUID, dataGUID, 16);
+	GenerateGUID(partitionTable[1].partitionGUID);
+	partitionTable[1].firstLBA = partitionTable[0].lastLBA + 1;
+	partitionTable[1].lastLBA = header->lastUsableLBA;
+
+	header->tableCRC32 = CalculateCRC32(partitionTable, partitionEntryCount * sizeof(GPTEntry));
+	header->headerCRC32 = CalculateCRC32(header, header->headerBytes);
+
+	GPTHeader *backupHeader = (GPTHeader *) EsHeapAllocate(driveInformation.sectorSize, true);
+	EsMemoryCopy(backupHeader, header, driveInformation.sectorSize);
+	backupHeader->headerSelfLBA = header->headerBackupLBA;
+	backupHeader->headerBackupLBA = header->headerSelfLBA;
+	backupHeader->headerCRC32 = 0;
+	backupHeader->headerCRC32 = CalculateCRC32(backupHeader, header->headerBytes);
+
+	parameters[0] = 0; 
+	parameters[1] = driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, mbr, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = header->headerSelfLBA * driveInformation.sectorSize; 
+	parameters[1] = driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, header, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = header->tableLBA * driveInformation.sectorSize; 
+	parameters[1] = driveInformation.sectorSize * tableSectors;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, partitionTable, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = header->headerBackupLBA * driveInformation.sectorSize; 
+	parameters[1] = driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, backupHeader, parameters);
+	if (error != ES_SUCCESS) return error;
+
+	partitionOffset = partitionTable[1].firstLBA;
+	partitionBytes = (partitionTable[1].lastLBA - partitionTable[1].firstLBA + 1) * driveInformation.sectorSize;
+
+	m.user.context1.u = 2;
+	EsMessagePost(nullptr, &m);
+
+	// Load the kernel.
+
+	size_t kernelBytes;
 	void *kernel = EsFileReadAll(EsLiteral(K_OS_FOLDER "/Kernel.esx"), &kernelBytes);
+	if (!kernel) return ES_ERROR_FILE_DOES_NOT_EXIST;
+
+	m.user.context1.u = 3;
+	EsMessagePost(nullptr, &m);
+
+	// Format the ESP.
+
+	EsAssert(driveInformation.sectorSize >= 0x200 && driveInformation.sectorSize <= 0x1000); // We only support FAT16.
+
+	EsFileOffset espOffset = partitionTable[0].firstLBA;
+	EsFileOffset espSectors = partitionTable[0].lastLBA - partitionTable[0].firstLBA + 1;
+	EsAssert(espSectors * driveInformation.sectorSize == 16777216 && espSectors < 0x10000);
+
+	SuperBlock16 *superBlock = (SuperBlock16 *) EsHeapAllocate(driveInformation.sectorSize, true);
+	superBlock->jmp[0] = 0xEB;
+	superBlock->jmp[1] = 0x3C;
+	superBlock->jmp[2] = 0x90;
+	EsMemoryCopy(superBlock->oemName, "MSWIN4.1", 8);
+	superBlock->bytesPerSector = driveInformation.sectorSize;
+	superBlock->sectorsPerCluster = 1;
+	superBlock->reservedSectors = 1;
+	superBlock->fatCount = 2;
+	superBlock->rootDirectoryEntries = 512;
+	superBlock->totalSectors = espSectors;
+	superBlock->mediaDescriptor = 0xF8;
+	superBlock->sectorsPerFAT16 = (superBlock->totalSectors * 2 + driveInformation.sectorSize - 1) / driveInformation.sectorSize;
+	superBlock->sectorsPerTrack = 63;
+	superBlock->heads = 256;
+	superBlock->deviceID = 0x80;
+	superBlock->signature = 0x29;
+	superBlock->serial = (uint32_t) EsRandomU64();
+	EsMemoryCopy(superBlock->label, "EFI SYSTEM ", 11);
+	EsMemoryCopy(&superBlock->systemIdentifier, "FAT16   ", 8);
+	superBlock->_unused1[448] = 0x55;
+	superBlock->_unused1[449] = 0xAA;
+
+	uint32_t rootDirectoryOffset = superBlock->reservedSectors + superBlock->fatCount * superBlock->sectorsPerFAT16 + espOffset;
+	uint32_t rootDirectorySectors = (superBlock->rootDirectoryEntries * sizeof(FATDirectoryEntry) + (superBlock->bytesPerSector - 1)) / superBlock->bytesPerSector;
+	uint32_t sectorOffset = rootDirectoryOffset + rootDirectorySectors - 2 * superBlock->sectorsPerCluster;
+	size_t directoryEntriesPerSector = driveInformation.sectorSize / sizeof(FATDirectoryEntry);
+
+	uint16_t *fat = (uint16_t *) EsHeapAllocate(superBlock->sectorsPerFAT16 * driveInformation.sectorSize, true);
+	fat[0] = 0xFFF8;
+	fat[1] = 0xFFFF;
+
+	FATDirectoryEntry *bootDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
+	// TODO Add self and parent entries.
+	FATAddDotFiles(bootDirectory, directoryEntriesPerSector);
+	error = FATAddFile(bootDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, false,
+			"BOOTX64 EFI", uefi1, uefi1Bytes, drive.handle);
+	if (error != ES_SUCCESS) return error;
+
+	FATDirectoryEntry *efiDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
+	// TODO Add self and parent entries.
+	error = FATAddFile(efiDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, true,
+			"BOOT       ", bootDirectory, driveInformation.sectorSize, drive.handle);
+	if (error != ES_SUCCESS) return error;
+
+	FATDirectoryEntry *rootDirectory = (FATDirectoryEntry *) EsHeapAllocate(rootDirectorySectors * driveInformation.sectorSize, true);
+	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
+			"ESLOADERBIN", uefi2, uefi2Bytes, drive.handle);
+	if (error != ES_SUCCESS) return error;
+	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
+			"ESKERNELESX", kernel, kernelBytes, drive.handle);
+	if (error != ES_SUCCESS) return error;
+	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
+			"ESIID   DAT", &installationIdentifier, 16, drive.handle);
+	if (error != ES_SUCCESS) return error;
+	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, true,
+			"EFI        ", efiDirectory, driveInformation.sectorSize, drive.handle);
+	if (error != ES_SUCCESS) return error;
+
+	m.user.context1.u = 4;
+	EsMessagePost(nullptr, &m);
+
+	parameters[0] = espOffset * driveInformation.sectorSize; 
+	parameters[1] = driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, superBlock, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = (espOffset + 1) * driveInformation.sectorSize; 
+	parameters[1] = superBlock->sectorsPerFAT16 * driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, fat, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = (espOffset + 1 + superBlock->sectorsPerFAT16) * driveInformation.sectorSize; 
+	parameters[1] = superBlock->sectorsPerFAT16 * driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, fat, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = rootDirectoryOffset * driveInformation.sectorSize; 
+	parameters[1] = rootDirectorySectors * driveInformation.sectorSize;
+	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, rootDirectory, parameters);
+	if (error != ES_SUCCESS) return error;
+
+	// Cleanup.
+
+	EsHeapFree(mbr);
+	EsHeapFree(header);
+	EsHeapFree(partitionTable);
+	EsHeapFree(backupHeader);
+	EsHeapFree(superBlock);
+	EsHeapFree(fat);
+	EsHeapFree(rootDirectory);
+	EsHeapFree(efiDirectory);
+	EsHeapFree(bootDirectory);
 
 	m.user.context1.u = 6;
 	EsMessagePost(nullptr, &m);
 
+	return ES_SUCCESS;
+}
+
+EsError Install() {
+	EsMessage m = { MSG_SET_PROGRESS };
+	EsError error;
+
 	for (int i = 0; i < 16; i++) {
 		installationIdentifier.d[i] = EsRandomU8();
+	}
+
+	size_t mbrBytes, stage1Bytes, stage2Bytes, uefi1Bytes, uefi2Bytes, kernelBytes;
+	void *mbr = EsFileReadAll(EsLiteral("0:/mbr.dat"), &mbrBytes);
+	void *stage1 = EsFileReadAll(EsLiteral("0:/stage1.dat"), &stage1Bytes);
+	void *stage2 = EsFileReadAll(EsLiteral("0:/stage2.dat"), &stage2Bytes);
+	void *uefi1 = EsFileReadAll(EsLiteral("0:/uefi1.dat"), &uefi1Bytes);
+	void *uefi2 = EsFileReadAll(EsLiteral("0:/uefi2.dat"), &uefi2Bytes);
+
+	if (!mbr || !stage1 || !stage2 || !uefi1 || !uefi2) {
+		return ES_ERROR_FILE_DOES_NOT_EXIST;
+	}
+
+	EsMessageDevice drive = {};
+
+	for (uintptr_t i = 0; i < connectedDrives.Length(); i++) {
+		if (connectedDrives[i].id == selectedDriveID) {
+			drive = connectedDrives[i];
+		}
+	}
+
+	EsAssert(drive.handle);
+	EsBlockDeviceInformation driveInformation = ConnectedDriveGetInformation(drive.handle);
+	blockDeviceInformation = driveInformation;
+	driveHandle = drive.handle;
+
+	uint8_t *sectorBuffer = (uint8_t *) EsHeapAllocate(driveInformation.sectorSize, false);
+	if (!sectorBuffer) return ES_ERROR_INSUFFICIENT_RESOURCES;
+
+	size_t bootloaderSectors = (stage1Bytes + stage2Bytes + driveInformation.sectorSize - 1) / driveInformation.sectorSize;
+	uint8_t *bootloader = (uint8_t *) EsHeapAllocate(bootloaderSectors * driveInformation.sectorSize, true);
+	EsMemoryCopy(bootloader, stage1, stage1Bytes);
+	EsMemoryCopy(bootloader + stage1Bytes, stage2, stage2Bytes);
+
+	m.user.context1.u = 1;
+	EsMessagePost(nullptr, &m);
+
+	// Create the partitions and possibly install the bootloader.
+
+	if (useMBR) {
+		error = InstallMBR(driveInformation, sectorBuffer, drive, mbr, m, bootloader, bootloaderSectors);
+	} else {
+		error = InstallGPT(driveInformation, drive, m, uefi1, uefi1Bytes, uefi2, uefi2Bytes);
+	}
+
+	if (error != ES_SUCCESS) {
+		return error;
+	}
+
+	// Format the partition.
+
+	void *kernel;
+
+	if (useMBR) {
+		kernel = EsFileReadAll(EsLiteral(K_OS_FOLDER "/Kernel.esx"), &kernelBytes);
+		if (!kernel) return ES_ERROR_FILE_DOES_NOT_EXIST;
+		m.user.context1.u = 6;
+		EsMessagePost(nullptr, &m);
+	} else {
+		// The kernel is located on the ESP.
+		kernel = nullptr;
+		kernelBytes = 0;
 	}
 
 	Format(partitionBytes, interfaceString_InstallerVolumeLabel, installationIdentifier, kernel, kernelBytes);
@@ -537,6 +851,7 @@ void ButtonRestart(EsInstance *, EsElement *, EsCommand *) {
 }
 
 void ButtonInstall(EsInstance *, EsElement *, EsCommand *) {
+	useMBR = EsButtonGetCheck(useMBRCheckbox) == ES_CHECK_CHECKED;
 	EsPanelSwitchTo(switcher, panelCustomizeOptions, ES_TRANSITION_FADE_IN);
 	EsElementFocus(userNameTextbox);
 	startedInstallation = true;
@@ -632,6 +947,8 @@ void _start() {
 		EsSpacerCreate(drivesSplit, ES_CELL_V_FILL, 0, 25, 0);
 		driveInformation = EsPanelCreate(drivesSplit, ES_CELL_H_FILL | ES_CELL_V_FILL);
 		EsTextDisplayCreate(driveInformation, ES_CELL_H_FILL | ES_CELL_V_FILL, &styleDrivesSelectHint, INTERFACE_STRING(InstallerDrivesSelectHint));
+
+		useMBRCheckbox = EsButtonCreate(panelInstallOptions, ES_CELL_H_FILL | ES_BUTTON_CHECKBOX | ES_ELEMENT_DISABLED, 0, INTERFACE_STRING(InstallerUseMBR));
 
 		EsPanel *buttonsRow = EsPanelCreate(panelInstallOptions, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleButtonsRow);
 		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(InstallerViewLicenses)), ButtonViewLicenses);

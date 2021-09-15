@@ -65,6 +65,39 @@ typedef struct GPTPartition {
 	bool present, isESP;
 } GPTPartition;
 
+typedef struct GPTHeader {
+	uint8_t signature[8];
+	uint32_t revision;
+	uint32_t headerBytes;
+	uint32_t headerCRC32;
+	uint32_t _reserved0;
+	uint64_t headerSelfLBA;
+	uint64_t headerBackupLBA;
+	uint64_t firstUsableLBA;
+	uint64_t lastUsableLBA;
+	uint8_t driveGUID[16];
+	uint64_t tableLBA;
+	uint32_t partitionEntryCount;
+	uint32_t partitionEntryBytes;
+	uint32_t tableCRC32;
+} GPTHeader;
+
+typedef struct GPTEntry {
+	uint8_t typeGUID[16];
+	uint8_t partitionGUID[16];
+	uint64_t firstLBA;
+	uint64_t lastLBA;
+	uint64_t attributes;
+	uint16_t name[36];
+} GPTEntry;
+
+typedef struct ProtectiveMBR {
+	uint8_t _unused0[446];
+	uint8_t entry[16];
+	uint8_t _unused1[48];
+	uint16_t signature;
+} ProtectiveMBR;
+
 bool GPTGetPartitions(uint8_t *block /* K_SIGNATURE_BLOCK_SIZE */, EsFileOffset sectorCount, 
 		EsFileOffset sectorBytes, GPTPartition *partitions /* GPT_PARTITION_COUNT */) {
 	for (uintptr_t i = 0; i < GPT_PARTITION_COUNT; i++) {

@@ -320,6 +320,7 @@ DEFINE_INTERFACE_STRING(InstallerProgressMessage, "Installing, please wait" ELLI
 DEFINE_INTERFACE_STRING(InstallerCompleteFromOther, "Installation has completed successfully. Remove the installation disk, and restart your computer.");
 DEFINE_INTERFACE_STRING(InstallerCompleteFromUSB, "Installation has completed successfully. Disconnect the installation USB, and restart your computer.");
 DEFINE_INTERFACE_STRING(InstallerVolumeLabel, "Essence HD");
+DEFINE_INTERFACE_STRING(InstallerUseMBR, "Use legacy BIOS boot (select for older computers)");
 
 // TODO System Monitor.
 
