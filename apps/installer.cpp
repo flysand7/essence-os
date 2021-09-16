@@ -1,8 +1,3 @@
-// TODO Report errors.
-// TODO GPT support.
-// TODO Handle crashing?
-// TODO Write any modified settings during installation.
-
 #define INSTALLER
 
 #define ES_CRT_WITHOUT_PREFIX
@@ -16,8 +11,7 @@
 #include <ports/lzma/LzmaDec.c>
 
 #define Log(...)
-// TODO Error handling.
-#define exit(x) EsAssert(false)
+#define EsFSError() EsAssert(false)
 #include <shared/esfs2.h>
 
 // Assume an additional 64MB of storage capacity is needed on top of totalUncompressedBytes.
@@ -27,6 +21,7 @@
 
 struct InstallerMetadata {
 	uint64_t totalUncompressedBytes;
+	uint64_t crc64;
 };
 
 const EsStyle styleRoot = {
@@ -76,6 +71,8 @@ EsPanel *panelCustomizeOptions;
 EsPanel *panelLicenses;
 EsPanel *panelWait;
 EsPanel *panelComplete;
+EsPanel *panelError;
+EsPanel *panelNotSupported;
 EsTextbox *userNameTextbox;
 EsTextDisplay *progressDisplay;
 const char *cSelectedFont;
@@ -90,6 +87,8 @@ EsFileOffset partitionBytes;
 EsUniqueIdentifier installationIdentifier;
 EsMountPoint newFileSystemMountPoint;
 EsHandle mountNewFileSystemEvent;
+EsError installError;
+bool archiveCRCError;
 
 /////////////////////////////////////////////
 
@@ -160,7 +159,7 @@ EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, siz
 
 	e->inFileOffset = sizeof(header);
 
-	uint64_t crc64 = 0, actualCRC64 = 0;
+	uint64_t crc64 = 0;
 	uint64_t totalBytesExtracted = 0;
 	uint8_t lastProgressByte = 0;
 
@@ -169,7 +168,6 @@ EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, siz
 	while (true) {
 		uint64_t fileSize;
 		if (!Decompress(e, &fileSize, sizeof(fileSize))) break;
-		actualCRC64 = fileSize;
 		uint16_t nameBytes;
 		if (!Decompress(e, &nameBytes, sizeof(nameBytes))) break;
 		if (nameBytes > NAME_MAX - pathOutBytes) break;
@@ -209,46 +207,56 @@ EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, siz
 	LzmaDec_Free(&e->state, &decompressAllocator);
 	EsHandleClose(e->fileIn.handle);
 
-	return crc64 == actualCRC64 ? ES_SUCCESS : ES_ERROR_CORRUPT_DATA;
+	return crc64 == metadata->crc64 ? ES_SUCCESS : ES_ERROR_CORRUPT_DATA;
 }
 
 /////////////////////////////////////////////
 
-// TODO Error handling.
-
 uint64_t writeOffset;
 uint64_t writeBytes;
 uint8_t writeBuffer[BUFFER_SIZE];
+EsError formatError = ES_SUCCESS;
 
-void FlushWriteBuffer() {
-	if (!writeBytes) return;
+bool FlushWriteBuffer() {
+	if (!writeBytes) return true;
 	EsFileOffset parameters[2] = { partitionOffset * blockDeviceInformation.sectorSize + writeOffset, writeBytes };
 	EsError error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_WRITE, writeBuffer, parameters);
-	EsAssert(error == ES_SUCCESS);
 	writeBytes = 0;
+	if (error != ES_SUCCESS) formatError = error;
+	return error == ES_SUCCESS;
 }
 
-void ReadBlock(uint64_t block, uint64_t count, void *buffer) {
+bool ReadBlock(uint64_t block, uint64_t count, void *buffer) {
+	if (!FlushWriteBuffer()) {
+		return false;
+	}
+
 	EsFileOffset parameters[2] = { partitionOffset * blockDeviceInformation.sectorSize + block * blockSize, count * blockSize };
 	EsError error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_READ, buffer, parameters);
-	EsAssert(error == ES_SUCCESS);
+	if (error != ES_SUCCESS) formatError = error;
+	return error == ES_SUCCESS;
 }
 
-void WriteBlock(uint64_t block, uint64_t count, void *buffer) {
+bool WriteBlock(uint64_t block, uint64_t count, void *buffer) {
 	uint64_t offset = block * blockSize, bytes = count * blockSize;
 
 	if (writeBytes && writeOffset + writeBytes == offset && writeBytes + bytes < sizeof(writeBuffer)) {
 		EsMemoryCopy(writeBuffer + writeBytes, buffer, bytes);
 		writeBytes += bytes;
+		return true;
 	} else {
-		FlushWriteBuffer();
+		if (!FlushWriteBuffer()) {
+			return false;
+		}
+
 		writeOffset = offset;
 		writeBytes = bytes;
 		EsMemoryCopy(writeBuffer, buffer, bytes);
+		return true;
 	}
 }
 
-void WriteBytes(uint64_t byteOffset, uint64_t byteCount, void *buffer) {
+bool WriteBytes(uint64_t byteOffset, uint64_t byteCount, void *buffer) {
 	uint64_t firstSector = byteOffset / blockDeviceInformation.sectorSize;
 	uint64_t lastSector = (byteOffset + byteCount - 1) / blockDeviceInformation.sectorSize;
 	uint64_t sectorCount = lastSector - firstSector + 1;
@@ -259,16 +267,25 @@ void WriteBytes(uint64_t byteOffset, uint64_t byteCount, void *buffer) {
 		if (i > 0 && i < sectorCount - 1) continue;
 		EsFileOffset parameters[2] = { (partitionOffset + firstSector + i) * blockDeviceInformation.sectorSize, blockDeviceInformation.sectorSize } ;
 		EsError error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_READ, (uint8_t *) buffer2 + i * blockDeviceInformation.sectorSize, parameters);
-		EsAssert(error == ES_SUCCESS);
+
+		if (error != ES_SUCCESS) {
+			formatError = error;
+			return false;
+		}
 	}
 
 	EsMemoryCopy((uint8_t *) buffer2 + byteOffset % blockDeviceInformation.sectorSize, buffer, byteCount);
 
 	EsFileOffset parameters[2] = { (partitionOffset + firstSector) * blockDeviceInformation.sectorSize, sectorCount * blockDeviceInformation.sectorSize };
 	EsError error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_WRITE, buffer, parameters);
-	EsAssert(error == ES_SUCCESS);
+
+	if (error != ES_SUCCESS) {
+		formatError = error;
+		return false;
+	}
 
 	EsHeapFree(buffer2);
+	return true;
 }
 
 /////////////////////////////////////////////
@@ -828,6 +845,10 @@ EsError Install() {
 	Format(partitionBytes, interfaceString_InstallerVolumeLabel, installationIdentifier, kernel, kernelBytes);
 	FlushWriteBuffer();
 
+	if (formatError != ES_SUCCESS) {
+		return formatError;
+	}
+
 	m.user.context1.u = 8;
 	EsMessagePost(nullptr, &m);
 
@@ -843,20 +864,58 @@ EsError Install() {
 	}
 
 	error = Extract(EsLiteral("0:/installer_archive.dat"), newFileSystemMountPoint.prefix, newFileSystemMountPoint.prefixBytes);
-	if (error != ES_SUCCESS) return error;
+
+	if (error == ES_ERROR_CORRUPT_DATA) {
+		archiveCRCError = true;
+	}
+
+	if (error != ES_SUCCESS) {
+		return error;
+	}
 
 	return ES_SUCCESS;
 }
 
 void InstallThread(EsGeneric) {
 	EsPerformanceTimerPush();
-	EsError error = Install();
-	EsAssert(error == ES_SUCCESS); // TODO Reporting errors.
-	EsPrint("Installation finished in %Fs. Extracted %D from the archive.\n", EsPerformanceTimerPop(), metadata->totalUncompressedBytes);
+	installError = Install();
+	EsPrint("Installation finished in %Fs. Extracted %D from the archive. Error code = %d.\n", EsPerformanceTimerPop(), metadata->totalUncompressedBytes, installError);
 
 	EsMessage m = { MSG_SET_PROGRESS };
 	m.user.context1.u = 100;
 	EsMessagePost(nullptr, &m);
+}
+
+void WriteNewConfiguration() {
+	size_t newSystemConfigurationPathBytes, newSystemConfigurationBytes;
+	char *newSystemConfigurationPath = EsStringAllocateAndFormat(&newSystemConfigurationPathBytes, "%s/Essence/Default.ini", 
+			newFileSystemMountPoint.prefixBytes, newFileSystemMountPoint.prefix);
+	char *newSystemConfiguration = (char *) EsFileReadAll(newSystemConfigurationPath, newSystemConfigurationPathBytes, &newSystemConfigurationBytes); 
+
+	size_t lineBufferBytes = 4096;
+	char *lineBuffer = (char *) EsHeapAllocate(lineBufferBytes, false);
+	EsINIState s = { .buffer = newSystemConfiguration, .bytes = newSystemConfigurationBytes };
+	EsBuffer buffer = { .canGrow = true };
+
+	while (EsINIParse(&s)) {
+		if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("ui"))
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("font_sans"))) {
+			EsBufferFormat(&buffer, "font_sans=%z\n", cSelectedFont);
+		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general"))
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("installation_state"))) {
+			EsBufferFormat(&buffer, "installation_state=0\n");
+		} else {
+			size_t lineBytes = EsINIFormat(&s, lineBuffer, lineBufferBytes);
+			EsBufferWrite(&buffer, lineBuffer, lineBytes);
+			EsAssert(lineBytes < lineBufferBytes);
+		}
+	}
+
+	EsFileWriteAll(newSystemConfigurationPath, newSystemConfigurationPathBytes, buffer.out, buffer.position);
+
+	EsHeapFree(newSystemConfigurationPath);
+	EsHeapFree(buffer.out);
+	EsHeapFree(lineBuffer);
 }
 
 /////////////////////////////////////////////
@@ -894,9 +953,35 @@ void ButtonFont(EsInstance *, EsElement *element, EsCommand *) {
 	}
 }
 
+void Complete() {
+	if (installError == ES_SUCCESS) {
+		WriteNewConfiguration();
+		EsPanelSwitchTo(switcher, panelComplete, ES_TRANSITION_FADE_IN);
+	} else {
+		EsPanel *row = EsPanelCreate(panelError, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL);
+		EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_ERROR);
+		EsSpacerCreate(row, ES_FLAGS_DEFAULT, 0, 15, 0);
+
+		if (installError == ES_ERROR_INSUFFICIENT_RESOURCES) {
+			EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerFailedResources));
+		} else if (archiveCRCError) {
+			EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerFailedArchiveCRCError));
+		} else {
+			EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerFailedGeneric));
+		}
+
+		EsSpacerCreate(panelError, ES_CELL_FILL);
+		EsPanel *buttonsRow = EsPanelCreate(panelError, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleButtonsRow);
+		EsSpacerCreate(buttonsRow, ES_CELL_H_FILL);
+		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopRestartAction)), ButtonRestart);
+
+		EsPanelSwitchTo(switcher, panelError, ES_TRANSITION_FADE_IN);
+	}
+}
+
 void ButtonFinish(EsInstance *, EsElement *, EsCommand *) {
 	if (progress == 100) {
-		EsPanelSwitchTo(switcher, panelComplete, ES_TRANSITION_FADE_IN);
+		Complete();
 	} else {
 		onWaitScreen = true;
 		EsPanelSwitchTo(switcher, panelWait, ES_TRANSITION_FADE_IN);
@@ -960,7 +1045,6 @@ void _start() {
 
 	{
 		panelInstallOptions = EsPanelCreate(switcher, ES_CELL_H_FILL, &styleRoot);
-		EsPanelSwitchTo(switcher, panelInstallOptions, ES_TRANSITION_NONE);
 		EsTextDisplayCreate(panelInstallOptions, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0, INTERFACE_STRING(InstallerTitle));
 
 		EsPanel *drivesPanel = EsPanelCreate(panelInstallOptions, ES_CELL_H_FILL, ES_STYLE_PANEL_INSET);
@@ -1049,12 +1133,43 @@ void _start() {
 			EsTextDisplayCreate(panelComplete, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerCompleteFromOther));
 		}
 
-		// TODO Failure messages.
-
 		EsSpacerCreate(panelComplete, ES_CELL_FILL);
 		EsPanel *buttonsRow = EsPanelCreate(panelComplete, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleButtonsRow);
 		EsSpacerCreate(buttonsRow, ES_CELL_H_FILL);
 		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopRestartAction)), ButtonRestart);
+	}
+
+	{
+		panelError = EsPanelCreate(switcher, ES_CELL_FILL, &styleRoot);
+		EsTextDisplayCreate(panelError, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0, INTERFACE_STRING(InstallerTitle));
+		// Contents is created in Complete().
+	}
+
+	{
+		panelNotSupported = EsPanelCreate(switcher, ES_CELL_FILL, &styleRoot);
+		EsTextDisplayCreate(panelNotSupported, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0, INTERFACE_STRING(InstallerTitle));
+
+		EsPanel *row = EsPanelCreate(panelNotSupported, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL);
+		EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_ERROR);
+		EsSpacerCreate(row, ES_FLAGS_DEFAULT, 0, 15, 0);
+
+		EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(InstallerNotSupported));
+
+		EsSpacerCreate(panelNotSupported, ES_CELL_FILL);
+		EsPanel *buttonsRow = EsPanelCreate(panelNotSupported, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleButtonsRow);
+		EsSpacerCreate(buttonsRow, ES_CELL_H_FILL);
+		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopRestartAction)), ButtonRestart);
+	}
+
+	{
+		MemoryAvailable available;
+		EsSyscall(ES_SYSCALL_MEMORY_GET_AVAILABLE, (uintptr_t) &available, 0, 0, 0);
+
+		if (available.total < 64 * 1024 * 1024) {
+			EsPanelSwitchTo(switcher, panelNotSupported, ES_TRANSITION_NONE);
+		} else {
+			EsPanelSwitchTo(switcher, panelInstallOptions, ES_TRANSITION_NONE);
+		}
 	}
 
 	EsDeviceEnumerate([] (EsMessageDevice device, EsGeneric) {
@@ -1101,7 +1216,7 @@ void _start() {
 
 				if (onWaitScreen && progress == 100) {
 					onWaitScreen = false;
-					EsPanelSwitchTo(switcher, panelComplete, ES_TRANSITION_FADE_IN);
+					Complete();
 				}
 			}
 		}

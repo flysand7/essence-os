@@ -1108,7 +1108,6 @@ void DoCommand(const char *l) {
 		FILE *f = fopen("bin/temp.dat", "wb");
 		uint64_t crc64 = 0, uncompressed = 0;
 		GatherFilesForInstallerArchive(f, "root", "", &crc64, &uncompressed);
-		fwrite(&crc64, 1, sizeof(crc64), f);
 		uint32_t sizeMB = ftell(f) / 1000000;
 		fclose(f);
 		printf("Compressing %d MB...\n", sizeMB);
@@ -1117,8 +1116,9 @@ void DoCommand(const char *l) {
 		lstat("bin/installer_archive.dat", &s);
 		printf("Compressed to %d MB.\n", (uint32_t) (s.st_size / 1000000));
 		unlink("bin/temp.dat");
-		f = fopen("bin/installer_metadata.dat", "ab");
+		f = fopen("bin/installer_metadata.dat", "wb");
 		fwrite(&uncompressed, 1, sizeof(uncompressed), f);
+		fwrite(&crc64, 1, sizeof(crc64), f);
 		fclose(f);
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();

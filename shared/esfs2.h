@@ -267,23 +267,32 @@ Superblock superblock;
 GroupDescriptor *groupDescriptorTable;
 uint64_t copiedCount;
 
-void ReadBlock(uint64_t block, uint64_t count, void *buffer);
-void WriteBlock(uint64_t block, uint64_t count, void *buffer);
-void WriteBytes(uint64_t offset, uint64_t count, void *buffer);
+bool ReadBlock(uint64_t block, uint64_t count, void *buffer);
+bool WriteBlock(uint64_t block, uint64_t count, void *buffer);
+bool WriteBytes(uint64_t offset, uint64_t count, void *buffer);
 
-void ReadDirectoryEntryReference(DirectoryEntryReference reference, DirectoryEntry *entry) {
+bool ReadDirectoryEntryReference(DirectoryEntryReference reference, DirectoryEntry *entry) {
 	uint8_t buffer[superblock.blockSize];
-	ReadBlock(reference.block, 1, buffer);
+
+	if (!ReadBlock(reference.block, 1, buffer)) {
+		return false;
+	}
+
 	memcpy(entry, buffer + reference.offsetIntoBlock, sizeof(DirectoryEntry));
+	return true;
 }
 
-void WriteDirectoryEntryReference(DirectoryEntryReference reference, DirectoryEntry *entry) {
+bool WriteDirectoryEntryReference(DirectoryEntryReference reference, DirectoryEntry *entry) {
 	entry->checksum = 0;
 	entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry), 0);
 	uint8_t buffer[superblock.blockSize];
-	ReadBlock(reference.block, 1, buffer);
-	memcpy(buffer + reference.offsetIntoBlock, entry, sizeof(DirectoryEntry));
-	WriteBlock(reference.block, 1, buffer);
+
+	if (ReadBlock(reference.block, 1, buffer)) {
+		memcpy(buffer + reference.offsetIntoBlock, entry, sizeof(DirectoryEntry));
+		return WriteBlock(reference.block, 1, buffer);
+	} else {
+		return false;
+	}
 }
 
 Attribute *FindAttribute(DirectoryEntry *entry, uint16_t type) {
@@ -295,7 +304,7 @@ Attribute *FindAttribute(DirectoryEntry *entry, uint16_t type) {
 
 		if (count++ == entry->attributeCount) {
 			Log("Could not find attribute %d.\n", type);
-			exit(1);
+			EsFSError();
 		}
 	}
 
@@ -346,7 +355,7 @@ IndexKey *InsertKeyIntoVertex(uint64_t newKey, IndexVertex *vertex) {
 	return insertionPosition;
 }
 
-void AllocateExtent(uint64_t increaseBlocks, uint64_t *extentStart, uint64_t *extentCount) {
+bool AllocateExtent(uint64_t increaseBlocks, uint64_t *extentStart, uint64_t *extentCount) {
 	// Log("used %ld/%ld, need %ld more\n", superblock.blocksUsed, superblock.blockCount, increaseBlocks);
 
 	// Find a group to allocate the next extent from.
@@ -373,7 +382,7 @@ void AllocateExtent(uint64_t increaseBlocks, uint64_t *extentStart, uint64_t *ex
 
 	if (!target) {
 		Log("Out of space.\n");
-		exit(1);
+		EsFSError();
 	}
 
 	// Load the bitmap, find the largest extent, and mark it as in use.
@@ -382,7 +391,9 @@ void AllocateExtent(uint64_t increaseBlocks, uint64_t *extentStart, uint64_t *ex
 
 	{
 		if (target->blockBitmap) {
-			ReadBlock(target->blockBitmap, superblock.blocksPerGroupBlockBitmap, bitmap);
+			if (!ReadBlock(target->blockBitmap, superblock.blocksPerGroupBlockBitmap, bitmap)) {
+				return false;
+			}
 		} else {
 			memset(bitmap, 0, superblock.blocksPerGroupBlockBitmap * superblock.blockSize);
 			for (uint64_t i = 0; i < superblock.blocksPerGroupBlockBitmap; i++) bitmap[i / 8] |= 1 << (i % 8);
@@ -453,25 +464,28 @@ void AllocateExtent(uint64_t increaseBlocks, uint64_t *extentStart, uint64_t *ex
 		target->checksum = 0;
 		target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor), 0);
 
-		WriteBlock(target->blockBitmap, superblock.blocksPerGroupBlockBitmap, bitmap);
+		if (!WriteBlock(target->blockBitmap, superblock.blocksPerGroupBlockBitmap, bitmap)) {
+			return false;
+		}
 	}
 
 	*extentStart = *extentStart + (target - groupDescriptorTable) * superblock.blocksPerGroup;
 	superblock.blocksUsed += *extentCount;
 	// Log("allocate extent: %ld -> %ld (for %ld)\n", extentStart, extentStart + extentCount, increaseBlocks);
+	return true;
 }
 
-void AccessNode(DirectoryEntry *node, void *buffer, uint64_t offsetIntoFile, uint64_t totalCount, DirectoryEntryReference *reference, bool read) {
-	if (!totalCount) return;
+bool AccessNode(DirectoryEntry *node, void *buffer, uint64_t offsetIntoFile, uint64_t totalCount, DirectoryEntryReference *reference, bool read) {
+	if (!totalCount) return true;
 	AttributeData *dataAttribute = (AttributeData *) FindAttribute(node, ESFS_ATTRIBUTE_DATA);
 
 	if (dataAttribute->indirection == ESFS_INDIRECTION_DIRECT && read) {
 		memcpy(buffer, dataAttribute->data + offsetIntoFile, totalCount);
-		return;
+		return true;
 	} else if (dataAttribute->indirection == ESFS_INDIRECTION_DIRECT && !read) {
 		assert(!reference);
 		memcpy(dataAttribute->data + offsetIntoFile, buffer, totalCount);
-		return;
+		return true;
 	}
 
 	assert(dataAttribute->indirection == ESFS_INDIRECTION_L1);
@@ -521,14 +535,19 @@ void AccessNode(DirectoryEntry *node, void *buffer, uint64_t offsetIntoFile, uin
 	uint8_t blockBuffer[superblock.blockSize];
 
 	if (read || count != superblock.blockSize) {
-		ReadBlock(block, 1, blockBuffer);
+		if (!ReadBlock(block, 1, blockBuffer)) {
+			return false;
+		}
 	}
 
 	if (read) {
 		memcpy(buffer, blockBuffer + offset, count);
 	} else {
 		memcpy(blockBuffer + offset, buffer, count);
-		WriteBlock(block, 1, blockBuffer);
+
+		if (!WriteBlock(block, 1, blockBuffer)) {
+			return false;
+		}
 	}
 
 	if (reference) {
@@ -543,9 +562,11 @@ void AccessNode(DirectoryEntry *node, void *buffer, uint64_t offsetIntoFile, uin
 		buffer = (uint8_t *) buffer + count;
 		goto next;
 	}
+
+	return true;
 }
 
-void ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
+bool ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
 	assert(newSize >= entry->fileSize);
 
 	AttributeData *dataAttribute = (AttributeData *) FindAttribute(entry, ESFS_ATTRIBUTE_DATA);
@@ -553,7 +574,7 @@ void ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
 	if (newSize < (uint64_t) (dataAttribute->size - dataAttribute->dataOffset) && entry->nodeType == ESFS_NODE_TYPE_FILE) {
 		dataAttribute->indirection = ESFS_INDIRECTION_DIRECT;
 		dataAttribute->count = entry->fileSize = newSize;
-		return;
+		return true;
 	}
 
 	// Log("\tresize to %lu\n", newSize);
@@ -588,7 +609,9 @@ void ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
 			uint64_t extentStart, extentCount, encodedLength;
 			uint8_t encode[32];
 
-			AllocateExtent(increaseBlocks, &extentStart, &extentCount);
+			if (!AllocateExtent(increaseBlocks, &extentStart, &extentCount)) {
+				return false;
+			}
 
 			if (extentStart == previousExtentStart + previousExtentCount) {
 				dataAttribute->count--;
@@ -604,7 +627,7 @@ void ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
 
 			if (offsetIntoExtentList + encodedLength > (uint64_t) (dataAttribute->size - dataAttribute->dataOffset)) {
 				Log("Unimplemented - indirection past L1.\n");
-				exit(1);
+				EsFSError();
 			}
 
 			memcpy(extents + offsetIntoExtentList, encode, encodedLength);
@@ -615,8 +638,10 @@ void ResizeNode(DirectoryEntry *entry, uint64_t newSize) {
 		}
 	} else {
 		Log("Unimplemented - node truncation.\n");
-		exit(1);
+		EsFSError();
 	}
+
+	return true;
 }
 
 #if 0
@@ -702,7 +727,7 @@ void NewDirectoryEntry(DirectoryEntry *entry, uint8_t nodeType, EsUniqueIdentifi
 	entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry), 0);
 }
 
-void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, DirectoryEntryReference *outputReference, 
+bool AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, DirectoryEntryReference *outputReference, 
 		DirectoryEntryReference directoryReference) {
 	// Log("add %s to %s\n", name, path);
 
@@ -710,7 +735,7 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 
 	DirectoryEntry directory; 
 
-	ReadDirectoryEntryReference(directoryReference, &directory);
+	if (!ReadDirectoryEntryReference(directoryReference, &directory)) return false;
 	AttributeData *dataAttribute = (AttributeData *) FindAttribute(&directory, ESFS_ATTRIBUTE_DATA);
 	AttributeDirectory *directoryAttribute = (AttributeDirectory *) FindAttribute(&directory, ESFS_ATTRIBUTE_DIRECTORY);
 
@@ -720,12 +745,15 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 
 		if (!(directoryAttribute->childNodes % superblock.directoryEntriesPerBlock)) {
 			// Log("increasing directory to fit %ld entries\n========={\n", (directory.fileSize + superblock.blockSize) / sizeof(DirectoryEntry));
-			ResizeNode(&directory, directory.fileSize + superblock.blockSize);
+			if (!ResizeNode(&directory, directory.fileSize + superblock.blockSize)) return false;
 			// Log("========}\n");
 		}
 
 		directoryAttribute->childNodes++;
-		WriteDirectoryEntryReference(directoryReference, &directory);
+
+		if (!WriteDirectoryEntryReference(directoryReference, &directory)) {
+			return false;
+		}
 	}
 
 	// Step 2: Create the directory entry, and write it to the directory.
@@ -736,7 +764,10 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 	{
 		NewDirectoryEntry(&entry, nodeType, directory.identifier, name);
 		// Log("\tchild nodes: %ld\n", directoryAttribute->childNodes);
-		AccessNode(&directory, &entry, (directoryAttribute->childNodes - 1) * sizeof(DirectoryEntry), sizeof(DirectoryEntry), &reference, false);
+
+		if (!AccessNode(&directory, &entry, (directoryAttribute->childNodes - 1) * sizeof(DirectoryEntry), sizeof(DirectoryEntry), &reference, false)) {
+			return false;
+		}
 	}
 
 	// Step 3: Add the node into the index. 
@@ -756,14 +787,20 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 			// Directory is empty - create the root vertex.
 
 			uint64_t _unused;
-			AllocateExtent(1, &directoryAttribute->indexRootBlock, &_unused);
+
+			if (!AllocateExtent(1, &directoryAttribute->indexRootBlock, &_unused)) {
+				return false;
+			}
+
 			blocks[0] = directoryAttribute->indexRootBlock;
 			vertex->maxCount = (superblock.blockSize - ESFS_INDEX_KEY_OFFSET) / sizeof(IndexKey) - 1 /* +1 key */;
 			vertex->offset = ESFS_INDEX_KEY_OFFSET;
 			memcpy(vertex->signature, ESFS_INDEX_VERTEX_SIGNATURE, 4);
 			// Log("rootBlock = %ld for %s\n", directoryAttribute->indexRootBlock, path);
 		} else {
-			ReadBlock(blocks[0], 1, vertex);
+			if (!ReadBlock(blocks[0], 1, vertex)) {
+				return false;
+			}
 			// Log("start = %ld for %s\n", blocks[0], path);
 		}
 
@@ -772,7 +809,7 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 				if (ESFS_VERTEX_KEY(vertex, i)->value == newKey) {
 					// The key is already in the tree.
 					Log("The file already exists.");
-					exit(1);
+					EsFSError();
 				}
 			}
 
@@ -781,7 +818,11 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 
 				if ((i == vertex->count || newKey < key->value) && key->child) {
 					blocks[++depth] = key->child;
-					ReadBlock(key->child, 1, vertex);
+
+					if (!ReadBlock(key->child, 1, vertex)) {
+						return false;
+					}
+
 					goto next;
 				}
 			}
@@ -809,7 +850,7 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 			// Create a new sibling.
 
 			uint64_t siblingBlock = 0, _unused;
-			AllocateExtent(1, &siblingBlock, &_unused);
+			if (!AllocateExtent(1, &siblingBlock, &_unused)) return false;
 			IndexVertex *sibling = (IndexVertex *) _buffer0;
 			sibling->maxCount = (superblock.blockSize - ESFS_INDEX_KEY_OFFSET) / sizeof(IndexKey) - 1 /* +1 key */;
 			sibling->offset = ESFS_INDEX_KEY_OFFSET;
@@ -829,7 +870,7 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 				depth++;
 
 				uint64_t _unused;
-				AllocateExtent(1, &blocks[0], &_unused);
+				if (!AllocateExtent(1, &blocks[0], &_unused)) return false;
 
 				parent->maxCount = (superblock.blockSize - ESFS_INDEX_KEY_OFFSET) / sizeof(IndexKey) - 1 /* +1 key */;
 				parent->offset = ESFS_INDEX_KEY_OFFSET;
@@ -841,7 +882,9 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 				parent->keys[0].child = blocks[1];
 				directoryAttribute->indexRootBlock = blocks[0];
 			} else {
-				ReadBlock(blocks[depth - 1], 1, parent);
+				if (!ReadBlock(blocks[depth - 1], 1, parent)) {
+					return false;
+				}
 			}
 
 			IndexKey *parentKeys = (IndexKey *) ((uint8_t *) parent + parent->offset);
@@ -886,8 +929,8 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 
 			sibling->checksum = 0; sibling->checksum = CalculateCRC32(sibling, superblock.blockSize, 0);
 			vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock.blockSize, 0);
-			WriteBlock(siblingBlock, 1, sibling);
-			WriteBlock(blocks[depth], 1, vertex);
+			if (!WriteBlock(siblingBlock, 1, sibling)) return false;
+			if (!WriteBlock(blocks[depth], 1, vertex)) return false;
 
 			// Check if the parent vertex is full.
 
@@ -898,33 +941,49 @@ void AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 		// Write the block.
 
 		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock.blockSize, 0);
-		WriteBlock(blocks[depth], 1, vertex);
+		if (!WriteBlock(blocks[depth], 1, vertex)) return false;
 	}
 
 	if (outputEntry) *outputEntry = entry;
 	if (outputReference) *outputReference = reference;
 
 	// PrintTree(directoryAttribute->indexRootBlock);
-	WriteDirectoryEntryReference(directoryReference, &directory);
+	if (!WriteDirectoryEntryReference(directoryReference, &directory)) {
+		return false;
+	}
+
+	return true;
 }
 
-void MountVolume() {
+bool MountVolume() {
 	// Read the superblock.
 	blockSize = ESFS_BOOT_SUPER_BLOCK_SIZE;
-	ReadBlock(1, 1, &superblock);
+
+	if (!ReadBlock(1, 1, &superblock)) {
+		return false;
+	}
 
 	if (superblock.mounted) {
 		Log("EsFS: Volume not unmounted, exiting...\n");
-		exit(1);
+		EsFSError();
 	}
 
 	superblock.mounted = 1;
-	WriteBlock(1, 1, &superblock); 
+
+	if (!WriteBlock(1, 1, &superblock)) {
+		return false;
+	}
+
 	blockSize = superblock.blockSize;
 
 	// Read the group descriptor table.
 	groupDescriptorTable = (GroupDescriptor *) malloc(superblock.groupCount * sizeof(GroupDescriptor) + superblock.blockSize - 1);
-	ReadBlock(superblock.gdtFirstBlock, (superblock.groupCount * sizeof(GroupDescriptor) + superblock.blockSize - 1) / superblock.blockSize, groupDescriptorTable);
+
+	if (!ReadBlock(superblock.gdtFirstBlock, (superblock.groupCount * sizeof(GroupDescriptor) + superblock.blockSize - 1) / superblock.blockSize, groupDescriptorTable)) {
+		return false;
+	}
+
+	return true;
 }
 
 void UnmountVolume() {
@@ -939,11 +998,14 @@ void UnmountVolume() {
 
 bool FindNode(const char *cName, DirectoryEntry *node, DirectoryEntryReference directoryReference) {
 	DirectoryEntry directory; 
-	ReadDirectoryEntryReference(directoryReference, &directory);
+	if (!ReadDirectoryEntryReference(directoryReference, &directory)) return false;
 	AttributeDirectory *directoryAttribute = (AttributeDirectory *) FindAttribute(&directory, ESFS_ATTRIBUTE_DIRECTORY);
 
 	for (uintptr_t i = 0; i < directoryAttribute->childNodes; i++) {
-		AccessNode(&directory, node, sizeof(DirectoryEntry) * i, sizeof(DirectoryEntry), NULL, true);
+		if (!AccessNode(&directory, node, sizeof(DirectoryEntry) * i, sizeof(DirectoryEntry), NULL, true)) {
+			return false;
+		}
+
 		AttributeFilename *filename = (AttributeFilename *) FindAttribute(node, ESFS_ATTRIBUTE_FILENAME);
 
 		if (filename->length == strlen(cName) && 0 == memcmp(filename->filename, cName, filename->length)) {
@@ -973,7 +1035,7 @@ typedef struct ImportNode {
 	bool isFile;
 } ImportNode;
 
-uint64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
+int64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 	uint64_t totalSize = 0;
 
 	for (uintptr_t i = 0; i < arrlenu(node.children); i++) {
@@ -989,24 +1051,36 @@ uint64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 				DirectoryEntryReference reference;
 				DirectoryEntry entry;
 
-				AddNode(node.children[i].name, ESFS_NODE_TYPE_FILE, &entry, &reference, parentDirectory);
-				ResizeNode(&entry, fileLength);
+				if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_FILE, &entry, &reference, parentDirectory)) {
+					return -1;
+				}
+
+				if (!ResizeNode(&entry, fileLength)) {
+					return -1;
+				}
+
 				totalSize += fileLength;
 
-				AccessNode(&entry, data, 0, fileLength, NULL, false);
-				WriteDirectoryEntryReference(reference, &entry);
+				if (!AccessNode(&entry, data, 0, fileLength, NULL, false)) {
+					return -1;
+				}
+
+				if (!WriteDirectoryEntryReference(reference, &entry)) {
+					return -1;
+				}
 
 				free(data);
 			}
 		} else {
 			DirectoryEntryReference reference;
-			AddNode(node.children[i].name, ESFS_NODE_TYPE_DIRECTORY, NULL, &reference, parentDirectory);
-			uint64_t size = Import(node.children[i], reference);
+			if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_DIRECTORY, NULL, &reference, parentDirectory)) return -1;
+			int64_t size = Import(node.children[i], reference);
+			if (size == -1) return -1;
 			DirectoryEntry directory; 
-			ReadDirectoryEntryReference(reference, &directory);
+			if (!ReadDirectoryEntryReference(reference, &directory)) return -1;
 			AttributeDirectory *directoryAttribute = (AttributeDirectory *) FindAttribute(&directory, ESFS_ATTRIBUTE_DIRECTORY);
 			directoryAttribute->totalSize = size;
-			WriteDirectoryEntryReference(reference, &directory);
+			if (!WriteDirectoryEntryReference(reference, &directory)) return -1;
 			totalSize += size;
 		}
 	}
@@ -1015,18 +1089,18 @@ uint64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 }
 #endif
 
-void Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osInstallation,
+bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osInstallation,
 		void *kernel, size_t kernelBytes) {
 	assert(sizeof(Superblock) == 8192);
 
 	if (driveSize < ESFS_DRIVE_MINIMUM_SIZE) {
 		Log("Error: Cannot create a drive of %d bytes (too small).\n", (int) driveSize);
-		exit(1);
+		EsFSError();
 	}
 
 	if (strlen(volumeName) > ESFS_MAXIMUM_VOLUME_NAME_LENGTH) {
 		Log("Error: Volume name '%s' is too long; must be <= %d bytes.\n", volumeName, (int) ESFS_MAXIMUM_VOLUME_NAME_LENGTH);
-		exit(1);
+		EsFSError();
 	}
 
 	// Format the volume.
@@ -1092,9 +1166,15 @@ void Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 			entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry), 0);
 		}
 
-		WriteBytes(blockCoreNodes * superblock.blockSize, sizeof(coreNodes), &coreNodes);
+		if (!WriteBytes(blockCoreNodes * superblock.blockSize, sizeof(coreNodes), &coreNodes)) {
+			return false;
+		}
+
 		superblock.checksum = CalculateCRC32(&superblock, sizeof(Superblock), 0);
-		WriteBytes(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, &superblock);
+
+		if (!WriteBytes(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, &superblock)) {
+			return false;
+		}
 
 		{
 			GroupDescriptor *buffer = (GroupDescriptor *) malloc(superblock.groupCount * sizeof(GroupDescriptor));
@@ -1112,34 +1192,52 @@ void Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 					buffer[i].blockBitmap = blockGroup0Bitmap;
 					buffer[i].bitmapChecksum = CalculateCRC32(firstGroupBitmap, sizeof(firstGroupBitmap), 0);
 					buffer[i].largestExtent = superblock.blocksPerGroup - superblock.blocksUsed;
-					WriteBytes(blockGroup0Bitmap * superblock.blockSize, sizeof(firstGroupBitmap), &firstGroupBitmap);
+
+					if (!WriteBytes(blockGroup0Bitmap * superblock.blockSize, sizeof(firstGroupBitmap), &firstGroupBitmap)) {
+						return false;
+					}
 				}
 
 				buffer[i].checksum = CalculateCRC32(buffer + i, sizeof(GroupDescriptor), 0);
 			}
 
-			WriteBytes(superblock.gdtFirstBlock * superblock.blockSize, superblock.groupCount * sizeof(GroupDescriptor), buffer);
+			if (!WriteBytes(superblock.gdtFirstBlock * superblock.blockSize, superblock.groupCount * sizeof(GroupDescriptor), buffer)) {
+				return false;
+			}
+
 			free(buffer);
 		}
 	}
 
 	// Add the kernel.
 
-	{
-		MountVolume();
-
+	if (MountVolume()) {
 		DirectoryEntryReference reference = superblock.kernel;
 		DirectoryEntry entry;
 		EsUniqueIdentifier unused = {};
 
 		NewDirectoryEntry(&entry, ESFS_NODE_TYPE_FILE, unused, "Kernel");
-		WriteDirectoryEntryReference(reference, &entry);
-		ResizeNode(&entry, kernelBytes);
-		AccessNode(&entry, kernel, 0, kernelBytes, NULL, false);
-		WriteDirectoryEntryReference(reference, &entry);
+
+		if (WriteDirectoryEntryReference(reference, &entry)) {
+			if (ResizeNode(&entry, kernelBytes)) {
+				if (AccessNode(&entry, kernel, 0, kernelBytes, NULL, false)) {
+					WriteDirectoryEntryReference(reference, &entry);
+				} else {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		} else {
+			return false;
+		}
 
 		UnmountVolume();
+	} else {
+		return false;
 	}
+
+	return true;
 }
 
 #endif

@@ -1654,6 +1654,12 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 		}
 
 		application->singleInstance = nullptr;
+
+		if (desktop.installationState == INSTALLATION_STATE_INSTALLER && desktop.installer == application) {
+			// Restart the installer.
+			ApplicationInstanceCreate(desktop.installer->id, nullptr, nullptr, true /* hidden */);
+		}
+
 		ApplicationTemporaryDestroy(application);
 	}
 

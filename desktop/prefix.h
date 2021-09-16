@@ -274,6 +274,11 @@ struct BundleFile {
 	uint64_t offset;
 };
 
+struct MemoryAvailable {
+	size_t available;
+	size_t total;
+};
+
 #ifdef KERNEL
 #define K_BOOT_DRIVE ""
 #else

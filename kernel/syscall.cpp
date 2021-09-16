@@ -217,6 +217,15 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FAULT_RANGE) {
 	SYSCALL_RETURN(success ? ES_SUCCESS : ES_FATAL_ERROR_INVALID_BUFFER, !success);
 }
 
+SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_GET_AVAILABLE) {
+	MemoryAvailable available;
+	EsMemoryZero(&available, sizeof(MemoryAvailable));
+	available.available = MM_REMAINING_COMMIT() * K_PAGE_SIZE;
+	available.total = pmm.commitLimit * K_PAGE_SIZE;
+	SYSCALL_WRITE(argument0, &available, sizeof(MemoryAvailable));
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 	EsProcessCreationArguments arguments;
 	SYSCALL_READ(&arguments, argument0, sizeof(EsProcessCreationArguments));

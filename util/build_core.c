@@ -129,6 +129,8 @@ File FileOpen(const char *path, char mode) {
 
 #endif
 
+#define EsFSError() exit(1)
+
 #include "../shared/hash.cpp"
 #include "../shared/partitions.cpp"
 #include "build_common.h"
@@ -1058,7 +1060,7 @@ void BuildBootloader(Application *application) {
 File _drive;
 uint64_t _partitionOffset;
 
-void ReadBlock(uint64_t block, uint64_t count, void *buffer) {
+bool ReadBlock(uint64_t block, uint64_t count, void *buffer) {
 	FileSeek(_drive, block * blockSize + _partitionOffset);
 	// printf("read of block %ld\n", block);
 
@@ -1066,9 +1068,11 @@ void ReadBlock(uint64_t block, uint64_t count, void *buffer) {
 		Log("Error: Could not read blocks %d->%d of drive.\n", (int) block, (int) (block + count));
 		exit(1);
 	}
+
+	return true;
 }
 
-void WriteBlock(uint64_t block, uint64_t count, void *buffer) {
+bool WriteBlock(uint64_t block, uint64_t count, void *buffer) {
 	FileSeek(_drive, block * blockSize + _partitionOffset);
 	assert(block < 4294967296);
 
@@ -1076,15 +1080,19 @@ void WriteBlock(uint64_t block, uint64_t count, void *buffer) {
 		Log("Error: Could not write to blocks %d->%d of drive.\n", (int) block, (int) (block + count));
 		exit(1);
 	}
+	
+	return true;
 }
 
-void WriteBytes(uint64_t offset, uint64_t count, void *buffer) {
+bool WriteBytes(uint64_t offset, uint64_t count, void *buffer) {
 	FileSeek(_drive, offset + _partitionOffset);
 
 	if (FileWrite(_drive, count, buffer) != count) {
 		Log("Error: Could not write to bytes %d->%d of drive.\n", (int) offset, (int) (offset + count));
 		exit(1);
 	}
+
+	return true;
 }
 
 void Install(const char *driveFile, uint64_t partitionSize, const char *partitionLabel) {
