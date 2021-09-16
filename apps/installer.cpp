@@ -481,7 +481,7 @@ void GenerateGUID(uint8_t *destination) {
 
 EsError FATAddFile(FATDirectoryEntry *directory, size_t directoryEntries, uint16_t *fat, 
 		EsFileOffset totalSectors, EsFileOffset sectorOffset, bool isDirectory,
-		const char *name, void *file, size_t fileBytes, EsHandle driveHandle) {
+		const char *name, void *file, size_t fileBytes, EsHandle driveHandle, EsFileOffset *_sectorFirst) {
 	// Allocate the sector extent.
 
 	EsFileOffset sectorFirst = 0;
@@ -532,7 +532,28 @@ EsError FATAddFile(FATDirectoryEntry *directory, size_t directoryEntries, uint16
 	entry->accessedDate = 33;
 	entry->modificationDate = 33;
 
+	if (_sectorFirst) {
+		*_sectorFirst = sectorFirst;
+	}
+
 	return ES_SUCCESS;
+}
+
+void FATAddDotFiles(FATDirectoryEntry *directory, EsFileOffset thisSector, EsFileOffset parentSector) {
+	EsMemoryCopy(directory[0].name, ".          ", 11);
+	directory[0].firstClusterHigh = thisSector >> 16;
+	directory[0].firstClusterLow = thisSector & 0xFFFF;
+	directory[0].attributes = 0x10;
+	directory[0].creationDate = 33;
+	directory[0].accessedDate = 33;
+	directory[0].modificationDate = 33;
+	EsMemoryCopy(directory[1].name, "..         ", 11);
+	directory[1].firstClusterHigh = parentSector >> 16;
+	directory[1].firstClusterLow = parentSector & 0xFFFF;
+	directory[1].attributes = 0x10;
+	directory[1].creationDate = 33;
+	directory[1].accessedDate = 33;
+	directory[1].modificationDate = 33;
 }
 
 EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice drive, EsMessage m,
@@ -663,31 +684,29 @@ EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice dr
 	fat[0] = 0xFFF8;
 	fat[1] = 0xFFFF;
 
-	FATDirectoryEntry *bootDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
-	// TODO Add self and parent entries.
-	FATAddDotFiles(bootDirectory, directoryEntriesPerSector);
-	error = FATAddFile(bootDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, false,
-			"BOOTX64 EFI", uefi1, uefi1Bytes, drive.handle);
-	if (error != ES_SUCCESS) return error;
-
-	FATDirectoryEntry *efiDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
-	// TODO Add self and parent entries.
-	error = FATAddFile(efiDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, true,
-			"BOOT       ", bootDirectory, driveInformation.sectorSize, drive.handle);
-	if (error != ES_SUCCESS) return error;
-
+	EsFileOffset efiDirectorySector, bootDirectorySector;
 	FATDirectoryEntry *rootDirectory = (FATDirectoryEntry *) EsHeapAllocate(rootDirectorySectors * driveInformation.sectorSize, true);
+	FATDirectoryEntry *efiDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
+	FATDirectoryEntry *bootDirectory = (FATDirectoryEntry *) EsHeapAllocate(driveInformation.sectorSize, true);
 	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
-			"ESLOADERBIN", uefi2, uefi2Bytes, drive.handle);
+			"ESLOADERBIN", uefi2, uefi2Bytes, drive.handle, nullptr);
 	if (error != ES_SUCCESS) return error;
 	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
-			"ESKERNELESX", kernel, kernelBytes, drive.handle);
+			"ESKERNELESX", kernel, kernelBytes, drive.handle, nullptr);
 	if (error != ES_SUCCESS) return error;
 	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, false,
-			"ESIID   DAT", &installationIdentifier, 16, drive.handle);
+			"ESIID   DAT", &installationIdentifier, 16, drive.handle, nullptr);
 	if (error != ES_SUCCESS) return error;
 	error = FATAddFile(rootDirectory, superBlock->rootDirectoryEntries, fat, superBlock->totalSectors, sectorOffset, true,
-			"EFI        ", efiDirectory, driveInformation.sectorSize, drive.handle);
+			"EFI        ", efiDirectory, driveInformation.sectorSize, drive.handle, &efiDirectorySector);
+	if (error != ES_SUCCESS) return error;
+	FATAddDotFiles(efiDirectory, efiDirectorySector, 0);
+	error = FATAddFile(efiDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, true,
+			"BOOT       ", bootDirectory, driveInformation.sectorSize, drive.handle, &bootDirectorySector);
+	if (error != ES_SUCCESS) return error;
+	FATAddDotFiles(bootDirectory, bootDirectorySector, efiDirectorySector);
+	error = FATAddFile(bootDirectory, directoryEntriesPerSector, fat, superBlock->totalSectors, sectorOffset, false,
+			"BOOTX64 EFI", uefi1, uefi1Bytes, drive.handle, nullptr);
 	if (error != ES_SUCCESS) return error;
 
 	m.user.context1.u = 4;
@@ -708,6 +727,14 @@ EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice dr
 	parameters[0] = rootDirectoryOffset * driveInformation.sectorSize; 
 	parameters[1] = rootDirectorySectors * driveInformation.sectorSize;
 	error = EsDeviceControl(drive.handle, ES_DEVICE_CONTROL_BLOCK_WRITE, rootDirectory, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = (efiDirectorySector + sectorOffset) * blockDeviceInformation.sectorSize;
+	parameters[1] = blockDeviceInformation.sectorSize;
+	error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_WRITE, efiDirectory, parameters);
+	if (error != ES_SUCCESS) return error;
+	parameters[0] = (bootDirectorySector + sectorOffset) * blockDeviceInformation.sectorSize;
+	parameters[1] = blockDeviceInformation.sectorSize;
+	error = EsDeviceControl(driveHandle, ES_DEVICE_CONTROL_BLOCK_WRITE, bootDirectory, parameters);
 	if (error != ES_SUCCESS) return error;
 
 	// Cleanup.
