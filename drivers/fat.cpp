@@ -99,7 +99,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 				superBlock->sectorsPerCluster * SECTOR_SIZE, K_ACCESS_READ, (uint8_t *) clusterBuffer, ES_FLAGS_DEFAULT);
 		if (error != ES_SUCCESS) return error;
 
-		entry = *(FATDirectoryEntry *) (clusterBuffer + reference.offset);
+		entry = ((FATDirectoryEntry *) clusterBuffer)[reference.offset];
 	} else {
 		entry = directory->rootDirectory[reference.offset];
 	}

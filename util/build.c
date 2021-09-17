@@ -402,11 +402,20 @@ void Run(int emulator, int log, int debug) {
 			// -serial file:out.txt
 			// -enable-kvm (doesn't work with GDB)
 
-			const char *driveFlags = IsOptionEnabled("Emulator.ATA")  ? "-drive file=bin/drive,format=raw,media=disk,index=0 " : 
-						 IsOptionEnabled("Emulator.AHCI") ? "-drive file=bin/drive,if=none,id=mydisk,format=raw,media=disk,index=0 "
+			const char *biosFlags = "";
+			const char *drivePrefix = "-drive file=bin/drive";
+
+			if (IsOptionEnabled("Emulator.QemuEFI")) {
+				CallSystem("util/uefi.sh");
+				biosFlags = " -bios /usr/share/ovmf/x64/OVMF.fd ";
+				drivePrefix = "-drive file=bin/uefi_drive";
+			}
+
+			const char *driveFlags = IsOptionEnabled("Emulator.ATA")  ? ",format=raw,media=disk,index=0 " : 
+						 IsOptionEnabled("Emulator.AHCI") ? ",if=none,id=mydisk,format=raw,media=disk,index=0 "
 						    		                    "-device ich9-ahci,id=ahci "
 							       	                    "-device ide-hd,drive=mydisk,bus=ahci.0 "
-						                                  : "-drive file=bin/drive,if=none,id=mydisk,format=raw "
+						                                  : ",if=none,id=mydisk,format=raw "
                                                                                     "-device nvme,drive=mydisk,serial=1234 ";
 
 			const char *cdromImage = GetOptionString("Emulator.CDROMImage");
@@ -459,14 +468,14 @@ void Run(int emulator, int log, int debug) {
 			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
 				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
 
-			CallSystemF("%s %s qemu-system-x86_64 %s %s -m %d -s %s -smp cores=%d -cpu Haswell "
+			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d -s %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
-					" %s %s %s %s %s ", 
-					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", driveFlags, cdromFlags, 
+					" %s %s %s %s %s %s ", 
+					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
-					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags);
+					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags);
 		} break;
 
 		case EMULATOR_BOCHS: {
@@ -479,7 +488,7 @@ void Run(int emulator, int log, int debug) {
 			CallSystem("VBoxManage storageattach Essence --storagectl AHCI --port 0 --device 0 --type hdd --medium none");
 			CallSystem("VBoxManage closemedium disk bin/vbox.vdi --delete");
 
-			if (IsOptionEnabled("Emulator.GenerateVDIForUEFI")) {
+			if (IsOptionEnabled("Emulator.VBoxEFI")) {
 				CallSystem("util/uefi.sh");
 				CallSystem("VBoxManage convertfromraw bin/uefi_drive bin/vbox.vdi --format VDI");
 				CallSystem("VBoxManage modifyvm Essence --firmware efi");

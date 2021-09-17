@@ -820,7 +820,7 @@ void OutputSystemConfiguration() {
 		FilePrintFormat(file, "\n[@application %d]\n", applications[i].id);
 		FilePrintFormat(file, "name=%s\n", applications[i].name);
 		FilePrintFormat(file, "executable=0:/Applications/%s.esx\n", applications[i].name);
-		FilePrintFormat(file, "settings_path=0:/Settings/%s\n", applications[i].name);
+		FilePrintFormat(file, "settings_path=0:/Essence/Settings/%s\n", applications[i].name);
 		FilePrintFormat(file, "is_file_manager=%d\n", 0 == strcmp(applications[i].name, "File Manager") ? 1 : 0);
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].properties); j++) {
