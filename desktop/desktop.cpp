@@ -1365,10 +1365,6 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		instance->tab->notRespondingInstance = nullptr;
 	}
 
-	ApplicationInstanceCleanup(instance);
-
-	instance->application = application;
-
 	ApplicationProcess *process = application->singleProcess;
 
 	if (application->createInstance) {
@@ -1524,8 +1520,14 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		application->singleProcess = process;
 	}
 
-	instance->process = process;
+	// Increment the instance count before cleaning up the old process,
+	// so that when going between 2 Desktop instances,
+	// the Desktop process doesn't exit.
 	process->instanceCount++;
+
+	ApplicationInstanceCleanup(instance);
+	instance->application = application;
+	instance->process = process;
 
 	if (startupInformation->documentID) {
 		instance->documentID = startupInformation->documentID;
