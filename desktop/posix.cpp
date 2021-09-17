@@ -257,7 +257,9 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 
 		case SYS_getpid: {
 			// Run the system call directly, so that the kernel can handle the vfork()'d case.
-			returnValue = EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_PROCESS, 0, 0, 0);
+			EsObjectID id;
+			EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_PROCESS, (uintptr_t) &id, 0, 0);
+			returnValue = id;
 		} break;
 
 		case SYS_gettid: {
@@ -484,7 +486,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 
 		case SYS_prlimit64: {
 			// You can't access other process's resources.
-			if (a1 && a1 != (long) EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_PROCESS, 0, 0, 0)) {
+			if (a1 && a1 != (long) EsProcessGetID(ES_CURRENT_PROCESS)) {
 				returnValue = -EPERM;
 				break;
 			}

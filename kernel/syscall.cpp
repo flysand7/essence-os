@@ -1253,20 +1253,20 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_GET_ID) {
 	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS, object);
 
 	if (object.type == KERNEL_OBJECT_THREAD) {
-		SYSCALL_RETURN(((Thread *) object.object)->id, false);
+		SYSCALL_WRITE(argument1, &((Thread *) object.object)->id, sizeof(EsObjectID));
 	} else if (object.type == KERNEL_OBJECT_PROCESS) {
 		Process *process = (Process *) object.object;
+		EsObjectID id = process->id;
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
 		if (currentThread->posixData && currentThread->posixData->forkProcess) {
-			SYSCALL_RETURN(currentThread->posixData->forkProcess->id, false);
+			id = currentThread->posixData->forkProcess->id;
 		}
 #endif
 
-		SYSCALL_RETURN(process->id, false);
+		SYSCALL_WRITE(argument1, &id, sizeof(EsObjectID));
 	}
 
-	KernelPanic("ES_SYSCALL_THREAD_GET_ID - Unhandled case.\n");
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

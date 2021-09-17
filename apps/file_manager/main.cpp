@@ -247,12 +247,6 @@ Array<String> bookmarks;
 Array<FolderViewSettingsEntry> folderViewSettings;
 HashStore<uint64_t, Thumbnail> thumbnailCache;
 
-// Non-blocking task thread.
-
-EsHandle nonBlockingTaskWorkAvailable;
-EsMutex nonBlockingTaskMutex;
-Array<Task *> nonBlockingTasks;
-
 // Styles.
 
 const EsStyle styleFolderView = {
@@ -346,41 +340,20 @@ void BlockingTaskQueue(Instance *instance, Task task) {
 	}
 }
 
-void NonBlockingTaskThread(EsGeneric) {
-	while (true) {
-		EsWait(&nonBlockingTaskWorkAvailable, 1, ES_WAIT_NO_TIMEOUT);
-
-		while (true) {
-			EsMutexAcquire(&nonBlockingTaskMutex);
-
-			if (!nonBlockingTasks.Length()) {
-				EsMutexRelease(&nonBlockingTaskMutex);
-				break;
-			}
-
-			Task *task = nonBlockingTasks[0];
-			nonBlockingTasks.Delete(0);
-			EsMutexRelease(&nonBlockingTaskMutex);
-
-			task->callback(nullptr, task);
-
-			EsMessage m = { MESSAGE_NON_BLOCKING_TASK_COMPLETE };
-			m.user.context2.p = task;
-			EsMessagePost(nullptr, &m);
-		}
-	}
+void NonBlockingTaskWrapper(EsGeneric _task) {
+	Task *task = (Task *) _task.p;
+	task->callback(nullptr, task);
+	EsMessage m = { MESSAGE_NON_BLOCKING_TASK_COMPLETE };
+	m.user.context2.p = task;
+	EsMessagePost(nullptr, &m);
 }
 
 void NonBlockingTaskQueue(Task _task) {
 	// NOTE We can't store instances in tasks on the non-blocking queue thread,
 	// because the instances might be destroyed while the task is in progress!
-
 	Task *task = (Task *) EsHeapAllocate(sizeof(Task), false);
 	EsMemoryCopy(task, &_task, sizeof(Task));
-	EsMutexAcquire(&nonBlockingTaskMutex);
-	nonBlockingTasks.Add(task);
-	EsMutexRelease(&nonBlockingTaskMutex);
-	EsEventSet(nonBlockingTaskWorkAvailable);
+	EsWorkQueue(NonBlockingTaskWrapper, task);
 }
 
 void NonBlockingTaskComplete(EsMessage *message) {
@@ -515,15 +488,6 @@ void _start() {
 		DriveAdd(prefix, prefixBytes);
 	}, 0);
 
-	// Start the non-blocking task threads.
-
-	nonBlockingTaskWorkAvailable = EsEventCreate(true /* autoReset */);
-	EsThreadInformation _nonBlockingTaskThread = {};
-
-	for (uintptr_t i = 0; i < EsSystemGetOptimalWorkQueueThreadCount(); i++) {
-		EsThreadCreate(NonBlockingTaskThread, &_nonBlockingTaskThread, nullptr);
-	}
-
 	// Process messages.
 
 	while (true) {
@@ -557,7 +521,6 @@ void _start() {
 			}
 
 			EsAssert(!instances.Length());
-			EsHandleClose(nonBlockingTaskWorkAvailable);
 			EsHeapFree(fileTypesBuffer.out);
 
 			bookmarks.Free();
@@ -568,7 +531,6 @@ void _start() {
 			knownFileTypes.Free();
 			knownFileTypesByExtension.Free();
 			loadedFolders.Free();
-			nonBlockingTasks.Free();
 			thumbnailCache.Free();
 #endif
 		} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {

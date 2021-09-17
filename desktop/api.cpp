@@ -94,7 +94,7 @@ struct ThreadLocalStorage {
 	// This must be the first field.
 	ThreadLocalStorage *self;
 
-	uint64_t id;
+	EsObjectID id;
 };
 
 struct MountPoint : EsMountPoint {
@@ -107,6 +107,11 @@ struct Timer {
 	double afterMs;
 	EsTimerCallback callback; 
 	EsGeneric argument;
+};
+
+struct Work {
+	EsWorkCallback callback;
+	EsGeneric context;
 };
 
 struct {
@@ -136,6 +141,10 @@ struct {
 	uintptr_t performanceTimerStackCount;
 
 	ThreadLocalStorage firstThreadLocalStorage;
+
+	EsHandle workAvailable;
+	EsMutex workMutex;
+	Array<Work> workQueue;
 } api;
 
 ptrdiff_t tlsStorageOffset;
@@ -866,6 +875,9 @@ EsMessage *EsMessageReceive() {
 				gui.allWindows.Free();
 				calculator.Free();
 				HashTableFree(&gui.keyboardShortcutNames, false);
+				EsHandleClose(api.workAvailable); // TODO Waiting for all work to finish.
+				EsAssert(!api.workQueue.Length());
+				api.workQueue.Free();
 				MemoryLeakDetectorCheckpoint(&heap);
 				EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
@@ -1259,7 +1271,7 @@ uintptr_t EsSystemGetOptimalWorkQueueThreadCount() {
 
 void ThreadInitialise(ThreadLocalStorage *local) {
 	EsMemoryZero(local, sizeof(ThreadLocalStorage));
-	local->id = EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_THREAD, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_THREAD, (uintptr_t) &local->id, 0, 0);
 	local->self = local;
 	EsSyscall(ES_SYSCALL_PROCESS_SET_TLS, (uintptr_t) local - tlsStorageOffset, 0, 0, 0);
 }
@@ -1879,6 +1891,44 @@ void EsTimerCancel(EsTimer id) {
 	}
 
 	EsMutexRelease(&api.timersMutex);
+}
+
+void WorkThread(EsGeneric) {
+	while (true) {
+		EsWait(&api.workAvailable, 1, ES_WAIT_NO_TIMEOUT);
+
+		while (true) {
+			EsMutexAcquire(&api.workMutex);
+
+			if (api.workQueue.Length()) {
+				Work work = api.workQueue[0];
+				api.workQueue.Delete(0);
+				EsMutexRelease(&api.workMutex);
+				work.callback(work.context);
+			} else {
+				EsMutexRelease(&api.workMutex);
+			}
+		}
+	}
+}
+
+void EsWorkQueue(EsWorkCallback callback, EsGeneric context) {
+	EsMutexAcquire(&api.workMutex);
+
+	if (!api.workAvailable) {
+		api.workAvailable = EsEventCreate(true /* autoReset */);
+		EsThreadInformation thread = {};
+
+		for (uintptr_t i = 0; i < EsSystemGetOptimalWorkQueueThreadCount(); i++) {
+			EsThreadCreate(WorkThread, &thread, nullptr);
+			EsHandleClose(thread.handle);
+		}
+	}
+
+	Work work = { callback, context };
+	api.workQueue.Add(work);
+	EsMutexRelease(&api.workMutex);
+	EsEventSet(api.workAvailable);
 }
 
 #ifndef ENABLE_POSIX_SUBSYSTEM

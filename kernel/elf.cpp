@@ -164,6 +164,8 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 #ifdef ARCH_X86_64
 			uint64_t name = CalculateCRC64(EsLiteral("$Executables/x86_64"));
+#else
+#error Unimplemented.
 #endif
 
 			BundleFile *files = (BundleFile *) ((BundleHeader *) header.mapAddress + 1);

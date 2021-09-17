@@ -436,16 +436,20 @@ void EsProcessPause(EsHandle process, bool resume) {
 	EsSyscall(ES_SYSCALL_PROCESS_PAUSE, process, resume, 0, 0);
 }
 
-uint64_t EsThreadGetID(EsHandle thread) {
+EsObjectID EsThreadGetID(EsHandle thread) {
 	if (thread == ES_CURRENT_THREAD) {
 		return GetThreadLocalStorage()->id;
 	} else {
-		return EsSyscall(ES_SYSCALL_THREAD_GET_ID, thread, 0, 0, 0);
+		EsObjectID id;
+		EsSyscall(ES_SYSCALL_THREAD_GET_ID, thread, (uintptr_t) &id, 0, 0);
+		return id;
 	}
 }
 
-uintptr_t EsProcessGetID(EsHandle process) {
-	return EsSyscall(ES_SYSCALL_THREAD_GET_ID, process, 0, 0, 0);
+EsObjectID EsProcessGetID(EsHandle process) {
+	EsObjectID id;
+	EsSyscall(ES_SYSCALL_THREAD_GET_ID, process, (uintptr_t) &id, 0, 0);
+	return id;
 }
 
 ptrdiff_t EsDirectoryEnumerateChildrenFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {

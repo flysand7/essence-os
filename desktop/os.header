@@ -1905,6 +1905,7 @@ function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, 
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
 function_pointer void EsUserTaskCallback(EsUserTask *task, EsGeneric data);
 function_pointer bool EsFileCopyCallback(EsFileOffset bytesCopied, EsFileOffset totalBytes, EsGeneric data); // Return false to cancel.
+function_pointer void EsWorkCallback(EsGeneric context);
 
 // System.
 
@@ -1985,15 +1986,18 @@ function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void
 
 function EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information); 
 function int EsProcessGetExitStatus(EsHandle process); 
-function EsObjectID EsProcessGetID(EsHandle process); 
+function EsObjectID EsProcessGetID(EsHandle process);
 function void EsProcessGetState(EsHandle process, EsProcessState *state); 
 function EsHandle EsProcessOpen(EsObjectID pid); 
 function void EsProcessPause(EsHandle process, bool resume); 
 function void EsProcessTerminate(EsHandle process, int status); 
 function void EsProcessTerminateCurrent(); 
+
 function EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument); 
-function EsObjectID EsThreadGetID(EsHandle thread); // TODO Make this 64-bit.
+function EsObjectID EsThreadGetID(EsHandle thread);
 function void EsThreadTerminate(EsHandle thread); 
+
+function void EsWorkQueue(EsWorkCallback callback, EsGeneric context);
 
 // Memory.
 
