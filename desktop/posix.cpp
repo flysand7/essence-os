@@ -339,6 +339,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			char *_path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
 			char *path = (char *) __builtin_alloca(pathBytes);
 			EsMemoryCopy(path, _path, pathBytes);
+			EsHeapFree(_path);
 
 			char **argv = (char **) a2;
 			char **envp = (char **) a3;

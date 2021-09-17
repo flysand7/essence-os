@@ -1320,28 +1320,33 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		SettingsWindowColorUpdated();
 	} else {
 		EsHandle initialMountPointsBuffer = api.startupInformation->data.initialMountPoints;
-		size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);
-		EsMountPoint *initialMountPoints = (EsMountPoint *) EsHeapAllocate(initialMountPointCount * sizeof(EsMountPoint), false);
-		EsConstantBufferRead(initialMountPointsBuffer, initialMountPoints);
-
-		for (uintptr_t i = 0; i < initialMountPointCount; i++) {
-			NodeAddMountPoint(initialMountPoints[i].prefix, initialMountPoints[i].prefixBytes, initialMountPoints[i].base, true);
-		}
-
-		EsHeapFree(initialMountPoints);
-		EsHandleClose(initialMountPointsBuffer);
-
 		EsHandle initialDevicesBuffer = api.startupInformation->data.initialDevices;
-		size_t initialDevicesCount = EsConstantBufferGetSize(initialDevicesBuffer) / sizeof(EsMessageDevice);
-		EsMessageDevice *initialDevices = (EsMessageDevice *) EsHeapAllocate(initialDevicesCount * sizeof(EsMessageDevice), false);
-		EsConstantBufferRead(initialDevicesBuffer, initialDevices);
 
-		for (uintptr_t i = 0; i < initialDevicesCount; i++) {
-			api.connectedDevices.Add(initialDevices[i]);
+		if (initialMountPointsBuffer) {
+			size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);
+			EsMountPoint *initialMountPoints = (EsMountPoint *) EsHeapAllocate(initialMountPointCount * sizeof(EsMountPoint), false);
+			EsConstantBufferRead(initialMountPointsBuffer, initialMountPoints);
+
+			for (uintptr_t i = 0; i < initialMountPointCount; i++) {
+				NodeAddMountPoint(initialMountPoints[i].prefix, initialMountPoints[i].prefixBytes, initialMountPoints[i].base, true);
+			}
+
+			EsHeapFree(initialMountPoints);
+			EsHandleClose(initialMountPointsBuffer);
 		}
 
-		EsHeapFree(initialDevices);
-		EsHandleClose(initialDevicesBuffer);
+		if (initialDevicesBuffer) {
+			size_t initialDevicesCount = EsConstantBufferGetSize(initialDevicesBuffer) / sizeof(EsMessageDevice);
+			EsMessageDevice *initialDevices = (EsMessageDevice *) EsHeapAllocate(initialDevicesCount * sizeof(EsMessageDevice), false);
+			EsConstantBufferRead(initialDevicesBuffer, initialDevices);
+
+			for (uintptr_t i = 0; i < initialDevicesCount; i++) {
+				api.connectedDevices.Add(initialDevices[i]);
+			}
+
+			EsHeapFree(initialDevices);
+			EsHandleClose(initialDevicesBuffer);
+		}
 
 		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
 		EsBuffer responseBuffer = { .canGrow = true };
