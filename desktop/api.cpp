@@ -145,6 +145,8 @@ struct {
 	EsHandle workAvailable;
 	EsMutex workMutex;
 	Array<Work> workQueue;
+	Array<EsHandle> workThreads;
+	volatile bool workFinish;
 } api;
 
 ptrdiff_t tlsStorageOffset;
@@ -862,7 +864,17 @@ EsMessage *EsMessageReceive() {
 				// Desktop tracks the number of instances it owns, so it needs to know when it exits.
 				ApplicationProcessTerminated(EsProcessGetID(ES_CURRENT_PROCESS));
 			} else {
+				api.workFinish = true;
+				if (api.workAvailable) EsEventSet(api.workAvailable);
+				EsMessageMutexRelease();
+
+				for (uintptr_t i = 0; i < api.workThreads.Length(); i++) {
+					EsWaitSingle(api.workThreads[i]);
+					EsHandleClose(api.workThreads[i]);
+				}
+
 #ifdef DEBUG_BUILD
+				EsMessageMutexAcquire();
 				FontDatabaseFree();
 				FreeUnusedStyles(true /* include permanent styles */);
 				theming.loadedStyles.Free();
@@ -875,8 +887,9 @@ EsMessage *EsMessageReceive() {
 				gui.allWindows.Free();
 				calculator.Free();
 				HashTableFree(&gui.keyboardShortcutNames, false);
-				EsHandleClose(api.workAvailable); // TODO Waiting for all work to finish.
+				if (api.workAvailable) EsHandleClose(api.workAvailable);
 				EsAssert(!api.workQueue.Length());
+				api.workThreads.Free();
 				api.workQueue.Free();
 				MemoryLeakDetectorCheckpoint(&heap);
 				EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
@@ -1893,6 +1906,10 @@ void EsTimerCancel(EsTimer id) {
 	EsMutexRelease(&api.timersMutex);
 }
 
+bool EsWorkIsExiting() {
+	return api.workFinish;
+}
+
 void WorkThread(EsGeneric) {
 	while (true) {
 		EsWait(&api.workAvailable, 1, ES_WAIT_NO_TIMEOUT);
@@ -1907,28 +1924,38 @@ void WorkThread(EsGeneric) {
 				work.callback(work.context);
 			} else {
 				EsMutexRelease(&api.workMutex);
+
+				if (api.workFinish) {
+					EsEventSet(api.workAvailable); // Wake up another thread.
+					return;
+				} else {
+					break;
+				}
 			}
 		}
 	}
 }
 
-void EsWorkQueue(EsWorkCallback callback, EsGeneric context) {
+EsError EsWorkQueue(EsWorkCallback callback, EsGeneric context) {
 	EsMutexAcquire(&api.workMutex);
 
 	if (!api.workAvailable) {
 		api.workAvailable = EsEventCreate(true /* autoReset */);
-		EsThreadInformation thread = {};
+	}
 
-		for (uintptr_t i = 0; i < EsSystemGetOptimalWorkQueueThreadCount(); i++) {
-			EsThreadCreate(WorkThread, &thread, nullptr);
-			EsHandleClose(thread.handle);
-		}
+	EsThreadInformation thread = {};
+
+	while (api.workThreads.Length() < EsSystemGetOptimalWorkQueueThreadCount()) {
+		EsError error = EsThreadCreate(WorkThread, &thread, nullptr);
+		if (error != ES_SUCCESS) return error;
+		api.workThreads.Add(thread.handle);
 	}
 
 	Work work = { callback, context };
-	api.workQueue.Add(work);
+	bool success = api.workQueue.Add(work);
 	EsMutexRelease(&api.workMutex);
 	EsEventSet(api.workAvailable);
+	return success ? ES_SUCCESS : ES_ERROR_INSUFFICIENT_RESOURCES;
 }
 
 #ifndef ENABLE_POSIX_SUBSYSTEM

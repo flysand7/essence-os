@@ -996,6 +996,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 				while (rbp && traceDepth < 32) {
 					uint64_t value;
+					if (!MMArchIsBufferInUserRange(rbp, 16)) break;
 					if (!MMArchSafeCopy((uintptr_t) &value, rbp + 8, sizeof(uint64_t))) break;
 					EsPrint("\t%d: %x\n", ++traceDepth, value);
 					if (!value) break;

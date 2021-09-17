@@ -1997,7 +1997,8 @@ function EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInf
 function EsObjectID EsThreadGetID(EsHandle thread);
 function void EsThreadTerminate(EsHandle thread); 
 
-function void EsWorkQueue(EsWorkCallback callback, EsGeneric context);
+function EsError EsWorkQueue(EsWorkCallback callback, EsGeneric context);
+function bool EsWorkIsExiting();
 
 // Memory.
 

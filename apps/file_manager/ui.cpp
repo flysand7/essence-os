@@ -548,7 +548,7 @@ void ThumbnailResize(uint32_t *bits, uint32_t originalWidth, uint32_t originalHe
 void ThumbnailGenerateTask(Instance *, Task *task) {
 	EsMessageMutexAcquire();
 	Thumbnail *thumbnail = thumbnailCache.Get(&task->id);
-	bool cancelTask = !thumbnail || thumbnail->referenceCount == 0;
+	bool cancelTask = !thumbnail || thumbnail->referenceCount == 0 || EsWorkIsExiting();
 	EsMessageMutexRelease();
 
 	if (cancelTask) {
@@ -593,13 +593,6 @@ void ThumbnailGenerateTask(Instance *, Task *task) {
 	if (targetWidth == originalWidth && targetHeight == originalHeight) {
 		targetBits = originalBits;
 	} else {
-		targetBits = (uint32_t *) EsHeapAllocate(targetWidth * targetHeight * 4, false);
-
-		if (!targetBits) {
-			EsHeapFree(originalBits);
-			return; // Allocation failure; could not resize the image.
-		}
-
 		ThumbnailResize(originalBits, originalWidth, originalHeight, targetWidth, targetHeight);
 		targetBits = (uint32_t *) EsHeapReallocate(originalBits, targetWidth * targetHeight * 4, false);
 	}
