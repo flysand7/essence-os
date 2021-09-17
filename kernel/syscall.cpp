@@ -1039,7 +1039,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 		windowManager.cursorID = argument1;
 		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF);
 		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
-		windowManager.cursorXOR = argument3 & (1 << 31);
 		windowManager.cursorShadow = argument3 & (1 << 30);
 
 		int width = imageWidth + CURSOR_SHADOW_OFFSET;

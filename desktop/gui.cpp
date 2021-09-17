@@ -6851,13 +6851,12 @@ bool UISetCursor(EsWindow *window) {
 		CURSOR(default, 23, 18, 1, 1, 15, 24);
 	}
 
-	bool _xor = cursorStyle == ES_CURSOR_TEXT;
-	bool shadow = !_xor && api.global->showCursorShadow;
+	bool shadow = cursorStyle != ES_CURSOR_TEXT && api.global->showCursorShadow;
 
 	return EsSyscall(ES_SYSCALL_WINDOW_SET_CURSOR, window->handle, 
 			(uintptr_t) theming.cursors.bits + x * 4 + y * theming.cursors.stride, 
 			((0xFF & ox) << 0) | ((0xFF & oy) << 8) | ((0xFF & w) << 16) | ((0xFF & h) << 24), 
-			theming.cursors.stride | ((uint32_t) _xor << 31) | ((uint32_t) shadow << 30));
+			theming.cursors.stride | ((uint32_t) shadow << 30));
 }
 
 void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, ProcessMessageTiming *timing) {

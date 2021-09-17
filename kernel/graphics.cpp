@@ -68,8 +68,7 @@ void GraphicsUpdateScreen(K_USER_BUFFER void *bits, EsRectangle *bounds, uintptr
 	windowManager.changedCursorImage = false;
 
 	int cursorImageWidth = windowManager.cursorSurface.width, cursorImageHeight = windowManager.cursorSurface.height;
-	sourceSurface->Draw(&windowManager.cursorSurface, ES_RECT_4(cursorX, cursorX + cursorImageWidth, cursorY, cursorY + cursorImageHeight), 0, 0, 
-			windowManager.cursorXOR ? ES_DRAW_BITMAP_XOR : 0xFF);
+	sourceSurface->Draw(&windowManager.cursorSurface, ES_RECT_4(cursorX, cursorX + cursorImageWidth, cursorY, cursorY + cursorImageHeight), 0, 0, 0xFF);
 
 	if (bits) {
 		graphics.target->updateScreen((K_USER_BUFFER const uint8_t *) bits, 

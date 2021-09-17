@@ -103,7 +103,7 @@ struct WindowManager {
 	Surface cursorSurface, cursorSwap, cursorTemporary;
 	int cursorImageOffsetX, cursorImageOffsetY;
 	uintptr_t cursorID;
-	bool cursorXOR, cursorShadow;
+	bool cursorShadow;
 	bool changedCursorImage;
 
 	uint32_t cursorProperties; 
