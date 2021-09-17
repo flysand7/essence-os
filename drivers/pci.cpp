@@ -240,7 +240,20 @@ bool KPCIDevice::EnableSingleInterrupt(KIRQHandler irqHandler, void *context, co
 		return true;
 	}
 
+	if (interruptPin == 0) {
+		// The device does not support interrupts.
+		return false;
+	}
+
+	if (interruptPin > 4) {
+		KernelLog(LOG_ERROR, "PCI", "bad interrupt pin", "Interrupt pin should be between 0 and 4; got %d.\n", interruptPin);
+		return false;
+	}
+
 	EnableFeatures(K_PCI_FEATURE_INTERRUPTS);
+
+	// If we booted from EFI, we need to get the interrupt line from ACPI.
+	// See the comment in InterruptHandler for what happens when passing -1.
 
 	if (KRegisterIRQ(KBootedFromEFI() ? -1 : interruptLine, irqHandler, context, cOwnerName, this)) {
 		return true;

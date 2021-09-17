@@ -74,6 +74,8 @@ struct VirtualAddressSpaceData {
 
 uint8_t coreL1Commit[(0xFFFF800200000000 - 0xFFFF800100000000) >> (/* ENTRIES_PER_PAGE_TABLE_BITS */ 9 + K_PAGE_BITS + 3)];
 
+uint8_t pciIRQLines[0x100 /* slots */][4 /* pins */];
+
 #endif
 
 #ifdef IMPLEMENTATION
@@ -1112,8 +1114,29 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			for (uintptr_t i = 0; i < sizeof(irqHandlers) / sizeof(irqHandlers[0]); i++) {
 				IRQHandler *handler = &irqHandlers[i];
 				if (!handler->callback) continue;
-				if (handler->line != -1 && (uintptr_t) handler->line != line) continue;
-				if (handler->line == -1 && line != 9 && line != 10 && line != 11) continue;
+
+				if (handler->line == -1) {
+					// Before we get the actual IRQ line information from ACPI (which might take it a while),
+					// only test that the IRQ is in the correct range for PCI interrupts.
+					// This is a bit slower because we have to dispatch the interrupt to more drivers,
+					// but it shouldn't break anything because they're all supposed to handle overloading anyway.
+					// This is mess. Hopefully all modern computers will use MSIs for anything important.
+
+					if (line != 9 && line != 10 && line != 11) {
+						continue;
+					} else {
+						uint8_t mappedLine = pciIRQLines[handler->pciDevice->slot][handler->pciDevice->interruptPin - 1];
+
+						if (mappedLine && line != mappedLine) {
+							continue;
+						}
+					}
+				} else {
+					if ((uintptr_t) handler->line != line) {
+						continue;
+					}
+				}
+
 				handler->callback(interrupt - IRQ_BASE, handler->context);
 			}
 

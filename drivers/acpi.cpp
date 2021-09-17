@@ -653,50 +653,73 @@ UINT32 ACPIPowerButtonPressed(void *) {
 	return 0;
 }
 
-void ACPIFoundDevice(const char *name, ACPI_HANDLE object) {
-	if (0 == EsCRTstrcmp(name, "PCI0")) {
-		ACPI_BUFFER buffer = {};
-		ACPI_STATUS status = AcpiGetIrqRoutingTable(object, &buffer);
-		if (status != AE_BUFFER_OVERFLOW) return;
-		buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
-		EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
-		if (!buffer.Pointer) return;
-		status = AcpiGetIrqRoutingTable(object, &buffer);
-		if (status != AE_OK) return;
-		ACPI_PCI_ROUTING_TABLE *table = (ACPI_PCI_ROUTING_TABLE *) buffer.Pointer;
+int32_t ACPIFindIRQ(ACPI_HANDLE object) {
+	ACPI_BUFFER buffer = {};
+	ACPI_STATUS status = AcpiGetCurrentResources(object, &buffer);
+	if (status != AE_BUFFER_OVERFLOW) return -1;
+	buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
+	EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
+	if (!buffer.Pointer) return -1;
+	status = AcpiGetCurrentResources(object, &buffer);
+	if (status != AE_OK) return -1;
+	ACPI_RESOURCE *resource = (ACPI_RESOURCE *) buffer.Pointer;
 
-		while (table->Length) {
-			KernelLog(LOG_INFO, "ACPI", "PRT entry", "length: %d; pin: %d; address: %x; source index: %d; source: %z\n",
-					table->Length, table->Pin, table->Address, table->SourceIndex, table->Source);
-			table = (ACPI_PCI_ROUTING_TABLE *) ((uint8_t *) table + table->Length);
-		}
-	} else if (0 == EsCRTmemcmp(name, "LNK", 3)) {
-		ACPI_BUFFER buffer = {};
-		ACPI_STATUS status = AcpiGetCurrentResources(object, &buffer);
-		if (status != AE_BUFFER_OVERFLOW) return;
-		buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
-		EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
-		if (!buffer.Pointer) return;
-		status = AcpiGetCurrentResources(object, &buffer);
-		if (status != AE_OK) return;
-		ACPI_RESOURCE *resource = (ACPI_RESOURCE *) buffer.Pointer;
-
-		while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
-			if (resource->Type == ACPI_RESOURCE_TYPE_IRQ) {
-				KernelLog(LOG_INFO, "ACPI", "IRQ resource", "count: %d; first: %d\n",
-						resource->Data.Irq.InterruptCount, resource->Data.Irq.Interrupts[0]);
-			} else if (resource->Type == ACPI_RESOURCE_TYPE_EXTENDED_IRQ) {
-				KernelLog(LOG_INFO, "ACPI", "IRQ resource", "count: %d; first: %d; (extended)\n",
-						resource->Data.ExtendedIrq.InterruptCount, resource->Data.ExtendedIrq.Interrupts[0]);
+	while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
+		if (resource->Type == ACPI_RESOURCE_TYPE_IRQ) {
+			if (resource->Data.Irq.InterruptCount) {
+				return resource->Data.Irq.Interrupts[0];
 			}
-
-			resource = (ACPI_RESOURCE *) ((uint8_t *) resource + resource->Length);
+		} else if (resource->Type == ACPI_RESOURCE_TYPE_EXTENDED_IRQ) {
+			if (resource->Data.ExtendedIrq.InterruptCount) {
+				return resource->Data.ExtendedIrq.Interrupts[0];
+			}
 		}
 
-		// TODO.
+		resource = (ACPI_RESOURCE *) ((uint8_t *) resource + resource->Length);
 	}
+
+	return -1;
 }
 
+void ACPIEnumeratePRTEntries(ACPI_HANDLE pciBus) {
+	// TODO Other PCI buses.
+	// TODO Is this always bus 0?
+
+	ACPI_BUFFER buffer = {};
+	ACPI_STATUS status = AcpiGetIrqRoutingTable(pciBus, &buffer);
+	if (status != AE_BUFFER_OVERFLOW) return;
+	buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
+	EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
+	if (!buffer.Pointer) return;
+	status = AcpiGetIrqRoutingTable(pciBus, &buffer);
+	if (status != AE_OK) return;
+	ACPI_PCI_ROUTING_TABLE *table = (ACPI_PCI_ROUTING_TABLE *) buffer.Pointer;
+
+	while (table->Length) {
+		ACPI_HANDLE source;
+
+		if (AE_OK == AcpiGetHandle(pciBus, table->Source, &source)) {
+			int32_t irq = ACPIFindIRQ(source);
+
+			if (irq != -1) {
+				KernelLog(LOG_INFO, "ACPI", "PRT entry", "Pin: %d; PCI slot: %X; IRQ: %d\n",
+						table->Pin, (table->Address >> 16) & 0xFF, irq);
+
+				if (irq != 9 && irq != 10 && irq != 11) {
+					KernelLog(LOG_ERROR, "ACPI", "unexpected IRQ", "IRQ %d was unexpected; expected values are 9, 10 or 11.\n", irq);
+				} else if ((table->Address >> 16) > 0xFF) {
+					KernelLog(LOG_ERROR, "ACPI", "unexpected address", "Address %x was larger than expected.\n", table->Address);
+				} else if (table->Pin > 3) {
+					KernelLog(LOG_ERROR, "ACPI", "unexpected pin", "Pin %d was larger than expected.\n", table->Pin);
+				} else {
+					pciIRQLines[table->Address >> 16][table->Pin] = irq;
+				}
+			}
+		}
+
+		table = (ACPI_PCI_ROUTING_TABLE *) ((uint8_t *) table + table->Length);
+	}
+}
 #endif
 
 void ACPIInitialise2() {
@@ -724,15 +747,21 @@ void ACPIInitialise2() {
 		EsMemoryCopy(name, &information->Name, 4);
 		name[4] = 0;
 
-		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%z' with HID '%z' and UID '%z'.\n",
+		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%z' with HID '%z', UID '%z' and address %x.\n",
 				name, (information->Valid & ACPI_VALID_HID) ? information->HardwareId.String : "??",
-				(information->Valid & ACPI_VALID_UID) ? information->UniqueId.String : "??");
-
-		ACPIFoundDevice(name, object);
+				(information->Valid & ACPI_VALID_UID) ? information->UniqueId.String : "??",
+				(information->Valid & ACPI_VALID_ADR) ? information->Address : 0);
 
 		ACPI_FREE(information);
 		return AE_OK;
 	}, nullptr, &result);
+
+	ACPI_HANDLE pciBus;
+	char pciBusPath[] = "\\_SB_.PCI0";
+
+	if (AE_OK == AcpiGetHandle(nullptr, pciBusPath, &pciBus)) {
+		ACPIEnumeratePRTEntries(pciBus);
+	}
 #endif
 
 	acpi.StartupApplicationProcessors();
