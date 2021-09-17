@@ -95,6 +95,7 @@ struct IRQHandler {
 
 MSIHandler msiHandlers[INTERRUPT_VECTOR_MSI_COUNT];
 IRQHandler irqHandlers[0x40];
+KSpinlock irqHandlersLock; // Also for msiHandlers.
 
 extern uintptr_t bootloaderInformationOffset;
 extern "C" bool simdSSE3Support;
@@ -693,14 +694,14 @@ bool SetupInterruptRedirectionEntry(uintptr_t _line) {
 }
 
 void KUnregisterMSI(uintptr_t tag) {
-	KSpinlockAcquire(&scheduler.lock);
-	EsDefer(KSpinlockRelease(&scheduler.lock));
+	KSpinlockAcquire(&irqHandlersLock);
+	EsDefer(KSpinlockRelease(&irqHandlersLock));
 	msiHandlers[tag].callback = nullptr;
 }
 
 KMSIInformation KRegisterMSI(KIRQHandler handler, void *context, const char *cOwnerName) {
-	KSpinlockAcquire(&scheduler.lock);
-	EsDefer(KSpinlockRelease(&scheduler.lock));
+	KSpinlockAcquire(&irqHandlersLock);
+	EsDefer(KSpinlockRelease(&irqHandlersLock));
 
 	for (uintptr_t i = 0; i < INTERRUPT_VECTOR_MSI_COUNT; i++) {
 		if (msiHandlers[i].callback) continue;
@@ -735,6 +736,8 @@ bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char 
 	if (line > 0x20 || line < -1) KernelPanic("KRegisterIRQ - Unexpected IRQ %d\n", line);
 	bool found = false;
 
+	KSpinlockAcquire(&irqHandlersLock);
+
 	for (uintptr_t i = 0; i < sizeof(irqHandlers) / sizeof(irqHandlers[0]); i++) {
 		if (!irqHandlers[i].callback) {
 			found = true;
@@ -746,6 +749,8 @@ bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char 
 			break;
 		}
 	}
+
+	KSpinlockRelease(&irqHandlersLock);
 
 	if (!found) {
 		KernelLog(LOG_ERROR, "Arch", "too many IRQ handlers", "The limit of IRQ handlers was reached (%d), and the handler for '%z' was not registered.\n",
@@ -1080,13 +1085,15 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 		acpi.lapic.EndOfInterrupt();
 	} else if (interrupt >= INTERRUPT_VECTOR_MSI_START && interrupt < INTERRUPT_VECTOR_MSI_START + INTERRUPT_VECTOR_MSI_COUNT && local) {
-		MSIHandler *handler = &msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
+		KSpinlockAcquire(&irqHandlersLock);
+		MSIHandler handler = msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
+		KSpinlockRelease(&irqHandlersLock);
 		local->irqSwitchThread = false;
 
-		if (!handler->callback) {
+		if (!handler.callback) {
 			KernelLog(LOG_ERROR, "Arch", "unexpected MSI", "Unexpected MSI vector %X (no handler).\n", interrupt);
 		} else {
-			handler->callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler->context);
+			handler.callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler.context);
 		}
 
 		acpi.lapic.EndOfInterrupt();
@@ -1110,12 +1117,13 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 			uintptr_t line = interrupt - IRQ_BASE;
 			KernelLog(LOG_VERBOSE, "Arch", "IRQ start", "IRQ start %d.\n", line);
+			KSpinlockAcquire(&irqHandlersLock);
 
 			for (uintptr_t i = 0; i < sizeof(irqHandlers) / sizeof(irqHandlers[0]); i++) {
-				IRQHandler *handler = &irqHandlers[i];
-				if (!handler->callback) continue;
+				IRQHandler handler = irqHandlers[i];
+				if (!handler.callback) continue;
 
-				if (handler->line == -1) {
+				if (handler.line == -1) {
 					// Before we get the actual IRQ line information from ACPI (which might take it a while),
 					// only test that the IRQ is in the correct range for PCI interrupts.
 					// This is a bit slower because we have to dispatch the interrupt to more drivers,
@@ -1125,21 +1133,24 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 					if (line != 9 && line != 10 && line != 11) {
 						continue;
 					} else {
-						uint8_t mappedLine = pciIRQLines[handler->pciDevice->slot][handler->pciDevice->interruptPin - 1];
+						uint8_t mappedLine = pciIRQLines[handler.pciDevice->slot][handler.pciDevice->interruptPin - 1];
 
 						if (mappedLine && line != mappedLine) {
 							continue;
 						}
 					}
 				} else {
-					if ((uintptr_t) handler->line != line) {
+					if ((uintptr_t) handler.line != line) {
 						continue;
 					}
 				}
 
-				handler->callback(interrupt - IRQ_BASE, handler->context);
+				KSpinlockRelease(&irqHandlersLock);
+				handler.callback(interrupt - IRQ_BASE, handler.context);
+				KSpinlockAcquire(&irqHandlersLock);
 			}
 
+			KSpinlockRelease(&irqHandlersLock);
 			KernelLog(LOG_VERBOSE, "Arch", "IRQ end", "IRQ end %d.\n", line);
 
 			GetLocalStorage()->inIRQ = false;
