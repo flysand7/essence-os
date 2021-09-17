@@ -479,7 +479,15 @@ void Run(int emulator, int log, int debug) {
 			CallSystem("VBoxManage storageattach Essence --storagectl AHCI --port 0 --device 0 --type hdd --medium none");
 			CallSystem("VBoxManage closemedium disk bin/vbox.vdi --delete");
 
-			CallSystem("VBoxManage convertfromraw bin/drive bin/vbox.vdi --format VDI");
+			if (IsOptionEnabled("Emulator.GenerateVDIForUEFI")) {
+				CallSystem("util/uefi.sh");
+				CallSystem("VBoxManage convertfromraw bin/uefi_drive bin/vbox.vdi --format VDI");
+				CallSystem("VBoxManage modifyvm Essence --firmware efi");
+			} else {
+				CallSystem("VBoxManage convertfromraw bin/drive bin/vbox.vdi --format VDI");
+				CallSystem("VBoxManage modifyvm Essence --firmware bios");
+			}
+
 			CallSystem("VBoxManage storageattach Essence --storagectl AHCI --port 0 --device 0 --type hdd --medium bin/vbox.vdi");
 
 			CallSystem("VBoxManage startvm --putenv VBOX_GUI_DBG_ENABLED=true Essence"); 

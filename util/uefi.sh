@@ -22,6 +22,7 @@ sudo losetup --offset `fdisk -l bin/uefi_drive | grep 'EFI System' | awk '{print
 sudo mount /dev/loop0 mount
 sudo mkdir -p mount/EFI/BOOT
 sudo cp bin/uefi mount/EFI/BOOT/BOOTX64.EFI
+sudo cp bin/uefi mount/es.efi
 sudo cp bin/Kernel.esx mount/eskernel.esx
 sudo cp bin/uefi_loader mount/esloader.bin
 sudo cp bin/iid.dat mount/esiid.dat
@@ -31,4 +32,4 @@ rmdir mount
 
 dd if=bin/drive of=bin/uefi_drive bs=512 count=`fdisk -l bin/drive | grep 'Linux' | awk '{print $5}'` skip=`fdisk -l bin/drive | grep 'Linux' | awk '{print $3}'` seek=`fdisk -l bin/uefi_drive | grep 'Linux filesystem' | awk '{print $2}'` conv=notrunc
 
-qemu-system-x86_64 -bios /usr/share/ovmf/x64/OVMF.fd -drive file=bin/uefi_drive,format=raw,media=disk,index=0 -s -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse
+# qemu-system-x86_64 -bios /usr/share/ovmf/x64/OVMF.fd -drive file=bin/uefi_drive,format=raw,media=disk,index=0 -s -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse

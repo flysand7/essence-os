@@ -653,6 +653,50 @@ UINT32 ACPIPowerButtonPressed(void *) {
 	return 0;
 }
 
+void ACPIFoundDevice(const char *name, ACPI_HANDLE object) {
+	if (0 == EsCRTstrcmp(name, "PCI0")) {
+		ACPI_BUFFER buffer = {};
+		ACPI_STATUS status = AcpiGetIrqRoutingTable(object, &buffer);
+		if (status != AE_BUFFER_OVERFLOW) return;
+		buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
+		EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
+		if (!buffer.Pointer) return;
+		status = AcpiGetIrqRoutingTable(object, &buffer);
+		if (status != AE_OK) return;
+		ACPI_PCI_ROUTING_TABLE *table = (ACPI_PCI_ROUTING_TABLE *) buffer.Pointer;
+
+		while (table->Length) {
+			KernelLog(LOG_INFO, "ACPI", "PRT entry", "length: %d; pin: %d; address: %x; source index: %d; source: %z\n",
+					table->Length, table->Pin, table->Address, table->SourceIndex, table->Source);
+			table = (ACPI_PCI_ROUTING_TABLE *) ((uint8_t *) table + table->Length);
+		}
+	} else if (0 == EsCRTmemcmp(name, "LNK", 3)) {
+		ACPI_BUFFER buffer = {};
+		ACPI_STATUS status = AcpiGetCurrentResources(object, &buffer);
+		if (status != AE_BUFFER_OVERFLOW) return;
+		buffer.Pointer = EsHeapAllocate(buffer.Length, false, K_FIXED);
+		EsDefer(EsHeapFree(buffer.Pointer, buffer.Length, K_FIXED));
+		if (!buffer.Pointer) return;
+		status = AcpiGetCurrentResources(object, &buffer);
+		if (status != AE_OK) return;
+		ACPI_RESOURCE *resource = (ACPI_RESOURCE *) buffer.Pointer;
+
+		while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
+			if (resource->Type == ACPI_RESOURCE_TYPE_IRQ) {
+				KernelLog(LOG_INFO, "ACPI", "IRQ resource", "count: %d; first: %d\n",
+						resource->Data.Irq.InterruptCount, resource->Data.Irq.Interrupts[0]);
+			} else if (resource->Type == ACPI_RESOURCE_TYPE_EXTENDED_IRQ) {
+				KernelLog(LOG_INFO, "ACPI", "IRQ resource", "count: %d; first: %d; (extended)\n",
+						resource->Data.ExtendedIrq.InterruptCount, resource->Data.ExtendedIrq.Interrupts[0]);
+			}
+
+			resource = (ACPI_RESOURCE *) ((uint8_t *) resource + resource->Length);
+		}
+
+		// TODO.
+	}
+}
+
 #endif
 
 void ACPIInitialise2() {
@@ -675,10 +719,17 @@ void ACPIInitialise2() {
 	AcpiGetDevices(nullptr, [] (ACPI_HANDLE object, uint32_t, void *, void **) -> ACPI_STATUS {
 		ACPI_DEVICE_INFO *information;
 		AcpiGetObjectInfo(object, &information);
-		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%c%c%c%c' with HID '%z' and UID '%z'.\n",
-				(char) (information->Name >> 0), (char) (information->Name >> 8), (char) (information->Name >> 16), (char) (information->Name >> 24),
-				(information->Valid & ACPI_VALID_HID) ? information->HardwareId.String : "??",
+
+		char name[5];
+		EsMemoryCopy(name, &information->Name, 4);
+		name[4] = 0;
+
+		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%z' with HID '%z' and UID '%z'.\n",
+				name, (information->Valid & ACPI_VALID_HID) ? information->HardwareId.String : "??",
 				(information->Valid & ACPI_VALID_UID) ? information->UniqueId.String : "??");
+
+		ACPIFoundDevice(name, object);
+
 		ACPI_FREE(information);
 		return AE_OK;
 	}, nullptr, &result);
