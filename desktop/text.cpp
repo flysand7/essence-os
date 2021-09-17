@@ -4634,7 +4634,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		TextboxSetHorizontalScroll(textbox, message->scrollbarMoved.scroll);
 	} else if (message->type == ES_MSG_SCROLL_Y) {
 		TextboxRefreshVisibleLines(textbox, false);
-		EsElementRepaintForScroll(textbox, message);
+		EsElementRepaintForScroll(textbox, message, EsRectangleAdd(element->GetInternalOffset(), element->currentStyle->borders));
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		DocumentLine *firstLine = &textbox->lines.First();
 		EsBufferFormat(message->getContent.buffer, "'%s'", firstLine->lengthBytes, firstLine->GetBuffer(textbox));

@@ -160,6 +160,10 @@ struct EsElement : EsElementPublic {
 		return m.zOrder.child;
 	}
 
+	inline EsRectangle GetInternalOffset() {
+		return ES_RECT_4(internalOffsetLeft, internalOffsetRight, internalOffsetTop, internalOffsetBottom);
+	}
+
 	void BringToFront() {
 		for (uintptr_t i = 0; i < parent->children.Length(); i++) {
 			if (parent->children[i] == this) {
@@ -2902,21 +2906,23 @@ void ScrollPane::Refresh() {
 	SetPosition(0, position[0], true);
 	SetPosition(1, position[1], true);
 
+	EsRectangle border = parent->currentStyle->borders;
+
 	if (bar[0]) {
-		bar[0]->InternalMove(parent->width - parent->internalOffsetRight, bar[0]->currentStyle->preferredHeight, 
-				0, parent->height - parent->internalOffsetBottom);
+		bar[0]->InternalMove(parent->width - parent->internalOffsetRight - border.r - border.l, bar[0]->currentStyle->preferredHeight, 
+				border.l, parent->height - parent->internalOffsetBottom - border.b);
 		enabled[0] = ~bar[0]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (bar[1]) {
-		bar[1]->InternalMove(bar[1]->currentStyle->preferredWidth, parent->height - parent->internalOffsetBottom, 
-				parent->width - parent->internalOffsetRight, 0);
+		bar[1]->InternalMove(bar[1]->currentStyle->preferredWidth, parent->height - parent->internalOffsetBottom - border.b - border.t, 
+				parent->width - parent->internalOffsetRight - border.r, border.t);
 		enabled[1] = ~bar[1]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (pad) {
 		pad->InternalMove(parent->internalOffsetRight, parent->internalOffsetBottom, 
-				parent->width - parent->internalOffsetRight, parent->height - parent->internalOffsetBottom);
+				parent->width - parent->internalOffsetRight - border.r, parent->height - parent->internalOffsetBottom - border.b);
 	}
 }
 
@@ -6092,21 +6098,17 @@ void EsElementRepaint(EsElement *element, const EsRectangle *region) {
 	else element->Repaint(true /* repaint all */);
 }
 
-void EsElementRepaintForScroll(EsElement *element, EsMessage *message) {
-	// TODO Support custom border sizes.
-
-	EsRectangle borders = ES_RECT_4(element->internalOffsetLeft, element->internalOffsetRight, 
-			element->internalOffsetTop, element->internalOffsetBottom);
-	EsRectangle content = ES_RECT_4(borders.l, element->width - borders.r, borders.t, element->height - borders.b);
+void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border) {
+	EsRectangle content = ES_RECT_4(border.l, element->width - border.r, border.t, element->height - border.b);
 	EsRectangle repaint = content;
 	int64_t delta = message->scrollbarMoved.scroll - message->scrollbarMoved.previous;
 
 	if (message->type == ES_MSG_SCROLL_Y) {
-		if (delta > 0) repaint.t = element->height - delta - borders.b;
-		else repaint.b = borders.t - delta;
+		if (delta > 0) repaint.t = element->height - delta - border.b;
+		else repaint.b = border.t - delta;
 	} else if (message->type == ES_MSG_SCROLL_X) {
-		if (delta > 0) repaint.l = element->width - delta - borders.r;
-		else repaint.r = borders.l - delta;
+		if (delta > 0) repaint.l = element->width - delta - border.r;
+		else repaint.r = border.l - delta;
 	} else {
 		EsAssert(false);
 	}

@@ -2321,7 +2321,7 @@ function bool EsElementIsHidden(EsElement *element);
 function void EsElementSetCallback(EsElement *element, EsUICallback callback);
 function void EsElementGetSize(EsElement *element, int *width, int *height);
 function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL); // Mark an element to be repainted. If region is null, then the whole element is repainted.
-function void EsElementRepaintForScroll(EsElement *element, EsMessage *message); // Minimal repaint for ES_MSG_SCROLL_X/Y.
+function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border); // Minimal repaint for ES_MSG_SCROLL_X/Y.
 function void EsElementRelayout(EsElement *element);
 function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
 function EsRectangle EsElementGetInsets(EsElement *element); 
