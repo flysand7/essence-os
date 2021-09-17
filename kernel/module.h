@@ -87,7 +87,8 @@ void EsPrint(const char *format, ...);
 typedef bool (*KIRQHandler)(uintptr_t interruptIndex /* tag for MSI */, void *context);
 
 // Interrupts are active high and level triggered, unless overridden by the ACPI MADT table.
-bool KRegisterIRQ(uintptr_t interruptIndex, KIRQHandler handler, void *context, const char *cOwnerName);
+bool KRegisterIRQ(intptr_t interruptIndex, KIRQHandler handler, void *context, const char *cOwnerName, 
+		struct KPCIDevice *pciDevice = nullptr /* do not use; see KPCIDevice::EnableSingleInterrupt */);
 
 struct KMSIInformation {
 	// Both fields are zeroed if the MSI could not be registered.

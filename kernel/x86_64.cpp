@@ -13,7 +13,7 @@ typedef struct ACPIProcessor ArchCPU;
 
 #define TIMER_INTERRUPT (0x40)
 #define YIELD_IPI (0x41)
-// Note: IRQ_BASE is currently 0x50.
+#define IRQ_BASE (0x50)
 #define CALL_FUNCTION_ON_ALL_PROCESSORS_IPI (0xF0)
 #define KERNEL_PANIC_IPI (0) // NMIs ignore the interrupt vector.
 
@@ -77,6 +77,22 @@ uint8_t coreL1Commit[(0xFFFF800200000000 - 0xFFFF800100000000) >> (/* ENTRIES_PE
 #endif
 
 #ifdef IMPLEMENTATION
+
+struct MSIHandler {
+	KIRQHandler callback;
+	void *context;
+};
+
+struct IRQHandler {
+	KIRQHandler callback;
+	void *context;
+	intptr_t line;
+	KPCIDevice *pciDevice;
+	const char *cOwnerName;
+};
+
+MSIHandler msiHandlers[INTERRUPT_VECTOR_MSI_COUNT];
+IRQHandler irqHandlers[0x40];
 
 extern uintptr_t bootloaderInformationOffset;
 extern "C" bool simdSSE3Support;
@@ -601,12 +617,78 @@ void ArchDelay1Ms() {
 	}
 }
 
-struct MSIHandler {
-	KIRQHandler callback;
-	void *context;
-};
+bool SetupInterruptRedirectionEntry(uintptr_t _line) {
+	KSpinlockAssertLocked(&scheduler.lock);
 
-MSIHandler msiHandlers[INTERRUPT_VECTOR_MSI_COUNT];
+	static uint32_t alreadySetup = 0;
+
+	if (alreadySetup & (1 << _line)) {
+		return true;
+	}
+
+	// Work out which interrupt the IoApic will sent to the processor.
+	// TODO Use the upper 4 bits for IRQ priority.
+
+	uintptr_t line = _line;
+	uintptr_t thisProcessorIRQ = line + IRQ_BASE;
+
+	bool activeLow = false;
+	bool levelTriggered = true;
+
+	// If there was an interrupt override entry in the MADT table,
+	// then we'll have to use that number instead.
+
+	for (uintptr_t i = 0; i < acpi.interruptOverrideCount; i++) {
+		ACPIInterruptOverride *interruptOverride = acpi.interruptOverrides + i;
+
+		if (interruptOverride->sourceIRQ == line) {
+			line = interruptOverride->gsiNumber;
+			activeLow = interruptOverride->activeLow;
+			levelTriggered = interruptOverride->levelTriggered;
+			break;
+		}
+	}
+
+	KernelLog(LOG_INFO, "Arch", "IRQ flags", "SetupInterruptRedirectionEntry - IRQ %d is active %z, %z triggered.\n",
+			line, activeLow ? "low" : "high", levelTriggered ? "level" : "edge");
+
+	ACPIIoApic *ioApic;
+	bool foundIoApic = false;
+
+	// Look for the IoApic to which this interrupt is sent.
+
+	for (uintptr_t i = 0; i < acpi.ioapicCount; i++) {
+		ioApic = acpi.ioApics + i;
+		if (line >= ioApic->gsiBase && line < (ioApic->gsiBase + (0xFF & (ioApic->ReadRegister(1) >> 16)))) {
+			foundIoApic = true;
+			line -= ioApic->gsiBase;
+			break;
+		}
+	}
+
+	// We couldn't find the IoApic that handles this interrupt.
+
+	if (!foundIoApic) {
+		KernelLog(LOG_ERROR, "Arch", "no IOAPIC", "SetupInterruptRedirectionEntry - Could not find an IOAPIC handling interrupt line %d.\n", line);
+		return false;
+	}
+
+	// A normal priority interrupt.
+
+	uintptr_t redirectionTableIndex = line * 2 + 0x10;
+	uint32_t redirectionEntry = thisProcessorIRQ;
+	if (activeLow) redirectionEntry |= (1 << 13);
+	if (levelTriggered) redirectionEntry |= (1 << 15);
+
+	// Send the interrupt to the processor that registered the interrupt.
+
+	ioApic->WriteRegister(redirectionTableIndex, 1 << 16); // Mask the interrupt while we modify the entry.
+	ioApic->WriteRegister(redirectionTableIndex + 1, GetLocalStorage()->archCPU->apicID << 24); 
+	ioApic->WriteRegister(redirectionTableIndex, redirectionEntry);
+
+	alreadySetup |= 1 << _line;
+	return true;
+}
 
 void KUnregisterMSI(uintptr_t tag) {
 	KSpinlockAcquire(&scheduler.lock);
@@ -638,88 +720,48 @@ KMSIInformation KRegisterMSI(KIRQHandler handler, void *context, const char *cOw
 	return {};
 }
 
-#define IRQ_BASE 0x50
-KIRQHandler irqHandlers[0x20][0x10];
-void *irqHandlerContext[0x20][0x10];
-size_t usedIrqHandlers[0x20];
-
-bool KRegisterIRQ(uintptr_t interrupt, KIRQHandler handler, void *context, const char *cOwnerName) {
+bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char *cOwnerName, KPCIDevice *pciDevice) {
 	KSpinlockAcquire(&scheduler.lock);
 	EsDefer(KSpinlockRelease(&scheduler.lock));
 
-	// Work out which interrupt the IoApic will sent to the processor.
-	// TODO Use the upper 4 bits for IRQ priority.
-	uintptr_t thisProcessorIRQ = interrupt + IRQ_BASE;
-
-	// Register the IRQ handler.
-	if (interrupt > 0x20) KernelPanic("KRegisterIRQ - Unexpected IRQ %d\n", interrupt);
-	if (usedIrqHandlers[interrupt] == 0x10) {
-		// There are too many overloaded interrupts.
-		return false;
-	}
-	irqHandlers[interrupt][usedIrqHandlers[interrupt]] = handler;
-	irqHandlerContext[interrupt][usedIrqHandlers[interrupt]] = context;
-
-	KernelLog(LOG_INFO, "Arch", "register IRQ", "KRegisterIRQ - Registering IRQ %d to '%z'.\n", 
-			interrupt, cOwnerName);
-
-	if (usedIrqHandlers[interrupt]) {
-		// IRQ already registered.
-		usedIrqHandlers[interrupt]++;
-		return true;
+	if (line == -1 && !pciDevice) {
+		KernelPanic("KRegisterIRQ - Interrupt line is %d, and pciDevice is %x.\n", line, pciDevice);
 	}
 
-	usedIrqHandlers[interrupt]++;
+	// Save the handler callback and context.
 
-	bool activeLow = false;
-	bool levelTriggered = true;
+	if (line > 0x20 || line < -1) KernelPanic("KRegisterIRQ - Unexpected IRQ %d\n", line);
+	bool found = false;
 
-	// If there was an interrupt override entry in the MADT table,
-	// then we'll have to use that number instead.
-	for (uintptr_t i = 0; i < acpi.interruptOverrideCount; i++) {
-		ACPIInterruptOverride *interruptOverride = acpi.interruptOverrides + i;
-		if (interruptOverride->sourceIRQ == interrupt) {
-			interrupt = interruptOverride->gsiNumber;
-			activeLow = interruptOverride->activeLow;
-			levelTriggered = interruptOverride->levelTriggered;
+	for (uintptr_t i = 0; i < sizeof(irqHandlers) / sizeof(irqHandlers[0]); i++) {
+		if (!irqHandlers[i].callback) {
+			found = true;
+			irqHandlers[i].callback = handler;
+			irqHandlers[i].context = context;
+			irqHandlers[i].line = line;
+			irqHandlers[i].pciDevice = pciDevice;
+			irqHandlers[i].cOwnerName = cOwnerName;
 			break;
 		}
 	}
 
-	KernelLog(LOG_INFO, "Arch", "IRQ flags", "KRegisterIRQ - IRQ %d is active %z, %z triggered.\n",
-			interrupt, activeLow ? "low" : "high", levelTriggered ? "level" : "edge");
-
-	ACPIIoApic *ioApic;
-	bool foundIoApic = false;
-
-	// Look for the IoApic to which this interrupt is sent.
-	for (uintptr_t i = 0; i < acpi.ioapicCount; i++) {
-		ioApic = acpi.ioApics + i;
-		if (interrupt >= ioApic->gsiBase 
-				&& interrupt < (ioApic->gsiBase + (0xFF & (ioApic->ReadRegister(1) >> 16)))) {
-			foundIoApic = true;
-			interrupt -= ioApic->gsiBase;
-			break;
-		}
-	}
-
-	// We couldn't find the IoApic that handles this interrupt.
-	if (!foundIoApic) {
+	if (!found) {
+		KernelLog(LOG_ERROR, "Arch", "too many IRQ handlers", "The limit of IRQ handlers was reached (%d), and the handler for '%z' was not registered.\n",
+				sizeof(irqHandlers) / sizeof(irqHandlers[0]), cOwnerName);
 		return false;
 	}
 
-	// A normal priority interrupt.
-	uintptr_t redirectionTableIndex = interrupt * 2 + 0x10;
-	uint32_t redirectionEntry = thisProcessorIRQ;
-	if (activeLow) redirectionEntry |= (1 << 13);
-	if (levelTriggered) redirectionEntry |= (1 << 15);
+	KernelLog(LOG_INFO, "Arch", "register IRQ", "KRegisterIRQ - Registered IRQ %d to '%z'.\n", line, cOwnerName);
 
-	// Mask the interrupt while we modify the entry.
-	ioApic->WriteRegister(redirectionTableIndex, 1 << 16);
-
-	// Send the interrupt to the processor that registered the interrupt.
-	ioApic->WriteRegister(redirectionTableIndex + 1, GetLocalStorage()->archCPU->apicID << 24); 
-	ioApic->WriteRegister(redirectionTableIndex, redirectionEntry);
+	if (line != -1) {
+		if (!SetupInterruptRedirectionEntry(line)) {
+			return false;
+		}
+	} else {
+		SetupInterruptRedirectionEntry(9);
+		SetupInterruptRedirectionEntry(10);
+		SetupInterruptRedirectionEntry(11);
+	}
 
 	return true;
 }
@@ -1036,15 +1078,14 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 		acpi.lapic.EndOfInterrupt();
 	} else if (interrupt >= INTERRUPT_VECTOR_MSI_START && interrupt < INTERRUPT_VECTOR_MSI_START + INTERRUPT_VECTOR_MSI_COUNT && local) {
-		MSIHandler handler = msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
+		MSIHandler *handler = &msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
 		local->irqSwitchThread = false;
 
-		if (!handler.callback) {
+		if (!handler->callback) {
 			KernelLog(LOG_ERROR, "Arch", "unexpected MSI", "Unexpected MSI vector %X (no handler).\n", interrupt);
 		} else {
-			handler.callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler.context);
+			handler->callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler->context);
 		}
-
 
 		acpi.lapic.EndOfInterrupt();
 
@@ -1065,29 +1106,18 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 		} else if (interrupt >= IRQ_BASE && interrupt < IRQ_BASE + 0x20) {
 			GetLocalStorage()->inIRQ = true;
 
-			size_t overloads = usedIrqHandlers[interrupt - IRQ_BASE];
-			bool handledInterrupt = false;
+			uintptr_t line = interrupt - IRQ_BASE;
+			KernelLog(LOG_VERBOSE, "Arch", "IRQ start", "IRQ start %d.\n", line);
 
-			KernelLog(LOG_VERBOSE, "Arch", "IRQ start", "IRQ start %d.\n", interrupt - IRQ_BASE);
-
-			for (uintptr_t i = 0; i < overloads; i++) {
-				KIRQHandler handler = irqHandlers[interrupt - IRQ_BASE][i];
-
-				if (handler(interrupt - IRQ_BASE, irqHandlerContext[interrupt - IRQ_BASE][i])) {
-					handledInterrupt = true;
-				}
+			for (uintptr_t i = 0; i < sizeof(irqHandlers) / sizeof(irqHandlers[0]); i++) {
+				IRQHandler *handler = &irqHandlers[i];
+				if (!handler->callback) continue;
+				if (handler->line != -1 && (uintptr_t) handler->line != line) continue;
+				if (handler->line == -1 && line != 9 && line != 10 && line != 11) continue;
+				handler->callback(interrupt - IRQ_BASE, handler->context);
 			}
 
-			KernelLog(LOG_VERBOSE, "Arch", "IRQ end", "IRQ end %d.\n", interrupt - IRQ_BASE);
-
-			bool rejectedByAll = !handledInterrupt;
-
-			if (rejectedByAll) {
-				// TODO Now what?
-				// KernelLog(LOG_ERROR, "Arch", "unhandled IRQ", 
-				// 		"InterruptHandler - Unhandled IRQ %d, rejected by %d %z\n", 
-				// 		interrupt, overloads, (overloads != 1) ? "overloads" : "overload");
-			}
+			KernelLog(LOG_VERBOSE, "Arch", "IRQ end", "IRQ end %d.\n", line);
 
 			GetLocalStorage()->inIRQ = false;
 		}

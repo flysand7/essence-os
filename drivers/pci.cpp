@@ -242,7 +242,7 @@ bool KPCIDevice::EnableSingleInterrupt(KIRQHandler irqHandler, void *context, co
 
 	EnableFeatures(K_PCI_FEATURE_INTERRUPTS);
 
-	if (KRegisterIRQ(interruptLine, irqHandler, context, cOwnerName)) {
+	if (KRegisterIRQ(KBootedFromEFI() ? -1 : interruptLine, irqHandler, context, cOwnerName, this)) {
 		return true;
 	}
 

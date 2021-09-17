@@ -18,16 +18,14 @@ extern "C" void processorGDTR();
 extern "C" void SetupProcessor2(struct NewProcessorStorage *);
 extern "C" void ProcessorInstallTSS(uint32_t *gdt, uint32_t *tss);
 
-bool HasSSSE3Support();
-uintptr_t GetBootloaderInformationOffset();
-
-void ArchDelay1Ms(); // Spin for approximately 1ms. Use only during initialisation. Not thread-safe.
-
 struct NewProcessorStorage {
 	struct CPULocalStorage *local;
 	uint32_t *gdt;
 };
 
 NewProcessorStorage AllocateNewProcessorStorage(struct ACPIProcessor *archCPU);
+bool HasSSSE3Support();
+uintptr_t GetBootloaderInformationOffset();
+void ArchDelay1Ms(); // Spin for approximately 1ms. Use only during initialisation. Not thread-safe.
 
 #endif
