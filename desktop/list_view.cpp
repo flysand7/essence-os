@@ -1654,6 +1654,11 @@ struct EsListView : EsElement {
 				SelectPreview();
 			}
 
+			if (message->keyboard.modifiers & ~(ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_SHIFT)) {
+				// Unused modifier.
+				return 0;
+			}
+
 			return KeyInput(message->keyboard.scancode, 
 					message->keyboard.modifiers & ES_MODIFIER_CTRL, 
 					message->keyboard.modifiers & ES_MODIFIER_ALT, 

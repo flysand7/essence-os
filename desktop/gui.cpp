@@ -2707,6 +2707,8 @@ EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 			}
 		} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 			scrollbar->originalThumbPosition = scrollbar->thumbPosition;
+		} else if (message->type == ES_MSG_MOUSE_RIGHT_DOWN || message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
+			// TODO.
 		} else {
 			return 0;
 		}
@@ -2777,8 +2779,20 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 	}
 
 	if (bar[0] && bar[1]) {
-		if (!pad) pad = EsCustomElementCreate(parent, ES_CELL_FILL | ES_ELEMENT_NON_CLIENT, ES_STYLE_SCROLLBAR_PAD);
-		if (pad) pad->cName = "scrollbar pad";
+		if (!pad) {
+			pad = EsCustomElementCreate(parent, ES_CELL_FILL | ES_ELEMENT_NON_CLIENT, ES_STYLE_SCROLLBAR_PAD);
+
+			if (pad) {
+				pad->cName = "scrollbar pad";
+
+				pad->messageUser = [] (EsElement *, EsMessage *message) {
+					// Don't let clicks through.
+					return message->type == ES_MSG_MOUSE_LEFT_DOWN 
+						|| message->type == ES_MSG_MOUSE_MIDDLE_DOWN
+						|| message->type == ES_MSG_MOUSE_RIGHT_DOWN ? ES_HANDLED : 0;
+				};
+			}
+		}
 	} else if (pad) {
 		EsElementDestroy(pad);
 		pad = nullptr;
@@ -6542,7 +6556,7 @@ void UIRefreshPrimaryClipboard(EsWindow *window) {
 	}
 }
 
-void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
+bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (message->type == ES_MSG_KEY_UP) {
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_CTRL  ) gui.leftModifiers  &= ~ES_MODIFIER_CTRL;
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT   ) gui.leftModifiers  &= ~ES_MODIFIER_ALT;
@@ -6555,14 +6569,13 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT && gui.unhandledAltPress) {
 			AccessKeyModeEnter(window);
+			return true;
 		} else if (window->focused) {
 			EsMessageSend(window->focused, message);
-		} else if (window->windowStyle == ES_WINDOW_NORMAL) {
-			uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
-			MessageDesktop(&m, 1, window->handle);
+			return true;
 		}
 
-		return;
+		return false;
 	}
 
 	if (window->targetMenu) {
@@ -6587,7 +6600,7 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 	if (window->windowStyle == ES_WINDOW_MENU && message->keyboard.scancode == ES_SCANCODE_ESCAPE) {
 		window->Destroy();
-		return;
+		return true;
 	}
 
 	if (gui.menuMode) {
@@ -6596,16 +6609,16 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		// TODO Left/right to navigate columns/cycle menubar and open/close submenus.
 		// TODO Up/down to traverse menu.
 		// TODO Enter to open submenu/invoke item.
-		return;
+		return true;
 	} else if (gui.accessKeyMode && gui.accessKeys.window == window) {
 		AccessKeyModeHandleKeyPress(message);
-		return;
+		return true;
 	}
 
 	if (window->pressed) {
 		if (message->keyboard.scancode == ES_SCANCODE_ESCAPE) {
 			UIMouseUp(window, nullptr, false);
-			return;
+			return true;
 		}
 	}
 
@@ -6613,14 +6626,14 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		message->type = ES_MSG_KEY_TYPED;
 
 		if (EsMessageSend(window->focused, message) == ES_HANDLED /* allow messageUser to reject input */) {
-			return;
+			return true;
 		}
 
 		EsElement *element = window->focused;
 		message->type = ES_MSG_KEY_DOWN;
 
 		if (UIMessageSendPropagateToAncestors(element, message)) {
-			return;
+			return true;
 		}
 	}
 
@@ -6632,14 +6645,14 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		while ((!element->IsFocusable() || (element->flags & ES_ELEMENT_NOT_TAB_TRAVERSABLE)) && element != start);
 
 		EsElementFocus(element, ES_ELEMENT_FOCUS_ENSURE_VISIBLE | ES_ELEMENT_FOCUS_FROM_KEYBOARD);
-		return;
+		return true;
 	}
 
 	if (window->focused) {
 		if (message->keyboard.scancode == ES_SCANCODE_SPACE && message->keyboard.modifiers == 0) {
 			EsMessage m = { ES_MSG_MOUSE_LEFT_CLICK };
 			EsMessageSend(window->focused, &m);
-			return;
+			return true;
 		}
 	} else {
 		EsMessageSend(window, message);
@@ -6650,11 +6663,11 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (window->enterButton && message->keyboard.scancode == ES_SCANCODE_ENTER && !message->keyboard.modifiers
 			&& window->enterButton->onCommand && (~window->enterButton->flags & ES_ELEMENT_DISABLED)) {
 		window->enterButton->onCommand(window->instance, window->enterButton, window->enterButton->command);
-		return;
+		return true;
 	} else if (window->escapeButton && message->keyboard.scancode == ES_SCANCODE_ESCAPE && !message->keyboard.modifiers
 			&& window->escapeButton->onCommand && (~window->escapeButton->flags & ES_ELEMENT_DISABLED)) {
 		window->escapeButton->onCommand(window->instance, window->escapeButton, window->escapeButton->command);
-		return;
+		return true;
 	}
 
 	if (!window->hasDialog) {
@@ -6662,7 +6675,7 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT) {
 			gui.unhandledAltPress = true;
-			return;
+			return true;
 		}
 
 		if (!gui.keyboardShortcutNames.itemCount) UIInitialiseKeyboardShortcutNamesTable();
@@ -6689,17 +6702,13 @@ void UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 						command->callback(window->instance, nullptr, command);
 					}
 
-					return;
+					return true;
 				}
 			}
 		}
 	}
 
-	if (window->windowStyle == ES_WINDOW_NORMAL) {
-		uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
-		MessageDesktop(&m, 1, window->handle);
-		return;
-	}
+	return false;
 }
 
 void UIWindowPaintNow(EsWindow *window, ProcessMessageTiming *timing, bool afterResize) {
@@ -6912,7 +6921,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 
 		if ((!window->activated || window->targetMenu) && window->windowStyle == ES_WINDOW_NORMAL) {
 			window->hovering = false;
-			goto skipInputMessage;
+			goto doneInputMessage;
 		} else if (window->dragged) {
 			if (gui.draggingStarted || DistanceSquared(message->mouseMoved.newPositionX - gui.lastClickX, 
 						message->mouseMoved.newPositionY - gui.lastClickY) >= GetConstantNumber("dragThreshold")) {
@@ -6944,7 +6953,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		window->hovering = false;
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_RIGHT_DOWN || message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
 		if (gui.mouseButtonDown || window->targetMenu) {
-			goto skipInputMessage;
+			goto doneInputMessage;
 		}
 
 		UIMouseDown(window, message);
@@ -6955,7 +6964,9 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			UIMouseUp(window, message, true);
 		}
 	} else if (message->type == ES_MSG_KEY_UP || message->type == ES_MSG_KEY_DOWN) {
-		UIHandleKeyMessage(window, message);
+		if (UIHandleKeyMessage(window, message)) {
+			goto doneInputMessage;
+		}
 
 		// If this key was on the numpad, translate it to the normal key.
 
@@ -7000,7 +7011,15 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			m.keyboard.modifiers = message->keyboard.modifiers | (nshift ? ES_MODIFIER_SHIFT : 0);
 			m.keyboard.scancode = numpad;
 			m.keyboard.numpad = true;
-			UIHandleKeyMessage(window, &m);
+
+			if (UIHandleKeyMessage(window, &m)) {
+				goto doneInputMessage;
+			}
+		}
+
+		if (window->windowStyle == ES_WINDOW_NORMAL) {
+			uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
+			MessageDesktop(&m, 1, window->handle);
 		}
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {
 		AccessKeyModeExit();
@@ -7088,7 +7107,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		}
 	}
 
-	skipInputMessage:;
+	doneInputMessage:;
 
 	if (timing) timing->endLogic = EsTimeStampMs();
 

@@ -4404,6 +4404,11 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		bool verticalMotion = false;
 		bool ctrl = message->keyboard.modifiers & ES_MODIFIER_CTRL;
 
+		if (message->keyboard.modifiers & ~(ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_SHIFT)) {
+			// Unused modifier.
+			return 0;
+		}
+
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ARROW || message->keyboard.scancode == ES_SCANCODE_RIGHT_ARROW
 				|| message->keyboard.scancode == ES_SCANCODE_HOME || message->keyboard.scancode == ES_SCANCODE_END
 				|| message->keyboard.scancode == ES_SCANCODE_UP_ARROW || message->keyboard.scancode == ES_SCANCODE_DOWN_ARROW) {
