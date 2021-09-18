@@ -484,6 +484,8 @@ define ES_PANEL_V_BOTTOM		(1 << 21)
 define ES_PANEL_V_CENTER		(1 << 22)
 define ES_PANEL_V_JUSTIFY		(1 << 23)
 
+define ES_PANEL_RADIO_GROUP		(1 << 30) // Determines how arrow keys/tabs behave.
+
 define ES_TEXTBOX_MULTILINE			(1 << 0)
 define ES_TEXTBOX_EDIT_BASED			(1 << 1)
 define ES_TEXTBOX_MARGIN			(1 << 2)
@@ -2431,6 +2433,8 @@ function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set th
 
 function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
+
+function EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel);
 
 // Static displays.
 

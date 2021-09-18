@@ -681,7 +681,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	};
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsThemeWindowColor)); 
-	EsPanel *panel = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_HORIZONTAL);
+	EsPanel *panel = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_HORIZONTAL | ES_PANEL_RADIO_GROUP);
 	uint8_t windowColor = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("window_color"));
 
 	for (uintptr_t i = 0; i < sizeof(windowColors) / sizeof(windowColors[0]); i++) {

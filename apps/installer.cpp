@@ -1093,7 +1093,7 @@ void _start() {
 		userNameTextbox->messageUser = UserNameTextboxMessage;
 
 		EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_V_TOP, ES_STYLE_TEXT_RADIO_GROUP_LABEL, INTERFACE_STRING(InstallerSystemFont));
-		EsPanel *fonts = EsPanelCreate(table, ES_CELL_H_LEFT);
+		EsPanel *fonts = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_RADIO_GROUP);
 		EsButton *button = EsButtonCreate(fonts, ES_BUTTON_RADIOBOX | ES_CELL_H_EXPAND, 0, INTERFACE_STRING(InstallerFontDefault));
 		button->userData = (void *) "Inter";
 		EsButtonOnCommand(button, ButtonFont);

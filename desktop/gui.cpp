@@ -118,6 +118,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_USE_MEASUREMENT_CACHE	(1 << 20)
 #define UI_STATE_CHECK_VISIBLE		(1 << 21)
 #define UI_STATE_INSPECTING		(1 << 22)
+#define UI_STATE_RADIO_GROUP		(1 << 23)
 
 struct EsElement : EsElementPublic {
 	EsUICallback messageClass;
@@ -195,6 +196,10 @@ struct EsElement : EsElementPublic {
 		}
 
 		return true;
+	}
+
+	bool IsTabTraversable() {
+		return IsFocusable() && (~flags & ES_ELEMENT_NOT_TAB_TRAVERSABLE) && (!parent || ~parent->state & UI_STATE_RADIO_GROUP);
 	}
 
 	bool RefreshStyleState(); // Returns true if any observed bits have changed.
@@ -3162,15 +3167,21 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		if (!(panel->flags & (ES_PANEL_TABLE | ES_PANEL_SWITCHER))
-				&& panel->window->focused && panel->window->focused->parent == panel
-				&& (panel->flags & ES_PANEL_HORIZONTAL)) {
-			bool reverse = panel->flags & ES_PANEL_REVERSE,
-			     left = message->keyboard.scancode == ES_SCANCODE_LEFT_ARROW,
-			     right = message->keyboard.scancode == ES_SCANCODE_RIGHT_ARROW;
+				&& panel->window->focused && panel->window->focused->parent == panel) {
+			bool reverse = panel->flags & ES_PANEL_REVERSE;
+			bool left = message->keyboard.scancode == ES_SCANCODE_LEFT_ARROW;
+			bool right = message->keyboard.scancode == ES_SCANCODE_RIGHT_ARROW;
+			bool up = message->keyboard.scancode == ES_SCANCODE_UP_ARROW;
+			bool down = message->keyboard.scancode == ES_SCANCODE_DOWN_ARROW;
+
+			if (~panel->flags & ES_PANEL_HORIZONTAL) {
+				left = up;
+				right = down;
+			}
+
+			EsElement *focus = nullptr;
 
 			if ((left && !reverse) || (right && reverse)) {
-				EsElement *focus = nullptr;
-
 				for (uintptr_t i = 0; i < panel->GetChildCount(); i++) {
 					EsElement *child = panel->GetChild(i);
 
@@ -3184,13 +3195,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 						focus = child;
 					}
 				}
-
-				if (focus) {
-					EsElementFocus(focus);
-				}
 			} else if ((left && reverse) || (right && !reverse)) {
-				EsElement *focus = nullptr;
-
 				for (uintptr_t i = panel->GetChildCount(); i > 0; i--) {
 					EsElement *child = panel->GetChild(i - 1);
 
@@ -3204,12 +3209,17 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 						focus = child;
 					}
 				}
-
-				if (focus) {
-					EsElementFocus(focus);
-				}
 			} else {
 				return 0;
+			}
+
+			if (focus) {
+				EsElementFocus(focus);
+
+				if (panel->flags & ES_PANEL_RADIO_GROUP) {
+					EsMessage m = { .type = ES_MSG_MOUSE_LEFT_CLICK };
+					EsMessageSend(focus, &m);
+				}
 			}
 		} else {
 			return 0;
@@ -3322,9 +3332,10 @@ EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags, const EsStyle *style) 
 	panel->Initialise(parent, flags, ProcessPanelMessage, style);
 	panel->cName = "panel";
 
-	if (flags & ES_PANEL_Z_STACK)    panel->state |= UI_STATE_Z_STACK;
-	if (flags & ES_PANEL_HORIZONTAL) panel->flags |= ES_ELEMENT_LAYOUT_HINT_HORIZONTAL;
-	if (flags & ES_PANEL_REVERSE)    panel->flags |= ES_ELEMENT_LAYOUT_HINT_REVERSE;
+	if (flags & ES_PANEL_Z_STACK)     panel->state |= UI_STATE_Z_STACK;
+	if (flags & ES_PANEL_RADIO_GROUP) panel->state |= UI_STATE_RADIO_GROUP, panel->flags |= ES_ELEMENT_FOCUSABLE;
+	if (flags & ES_PANEL_HORIZONTAL)  panel->flags |= ES_ELEMENT_LAYOUT_HINT_HORIZONTAL;
+	if (flags & ES_PANEL_REVERSE)     panel->flags |= ES_ELEMENT_LAYOUT_HINT_REVERSE;
 
 	panel->scroll.Setup(panel, 
 			((flags & ES_PANEL_H_SCROLL_FIXED) ? SCROLL_MODE_FIXED : (flags & ES_PANEL_H_SCROLL_AUTO) ? SCROLL_MODE_AUTO : SCROLL_MODE_NONE),
@@ -3505,6 +3516,20 @@ void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier) {
 	}
 
 	EsElementRelayout(panel);
+}
+
+EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel) {
+	EsMessageMutexCheck();
+	EsAssert(panel->state & UI_STATE_RADIO_GROUP);
+	EsAssert(panel->GetChildCount());
+
+	for (uintptr_t i = 0; i < panel->GetChildCount(); i++) {
+		if (ES_CHECK_CHECKED == EsButtonGetCheck((EsButton *) panel->GetChild(i))) {
+			return (EsButton *) panel->GetChild(i);
+		}
+	}
+
+	return (EsButton *) panel->GetChild(0);
 }
 
 // --------------------------------- Canvas panes.
@@ -6641,8 +6666,13 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		EsElement *element = window->focused ?: window;
 		EsElement *start = element;
 
-		do element = UITabTraversalDo(element, message->keyboard.modifiers & ES_MODIFIER_SHIFT);
-		while ((!element->IsFocusable() || (element->flags & ES_ELEMENT_NOT_TAB_TRAVERSABLE)) && element != start);
+		do {
+			element = UITabTraversalDo(element, message->keyboard.modifiers & ES_MODIFIER_SHIFT);
+		} while (!element->IsTabTraversable() && element != start);
+
+		if (element->state & UI_STATE_RADIO_GROUP) {
+			element = EsPanelRadioGroupGetChecked((EsPanel *) element);
+		}
 
 		EsElementFocus(element, ES_ELEMENT_FOCUS_ENSURE_VISIBLE | ES_ELEMENT_FOCUS_FROM_KEYBOARD);
 		return true;
