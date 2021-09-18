@@ -6,7 +6,7 @@
 
 // TODO Possible candidates for moving in the core API:
 // 	- String/paths utils
-// 	- Blocking/non-blocking task systems
+// 	- Blocking task systems
 
 // TODO Don't show modals if a folder can't be loaded.
 // 	Instead, show a list view with an error message,

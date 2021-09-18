@@ -3538,6 +3538,7 @@ struct EsCanvasPane : EsElement {
 	double panX, panY, zoom;
 	bool zoomFit, contentsChanged, center;
 	int previousWidth, previousHeight;
+	EsPoint lastPanPoint;
 };
 
 EsElement *CanvasPaneGetCanvas(EsElement *element) {
@@ -3601,17 +3602,26 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_PAINT) {
 		EsElement *canvas = CanvasPaneGetCanvas(element);
 		if (!canvas) return 0;
-
 		UIStyle *style = GetStyle(MakeStyleKey(ES_STYLE_CANVAS_SHADOW, 0), true);
-		EsRectangle shadow1 = ES_RECT_4PD(canvas->offsetX + style->preferredWidth, canvas->offsetY + canvas->height, 
-				canvas->width, style->preferredHeight);
-		EsRectangle shadow2 = ES_RECT_4PD(canvas->offsetX + canvas->width, canvas->offsetY + style->preferredHeight, 
-				style->preferredWidth, canvas->height - style->preferredHeight);
-		style->PaintLayers(message->painter, shadow1, THEME_CHILD_TYPE_ONLY, ES_FLAGS_DEFAULT);
-		style->PaintLayers(message->painter, shadow2, THEME_CHILD_TYPE_ONLY, ES_FLAGS_DEFAULT);
+		EsRectangle shadow = ES_RECT_4PD(canvas->offsetX, canvas->offsetY, canvas->width, canvas->height);
+		style->PaintLayers(message->painter, shadow, THEME_CHILD_TYPE_ONLY, ES_FLAGS_DEFAULT);
+	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
+		pane->lastPanPoint = EsMouseGetPosition(pane);
+	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
+		// TODO Set cursor.
+		EsPoint point = EsMouseGetPosition(pane);
+		pane->zoomFit = false;
+		pane->panX -= (float) (point.x - pane->lastPanPoint.y) / pane->zoom;
+		pane->panY -= (float) (point.x - pane->lastPanPoint.y) / pane->zoom;
+		pane->lastPanPoint = point;
+		EsElementRelayout(pane);
+	} else if (message->type == ES_MSG_GET_CURSOR && pane->window->dragged == pane) {
+		message->cursorStyle = ES_CURSOR_HAND_DRAG;
+	} else {
+		return 0;
 	}
 
-	return 0;
+	return ES_HANDLED;
 }
 
 EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {

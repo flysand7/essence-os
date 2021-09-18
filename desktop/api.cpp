@@ -564,7 +564,7 @@ int EsMessageSend(EsElement *element, EsMessage *message) {
 		response = element->messageClass(element, message);
 	}
 
-	if (element->state & UI_STATE_INSPECTING) {
+	if ((element->state & UI_STATE_INSPECTING) && message->type != ES_MSG_GET_INSPECTOR_INFORMATION) {
 		InspectorNotifyElementEvent(element, "message", "Element processed message '%z' with response %i%z.\n", 
 				EnumLookupNameFromValue(enumStrings_EsMessageType, message->type), response, handledByUser ? " (from user callback)" : "");
 	}
