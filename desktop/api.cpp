@@ -87,6 +87,7 @@ struct GlobalData {
 	volatile float uiScale;
 	volatile bool swapLeftAndRightButtons;
 	volatile bool showCursorShadow;
+	volatile bool useSmartQuotes;
 	volatile bool enableHoverState;
 };
 

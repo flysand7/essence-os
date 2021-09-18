@@ -269,6 +269,7 @@ void MessageLoopThread(EsGeneric) {
 			textboxOutput = EsTextboxCreate(panel, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleMonospacedTextbox);
 			EsSpacerCreate(panel, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 			textboxInput = EsTextboxCreate(panel, ES_CELL_H_FILL, &styleMonospacedTextbox);
+			EsTextboxEnableSmartQuotes(textboxInput, false);
 			textboxInput->messageUser = ProcessTextboxInputMessage;
 			EsElementFocus(textboxInput);
 		} else if (message->type == MSG_RECEIVED_OUTPUT) {

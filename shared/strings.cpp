@@ -122,6 +122,7 @@ DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay, "Key repeat delay
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate, "Key repeat rate:");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate, "Caret blink rate:");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction, "Try your settings in the textbox below:");
+DEFINE_INTERFACE_STRING(DesktopSettingsKeyboardUseSmartQuotes, "Use smart quotes when typing");
 
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed, "Double click time:");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouseSpeed, "Cursor movement speed:");

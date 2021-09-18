@@ -2919,6 +2919,8 @@ struct EsTextbox : EsElement {
 	uint32_t syntaxHighlightingLanguage;
 	uint32_t syntaxHighlightingColors[8];
 
+	bool smartQuotes;
+
 	bool inRightClickDrag;
 
 	// For smart context menus:
@@ -4056,6 +4058,7 @@ bool EsTextboxFind(EsTextbox *textbox, const char *needle, intptr_t _needleBytes
 		EsAssert(byteIndex <= bufferBytes); // Invalid find byte offset.
 
 		// TODO Case-insensitive search.
+		// TODO Ignore quotation mark type.
 
 		if (flags & ES_TEXTBOX_FIND_BACKWARDS) {
 			if (bufferBytes >= needleBytes) {
@@ -4482,10 +4485,23 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 
 			int ic, isc;
 			ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, true, textbox->flags & ES_TEXTBOX_MULTILINE); 
+			int character = (message->keyboard.modifiers & ES_MODIFIER_SHIFT) ? isc : ic;
 
 			if (ic != -1 && (message->keyboard.modifiers & ~ES_MODIFIER_SHIFT) == 0) {
+				if (textbox->smartQuotes && api.global->useSmartQuotes) {
+					DocumentLine *currentLine = &textbox->lines[textbox->carets[0].line];
+					const char *buffer = currentLine->GetBuffer(textbox);
+					bool left = !textbox->carets[0].byte || buffer[textbox->carets[0].byte - 1] == ' ';
+
+					if (character == '"') {
+						character = left ? 0x201C : 0x201D;
+					} else if (character == '\'') {
+						character = left ? 0x2018 : 0x2019;
+					}
+				}
+
 				char buffer[4];
-				EsTextboxInsert(textbox, buffer, utf8_encode((message->keyboard.modifiers & ES_MODIFIER_SHIFT) ? isc : ic, buffer));
+				EsTextboxInsert(textbox, buffer, utf8_encode(character, buffer));
 
 				if (buffer[0] == '\n' && textbox->carets[0].line) {
 					// Copy the indentation from the previous line.
@@ -4694,6 +4710,8 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 	textbox->insets = textbox->currentStyle->insets;
 
 	textbox->currentStyle->GetTextStyle(&textbox->textStyle);
+
+	textbox->smartQuotes = true;
 
 	DocumentLine firstLine = {};
 	firstLine.height = TextGetLineHeight(textbox, &textbox->textStyle);
@@ -4932,6 +4950,10 @@ void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uin
 	EsMemoryCopy(textbox->syntaxHighlightingColors, customColors, customColorCount * sizeof(uint32_t));
 
 	textbox->Repaint(true);
+}
+
+void EsTextboxEnableSmartQuotes(EsTextbox *textbox, bool enabled) {
+	textbox->smartQuotes = enabled;
 }
 
 // --------------------------------- Text displays.

@@ -2413,6 +2413,7 @@ function void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size);
 function void EsTextboxSetFont(EsTextbox *textbox, EsFont font);
 function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
 function void EsTextboxStartEdit(EsTextbox *textbox);
+function void EsTextboxEnableSmartQuotes(EsTextbox *textbox, bool enabled);
 
 // Sliders.
 

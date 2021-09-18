@@ -377,7 +377,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsPanel *switcher = EsPanelCreate(window, ES_CELL_FILL | ES_PANEL_SWITCHER, ES_STYLE_PANEL_WINDOW_DIVIDER);
 		instance->switcher = switcher;
 
-		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleMonospacedTextbox);
+		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL | ES_ELEMENT_DISABLED, &styleMonospacedTextbox);
 
 		AddListView(&instance->listViewProcesses, switcher, ListViewProcessesCallback, 
 				listViewProcessesColumns, sizeof(listViewProcessesColumns), ES_LIST_VIEW_SINGLE_SELECT);

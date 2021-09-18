@@ -108,6 +108,7 @@ void SetLanguage(Instance *instance, uint32_t newLanguage) {
 
 	instance->syntaxHighlightingLanguage = newLanguage;
 	EsTextboxSetupSyntaxHighlighting(instance->textboxDocument, newLanguage);
+	EsTextboxEnableSmartQuotes(instance->textboxDocument, !newLanguage);
 }
 
 void FormatPopupCreate(Instance *instance) {

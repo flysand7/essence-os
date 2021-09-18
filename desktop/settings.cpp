@@ -138,6 +138,7 @@ void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
 	api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
+	api.global->useSmartQuotes = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_smart_quotes"));
 	api.global->enableHoverState = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("enable_hover_state"));
 
 	{
@@ -541,6 +542,9 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsTextDisplayCreate(testBox, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopSettingsKeyboardTestTextboxIntroduction));
 	EsSpacerCreate(testBox, ES_FLAGS_DEFAULT, 0, 0, 5);
 	EsTextboxCreate(testBox, ES_CELL_H_LEFT)->accessKey = 'T';
+
+	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsKeyboardUseSmartQuotes), 'Q', "general", "use_smart_quotes");
 }
 
 void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
