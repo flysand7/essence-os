@@ -52,13 +52,17 @@ const EsStyle styleSettingsGroupContainer2 = {
 };
 
 const uint32_t windowColors[] = {
-	0xFF0032, // Strawberry.
-	0xFF7F24, // Bronze.
-	0x77FFD4, // Grass.
-	0x448CF5, // Ocean.
-	0xAC00FF, // Violet.
-	0xE8ECF9, // Polar.
-	0xB7BBC5, // Space. TODO Looks bad deactivated.
+	0xFF0032,
+	0xFF6042,
+	0xFF7F24,
+	0xFFFF24,
+	0x67EFC4,
+	0x54ACE5,
+	0x448CF5,
+	0x044CF5,
+	0xAC00FF,
+	0xE8ECF9,
+	0xB7BBC5, // TODO Make this look better when deactivated.
 };
 
 const EsStyle styleSettingsGroupContainer3 = {
