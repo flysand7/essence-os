@@ -306,13 +306,14 @@ struct ScrollPane {
 	bool enabled[2];
 	bool dragScrolling;
 
-#define SCROLL_MODE_NONE    (0)      // No scrolling takes place on this axis.
-#define SCROLL_MODE_HIDDEN  (1)      // Scrolling takes place, but there is no visible scrollbar.
-#define SCROLL_MODE_FIXED   (2)      // The scrollbar is always visible.
-#define SCROLL_MODE_AUTO    (3)      // The scrollbar is only visible if the content is larger than the viewport.
+#define SCROLL_MODE_NONE    (0) // No scrolling takes place on this axis.
+#define SCROLL_MODE_HIDDEN  (1) // Scrolling takes place, but there is no visible scrollbar.
+#define SCROLL_MODE_FIXED   (2) // The scrollbar is always visible.
+#define SCROLL_MODE_AUTO    (3) // The scrollbar is only visible if the content is larger than the viewport.
 	uint8_t mode[2];
 #define SCROLL_X_DRAG (1 << 0)
 #define SCROLL_Y_DRAG (1 << 1)
+#define SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
 	uint16_t flags;
 
 	void Setup(EsElement *parent, uint8_t xMode, uint8_t yMode, uint16_t flags);
@@ -2922,8 +2923,10 @@ void ScrollPane::Refresh() {
 	if (bar[0]) ScrollbarSetMeasurements(bar[0], bounds.r - fixedViewport[0], contentWidth  - fixedViewport[0]);
 	if (bar[1]) ScrollbarSetMeasurements(bar[1], bounds.b - fixedViewport[1], contentHeight - fixedViewport[1]);
 
-	SetPosition(0, position[0], true);
-	SetPosition(1, position[1], true);
+	if (~flags & SCROLL_MANUAL) {
+		SetPosition(0, position[0], true);
+		SetPosition(1, position[1], true);
+	}
 
 	EsRectangle border = parent->currentStyle->borders;
 
@@ -3539,6 +3542,7 @@ struct EsCanvasPane : EsElement {
 	bool zoomFit, contentsChanged, center;
 	int previousWidth, previousHeight;
 	EsPoint lastPanPoint;
+	ScrollPane scroll;
 };
 
 EsElement *CanvasPaneGetCanvas(EsElement *element) {
@@ -3553,6 +3557,8 @@ EsElement *CanvasPaneGetCanvas(EsElement *element) {
 
 int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	EsCanvasPane *pane = (EsCanvasPane *) element;
+
+	pane->scroll.ReceivedMessage(message);
 
 	if (message->type == ES_MSG_LAYOUT) {
 		EsElement *canvas = CanvasPaneGetCanvas(element);
@@ -3594,6 +3600,11 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 			pane->panY = height / 2 - Height(bounds) / pane->zoom / 2;
 		}
 
+		pane->scroll.position[0] = pane->panX;
+		pane->scroll.position[1] = pane->panY;
+		ScrollbarSetPosition(pane->scroll.bar[0], pane->panX, false, false);
+		ScrollbarSetPosition(pane->scroll.bar[1], pane->panY, false, false);
+
 		pane->center = false;
 
 		int x = (int) (0.5f + LinearMap(pane->panX, pane->panX + Width(bounds) / pane->zoom, 0, Width(bounds), 0));
@@ -3608,15 +3619,24 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
 		pane->lastPanPoint = EsMouseGetPosition(pane);
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
-		// TODO Set cursor.
 		EsPoint point = EsMouseGetPosition(pane);
 		pane->zoomFit = false;
-		pane->panX -= (float) (point.x - pane->lastPanPoint.x) / pane->zoom;
-		pane->panY -= (float) (point.y - pane->lastPanPoint.y) / pane->zoom;
+		pane->panX -= (point.x - pane->lastPanPoint.x) / pane->zoom;
+		pane->panY -= (point.y - pane->lastPanPoint.y) / pane->zoom;
 		pane->lastPanPoint = point;
 		EsElementRelayout(pane);
 	} else if (message->type == ES_MSG_GET_CURSOR && pane->window->dragged == pane) {
 		message->cursorStyle = ES_CURSOR_HAND_DRAG;
+	} else if (message->type == ES_MSG_GET_WIDTH) {
+		EsElement *canvas = CanvasPaneGetCanvas(element);
+		message->measure.width = canvas ? canvas->GetWidth(message->measure.height) : 0;
+	} else if (message->type == ES_MSG_GET_HEIGHT) {
+		EsElement *canvas = CanvasPaneGetCanvas(element);
+		message->measure.height = canvas ? canvas->GetHeight(message->measure.width) : 0;
+	} else if (message->type == ES_MSG_SCROLL_X || message->type == ES_MSG_SCROLL_Y) {
+		pane->panX = pane->scroll.position[0];
+		pane->panY = pane->scroll.position[1];
+		EsElementRelayout(pane);
 	} else {
 		return 0;
 	}
@@ -3630,6 +3650,7 @@ EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyl
 	pane->Initialise(parent, flags, ProcessCanvasPaneMessage, style);
 	pane->cName = "canvas pane";
 	pane->zoom = 1.0;
+	pane->scroll.Setup(pane, SCROLL_MODE_AUTO, SCROLL_MODE_AUTO, SCROLL_MANUAL);
 	return pane;
 }
 
