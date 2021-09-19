@@ -54,8 +54,8 @@ const EsStyle styleSettingsGroupContainer2 = {
 const uint32_t windowColors[] = {
 	0xFF0032,
 	0xFF6042,
-	0xFF7F24,
-	0xFFFF24,
+	0xFF7F24, // TODO Hue shift looks bad.
+	0xFFFF24, // TODO Hue shift looks bad.
 	0x67EFC4,
 	0x54ACE5,
 	0x448CF5,

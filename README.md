@@ -73,9 +73,9 @@ Start the build system.
 Follow the on-screen instructions to build a cross compiler.
 
 Once complete, you can test the operating system in an emulator. 
-* Please note that by default a checked build is produced, which runs additional checks at runtime (such as heap validation on every allocation and deallocation). This may impact the performance during testing.
+* If you have Qemu and KVM installed, run `k` in the build system. **Recommended!**
 * If you have Qemu installed, run `t2` in the build system.
-* If you have VirtualBox installed, make a 128MB drive called `vbox.vdi` in the `bin` folder, attach it as a to a virtual machine called "Essence" (choose "Windows 7 64-bit" as the OS), and run `v` in the build system.
+* If you have VirtualBox installed, make a 128MB drive called `vbox.vdi` in the `bin` folder, attach it to a virtual machine called "Essence" (choose "Windows 7 64-bit" as the OS), and run `v` in the build system.
 
 ## Configuration
 

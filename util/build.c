@@ -143,7 +143,7 @@ void BuildAPIDependencies() {
 	CallSystem("cp -p kernel/module.h root/Applications/POSIX/include");
 }
 
-void OutputStartOfBuildINI(FILE *f) {
+void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 	LoadOptions();
 
 	FILE *f2 = popen("which nasm", "r");
@@ -171,6 +171,10 @@ void OutputStartOfBuildINI(FILE *f) {
 		Option *option = &options[i];
 
 		if (!option->id || memcmp(option->id, "Flag.", 5)) {
+			continue;
+		}
+
+		if (0 == strcmp(option->id, "Flag.DEBUG_BUILD") && forceDebugBuildOff) {
 			continue;
 		}
 
@@ -236,10 +240,12 @@ void OutputStartOfBuildINI(FILE *f) {
 
 void BuildUtilities();
 
-#define COMPILE_ENABLE_OPTIMISATIONS (1 << 0)
 #define COMPILE_SKIP_COMPILE         (1 << 1)
 #define COMPILE_DO_BUILD             (1 << 2)
 #define COMPILE_FOR_EMULATOR         (1 << 3)
+#define OPTIMISE_OFF                 (1 << 4)
+#define OPTIMISE_ON                  (1 << 5)
+#define OPTIMISE_FULL                (1 << 6)
 
 void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 	buildStartTimeStamp = time(NULL);
@@ -250,9 +256,9 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 
 	FILE *f = fopen("bin/build.ini", "wb");
 
-	OutputStartOfBuildINI(f);
+	OutputStartOfBuildINI(f, flags & OPTIMISE_FULL);
 	fprintf(f, "[general]\nfor_emulator=%d\noptimise=%d\nskip_compile=%d\n\n", 
-			!!(flags & COMPILE_FOR_EMULATOR), !!(flags & COMPILE_ENABLE_OPTIMISATIONS), !!(flags & COMPILE_SKIP_COMPILE));
+			!!(flags & COMPILE_FOR_EMULATOR), (flags & OPTIMISE_ON) || (flags & OPTIMISE_FULL), !!(flags & COMPILE_SKIP_COMPILE));
 
 	uintptr_t fontIndex = 0;
 
@@ -345,7 +351,7 @@ void BuildUtilities() {
 	}
 }
 
-void Build(bool enableOptimisations, bool compile) {
+void Build(int optimise, bool compile) {
 	struct timespec startTime, endTime;
 	clock_gettime(CLOCK_REALTIME, &startTime);
 
@@ -375,7 +381,7 @@ void Build(bool enableOptimisations, bool compile) {
 #endif
 
 	LoadOptions();
-	Compile((enableOptimisations ? COMPILE_ENABLE_OPTIMISATIONS : 0) | (compile ? 0 : COMPILE_SKIP_COMPILE) | COMPILE_DO_BUILD | COMPILE_FOR_EMULATOR, 
+	Compile(optimise | (compile ? 0 : COMPILE_SKIP_COMPILE) | COMPILE_DO_BUILD | COMPILE_FOR_EMULATOR, 
 			atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 
 	clock_gettime(CLOCK_REALTIME, &endTime);
@@ -468,13 +474,13 @@ void Run(int emulator, int log, int debug) {
 			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
 				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
 
-			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d -s %s -smp cores=%d -cpu Haswell "
+			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
 					" %s %s %s %s %s %s ", 
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
-					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-S") : "", 
+					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
 					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags);
 		} break;
 
@@ -713,7 +719,7 @@ void BuildCrossCompiler() {
 			BuildUtilities();
 			BuildAPIDependencies();
 			FILE *f = fopen("bin/build.ini", "wb");
-			OutputStartOfBuildINI(f);
+			OutputStartOfBuildINI(f, false);
 			fclose(f);
 			if (CallSystem("bin/build_core standard bin/build.ini")) goto fail;
 		}
@@ -1060,7 +1066,7 @@ void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *p
 	closedir(directory);
 }
 
-void BuildAndRun(bool optimise, bool compile, bool debug, int emulator) {
+void BuildAndRun(int optimise, bool compile, int debug, int emulator) {
 	Build(optimise, compile);
 
 	if (encounteredErrors) {
@@ -1087,25 +1093,27 @@ void DoCommand(const char *l) {
 	}
 
 	if (0 == strcmp(l, "b") || 0 == strcmp(l, "build")) {
-		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, -1);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, -1);
 	} else if (0 == strcmp(l, "opt") || 0 == strcmp(l, "build-optimised")) {
-		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, -1);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, -1);
 	} else if (0 == strcmp(l, "d") || 0 == strcmp(l, "debug")) {
-		BuildAndRun(false /* optimise */, true /* compile */, true /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, true /* debug */, EMULATOR_QEMU);
 	} else if (0 == strcmp(l, "d3") || 0 == strcmp(l, "debug-without-compile")) {
-		BuildAndRun(false /* optimise */, false /* compile */, true /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, true /* debug */, EMULATOR_QEMU);
 	} else if (0 == strcmp(l, "v") || 0 == strcmp(l, "vbox")) {
-		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
 	} else if (0 == strcmp(l, "v2") || 0 == strcmp(l, "vbox-without-opt")) {
-		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
 	} else if (0 == strcmp(l, "v3") || 0 == strcmp(l, "vbox-without-compile")) {
-		BuildAndRun(false /* optimise */, false /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
 	} else if (0 == strcmp(l, "t") || 0 == strcmp(l, "qemu-with-opt")) {
-		BuildAndRun(true /* optimise */, true /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_QEMU);
 	} else if (0 == strcmp(l, "t2") || 0 == strcmp(l, "test")) {
-		BuildAndRun(false /* optimise */, true /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_QEMU);
 	} else if (0 == strcmp(l, "t3") || 0 == strcmp(l, "qemu-without-compile")) {
-		BuildAndRun(false /* optimise */, false /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_QEMU);
+	} else if (0 == strcmp(l, "k") || 0 == strcmp(l, "qemu-with-kvm")) {
+		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU);
 	} else if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
 		exit(0);
 	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {
@@ -1279,12 +1287,13 @@ void DoCommand(const char *l) {
 		}
 
 		bool wantISO = 0 == strcmp(argv[2], "iso");
-		uint32_t flags = COMPILE_ENABLE_OPTIMISATIONS | COMPILE_DO_BUILD;
+		uint32_t flags = OPTIMISE_ON | COMPILE_DO_BUILD;
 		const char *label = NULL;
 
 		for (int i = 4; i < argc; i++) {
 			if (0 == strcmp(argv[i], "noopt")) {
-				flags &= ~COMPILE_ENABLE_OPTIMISATIONS;
+				flags &= ~OPTIMISE_ON;
+				flags |= OPTIMISE_OFF;
 			} else if (0 == memcmp(argv[i], "label=", 6)) {
 				label = argv[i] + 6;
 			}
