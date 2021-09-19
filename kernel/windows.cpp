@@ -93,6 +93,7 @@ struct WindowManager {
 	KEvent windowsToCloseEvent;
 	EsObjectID currentWindowID;
 	size_t inspectorWindowCount;
+	EsMessageType pressedWindowButton;
 
 	// Cursor:
 
@@ -547,16 +548,24 @@ void WindowManager::ClickCursor(unsigned buttons) {
 
 			// TODO Setting pressedWindow if holding with other mouse buttons.
 
-			if (message.type == ES_MSG_MOUSE_LEFT_DOWN) {
-				pressedWindow = window;
-			} else if (message.type == ES_MSG_MOUSE_LEFT_UP) {
+			if (message.type == ES_MSG_MOUSE_LEFT_DOWN || message.type == ES_MSG_MOUSE_MIDDLE_DOWN || message.type == ES_MSG_MOUSE_RIGHT_DOWN) {
+				if (!pressedWindow) {
+					pressedWindowButton = message.type;
+					pressedWindow = window;
+				}
+			} 
+			
+			if (message.type == ES_MSG_MOUSE_LEFT_UP || message.type == ES_MSG_MOUSE_MIDDLE_UP || message.type == ES_MSG_MOUSE_RIGHT_UP) {
 				if (pressedWindow) {
 					// Always send the messages to the pressed window, if there is one.
 					window = pressedWindow;
 				}
 
-				pressedWindow = nullptr;
-				moveCursorNone = true; // We might have moved outside the window.
+				if (pressedWindowButton == message.type - 1) {
+					// Only end pressing if this is the same button as pressing started with.
+					pressedWindow = nullptr;
+					moveCursorNone = true; // We might have moved outside the window.
+				}
 			}
 			
 			if (window) {

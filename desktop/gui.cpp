@@ -3611,8 +3611,8 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 		// TODO Set cursor.
 		EsPoint point = EsMouseGetPosition(pane);
 		pane->zoomFit = false;
-		pane->panX -= (float) (point.x - pane->lastPanPoint.y) / pane->zoom;
-		pane->panY -= (float) (point.x - pane->lastPanPoint.y) / pane->zoom;
+		pane->panX -= (float) (point.x - pane->lastPanPoint.x) / pane->zoom;
+		pane->panY -= (float) (point.y - pane->lastPanPoint.y) / pane->zoom;
 		pane->lastPanPoint = point;
 		EsElementRelayout(pane);
 	} else if (message->type == ES_MSG_GET_CURSOR && pane->window->dragged == pane) {
@@ -4143,7 +4143,7 @@ void DrawStyledBox(EsPainter *painter, StyledBox box) {
 	layerBox.mainPaintType = THEME_PAINT_SOLID;
 	layerBox.borderPaintType = THEME_PAINT_SOLID;
 
-	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintCustom) + sizeof(ThemePaintSolid) * 2];
+	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintCustom) + sizeof(ThemePaintSolid) * 2] = {};
 
 	if (box.fragmentShader) {
 		ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
@@ -4962,7 +4962,7 @@ EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 // 	aspect ratio; sizing
 // 	upscale/downscale quality
 // 	subregion, transformations
-// 	transparency, IsRegionCompletelyOpaque, proper blending mode with fragmentShader in DrawStyledBox
+// 	transparency, IsRegionCompletelyOpaque
 // 	image sets, DPI; SVG scaling
 // 	embedding in TextDisplay
 // 	merge with IconDisplay
@@ -6850,7 +6850,7 @@ void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing) {
 
 bool UISetCursor(EsWindow *window) {
 	EsCursorStyle cursorStyle = ES_CURSOR_NORMAL;
-	EsElement *element = window->pressed ?: window->hovered;
+	EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
 
 	if (element) {
 		EsMessage m = { ES_MSG_GET_CURSOR };
@@ -7165,7 +7165,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	UIFindHoverElement(window);
 	bool changedCursor = UISetCursor(window);
 
-	if (THEME_RECT_VALID(window->updateRegion) && window->width == (int) window->windowWidth && window->height == (int) window->windowHeight) {
+	if (window->width == (int) window->windowWidth && window->height == (int) window->windowHeight 
+			&& THEME_RECT_VALID(window->updateRegion) && !window->doNotPaint) {
 		UIWindowPaintNow(window, timing, message->type == ES_MSG_WINDOW_RESIZED);
 	} else if (changedCursor) {
 		EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, 0, 0, 0, 0);

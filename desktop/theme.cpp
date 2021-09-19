@@ -604,6 +604,10 @@ void ThemeFillBlurCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 
 ES_FUNCTION_OPTIMISE_O2 
 void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gradient, int width, int height, EsBuffer *data) {
+	if (!gradient) {
+		return;
+	}
+
 	width--, height--;
 
 	cache->dx = gradient->transform[0] / width * (GRADIENT_CACHE_COUNT << GRADIENT_COORD_BASE);
