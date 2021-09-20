@@ -1921,7 +1921,7 @@ EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes, ui
 	}
 
 	size_t temporaryFolderBytes;
-	char *temporaryFolder = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("temporary_path"), &temporaryFolderBytes);
+	char *temporaryFolder = EsSystemConfigurationReadString(EsLiteral("paths"), EsLiteral("temporary"), &temporaryFolderBytes);
 	char *temporaryFilePath = (char *) EsHeapAllocate(temporaryFolderBytes + 1 + sizeof(temporaryFileName), false);
 	size_t temporaryFilePathBytes = EsStringFormat(temporaryFilePath, ES_STRING_FORMAT_ENOUGH_SPACE, "%s/%s", 
 			temporaryFolderBytes, temporaryFolder, sizeof(temporaryFileName), temporaryFileName);
@@ -1951,7 +1951,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 
 	if (!instance->documentID) {
 		size_t folderBytes;
-		char *folder = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("default_user_documents_path"), &folderBytes);
+		char *folder = EsSystemConfigurationReadString(EsLiteral("paths"), EsLiteral("default_user_documents"), &folderBytes);
 		char *name = (char *) EsHeapAllocate(folderBytes + newNameBytes + 32, false);
 		EsMemoryCopy(name, folder, folderBytes);
 		EsMemoryCopy(name + folderBytes, newName, newNameBytes);
@@ -2357,14 +2357,15 @@ void CheckForegroundWindowResponding(EsGeneric) {
 }
 
 void DesktopSetup() {
+	// Get the installation state.
+
 	if (!desktop.setupDesktopUIComplete) {
-		// Get the installation state.
 		desktop.installationState = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("installation_state"));
 	}
 
-	if (!desktop.setupDesktopUIComplete) {
-		// Load the theme bitmap.
+	// Load the theme bitmap.
 
+	if (!desktop.setupDesktopUIComplete) {
 		EsHandle handle = EsMemoryOpen(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, EsLiteral(ES_THEME_CURSORS_NAME), ES_FLAGS_DEFAULT); 
 		void *destination = EsObjectMap(handle, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MAP_OBJECT_READ_WRITE);
 		LoadImage(theming.system.in + theming.system.bytes - theming.header->bitmapBytes, theming.header->bitmapBytes, 
@@ -2373,9 +2374,9 @@ void DesktopSetup() {
 		EsHandleClose(handle);
 	}
 
-	{
-		// Create the wallpaper window.
+	// Create the wallpaper window.
 
+	{
 		if (!desktop.wallpaperWindow) desktop.wallpaperWindow = EsWindowCreate(nullptr, ES_WINDOW_PLAIN);
 		EsRectangle screen;
 		EsSyscall(ES_SYSCALL_SCREEN_BOUNDS_GET, 0, (uintptr_t) &screen, 0, 0);
@@ -2459,6 +2460,8 @@ void DesktopSetup() {
 			EsHeapFree(firstApplication);
 		}
 	} else if (desktop.installationState == INSTALLATION_STATE_INSTALLER) {
+		// Start the instller.
+
 		if (!desktop.setupDesktopUIComplete) {
 			ApplicationInstanceCreate(desktop.installer->id, nullptr, nullptr, true /* hidden */);
 		}
@@ -2549,8 +2552,14 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsHandleClose(processHandle);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
 		ConfigurationWriteSectionsToBuffer("font", nullptr, false, pipe);
 		ConfigurationWriteSectionsToBuffer(nullptr, "ui", false, pipe);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+			ConfigurationWriteSectionsToBuffer(nullptr, "paths", false, pipe);
+		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
@@ -2647,6 +2656,10 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			if (instance->tab == instance->tab->container->active) {
 				instance->tab->container->taskBarButton->Repaint(true);
 			}
+		}
+	} else if (buffer[0] == DESKTOP_MSG_SET_MODIFIED && message->desktop.bytes == 2) {
+		if (instance->tab) {
+			EsButtonSetCheck(instance->tab->closeButton, buffer[1] ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && message->desktop.bytes == 1 + sizeof(double) && instance->isUserTask) {
 		double progress;

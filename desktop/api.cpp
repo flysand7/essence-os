@@ -61,6 +61,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_START_USER_TASK           (16)
 #define DESKTOP_MSG_SET_PROGRESS              (17)
 #define DESKTOP_MSG_RENAME                    (18)
+#define DESKTOP_MSG_SET_MODIFIED              (19)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -352,7 +353,8 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	if (sectionBytes == -1) sectionBytes = EsCStringLength(section);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
-		if (0 == EsStringCompareRaw(section, sectionBytes, api.systemConfigurationGroups[i].section, api.systemConfigurationGroups[i].sectionBytes)) {
+		if (0 == EsStringCompareRaw(section, sectionBytes, api.systemConfigurationGroups[i].section, api.systemConfigurationGroups[i].sectionBytes)
+				&& !api.systemConfigurationGroups[i].sectionClassBytes) {
 			return &api.systemConfigurationGroups[i];
 		}
 	}
@@ -1201,6 +1203,15 @@ EsMessage *EsMessageReceive() {
 	}
 }
 
+void InstanceSetModified(EsInstance *instance, bool modified) {
+	EsCommandSetEnabled(EsCommandByID(instance, ES_COMMAND_SAVE), modified);
+
+	uint8_t m[2];
+	m[0] = DESKTOP_MSG_SET_MODIFIED;
+	m[1] = modified;
+	MessageDesktop(m, 2, instance->window->handle);
+}
+
 void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorText, ptrdiff_t errorTextBytes) {
 	EsInstance *instance = message->instanceOpen.instance;
 
@@ -1234,7 +1245,7 @@ void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorT
 			EsUndoClear(instance->undoManager);
 		}
 
-		EsCommandSetDisabled(EsCommandByID(instance, ES_COMMAND_SAVE), true);
+		InstanceSetModified(instance, false);
 	}
 
 	EsAssert(!message->instanceOpen.file->operationComplete);
@@ -1263,7 +1274,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 		MessageDesktop(buffer, 1, instance->window->handle);
 
 		if (success) {
-			EsCommandSetDisabled(EsCommandByID(instance, ES_COMMAND_SAVE), true);
+			InstanceSetModified(instance, false);
 			EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
 			size_t messageBytes;
 			char *message = EsStringAllocateAndFormat(&messageBytes, "Saved to %s", // TODO Localization.
@@ -1377,7 +1388,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		_EsNodeInformation node;
 		char *path;
 
-		path = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("fonts_path"));
+		path = EsSystemConfigurationReadString(EsLiteral("paths"), EsLiteral("fonts"));
 		NodeOpen(path, EsCStringLength(path), ES_NODE_DIRECTORY, &node);
 		NodeAddMountPoint(EsLiteral("|Fonts:"), node.handle, false);
 		EsHeapFree(path);
@@ -1644,7 +1655,7 @@ void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *ite
 	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
 
 	if (manager->instance->undoManager == manager) {
-		EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_SAVE), false);
+		InstanceSetModified(manager->instance, true);
 	}
 }
 
