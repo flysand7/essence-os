@@ -352,7 +352,7 @@ void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) {
 		return EsFileReadAll(file->path, file->pathBytes, fileSize, &file->error);
 	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
 		size_t _fileSize;
-		const void *data = EsEmbeddedFileGet(file->path, file->pathBytes, &_fileSize);
+		const void *data = EsBundleFind(file->bundle, file->path, file->pathBytes, &_fileSize);
 		void *copy = EsHeapAllocate(_fileSize, false);
 		if (!copy) return nullptr;
 		if (fileSize) *fileSize = _fileSize;
@@ -404,7 +404,7 @@ EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file) {
 		}
 	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
 		size_t size;
-		EsEmbeddedFileGet(file->path, file->pathBytes, &size);
+		EsBundleFind(file->bundle, file->path, file->pathBytes, &size);
 		return size;
 	} else {
 		EsAssert(false);
@@ -421,7 +421,7 @@ void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) {
 	} else if (file->type == FILE_STORE_PATH) {
 		return EsFileMap(file->path, file->pathBytes, fileSize, flags);
 	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
-		return (void *) EsEmbeddedFileGet(file->path, file->pathBytes, fileSize);
+		return (void *) EsBundleFind(file->bundle, file->path, file->pathBytes, fileSize);
 	} else {
 		EsAssert(false);
 		return nullptr;

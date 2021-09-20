@@ -20,6 +20,7 @@ opaque_type EsUndoManager      none;
 opaque_type EsHeap             none;
 opaque_type EsFileStore        none;
 opaque_type EsUserTask         none;
+opaque_type EsBundle           none;
 
 type_name uint8_t EsNodeType;
 type_name intptr_t EsError;
@@ -570,6 +571,7 @@ define ES_LIST_DISPLAY_MARKER_TYPE_MASK (0xFF << 0)
 
 define ES_IMAGE_DISPLAY_DECODE_WHEN_NEEDED (1 << 0) // The image is only kept in its decoded state when the display is on-screen.
 define ES_IMAGE_DISPLAY_MANUAL_SIZE        (1 << 1) // The display will be manually sized; its size does not depend on the loaded image.
+define ES_IMAGE_DISPLAY_FULLY_OPAQUE       (1 << 2) // The loaded image will always be fully opaque.
 
 define ES_COMMAND_SYSTEM_START		(0xF0000000)
 define ES_COMMAND_DELETE		(0xF0000001)
@@ -1947,7 +1949,7 @@ function void EsINIZeroTerminate(EsINIState *s);
 
 // File systems.
 
-function const void *EsEmbeddedFileGet(STRING name, size_t *byteCount = ES_NULL);
+function const void *EsBundleFind(const EsBundle *bundle, STRING name, size_t *byteCount = ES_NULL); // Pass null as the bundle to use the current application's bundle.
 
 function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer); // Free buffer with EsHeapFree. Returns number of children.
 
@@ -2390,6 +2392,7 @@ private function void _EsUISetFont(EsFontFamily id);
 function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
 
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
+function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
 function EsCheckState EsButtonGetCheck(EsButton *button);
 function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback, EsCommand *command = ES_NULL); // TODO Public property?
@@ -2450,6 +2453,7 @@ function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride);
 function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes);
+function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds);
 
 function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);

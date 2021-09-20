@@ -76,6 +76,7 @@ struct EsFileStore {
 		EsHandle handle;
 
 		struct {
+			const EsBundle *bundle;
 			char *path;
 			size_t pathBytes;
 		};
@@ -113,6 +114,21 @@ struct Timer {
 struct Work {
 	EsWorkCallback callback;
 	EsGeneric context;
+};
+
+struct EsBundle {
+	const BundleHeader *base;
+	ptrdiff_t bytes;
+};
+
+const EsBundle bundleDefault = {
+	.base = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS,
+	.bytes = -1,
+};
+
+const EsBundle bundleDesktop = {
+	.base = (const BundleHeader *) BUNDLE_FILE_DESKTOP_MAP_ADDRESS,
+	.bytes = -1,
 };
 
 struct {
@@ -161,7 +177,7 @@ void UndoManagerDestroy(EsUndoManager *manager);
 int TextGetStringWidth(EsElement *element, const EsTextStyle *style, const char *string, size_t stringBytes);
 struct APIInstance *InstanceSetup(EsInstance *instance);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
-EsFileStore *FileStoreCreateFromEmbeddedFile(const char *path, size_t pathBytes);
+EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
 void FileStoreCloseHandle(EsFileStore *fileStore);
@@ -678,7 +694,7 @@ EsFileStore *FileStoreCreateFromHandle(EsHandle handle) {
 	return fileStore;
 }
 
-EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes) {
+EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *name, size_t nameBytes) {
 	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + nameBytes, false);
 	if (!fileStore) return nullptr;
 	EsMemoryZero(fileStore, sizeof(EsFileStore));
@@ -687,6 +703,7 @@ EsFileStore *FileStoreCreateFromEmbeddedFile(const char *name, size_t nameBytes)
 	fileStore->error = ES_SUCCESS;
 	fileStore->path = (char *) (fileStore + 1);
 	fileStore->pathBytes = nameBytes;
+	fileStore->bundle = bundle;
 	EsMemoryCopy(fileStore->path, name, nameBytes);
 	return fileStore;
 }
@@ -1732,18 +1749,24 @@ void EsInstanceSetActiveUndoManager(EsInstance *_instance, EsUndoManager *manage
 	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
 }
 
-const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *byteCount) {
+const void *EsBundleFind(const EsBundle *bundle, const char *_name, ptrdiff_t nameBytes, size_t *byteCount) {
+	if (!bundle) {
+		bundle = &bundleDefault;
+	}
+
 	if (nameBytes == -1) {
 		nameBytes = EsCStringLength(_name);
 	}
 
-	const BundleHeader *header = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS;
-
-	if (nameBytes > 9 && 0 == EsMemoryCompare(_name, "$Desktop/", 9)) {
-		header = (const BundleHeader *) BUNDLE_FILE_DESKTOP_MAP_ADDRESS;
-		_name += 9, nameBytes -= 9;
+	if (bundle->bytes != -1) {
+		if ((size_t) bundle->bytes < sizeof(BundleHeader) 
+				|| (size_t) (bundle->bytes - sizeof(BundleHeader)) / sizeof(BundleFile) < bundle->base->fileCount
+				|| bundle->base->signature != BUNDLE_SIGNATURE || bundle->base->version != 1) {
+			return nullptr;
+		}
 	}
 
+	const BundleHeader *header = bundle->base;
 	const BundleFile *files = (const BundleFile *) (header + 1);
 	uint64_t name = CalculateCRC64(_name, nameBytes);
 
@@ -1751,6 +1774,12 @@ const void *EsEmbeddedFileGet(const char *_name, ptrdiff_t nameBytes, size_t *by
 		if (files[i].nameCRC64 == name) {
 			if (byteCount) {
 				*byteCount = files[i].bytes;
+			}
+
+			if (bundle->bytes != -1) {
+				if (files[i].offset >= (size_t) bundle->bytes || files[i].bytes > (size_t) (bundle->bytes - files[i].offset)) {
+					return nullptr;
+				}
 			}
 
 			return (const uint8_t *) header + files[i].offset;

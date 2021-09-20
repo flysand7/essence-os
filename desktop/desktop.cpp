@@ -1261,8 +1261,40 @@ void InstanceBlankTabCreate(EsMessage *message) {
 		if (application->hidden) continue;
 
 		EsButton *button = EsButtonCreate(buttonGroup, ES_CELL_H_FILL | ES_ELEMENT_NO_FOCUS_ON_CLICK, ES_STYLE_BUTTON_GROUP_ITEM, application->cName);
-		EsButtonSetIcon(button, (EsStandardIcon) application->iconID ?: ES_ICON_APPLICATION_DEFAULT_ICON);
 		button->userData = application;
+
+		if (application->iconID) {
+			EsButtonSetIcon(button, (EsStandardIcon) application->iconID);
+		} else {
+			EsButtonSetIcon(button, ES_ICON_APPLICATION_DEFAULT_ICON);
+
+			// TODO Load the icon asynchronously.
+			// TODO Load the correct icon size.
+			// TODO Reload the icon if the UI scale factor changes.
+			// TODO Cache the icon bits.
+			// TODO Generic icon and thumbnail cache in the API, based off the one from File Manager?
+
+			size_t fileBytes;
+			void *file = EsFileMap(application->cExecutable, -1, &fileBytes, ES_MAP_OBJECT_READ_ONLY);
+			EsBundle bundle = { .base = (const BundleHeader *) file, .bytes = (ptrdiff_t) fileBytes };
+
+			if (file) {
+				size_t icon32Bytes;
+				const void *icon32 = EsBundleFind(&bundle, EsLiteral("$Icons/32"), &icon32Bytes);
+
+				if (icon32) {
+					uint32_t width, height;
+					uint32_t *bits = (uint32_t *) EsImageLoad(icon32, icon32Bytes, &width, &height, 4);
+
+					if (bits) {
+						EsButtonSetIconFromBits(button, bits, width, height, width * 4);
+						EsHeapFree(bits);
+					}
+				}
+
+				EsObjectUnmap(file);
+			}
+		}
 
 		EsButtonOnCommand(button, [] (EsInstance *, EsElement *element, EsCommand *) {
 			ApplicationInstance *instance = ApplicationInstanceFindByWindowID(element->window->id);

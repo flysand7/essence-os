@@ -512,7 +512,7 @@ void FontInitialise() {
 					size_t fileIndex = weight - 1 + italic * 9;
 
 					if (item->valueBytes && item->value[0] == ':') {
-						entry.files[fileIndex] = FileStoreCreateFromEmbeddedFile(item->value + 1, item->valueBytes - 1);
+						entry.files[fileIndex] = FileStoreCreateFromEmbeddedFile(&bundleDesktop, item->value + 1, item->valueBytes - 1);
 					} else {
 						entry.files[fileIndex] = FileStoreCreateFromPath(item->value, item->valueBytes);
 					}
@@ -1373,7 +1373,7 @@ bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle r
 
 	if (!cacheEntry->data) {
 		if (!iconManagement.standardPack) {
-			iconManagement.standardPack = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Icons.dat"), &iconManagement.standardPackSize);
+			iconManagement.standardPack = (const uint8_t *) EsBundleFind(&bundleDesktop, EsLiteral("Icons.dat"), &iconManagement.standardPackSize);
 		}
 
 		iconManagement.buffer = (char *) EsHeapAllocate((iconManagement.bufferAllocated = 131072), false);

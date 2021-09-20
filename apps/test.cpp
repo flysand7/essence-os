@@ -130,7 +130,7 @@ const EsStyle stylePanel = {
 int TestCanvasMessage(EsElement *, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT) {
 		size_t dataBytes;
-		const void *data = EsEmbeddedFileGet("test", -1, &dataBytes);
+		const void *data = EsBundleFind(nullptr, "test", -1, &dataBytes);
 		if (data) EsDrawVectorFile(message->painter, EsPainterBoundsClient(message->painter), data, dataBytes);
 
 		uint32_t cornerRadii[4] = { 10, 20, 30, 40 };

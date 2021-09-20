@@ -33,7 +33,7 @@ DEFINE_INTERFACE_STRING(CommonFileMakeCopy, "Make a copy");
 DEFINE_INTERFACE_STRING(CommonFileVersionHistory, "Version history" ELLIPSIS);
 DEFINE_INTERFACE_STRING(CommonFileShowInFileManager, "Show in File Manager" ELLIPSIS);
 DEFINE_INTERFACE_STRING(CommonFileMenuFileSize, "Size:");
-DEFINE_INTERFACE_STRING(CommonFileMenuFileLocation, "Location:");
+DEFINE_INTERFACE_STRING(CommonFileMenuFileLocation, "Where:");
 DEFINE_INTERFACE_STRING(CommonFileUnchanged, "(All changes saved.)");
 
 DEFINE_INTERFACE_STRING(CommonSearchOpen, "Search");

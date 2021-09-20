@@ -1318,7 +1318,7 @@ const char *GetConstantString(const char *cKey) {
 
 bool ThemeInitialise() {
 	EsBuffer data = {};
-	data.in = (const uint8_t *) EsEmbeddedFileGet(EsLiteral("$Desktop/Theme.dat"), &data.bytes);
+	data.in = (const uint8_t *) EsBundleFind(&bundleDesktop, EsLiteral("Theme.dat"), &data.bytes);
 
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
 

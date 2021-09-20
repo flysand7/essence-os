@@ -858,7 +858,7 @@ void OutputSystemConfiguration() {
 				FilePrintFormat(file, "%s=|Fonts:/%.*s.dat\n", fontLines[i].key, (int) fontLines[i].valueBytes - 4, fontLines[i].value);
 #endif
 			} else {
-				FilePrintFormat(file, "%s=:$Desktop/%s\n", fontLines[i].key, fontLines[i].value);
+				FilePrintFormat(file, "%s=:%s\n", fontLines[i].key, fontLines[i].value);
 			}
 		} else {
 			size_t bytes = EsINIFormat(fontLines + i, buffer, sizeof(buffer));

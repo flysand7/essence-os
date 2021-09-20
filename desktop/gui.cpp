@@ -295,6 +295,15 @@ struct EsButton : EsElement {
 	EsCommand *command;
 	EsCommandCallback onCommand;
 	EsElement *checkBuddy;
+	EsImageDisplay *imageDisplay;
+};
+
+struct EsImageDisplay : EsElement {
+	void *source;
+	size_t sourceBytes;
+
+	uint32_t *bits;
+	size_t width, height, stride;
 };
 
 struct ScrollPane {
@@ -3729,6 +3738,14 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 			ES_RECT_2S(message->painter->width, message->painter->height), 
 			button->label, button->labelBytes, button->iconID, 
 			(button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : ES_FLAGS_DEFAULT);
+	} else if (message->type == ES_MSG_PAINT_ICON) {
+		if (button->imageDisplay) {
+			EsRectangle imageSize = ES_RECT_2S(button->imageDisplay->width, button->imageDisplay->height);
+			EsRectangle bounds = EsRectangleFit(EsPainterBoundsClient(message->painter), imageSize, true);
+			EsImageDisplayPaint(button->imageDisplay, message->painter, bounds);
+		} else {
+			return 0;
+		}
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		if (!button->measurementCache.Get(message, &button->state)) {
 			EsTextStyle textStyle;
@@ -3759,6 +3776,11 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 			Array<EsElement *> elements = { button->command->elements };
 			elements.FindAndDeleteSwap(button, true);
 			button->command->elements = elements.array;
+		}
+
+		if (button->imageDisplay) {
+			EsElementDestroy(button->imageDisplay);
+			button->imageDisplay = nullptr;
 		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
@@ -3885,8 +3907,26 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 void EsButtonSetIcon(EsButton *button, uint32_t iconID) {
 	EsMessageMutexCheck();
 
+	if (button->imageDisplay) {
+		EsElementDestroy(button->imageDisplay);
+		button->imageDisplay = nullptr;
+	}
+
 	button->iconID = iconID;
 	button->Repaint(true);
+}
+
+void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride) {
+	EsMessageMutexCheck();
+
+	if (!button->imageDisplay) {
+		button->imageDisplay = EsImageDisplayCreate(button);
+	}
+
+	if (button->imageDisplay) {
+		EsImageDisplayLoadBits(button->imageDisplay, bits, width, height, stride);
+		button->Repaint(true);
+	}
 }
 
 void EsButtonOnCommand(EsButton *button, EsCommandCallback onCommand, EsCommand *command) {
@@ -4991,44 +5031,43 @@ EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 // 	clipboard
 // 	zoom/pan
 
-struct EsImageDisplay : EsElement {
-	void *source;
-	size_t sourceBytes;
+void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds) {
+	if (!display->bits && !display->source) {
+		return;
+	}
 
-	uint32_t *bits;
-	size_t width, height, stride;
-};
+	if (!display->bits && display->source) {
+		uint32_t width, height;
+		uint8_t *bits = EsImageLoad((uint8_t *) display->source, display->sourceBytes, &width, &height, 4);
+
+		if (bits) {
+			display->bits = (uint32_t *) bits;
+			display->width = width;
+			display->height = height;
+			display->stride = width * 4;
+		}
+
+		if (~display->flags & UI_STATE_CHECK_VISIBLE) {
+			if (display->window->checkVisible.Add(display)) {
+				display->state |= UI_STATE_CHECK_VISIBLE;
+			}
+		}
+	}
+
+	EsPaintTarget source = {};
+	source.bits = display->bits;
+	source.width = display->width;
+	source.height = display->height;
+	source.stride = display->stride;
+	source.fullAlpha = ~display->flags & ES_IMAGE_DISPLAY_FULLY_OPAQUE;
+	EsDrawPaintTarget(painter, &source, bounds, ES_RECT_4(0, display->width, 0, display->height), 0xFF);
+}
 
 int ProcessImageDisplayMessage(EsElement *element, EsMessage *message) {
 	EsImageDisplay *display = (EsImageDisplay *) element;
 
-	if (message->type == ES_MSG_PAINT && (display->bits || display->source)) {
-		if (!display->bits && display->source) {
-			uint32_t width, height;
-			uint8_t *bits = EsImageLoad((uint8_t *) display->source, display->sourceBytes, &width, &height, 4);
-
-			if (bits) {
-				display->bits = (uint32_t *) bits;
-				display->width = width;
-				display->height = height;
-				display->stride = width * 4;
-			}
-
-			if (~display->flags & UI_STATE_CHECK_VISIBLE) {
-				if (display->window->checkVisible.Add(display)) {
-					display->state |= UI_STATE_CHECK_VISIBLE;
-				}
-			}
-		}
-
-		EsPaintTarget source = {};
-		source.bits = display->bits;
-		source.width = display->width;
-		source.height = display->height;
-		source.stride = display->stride;
-		EsDrawPaintTarget(message->painter, &source, 
-				EsPainterBoundsInset(message->painter), 
-				ES_RECT_4(0, display->width, 0, display->height), 0xFF);
+	if (message->type == ES_MSG_PAINT) {
+		EsImageDisplayPaint(display, message->painter, EsPainterBoundsInset(message->painter));
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = display->width;
 	} else if (message->type == ES_MSG_GET_HEIGHT) {
