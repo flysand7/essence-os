@@ -35,6 +35,7 @@
 #define APPLICATION_PERMISSION_SHUTDOWN                  (1 << 4)
 #define APPLICATION_PERMISSION_VIEW_FILE_TYPES           (1 << 5)
 #define APPLICATION_PERMISSION_ALL_DEVICES               (1 << 6)
+#define APPLICATION_PERMISSION_START_APPLICATION         (1 << 7)
 
 #define APPLICATION_ID_DESKTOP_BLANK_TAB (-0x70000000)
 #define APPLICATION_ID_DESKTOP_SETTINGS  (-0x70000001)
@@ -2196,6 +2197,7 @@ void ConfigurationLoadApplications() {
 		READ_PERMISSION("permission_run_temporary_application", APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION);
 		READ_PERMISSION("permission_shutdown", APPLICATION_PERMISSION_SHUTDOWN);
 		READ_PERMISSION("permission_view_file_types", APPLICATION_PERMISSION_VIEW_FILE_TYPES);
+		READ_PERMISSION("permission_start_application", APPLICATION_PERMISSION_START_APPLICATION);
 
 		desktop.installedApplications.Add(application);
 
@@ -2203,6 +2205,12 @@ void ConfigurationLoadApplications() {
 			desktop.fileManager = application;
 		} else if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("is_installer"))) {
 			desktop.installer = application;
+		}
+
+		if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("background_service"))) {
+			_EsApplicationStartupInformation startupInformation = {};
+			startupInformation.flags = ES_APPLICATION_STARTUP_BACKGROUND_SERVICE;
+			ApplicationInstanceCreate(application->id, &startupInformation, nullptr, true /* hidden */);
 		}
 	}
 
@@ -2481,11 +2489,16 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(message->desktop.windowID);
 
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
-		EsBuffer b = { .in = buffer + 1, .bytes = message->desktop.bytes - 1 };
-		EsApplicationStartupRequest request = {};
-		EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
-		request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
-		if (!b.error) OpenDocumentWithApplication(&request);
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_START_APPLICATION)) {
+			// TODO Restricting what flags can be requested?
+			EsBuffer b = { .in = buffer + 1, .bytes = message->desktop.bytes - 1 };
+			EsApplicationStartupRequest request = {};
+			EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
+			request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
+			if (!b.error) OpenDocumentWithApplication(&request);
+		}
 	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && pipe) {
 		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
 

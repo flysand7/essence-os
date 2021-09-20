@@ -495,8 +495,15 @@ void _start() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(FileManagerTitle));
-			instances.Add(instance);
-			InstanceCreateUI(instance);
+
+			EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
+			
+			if (request.flags & ES_APPLICATION_STARTUP_BACKGROUND_SERVICE) {
+				// Keep the instance alive so that we always receive PATH_MOVED messages and such.
+			} else {
+				instances.Add(instance);
+				InstanceCreateUI(instance);
+			}
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			// TODO Cleanup/cancel any unfinished non-blocking tasks before we get here!
 			Instance *instance = message->instanceDestroy.instance;
