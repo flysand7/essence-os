@@ -474,6 +474,14 @@ void Run(int emulator, int log, int debug) {
 			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
 				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
 
+			int cpuCores = atoi(GetOptionString("Emulator.Cores"));
+
+			if (debug == DEBUG_NONE) {
+				cpuCores = sysconf(_SC_NPROCESSORS_CONF);
+				if (cpuCores < 1) cpuCores = 1;
+				if (cpuCores > 16) cpuCores = 16;
+			}
+
 			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
@@ -481,7 +489,7 @@ void Run(int emulator, int log, int debug) {
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
-					atoi(GetOptionString("Emulator.Cores")), audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags);
+					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags);
 		} break;
 
 		case EMULATOR_BOCHS: {

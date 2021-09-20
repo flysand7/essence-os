@@ -1,5 +1,4 @@
 // gcc -o tri tri.c -lOSMesa && ./tri
-// x86_64-essence-gcc -o root/tri ports/mesa/tri.c -lOSMesa -lstdc++ -lz -g -D ESSENCE_WINDOW -D MODERN_GL
 
 #include <GL/osmesa.h>
 #include <GL/gl.h>
@@ -9,6 +8,9 @@
 #include <pthread.h>
 #include <assert.h>
 #include <string.h>
+#include <math.h>
+
+// #define MODERN_GL
 
 #define IMAGE_WIDTH (700)
 #define IMAGE_HEIGHT (600)
@@ -63,13 +65,41 @@ static void (*glVertexAttribPointer)(GLuint index, GLint size, GLenum type, GLbo
 #define GL_BGRA 0x80E1
 #endif
 
+#ifndef MODERN_GL
+float timeMs;
+
+void RenderLegacy() {
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glLoadIdentity();
+	glRotatef(fmodf(timeMs * 0.1f, 360.0f), 1, 0, 1);
+	glBegin(GL_TRIANGLES);
+	glColor4f(1, 0, 0, 1);
+	glVertex2f(-0.5f, -0.5f);
+	glColor4f(0, 1, 0, 1);
+	glVertex2f(0, 0.5f);
+	glColor4f(0, 0, 1, 1);
+	glVertex2f(0.5f, -0.5f);
+	glEnd();
+	glFinish();
+}
+#endif
+
 #ifdef ESSENCE_WINDOW
 #include <essence.h>
 
 int CanvasCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT_BACKGROUND) {
+#ifndef MODERN_GL
+		RenderLegacy();
+#endif
 		EsRectangle bounds = EsRectangleCenter(EsPainterBoundsInset(message->painter), ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsDrawBitmap(message->painter, bounds, buffer, IMAGE_WIDTH * 4, ES_DRAW_BITMAP_OPAQUE);
+	} else if (message->type == ES_MSG_ANIMATE) {
+		message->animate.complete = false;
+		timeMs += message->animate.deltaMs;
+		EsElementRepaint(element, NULL);
+		return ES_HANDLED;
 	}
 
 	return 0;
@@ -81,18 +111,6 @@ int main(int argc, char **argv) {
 	OSMesaContext context = OSMesaCreateContextExt(OSMESA_RGBA, 16, 0, 0, NULL);
 	buffer = (uint32_t *) malloc(IMAGE_WIDTH * IMAGE_HEIGHT * 4);
 	OSMesaMakeCurrent(context, buffer, GL_UNSIGNED_BYTE, IMAGE_WIDTH, IMAGE_HEIGHT);
-
-	glClearColor(0, 0, 0, 1);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glLoadIdentity();
-	glBegin(GL_TRIANGLES);
-	glColor4f(1, 0, 0, 1);
-	glVertex2f(-1, -1);
-	glColor4f(0, 1, 0, 1);
-	glVertex2f(0, 1);
-	glColor4f(0, 0, 1, 1);
-	glVertex2f(1, -1);
-	glEnd();
 #else
 	const int contextAttributes[] = {
 		OSMESA_FORMAT, OSMESA_RGBA,
@@ -207,17 +225,17 @@ int main(int argc, char **argv) {
 	glEnableVertexAttribArray(1);
 	glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, squareIBO);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (const GLvoid *) 0);
-	glClear(GL_COLOR_BUFFER_BIT); 
-
+	glVertexAttribPointer(0 /* Position */, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (const GLvoid *) 0);
 	glUseProgram(shader);
+
+	glClear(GL_COLOR_BUFFER_BIT); 
 	float transform[] = { 0.5f, 0, 0, 0, /**/ 0, 0.5f, 0, 0, /**/ 0, 0, 1, 0, /**/ 0, 0, 0, 1 };
-	glUniformMatrix4fv(shaderTransform, 1, GL_TRUE, transform);
+	glUniformMatrix4fv(shaderTransform, 1, GL_FALSE, transform);
 	glUniform4f(shaderBlendColor, 1, 0, 1, 1);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-#endif
 
 	glFinish();
+#endif
 	
 #ifndef ESSENCE_WINDOW
 	FILE *out = fopen("test.ppm", "wb");
@@ -239,7 +257,11 @@ int main(int argc, char **argv) {
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			EsInstance *instance = EsInstanceCreate(message, "GL Test", -1);
 			EsWindowSetTitle(instance->window, "GL Test", -1);
-			EsCustomElementCreate(instance->window, ES_CELL_FILL, 0)->messageUser = (EsUICallback) CanvasCallback;
+			EsElement *canvas = EsCustomElementCreate(instance->window, ES_CELL_FILL, 0);
+			canvas->messageUser = (EsUICallback) CanvasCallback;
+#ifndef MODERN_GL
+			EsElementStartAnimating(canvas);
+#endif
 		}
 	}
 #endif
