@@ -140,6 +140,7 @@ void SettingsUpdateGlobalAndWindowManager() {
 	api.global->showCursorShadow = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("show_cursor_shadow"));
 	api.global->useSmartQuotes = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("use_smart_quotes"));
 	api.global->enableHoverState = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("enable_hover_state"));
+	api.global->animationTimeMultiplier = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("enable_animations")) ? 1.0f : 0.0f;
 
 	{
 		float newUIScale = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("ui_scale")) * 0.01f;
@@ -698,6 +699,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsThemeEnableHoverState), 'H', "general", "enable_hover_state");
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsThemeEnableAnimations), 'M', "general", "enable_animations");
 }
 
 SettingsPage settingsPages[] = {

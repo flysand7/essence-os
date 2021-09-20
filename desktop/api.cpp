@@ -91,6 +91,7 @@ struct GlobalData {
 	volatile bool showCursorShadow;
 	volatile bool useSmartQuotes;
 	volatile bool enableHoverState;
+	volatile float animationTimeMultiplier;
 };
 
 struct ThreadLocalStorage {

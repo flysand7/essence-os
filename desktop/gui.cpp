@@ -1288,7 +1288,7 @@ void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, Es
 }
 
 void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags, float timeMultiplier) {
-	uint32_t durationMs = timeMultiplier * GetConstantNumber("transitionTime");
+	uint32_t durationMs = timeMultiplier * GetConstantNumber("transitionTime") * api.global->animationTimeMultiplier;
 
 	if (!durationMs) {
 		return;
@@ -1779,7 +1779,7 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 	}
 
 	if (oldStyle) {
-		if (oldStyle->style == currentStyle->style) {
+		if (oldStyle->style == currentStyle->style && api.global->animationTimeMultiplier > 0.01f) {
 			ThemeAnimationBuild(&animation, oldStyle, oldStyleKey.stateFlags, currentStyleKey.stateFlags);
 			animate = !ThemeAnimationComplete(&animation);
 		} else {
@@ -3462,7 +3462,7 @@ void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType tr
 	EsMessageMutexCheck();
 	EsAssert(targetChild->parent == panel);
 	EsAssert(panel->flags & ES_PANEL_SWITCHER); // Cannot switch element for a non-switcher panel.
-	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime");
+	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime") * api.global->animationTimeMultiplier;
 
 	if (targetChild == panel->switchedTo) {
 		return;
@@ -3503,7 +3503,7 @@ void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType tr
 void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier) {
 	// TODO Custom smoothing functions.
 
-	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime");
+	uint32_t timeMs = timeMultiplier * GetConstantNumber("transitionTime") * api.global->animationTimeMultiplier;
 	if (!timeMs) return;
 	EsMessageMutexCheck();
 	EsAssert(~panel->flags & ES_PANEL_SWITCHER); // Use EsPanelSwitchTo!
