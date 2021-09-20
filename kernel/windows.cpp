@@ -115,6 +115,8 @@ struct WindowManager {
 	bool shift2, alt2, ctrl2, flag2;
 	bool numlock;
 	uint8_t modifiers;
+	uint16_t keysHeld, maximumKeysHeld /* cleared when all released */;
+	uint8_t keysHeldBitSet[512 / 8];
 
 	// Eyedropper:
 
@@ -127,7 +129,6 @@ struct WindowManager {
 	// Miscellaneous:
 
 	EsRectangle workArea;
-	bool inSingleCtrlPress;
 
 	// Game controllers:
 
@@ -285,16 +286,10 @@ void WindowManager::PressKey(unsigned scancode) {
 		KernelPanic("WindowManager::PressKey - Panic key pressed.\n");
 	}
 
-	if (scancode == ES_SCANCODE_LEFT_CTRL) {
-		inSingleCtrlPress = true;
-	} else if (scancode == (ES_SCANCODE_LEFT_CTRL | K_SCANCODE_KEY_RELEASED) && inSingleCtrlPress) {
-		EsMessage m;
-		EsMemoryZero(&m, sizeof(EsMessage));
-		m.type = ES_MSG_SINGLE_CTRL_PRESS;
-		desktopProcess->messageQueue.SendMessage(nullptr, &m); 
-	} else {
-		inSingleCtrlPress = false;
-	}
+	bool single = (scancode & K_SCANCODE_KEY_RELEASED) && maximumKeysHeld == 1;
+	keysHeld += (scancode & K_SCANCODE_KEY_RELEASED) ? -1 : 1;
+	keysHeld = MaximumInteger(keysHeld, 0); // Prevent negative keys held count.
+	maximumKeysHeld = (!keysHeld || keysHeld > maximumKeysHeld) ? keysHeld : maximumKeysHeld;
 
 	if (eyedropping) {
 		if (scancode == (ES_SCANCODE_ESCAPE | K_SCANCODE_KEY_RELEASED)) {
@@ -337,21 +332,20 @@ void WindowManager::PressKey(unsigned scancode) {
 		message.keyboard.modifiers = modifiers;
 		message.keyboard.scancode = scancode & ~K_SCANCODE_KEY_RELEASED;
 		message.keyboard.numlock = numlock;
-
-		static uint8_t heldKeys[512 / 8] = {};
+		message.keyboard.single = single;
 
 		if (message.keyboard.scancode >= 512) {
 			KernelPanic("WindowManager::PressKey - Scancode outside valid range.\n");
 		}
-		
-		if (message.type == ES_MSG_KEY_DOWN && (heldKeys[message.keyboard.scancode / 8] & (1 << (message.keyboard.scancode % 8)))) {
+
+		if (message.type == ES_MSG_KEY_DOWN && (keysHeldBitSet[message.keyboard.scancode / 8] & (1 << (message.keyboard.scancode % 8)))) {
 			message.keyboard.repeat = true;
 		}
 
 		if (message.type == ES_MSG_KEY_DOWN) {
-			heldKeys[message.keyboard.scancode / 8] |= (1 << (message.keyboard.scancode % 8));
+			keysHeldBitSet[message.keyboard.scancode / 8] |= (1 << (message.keyboard.scancode % 8));
 		} else {
-			heldKeys[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
+			keysHeldBitSet[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
 		}
 
 		if (activeWindow) {

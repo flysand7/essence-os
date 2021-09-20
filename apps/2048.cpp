@@ -1,8 +1,6 @@
 #include <essence.h>
 #include <shared/strings.cpp>
 
-// TODO Application icon.
-
 #define TILE_COUNT (4)
 #define TILE_SIZE ((int32_t) (75 * scale))
 #define TILE_GAP ((int32_t) (10 * scale))

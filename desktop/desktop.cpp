@@ -561,6 +561,30 @@ WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *containe
 	return newTab;
 }
 
+int CursorLocatorMessage(EsElement *element, EsMessage *message) {
+	EsWindow *window = element->window;
+
+	if (message->type == ES_MSG_ANIMATE) {
+		window->announcementTimeMs += message->animate.deltaMs;
+		double progress = window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
+
+		if (progress > 1) {
+			EsElementDestroy(window);
+		} else {
+			EsElementRelayout(element);
+			message->animate.complete = false;
+			return ES_HANDLED;
+		}
+	} else if (message->type == ES_MSG_LAYOUT) {
+		EsElement *child = element->GetChild(0);
+		double progress = 1.0 - window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
+		int width = progress * child->GetWidth(0), height = progress * child->GetHeight(0);
+		child->InternalMove(width, height, (element->width - width) / 2, (element->height - height) / 2);
+	}
+
+	return 0;
+}
+
 int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 	if (desktop.installationState) {
 		// Do not process global keyboard shortcuts if the installer is running.
@@ -580,6 +604,21 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 		}
 
 		return ES_HANDLED;
+	} else if (message->type == ES_MSG_KEY_UP) {
+		if (message->keyboard.scancode == ES_SCANCODE_LEFT_CTRL && message->keyboard.single) {
+			if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("locate_cursor_on_ctrl"))) {
+				EsPoint position = EsMouseGetPosition();
+				EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_TIP);
+				EsElement *wrapper = EsCustomElementCreate(window, ES_CELL_FILL, ES_STYLE_CLEAR_BACKGROUND);
+				wrapper->messageUser = CursorLocatorMessage;
+				window->announcementBase = position;
+				EsElement *element = EsCustomElementCreate(wrapper, ES_CELL_FILL, ES_STYLE_CURSOR_LOCATOR);
+				int width = element->GetWidth(0), height = element->GetHeight(0);
+				EsRectangle bounds = ES_RECT_4PD(position.x - width / 2, position.y - height / 2, width, height);
+				EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
+				wrapper->StartAnimating();
+			}
+		}
 	}
 
 	return 0;
@@ -651,6 +690,8 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 				ProcessGlobalKeyboardShortcuts(element, message);
 			}
 		}
+	} else if (message->type == ES_MSG_KEY_UP) {
+		ProcessGlobalKeyboardShortcuts(element, message);
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {
 		container->tabBand->preventNextTabSizeAnimation = true;
 	}
@@ -2720,30 +2761,6 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 	EsHeapFree(instance);
 }
 
-int CursorLocatorMessage(EsElement *element, EsMessage *message) {
-	EsWindow *window = element->window;
-
-	if (message->type == ES_MSG_ANIMATE) {
-		window->announcementTimeMs += message->animate.deltaMs;
-		double progress = window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
-
-		if (progress > 1) {
-			EsElementDestroy(window);
-		} else {
-			EsElementRelayout(element);
-			message->animate.complete = false;
-			return ES_HANDLED;
-		}
-	} else if (message->type == ES_MSG_LAYOUT) {
-		EsElement *child = element->GetChild(0);
-		double progress = 1.0 - window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
-		int width = progress * child->GetWidth(0), height = progress * child->GetHeight(0);
-		child->InternalMove(width, height, (element->width - width) / 2, (element->height - height) / 2);
-	}
-
-	return 0;
-}
-
 void DesktopMessage(EsMessage *message) {
 	if (message->type == ES_MSG_POWER_BUTTON_PRESSED) {
 		ShutdownModalCreate();
@@ -2814,19 +2831,6 @@ void DesktopMessage(EsMessage *message) {
 			DesktopSetup(); // Refresh desktop UI.
 		} else {
 			// The screen resolution will be correctly queried in DesktopSetup.
-		}
-	} else if (message->type == ES_MSG_SINGLE_CTRL_PRESS) {
-		if (EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("locate_cursor_on_ctrl"))) {
-			EsPoint position = EsMouseGetPosition();
-			EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_TIP);
-			EsElement *wrapper = EsCustomElementCreate(window, ES_CELL_FILL, ES_STYLE_CLEAR_BACKGROUND);
-			wrapper->messageUser = CursorLocatorMessage;
-			window->announcementBase = position;
-			EsElement *element = EsCustomElementCreate(wrapper, ES_CELL_FILL, ES_STYLE_CURSOR_LOCATOR);
-			int width = element->GetWidth(0), height = element->GetHeight(0);
-			EsRectangle bounds = ES_RECT_4PD(position.x - width / 2, position.y - height / 2, width, height);
-			EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
-			wrapper->StartAnimating();
 		}
 	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 		CommonDesktopInstance *instance = (CommonDesktopInstance *) message->instanceDestroy.instance;

@@ -45,7 +45,7 @@ struct {
 	bool menuMode;
 
 	// Access keys.
-	bool accessKeyMode, unhandledAltPress;
+	bool accessKeyMode, accessKeyModeJustExited;
 
 	struct {
 		Array<AccessKeyEntry> entries;
@@ -6589,7 +6589,7 @@ void AccessKeyModeExit() {
 }
 
 void AccessKeyModeHandleKeyPress(EsMessage *message) {
-	if (message->type == ES_MSG_KEY_UP) {
+	if (message->type == ES_MSG_KEY_UP || message->keyboard.scancode == ES_SCANCODE_LEFT_ALT) {
 		return;
 	}
 
@@ -6665,22 +6665,19 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_SHIFT) gui.rightModifiers &= ~ES_MODIFIER_SHIFT;
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_FLAG ) gui.rightModifiers &= ~ES_MODIFIER_FLAG;
 
-		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT && gui.unhandledAltPress) {
+		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT && message->keyboard.single) {
 			AccessKeyModeEnter(window);
 			return true;
 		} else if (window->focused) {
-			EsMessageSend(window->focused, message);
-			return true;
+			return ES_HANDLED == EsMessageSend(window->focused, message);
+		} else {
+			return ES_HANDLED == EsMessageSend(window, message);
 		}
-
-		return false;
 	}
 
 	if (window->targetMenu) {
 		window = window->targetMenu;
 	}
-
-	gui.unhandledAltPress = false;
 
 	if (message->keyboard.scancode == ES_SCANCODE_F2 && message->keyboard.modifiers == ES_MODIFIER_ALT) {
 		EnterDebugger();
@@ -6758,7 +6755,9 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 			return true;
 		}
 	} else {
-		EsMessageSend(window, message);
+		if (ES_HANDLED == EsMessageSend(window, message)) {
+			return true;
+		}
 	}
 
 	// TODO Radio group navigation.
@@ -6775,11 +6774,6 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 	if (!window->hasDialog) {
 		// TODO Sort out what commands can be used from within dialogs and menus.
-
-		if (message->keyboard.scancode == ES_SCANCODE_LEFT_ALT) {
-			gui.unhandledAltPress = true;
-			return true;
-		}
 
 		if (!gui.keyboardShortcutNames.itemCount) UIInitialiseKeyboardShortcutNamesTable();
 		const char *shortcutName = (const char *) HashTableGetShort(&gui.keyboardShortcutNames, message->keyboard.scancode);

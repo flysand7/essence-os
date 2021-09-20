@@ -892,6 +892,7 @@ enum EsMessageType {
 	ES_MSG_KEY_DOWN				= 0x100E	// Propagates to ancestors if unhandled.
 	ES_MSG_KEY_UP				= 0x100F
 	ES_MSG_UPDATE_WINDOW			= 0x1010
+	ES_MSG_SINGLE_ALT_PRESS			= 0x1011
 	ES_MSG_WM_END				= 0x13FF
 
 	// Internal GUI messages:				// None of these should be sent directly.
@@ -968,7 +969,6 @@ enum EsMessageType {
 	ES_MSG_DESKTOP	                        = 0x4806
 	ES_MSG_DEVICE_CONNECTED			= 0x4807
 	ES_MSG_DEVICE_DISCONNECTED		= 0x4808
-	ES_MSG_SINGLE_CTRL_PRESS		= 0x4809
 
 	// Messages sent from Desktop to application instances:
 	ES_MSG_TAB_INSPECT_UI			= 0x4A01
@@ -1546,7 +1546,7 @@ struct EsMessageMouseButton {
 struct EsMessageKeyboard {
 	uint32_t scancode; 
 	uint8_t modifiers;
-	bool repeat, numpad, numlock;
+	bool repeat, numpad, numlock, single;
 };
 
 struct EsMessageAnimate {
