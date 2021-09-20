@@ -578,38 +578,39 @@ void BuildDesktop(Application *application) {
 }
 
 void BuildApplication(Application *application) {
+	char symbolFile[256];
+	char objectFiles[4096];
+	char strippedFile[256];
+	char executable[256];
+	char linkerScript[256];
+	char crti[256];
+	char crtbegin[256];
+	char crtend[256];
+	char crtn[256];
+	size_t objectFilesPosition = 0;
+
+	snprintf(symbolFile, sizeof(symbolFile), "bin/%s", application->name);
+	snprintf(strippedFile, sizeof(strippedFile), "bin/%s.no_symbols", application->name);
+	snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts);
+	snprintf(crti, sizeof(crti), "%s/crti.o", toolchainCRTObjects);
+	snprintf(crtbegin, sizeof(crtbegin), "%s/crtbegin.o", toolchainCRTObjects);
+	snprintf(crtend, sizeof(crtend), "%s/crtend.o", toolchainCRTObjects);
+	snprintf(crtn, sizeof(crtn), "%s/crtn.o", toolchainCRTObjects);
+
+	if (systemBuild) {
+		snprintf(executable, sizeof(executable), "root/Applications/%s.esx", application->name);
+	} else {
+		snprintf(executable, sizeof(executable), "bin/%s.esx", application->name);
+	}
+
 	if (application->customCompileCommand) {
 #ifdef OS_ESSENCE
 		// TODO.
 #else
 		application->error = system(application->customCompileCommand);
+		ExecuteForApp(application, toolchainStrip, "--strip-all", executable);
 #endif
 	} else {
-		char symbolFile[256];
-		char objectFiles[4096];
-		char strippedFile[256];
-		char executable[256];
-		char linkerScript[256];
-		char crti[256];
-		char crtbegin[256];
-		char crtend[256];
-		char crtn[256];
-		size_t objectFilesPosition = 0;
-
-		snprintf(symbolFile, sizeof(symbolFile), "bin/%s", application->name);
-		snprintf(strippedFile, sizeof(strippedFile), "bin/%s.no_symbols", application->name);
-		snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts);
-		snprintf(crti, sizeof(crti), "%s/crti.o", toolchainCRTObjects);
-		snprintf(crtbegin, sizeof(crtbegin), "%s/crtbegin.o", toolchainCRTObjects);
-		snprintf(crtend, sizeof(crtend), "%s/crtend.o", toolchainCRTObjects);
-		snprintf(crtn, sizeof(crtn), "%s/crtn.o", toolchainCRTObjects);
-
-		if (systemBuild) {
-			snprintf(executable, sizeof(executable), "root/Applications/%s.esx", application->name);
-		} else {
-			snprintf(executable, sizeof(executable), "bin/%s.esx", application->name);
-		}
-
 		for (uintptr_t i = 0; i < arrlenu(application->sources); i++) {
 			const char *source = application->sources[i];
 			size_t sourceBytes = strlen(source);

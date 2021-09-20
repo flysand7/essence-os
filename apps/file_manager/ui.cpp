@@ -831,22 +831,6 @@ int ListCallback(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
 
-#define ADD_SORT_COLUMN_MENU_ITEM(_column, _string) \
-		EsMenuAddItem(menu, instance->viewSettings.sortColumn == (_column) ? ES_MENU_ITEM_CHECKED : ES_FLAGS_DEFAULT, \
-				INTERFACE_STRING(_string), InstanceChangeSortColumn, _column)
-		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortAscending));
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_NAME, FileManagerColumnName);
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_TYPE, FileManagerColumnType);
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_SIZE, FileManagerColumnSize);
-		EsMenuAddSeparator(menu);
-		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortDescending));
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_NAME | (1 << 8), FileManagerColumnName);
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_TYPE | (1 << 8), FileManagerColumnType);
-		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_SIZE | (1 << 8), FileManagerColumnSize);
-#undef ADD_SORT_COLUMN_MENU_ITEM
-
-		EsMenuNextColumn(menu);
-
 		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(FileManagerListContextActions));
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardPaste),            EsCommandByID(instance, ES_COMMAND_PASTE));
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonSelectionSelectAll),        EsCommandByID(instance, ES_COMMAND_SELECT_ALL));
@@ -862,6 +846,22 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		ADD_VIEW_TYPE_MENU_ITEM(&instance->commandViewTiles,      CommonListViewTypeTiles);
 		ADD_VIEW_TYPE_MENU_ITEM(&instance->commandViewDetails,    CommonListViewTypeDetails);
 #undef ADD_VIEW_TYPE_MENU_ITEM
+
+		EsMenuNextColumn(menu);
+
+#define ADD_SORT_COLUMN_MENU_ITEM(_column, _string) \
+		EsMenuAddItem(menu, instance->viewSettings.sortColumn == (_column) ? ES_MENU_ITEM_CHECKED : ES_FLAGS_DEFAULT, \
+				INTERFACE_STRING(_string), InstanceChangeSortColumn, _column)
+		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortAscending));
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_NAME, FileManagerColumnName);
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_TYPE, FileManagerColumnType);
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_SIZE, FileManagerColumnSize);
+		EsMenuAddSeparator(menu);
+		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortDescending));
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_NAME | (1 << 8), FileManagerColumnName);
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_TYPE | (1 << 8), FileManagerColumnType);
+		ADD_SORT_COLUMN_MENU_ITEM(COLUMN_SIZE | (1 << 8), FileManagerColumnSize);
+#undef ADD_SORT_COLUMN_MENU_ITEM
 
 		EsMenuShow(menu);
 	} else {
