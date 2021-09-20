@@ -192,7 +192,7 @@ struct EsUndoManager {
 struct APIInstance {
 	HashStore<uint32_t, EsCommand *> commands;
 
-	EsApplicationStartupInformation *startupInformation;
+	_EsApplicationStartupInformation *startupInformation;
 	EsHandle mainWindowHandle;
 
 	char *documentPath;
@@ -442,40 +442,47 @@ void SystemConfigurationLoad(char *file, size_t fileBytes) {
 	EsHeapFree(file);
 }
 
-uint8_t *ApplicationStartupInformationToBuffer(const EsApplicationStartupInformation *information, size_t *dataBytes = nullptr) {
-	EsApplicationStartupInformation copy = *information;
+uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr) {
+	_EsApplicationStartupInformation copy = *information;
 	if (copy.filePathBytes == -1) copy.filePathBytes = EsCStringLength(copy.filePath);
-	size_t bytes = 1 + sizeof(EsApplicationStartupInformation) + copy.filePathBytes;
-	uint8_t *buffer = (uint8_t *) EsHeapAllocate(bytes, false);
-	buffer[0] = DESKTOP_MSG_START_APPLICATION;
-	EsMemoryCopy(buffer + 1, &copy, sizeof(EsApplicationStartupInformation));
-	EsMemoryCopy(buffer + 1 + sizeof(EsApplicationStartupInformation), copy.filePath, copy.filePathBytes);
-	if (dataBytes) *dataBytes = bytes;
-	return buffer;
+
+	EsBuffer buffer = { .canGrow = true };
+	EsBufferWriteInt8(&buffer, DESKTOP_MSG_START_APPLICATION);
+	EsBufferWrite(&buffer, &copy, sizeof(_EsApplicationStartupInformation));
+	EsBufferWrite(&buffer, copy.filePath, copy.filePathBytes);
+	EsBufferWrite(&buffer, copy.containingFolder, copy.containingFolderBytes);
+
+	if (dataBytes) *dataBytes = buffer.position;
+	return buffer.out;
 }
 
-void EsApplicationStart(const EsApplicationStartupInformation *information) {
-	size_t bufferBytes;
-	uint8_t *buffer = ApplicationStartupInformationToBuffer(information, &bufferBytes);
-	MessageDesktop(buffer, bufferBytes);
+_EsApplicationStartupInformation *ApplicationStartupInformationParse(const void *data, size_t dataBytes) {
+	EsBuffer buffer = { .in = (const uint8_t *) data, .bytes = dataBytes };
+	_EsApplicationStartupInformation *startupInformation = (_EsApplicationStartupInformation *) EsBufferRead(&buffer, sizeof(_EsApplicationStartupInformation));
+	startupInformation->filePath = (char *) EsHeapAllocate(startupInformation->filePathBytes, false);
+	EsBufferReadInto(&buffer, (char *) startupInformation->filePath, startupInformation->filePathBytes);
+	startupInformation->containingFolder = (char *) EsHeapAllocate(startupInformation->containingFolderBytes, false);
+	EsBufferReadInto(&buffer, (char *) startupInformation->containingFolder, startupInformation->containingFolderBytes);
+	return startupInformation;
 }
 
-EsApplicationStartupInformation *ApplicationStartupInformationParse(const void *data, size_t dataBytes) {
-	EsApplicationStartupInformation *startupInformation = (EsApplicationStartupInformation *) data;
+void EsApplicationStart(const EsApplicationStartupRequest *request) {
+	EsApplicationStartupRequest copy = *request;
 
-	if (sizeof(EsApplicationStartupInformation) <= dataBytes) {
-		dataBytes -= sizeof(EsApplicationStartupInformation);
-		if ((size_t) startupInformation->filePathBytes > dataBytes) goto error;
-		dataBytes -= startupInformation->filePathBytes;
-		if (dataBytes) goto error;
-		startupInformation->filePath = (const char *) (startupInformation + 1);
-	} else {
-		error:;
-		EsPrint("Warning: received corrupted startup information.\n");
-		return nullptr;
+	if (copy.filePathBytes == -1) {
+		copy.filePathBytes = EsCStringLength(copy.filePath);
 	}
 
-	return startupInformation;
+	EsBuffer buffer = { .canGrow = true };
+	EsBufferWriteInt8(&buffer, DESKTOP_MSG_START_APPLICATION);
+	EsBufferWrite(&buffer, &copy, sizeof(EsApplicationStartupRequest));
+	EsBufferWrite(&buffer, copy.filePath, copy.filePathBytes);
+
+	if (!buffer.error) {
+		MessageDesktop(buffer.out, buffer.position);
+	}
+
+	EsHeapFree(buffer.out);
 }
 
 void EsInstanceSetClassEditor(EsInstance *_instance, const EsInstanceClassEditorSettings *settings) {
@@ -752,7 +759,7 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 	apiInstance->applicationNameBytes = applicationNameBytes;
 
 	if (message && message->createInstance.data != ES_INVALID_HANDLE && message->createInstance.dataBytes > 1) {
-		apiInstance->startupInformation = (EsApplicationStartupInformation *) EsHeapAllocate(message->createInstance.dataBytes, false);
+		apiInstance->startupInformation = (_EsApplicationStartupInformation *) EsHeapAllocate(message->createInstance.dataBytes, false);
 
 		if (apiInstance->startupInformation) {
 			void *buffer = EsHeapAllocate(message->createInstance.dataBytes, false);
@@ -788,9 +795,18 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 	return instance;
 }
 
-const EsApplicationStartupInformation *EsInstanceGetStartupInformation(EsInstance *_instance) {
+EsApplicationStartupRequest EsInstanceGetStartupRequest(EsInstance *_instance) {
 	APIInstance *instance = (APIInstance *) _instance->_private;
-	return instance->startupInformation;
+	EsApplicationStartupRequest request = {};
+
+	if (instance->startupInformation) {
+		request.id = instance->startupInformation->id;
+		request.filePath = instance->startupInformation->filePath;
+		request.filePathBytes = instance->startupInformation->filePathBytes;
+		request.flags = instance->startupInformation->flags;
+	}
+
+	return request;
 }
 
 void EsInstanceDestroy(EsInstance *instance) {
@@ -1055,14 +1071,21 @@ EsMessage *EsMessageReceive() {
 				if (_instance) {
 					APIInstance *instance = (APIInstance *) _instance->_private;
 					EsHeapFree((void *) instance->startupInformation->filePath);
-					instance->startupInformation->filePath = buffer;
-					instance->startupInformation->filePathBytes = message.message.tabOperation.bytes;
-					EsWindowSetTitle(_instance->window, buffer, message.message.tabOperation.bytes);
-				} else {
-					EsHeapFree(buffer);
+					EsHeapFree((void *) instance->startupInformation->containingFolder);
+					EsMemoryCopy(&instance->startupInformation->filePathBytes, buffer, sizeof(ptrdiff_t));
+					EsMemoryCopy(&instance->startupInformation->containingFolderBytes, buffer + sizeof(ptrdiff_t), sizeof(ptrdiff_t));
+					char *filePath = (char *) EsHeapAllocate(instance->startupInformation->filePathBytes, false);
+					char *containingFolder = (char *) EsHeapAllocate(instance->startupInformation->containingFolderBytes, false);
+					EsMemoryCopy(filePath, buffer + sizeof(ptrdiff_t) * 2, instance->startupInformation->filePathBytes);
+					EsMemoryCopy(containingFolder, buffer + sizeof(ptrdiff_t) * 2 + instance->startupInformation->filePathBytes, 
+							instance->startupInformation->containingFolderBytes);
+					instance->startupInformation->filePath = filePath;
+					instance->startupInformation->containingFolder = containingFolder;
+					EsWindowSetTitle(_instance->window, filePath, instance->startupInformation->filePathBytes);
 				}
 			}
 
+			EsHeapFree(buffer);
 			EsHandleClose(message.message.tabOperation.handle);
 		} else if (type == ES_MSG_INSTANCE_DOCUMENT_UPDATED) {
 			EsInstance *_instance = InstanceFromWindowID(message.message.tabOperation.id);

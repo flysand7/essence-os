@@ -792,11 +792,11 @@ int ListCallback(EsElement *element, EsMessage *message) {
 
 				if (fileType->openHandler) {
 					String path = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(entry->GetInternalName()));
-					EsApplicationStartupInformation information = {};
-					information.id = fileType->openHandler;
-					information.filePath = path.text;
-					information.filePathBytes = path.bytes;
-					EsApplicationStart(&information);
+					EsApplicationStartupRequest request = {};
+					request.id = fileType->openHandler;
+					request.filePath = path.text;
+					request.filePathBytes = path.bytes;
+					EsApplicationStart(&request);
 					StringDestroy(&path);
 				} else {
 					EsDialogShowAlert(instance->window, INTERFACE_STRING(FileManagerOpenFileError),
@@ -1064,20 +1064,20 @@ void InstanceCreateUI(Instance *instance) {
 
 	// Load initial folder:
 
-	const EsApplicationStartupInformation *startupInformation = EsInstanceGetStartupInformation(instance);
+	EsApplicationStartupRequest startupRequest = EsInstanceGetStartupRequest(instance);
 	String path;
 
-	if (startupInformation && (startupInformation->flags & ES_APPLICATION_STARTUP_MANUAL_PATH)) {
-		uintptr_t directoryEnd = startupInformation->filePathBytes;
+	if (startupRequest.flags & ES_APPLICATION_STARTUP_MANUAL_PATH) {
+		uintptr_t directoryEnd = startupRequest.filePathBytes;
 
-		for (uintptr_t i = 0; i < (uintptr_t) startupInformation->filePathBytes; i++) {
-			if (startupInformation->filePath[i] == '/') {
+		for (uintptr_t i = 0; i < (uintptr_t) startupRequest.filePathBytes; i++) {
+			if (startupRequest.filePath[i] == '/') {
 				directoryEnd = i + 1;
 			}
 		}
 
-		instance->delayedFocusItem = StringAllocateAndFormat("%s", startupInformation->filePathBytes - directoryEnd, startupInformation->filePath + directoryEnd);
-		path = StringAllocateAndFormat("%s", directoryEnd, startupInformation->filePath);
+		instance->delayedFocusItem = StringAllocateAndFormat("%s", startupRequest.filePathBytes - directoryEnd, startupRequest.filePath + directoryEnd);
+		path = StringAllocateAndFormat("%s", directoryEnd, startupRequest.filePath);
 	} else {
 		path = StringAllocateAndFormat("0:/");
 	}

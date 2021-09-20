@@ -37,14 +37,13 @@ typedef struct Token {
 #define TOKEN_API_TYPE (29)
 #define TOKEN_FUNCTION_POINTER (30)
 #define TOKEN_TYPE_NAME (31)
-#define TOKEN_DEFINE_PRIVATE (32) 
+#define TOKEN_PRIVATE (32)
 	int type, value;
 	char *text;
 } Token;
 
 #define ENTRY_ROOT (0)
 #define ENTRY_DEFINE (1)
-#define ENTRY_DEFINE_PRIVATE (2)
 #define ENTRY_ENUM (3)
 #define ENTRY_STRUCT (4)
 #define ENTRY_UNION (5)
@@ -58,6 +57,8 @@ typedef struct Entry {
 
 	char *name;
 	struct Entry *children;
+
+	bool isPrivate;
 
 	union {
 		struct {
@@ -146,7 +147,6 @@ Token NextToken() {
 
 #define COMPARE_KEYWORD(x, y) if (strlen(x) == token.value && 0 == memcmp(x, token.text, token.value)) token.type = y
 		COMPARE_KEYWORD("define", TOKEN_DEFINE);
-		COMPARE_KEYWORD("define_private", TOKEN_DEFINE_PRIVATE);
 		COMPARE_KEYWORD("enum", TOKEN_ENUM);
 		COMPARE_KEYWORD("struct", TOKEN_STRUCT);
 		COMPARE_KEYWORD("function", TOKEN_FUNCTION);
@@ -158,6 +158,7 @@ Token NextToken() {
 		COMPARE_KEYWORD("opaque_type", TOKEN_API_TYPE);
 		COMPARE_KEYWORD("function_pointer", TOKEN_FUNCTION_POINTER);
 		COMPARE_KEYWORD("type_name", TOKEN_TYPE_NAME);
+		COMPARE_KEYWORD("private", TOKEN_PRIVATE);
 	}
 
 	else {
@@ -296,25 +297,16 @@ void ParseFile(Entry *root, const char *name) {
 	position = 0;
 
 	Token token;
-	bool nextToken = true;
+	bool isPrivate = false;
 
 	while (true) {
-		if (nextToken) token = NextToken();
-		nextToken = true;
+		token = NextToken();
 
 		if (token.type == TOKEN_DEFINE) {
 			Token identifier = NextToken();
 			size_t length = 0;
 			while (!FoundEndOfLine(length)) length++;
-			Entry entry = { .type = ENTRY_DEFINE, .name = TokenToString(identifier) };
-			entry.define.value = TokenToString((Token) { .value = (int) length, .text = buffer + position });
-			arrput(root->children, entry);
-			position += length;
-		} else if (token.type == TOKEN_DEFINE_PRIVATE) {
-			Token identifier = NextToken();
-			size_t length = 0;
-			while (!FoundEndOfLine(length)) length++;
-			Entry entry = { .type = ENTRY_DEFINE_PRIVATE, .name = TokenToString(identifier) };
+			Entry entry = { .type = ENTRY_DEFINE, .name = TokenToString(identifier), .isPrivate = isPrivate };
 			entry.define.value = TokenToString((Token) { .value = (int) length, .text = buffer + position });
 			arrput(root->children, entry);
 			position += length;
@@ -334,7 +326,7 @@ void ParseFile(Entry *root, const char *name) {
 			assert(name.type == TOKEN_IDENTIFIER);
 			assert(NextToken().type == TOKEN_LEFT_BRACE);
 
-			Entry entry = { .type = ENTRY_ENUM, .name = TokenToString(name) };
+			Entry entry = { .type = ENTRY_ENUM, .name = TokenToString(name), .isPrivate = isPrivate };
 			Token token = NextToken();
 
 			while (true) {
@@ -364,6 +356,7 @@ void ParseFile(Entry *root, const char *name) {
 			assert(structName.type == TOKEN_IDENTIFIER);
 			assert(NextToken().type == TOKEN_LEFT_BRACE);
 			Entry entry = ParseRecord(false);
+			entry.isPrivate = isPrivate;
 			entry.name = TokenToString(structName);
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_FUNCTION || token.type == TOKEN_FUNCTION_NOT_IN_KERNEL 
@@ -371,7 +364,7 @@ void ParseFile(Entry *root, const char *name) {
 			bool inKernel = token.type != TOKEN_FUNCTION_NOT_IN_KERNEL; 
 			Entry objectFunctionType;
 			bool firstVariable = true;
-			Entry entry = { .type = ENTRY_FUNCTION, .function = { .inKernel = inKernel, .apiArrayIndex = 0 } };
+			Entry entry = { .type = ENTRY_FUNCTION, .isPrivate = isPrivate, .function = { .inKernel = inKernel, .apiArrayIndex = 0 } };
 
 			if (token.type == TOKEN_FUNCTION_POINTER) {
 				entry.function.functionPointer = true;
@@ -395,15 +388,18 @@ void ParseFile(Entry *root, const char *name) {
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_TYPE_NAME) {
 			Token oldName = NextToken(), newName = NextToken();
-			Entry entry = { .type = ENTRY_TYPE_NAME, .name = TokenToString(newName), .oldTypeName = TokenToString(oldName) };
+			Entry entry = { .type = ENTRY_TYPE_NAME, .isPrivate = isPrivate, .name = TokenToString(newName), .oldTypeName = TokenToString(oldName) };
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_SEMICOLON) {
+		} else if (token.type == TOKEN_PRIVATE) {
 		} else if (token.type == TOKEN_EOF) {
 			break;
 		} else {
 			Log("unexpected token '%.*s' at top level\n", token.value, token.text);
 			exit(1);
 		}
+
+		isPrivate = token.type == TOKEN_PRIVATE;
 	}
 
 	free(buffer);
@@ -593,10 +589,12 @@ void OutputC(Entry *root) {
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
 
+		if (entry->isPrivate) {
+			FilePrintFormat(output, "#if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)\n");
+		}
+
 		if (entry->type == ENTRY_DEFINE) {
 			FilePrintFormat(output, "#define %s (%s)\n", entry->name, entry->define.value);
-		} else if (entry->type == ENTRY_DEFINE_PRIVATE) {
-			FilePrintFormat(output, "#ifdef ES_API\n#define %s (%s)\n#endif\n", entry->name, entry->define.value);
 		} else if (entry->type == ENTRY_STRUCT) {
 			FilePrintFormat(output, "typedef struct %s {\n", entry->name);
 			OutputCRecord(entry, 0);
@@ -639,6 +637,10 @@ void OutputC(Entry *root) {
 			OutputCFunction(entry);
 		} else if (entry->type == ENTRY_TYPE_NAME) {
 			FilePrintFormat(output, "typedef %s %s;\n", entry->oldTypeName, entry->name);
+		}
+
+		if (entry->isPrivate) {
+			FilePrintFormat(output, "#endif\n");
 		}
 	}
 
@@ -901,6 +903,7 @@ void OutputOdin(Entry *root) {
 
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
+		if (entry->isPrivate) continue;
 
 		if (entry->type == ENTRY_DEFINE) {
 			const char *styleCast = strstr(entry->define.value, "STYLE_CAST(");
@@ -1128,6 +1131,7 @@ void OutputZig(Entry *root) {
 
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
+		if (entry->isPrivate) continue;
 
 		if (entry->type == ENTRY_DEFINE) {
 			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), ZigReplaceTypes(entry->define.value, false));

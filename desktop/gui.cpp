@@ -5224,8 +5224,9 @@ EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 
 const EsStyle styleFileMenuDocumentInformationPanel1 = {
 	.metrics = {
-		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_PREFERRED_WIDTH,
 		.insets = ES_RECT_4(10, 10, 5, 5),
+		.preferredWidth = 230,
 		.gapMajor = 5,
 	},
 };
@@ -5322,16 +5323,16 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 
 	{
 		// TODO Get this icon from the file type database?
-		// 	We'll probably need Desktop to send this via EsApplicationStartupInformation and when the file is renamed.
+		// 	We'll probably need Desktop to send this via _EsApplicationStartupInformation and when the file is renamed.
 
-		EsIconDisplayCreate(panel1, ES_FLAGS_DEFAULT, 0, editorSettings->documentIconID);
+		EsIconDisplayCreate(panel1, ES_CELL_V_TOP, 0, editorSettings->documentIconID);
 		EsSpacerCreate(panel1, ES_FLAGS_DEFAULT, 0, 5, 0);
 
-		EsPanel *panel2 = EsPanelCreate(panel1, ES_FLAGS_DEFAULT, &styleFileMenuDocumentInformationPanel2);
+		EsPanel *panel2 = EsPanelCreate(panel1, ES_CELL_H_FILL, &styleFileMenuDocumentInformationPanel2);
 		if (!panel2) goto show;
-		EsPanel *switcher = EsPanelCreate(panel2, ES_PANEL_H_LEFT | ES_PANEL_SWITCHER | ES_PANEL_SWITCHER_MEASURE_LARGEST);
+		EsPanel *switcher = EsPanelCreate(panel2, ES_CELL_H_FILL | ES_PANEL_SWITCHER | ES_PANEL_SWITCHER_MEASURE_LARGEST);
 		if (!switcher) goto show;
-		EsPanel *panel3 = EsPanelCreate(switcher, ES_PANEL_HORIZONTAL | ES_PANEL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+		EsPanel *panel3 = EsPanelCreate(switcher, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, &styleFileMenuDocumentInformationPanel2);
 		if (!panel3) goto show;
 
 		instance->fileMenuNameTextbox = EsTextboxCreate(switcher, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED, &styleFileMenuNameTextbox);
@@ -5341,10 +5342,10 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 		EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNamePanel, ES_TRANSITION_NONE);
 		
 		if (newDocument) {
-			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
+			EsTextDisplayCreate(panel3, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL, 
 					editorSettings->newDocumentTitle, editorSettings->newDocumentTitleBytes);
 		} else {
-			EsTextDisplayCreate(panel3, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, 
+			EsTextDisplayCreate(panel3, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL, 
 					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
 		}
 
@@ -5358,10 +5359,12 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 			if (!panel4) goto show;
 			EsPanelSetBands(panel4, 2 /* columns */);
 
-			char buffer[64];
-			size_t bytes;
+			EsTextDisplayCreate(panel4, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL_SECONDARY, INTERFACE_STRING(CommonFileMenuFileLocation));
+			EsTextDisplayCreate(panel4, ES_CELL_H_LEFT, ES_STYLE_TEXT_LABEL, instance->startupInformation->containingFolder, 
+					instance->startupInformation->containingFolderBytes);
 
-			bytes = EsStringFormat(buffer, sizeof(buffer), "%D", EsFileStoreGetSize(instance->fileStore));
+			char buffer[64];
+			size_t bytes = EsStringFormat(buffer, sizeof(buffer), "%D", EsFileStoreGetSize(instance->fileStore));
 			EsTextDisplayCreate(panel4, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL_SECONDARY, INTERFACE_STRING(CommonFileMenuFileSize));
 			EsTextDisplayCreate(panel4, ES_CELL_H_LEFT, ES_STYLE_TEXT_LABEL, buffer, bytes);
 
@@ -5369,21 +5372,21 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 		}
 	}
 
-	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR && !newDocument) {
+	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR) {
 		EsMenuAddSeparator(menu);
 
-		if (instance->commandSave.disabled) {
+		if (instance->commandSave.disabled && !newDocument) {
 			EsMenuAddItem(menu, ES_ELEMENT_DISABLED, INTERFACE_STRING(CommonFileUnchanged));
 		} else {
 			EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileSave), &instance->commandSave);
 		}
 
 		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileMakeCopy)); // TODO.
-		EsMenuAddSeparator(menu);
+		// EsMenuAddSeparator(menu);
 
 		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShare)); // TODO.
 		// EsMenuAddItem(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileVersionHistory)); // TODO.
-		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
+		EsMenuAddCommand(menu, newDocument ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileShowInFileManager), &instance->commandShowInFileManager);
 	}
 
 	show: EsMenuShow(menu);

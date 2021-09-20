@@ -220,8 +220,8 @@ struct {
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
-ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden = false);
-bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance);
+ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden = false);
+bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance);
 void ApplicationInstanceClose(ApplicationInstance *instance);
 ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove = false);
 void EmbeddedWindowDestroyed(EsObjectID id);
@@ -1328,7 +1328,59 @@ void ApplicationInstanceCleanup(ApplicationInstance *instance) {
 	instance->application = nullptr;
 }
 
-bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
+void PathGetNameAndContainingFolder(const char *path, ptrdiff_t pathBytes,
+				const char **name, ptrdiff_t *nameBytes,
+				const char **containingFolder, ptrdiff_t *containingFolderBytes,
+				EsVolumeInformation *volumeInformation /* needs to be allocated outside */) {
+	if (pathBytes == -1) {
+		pathBytes = EsCStringLength(path);
+	}
+
+	*name = path;
+	*nameBytes = pathBytes;
+	*containingFolderBytes = 0;
+
+	const char *containingFolderEnd = nullptr;
+
+	for (uintptr_t i = pathBytes; i > 0; i--) {
+		if (path[i - 1] == '/') {
+			if (!containingFolderEnd) {
+				containingFolderEnd = path + i - 1;
+				*name = path + i;
+				*nameBytes = pathBytes - i;
+			} else {
+				*containingFolder = path + i;
+				*containingFolderBytes = containingFolderEnd - *containingFolder;
+			}
+		}
+	}
+
+	// TODO Get the user name of the folder from File Manager?
+	// 	Maybe more of File Manager's code needs to be shared with Desktop..?
+
+	if (pathBytes && !(*containingFolderBytes)) {
+		if (EsMountPointGetVolumeInformation(path, pathBytes, volumeInformation)) {
+			*containingFolder = volumeInformation->label;
+			*containingFolderBytes = volumeInformation->labelBytes;
+		}
+	}
+}
+
+void *OpenDocumentGetRenameMessageData(const char *path, size_t pathBytes, size_t *bytes) {
+	EsVolumeInformation volumeInformation;
+	const char *name, *containingFolder;
+	ptrdiff_t nameBytes, containingFolderBytes;
+	PathGetNameAndContainingFolder(path, pathBytes, &name, &nameBytes, &containingFolder, &containingFolderBytes, &volumeInformation);
+	*bytes = sizeof(ptrdiff_t) * 2 + nameBytes + containingFolderBytes;
+	uint8_t *data = (uint8_t *) EsHeapAllocate(*bytes, false);
+	EsMemoryCopy(data, &nameBytes, sizeof(ptrdiff_t));
+	EsMemoryCopy(data + sizeof(ptrdiff_t), &containingFolderBytes, sizeof(ptrdiff_t));
+	EsMemoryCopy(data + sizeof(ptrdiff_t) * 2, name, nameBytes);
+	EsMemoryCopy(data + sizeof(ptrdiff_t) * 2 + nameBytes, containingFolder, containingFolderBytes);
+	return data;
+}
+
+bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
 	if (desktop.inShutdown) {
 		return false;
 	}
@@ -1349,12 +1401,12 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	}
 
 	if (!application) {
-		EsApplicationStartupInformation s = {};
+		_EsApplicationStartupInformation s = {};
 		s.data = CRASHED_TAB_PROGRAM_NOT_FOUND;
 		return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 	}
 
-	EsApplicationStartupInformation _startupInformation = {};
+	_EsApplicationStartupInformation _startupInformation = {};
 	
 	if (!startupInformation) {
 		startupInformation = &_startupInformation;
@@ -1392,7 +1444,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 				ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND, &executableNode);
 
 		if (ES_CHECK_ERROR(error)) {
-			EsApplicationStartupInformation s = {};
+			_EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
 			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 		}
@@ -1510,7 +1562,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 			process->application = application;
 			desktop.allApplicationProcesses.Add(process);
 		} else {
-			EsApplicationStartupInformation s = {};
+			_EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
 			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
 		}
@@ -1534,18 +1586,15 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 		OpenDocumentOpenReference(instance->documentID);
 	}
 
+	EsVolumeInformation volumeInformation;
+
 	EsMessage m = { ES_MSG_INSTANCE_CREATE };
 
 	if (~startupInformation->flags & ES_APPLICATION_STARTUP_MANUAL_PATH) {
-		// Only tell the application the name of the file.
-
-		for (uintptr_t i = 0; i < (size_t) startupInformation->filePathBytes; i++) {
-			if (startupInformation->filePath[i] == '/') {
-				startupInformation->filePath += i + 1;
-				startupInformation->filePathBytes -= i + 1;
-				i = 0;
-			}
-		}
+		PathGetNameAndContainingFolder(startupInformation->filePath, startupInformation->filePathBytes,
+				&startupInformation->filePath, &startupInformation->filePathBytes,
+				&startupInformation->containingFolder, &startupInformation->containingFolderBytes,
+				&volumeInformation);
 	}
 
 	// Share handles to the file and the startup information buffer.
@@ -1577,7 +1626,7 @@ bool ApplicationInstanceStart(int64_t applicationID, EsApplicationStartupInforma
 	return true;
 }
 
-ApplicationInstance *ApplicationInstanceCreate(int64_t id, EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
+ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
 	ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
 	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate(0, 0)) : nullptr;
 	if (tab) tab->applicationInstance = instance;
@@ -1743,24 +1792,30 @@ void OpenDocumentOpenReference(EsObjectID id) {
 	document->referenceCount++;
 }
 
-void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInformation) {
+void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest) {
 	bool foundDocument = false;
+
+	_EsApplicationStartupInformation startupInformation = {};
+	startupInformation.id = startupRequest->id;
+	startupInformation.flags = startupRequest->flags;
+	startupInformation.filePath = startupRequest->filePath;
+	startupInformation.filePathBytes = startupRequest->filePathBytes;
 
 	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
 		OpenDocument *document = &desktop.openDocuments[i];
 
-		if (document->pathBytes == (size_t) startupInformation->filePathBytes
-				&& 0 == EsMemoryCompare(document->path, startupInformation->filePath, document->pathBytes)) {
+		if (document->pathBytes == (size_t) startupInformation.filePathBytes
+				&& 0 == EsMemoryCompare(document->path, startupInformation.filePath, document->pathBytes)) {
 			foundDocument = true;
-			startupInformation->readHandle = document->readHandle;
-			startupInformation->documentID = document->id;
+			startupInformation.readHandle = document->readHandle;
+			startupInformation.documentID = document->id;
 			document->referenceCount++;
 			break;
 		}
 	}
 
 	if (!foundDocument) {
-		EsFileInformation file = EsFileOpen(startupInformation->filePath, startupInformation->filePathBytes, 
+		EsFileInformation file = EsFileOpen(startupInformation.filePath, startupInformation.filePathBytes, 
 				ES_FILE_READ_SHARED | ES_NODE_FAIL_IF_NOT_FOUND);
 
 		if (file.error != ES_SUCCESS) {
@@ -1769,20 +1824,20 @@ void OpenDocumentWithApplication(EsApplicationStartupInformation *startupInforma
 		}
 
 		OpenDocument document = {};
-		document.path = (char *) EsHeapAllocate(startupInformation->filePathBytes, false);
-		document.pathBytes = startupInformation->filePathBytes;
+		document.path = (char *) EsHeapAllocate(startupInformation.filePathBytes, false);
+		document.pathBytes = startupInformation.filePathBytes;
 		document.readHandle = file.handle;
 		document.id = ++desktop.currentDocumentID;
 		document.referenceCount = 1;
-		EsMemoryCopy(document.path, startupInformation->filePath, startupInformation->filePathBytes);
+		EsMemoryCopy(document.path, startupInformation.filePath, startupInformation.filePathBytes);
 		*desktop.openDocuments.Put(&document.id) = document;
 
-		startupInformation->readHandle = document.readHandle;
-		startupInformation->documentID = document.id;
+		startupInformation.readHandle = document.readHandle;
+		startupInformation.documentID = document.id;
 	}
 
-	ApplicationInstanceCreate(startupInformation->id, startupInformation, nullptr);
-	OpenDocumentCloseReference(startupInformation->documentID);
+	ApplicationInstanceCreate(startupInformation.id, &startupInformation, nullptr);
+	OpenDocumentCloseReference(startupInformation.documentID);
 }
 
 EsError TemporaryFileCreate(EsHandle *handle, char **path, size_t *pathBytes, uint32_t additionalFlags) {
@@ -1857,21 +1912,13 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		instance->documentID = document.id;
 
 		{
-			// Tell the instance the chosen name for the document.
-
-			uintptr_t nameOffset = 0;
-
-			for (uintptr_t i = 0; i < nameBytes; i++) {
-				if (name[i] == '/') {
-					nameOffset = i + 1;
-				}
-			}
-
+			// Tell the instance the chosen name and new containing folder for the document.
 			EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
+			void *data = OpenDocumentGetRenameMessageData(name, nameBytes, &m.tabOperation.bytes);
 			m.tabOperation.id = instance->embeddedWindowID;
-			m.tabOperation.handle = EsConstantBufferCreate(name + nameOffset, nameBytes - nameOffset, instance->process->handle); 
-			m.tabOperation.bytes = nameBytes - nameOffset;
+			m.tabOperation.handle = EsConstantBufferCreate(data, m.tabOperation.bytes, instance->process->handle); 
 			EsMessagePostRemote(instance->process->handle, &m);
+			EsHeapFree(data);
 		}
 	}
 
@@ -1926,13 +1973,8 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 		return;
 	}
 
-	uintptr_t newNameOffset = 0;
-
-	for (uintptr_t i = 0; i < newPathBytes; i++) {
-		if (newPath[i] == '/') {
-			newNameOffset = i + 1;
-		}
-	}
+	size_t messageDataBytes;
+	void *messageData = OpenDocumentGetRenameMessageData(newPath, newPathBytes, &messageDataBytes);
 
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
@@ -1943,10 +1985,12 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 
 		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
 		m.tabOperation.id = instance->embeddedWindowID;
-		m.tabOperation.handle = EsConstantBufferCreate(newPath + newNameOffset, newPathBytes - newNameOffset, instance->process->handle); 
-		m.tabOperation.bytes = newPathBytes - newNameOffset;
+		m.tabOperation.handle = EsConstantBufferCreate(messageData, messageDataBytes, instance->process->handle); 
+		m.tabOperation.bytes = messageDataBytes;
 		EsMessagePostRemote(instance->process->handle, &m);
 	}
+
+	EsHeapFree(messageData);
 
 	if (fromApplication != desktop.fileManager && desktop.fileManager && desktop.fileManager->singleProcess) {
 		char *data = (char *) EsHeapAllocate(sizeof(size_t) * 2 + oldPathBytes + newPathBytes, false);
@@ -2218,7 +2262,7 @@ void CheckForegroundWindowResponding(EsGeneric) {
 			// The tab is already not responding.
 		} else {
 			// The tab has just stopped not responding.
-			EsApplicationStartupInformation startupInformation = { .data = CRASHED_TAB_NOT_RESPONDING };
+			_EsApplicationStartupInformation startupInformation = { .data = CRASHED_TAB_NOT_RESPONDING };
 			tab->notRespondingInstance = ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_CRASHED, 
 					&startupInformation, tab->container, true /* hidden */);
 			WindowTabActivate(tab, true);
@@ -2361,8 +2405,11 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(message->desktop.windowID);
 
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
-		EsApplicationStartupInformation *information = ApplicationStartupInformationParse(buffer + 1, message->desktop.bytes - 1);
-		if (information) OpenDocumentWithApplication(information);
+		EsBuffer b = { .in = buffer + 1, .bytes = message->desktop.bytes - 1 };
+		EsApplicationStartupRequest request = {};
+		EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
+		request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
+		if (!b.error) OpenDocumentWithApplication(&request);
 	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && pipe) {
 		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
 
@@ -2582,7 +2629,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
 
 		if (document) {
-			EsApplicationStartupInformation startupInformation = {};
+			_EsApplicationStartupInformation startupInformation = {};
 			startupInformation.flags = ES_APPLICATION_STARTUP_MANUAL_PATH;
 			startupInformation.filePath = document->path;
 			startupInformation.filePathBytes = document->pathBytes;

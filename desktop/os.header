@@ -1409,16 +1409,21 @@ struct EsListViewColumn {
 	double width;
 };
 
-struct EsApplicationStartupInformation {
+struct EsApplicationStartupRequest {
+	int64_t id;
+	STRING filePath;
+	uint32_t flags;
+};
+
+private struct _EsApplicationStartupInformation {
 	int64_t id;
 	STRING filePath;
 	EsWindow *targetWindow;
 	uint32_t flags;
 	int32_t data;
-
-	// Internal use only.
 	EsHandle readHandle; 
 	EsObjectID documentID;
+	STRING containingFolder;
 };
 
 struct EsINIState {
@@ -1503,7 +1508,7 @@ struct EsInstanceClassEditorSettings {
 struct EsInstanceClassViewerSettings {
 };
 
-struct _EsNodeInformation {
+private struct _EsNodeInformation {
 	EsHandle handle; 
 	EsFileOffset fileSize;
 	EsFileOffsetDifference directoryChildren; 
@@ -1840,7 +1845,7 @@ struct EsMessage {
 	};
 }
 
-struct _EsMessageWithObject {
+private struct _EsMessageWithObject {
 	void *object;
 	EsMessage message;
 };
@@ -1911,7 +1916,7 @@ function_pointer void EsWorkCallback(EsGeneric context);
 
 // System.
 
-function void EsApplicationStart(const EsApplicationStartupInformation *information);
+function void EsApplicationStart(const EsApplicationStartupRequest *request);
 function void EsApplicationRunTemporary(ES_INSTANCE_TYPE *instance, STRING path);
 function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize); 
 function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
@@ -2013,6 +2018,7 @@ function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readB
 function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
 function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue);
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
+function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value);
 function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value); // Changes byte order if big endian.
 function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
 function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments); // Appends.
@@ -2298,7 +2304,7 @@ function void EsInstanceDestroy(ES_INSTANCE_TYPE *instance);
 function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoManager *manager);
 function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
 function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings);
-function const EsApplicationStartupInformation *EsInstanceGetStartupInformation(ES_INSTANCE_TYPE *instance);
+function EsApplicationStartupRequest EsInstanceGetStartupRequest(ES_INSTANCE_TYPE *instance);
 function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(EsMessage *message, bool success);
 
@@ -2376,9 +2382,8 @@ function EsElement *EsDialogShowAlert(EsWindow *window, STRING title, STRING con
 
 function void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings = ES_NULL);
 
-// For internal use only.
-function EsHandle _EsWindowGetHandle(EsWindow *window); 
-function void _EsUISetFont(EsFontFamily id);
+private function EsHandle _EsWindowGetHandle(EsWindow *window); 
+private function void _EsUISetFont(EsFontFamily id);
 
 // Buttons.
 

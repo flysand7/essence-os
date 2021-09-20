@@ -1403,7 +1403,7 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 			printf("exporting '%.*s' (id: %ld)\n", (int) style->name.byteCount, (char *) style->name.buffer, (style->id << 1) | 1);
 
 			if (style->id && stylesPath) {
-				fprintf(f, "%s ES_STYLE_", style->publicStyle ? "define" : "define_private");
+				fprintf(f, "%s ES_STYLE_", style->publicStyle ? "define" : "private define");
 
 				bool dot = false;
 
