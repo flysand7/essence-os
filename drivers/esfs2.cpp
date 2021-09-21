@@ -1971,6 +1971,7 @@ static void Register(KDevice *_parent) {
 
 	volume->spaceUsed = volume->superblock.blocksUsed * volume->superblock.blockSize;
 	volume->spaceTotal = volume->superblock.blockCount * volume->superblock.blockSize;
+	volume->identifier = volume->superblock.identifier;
 
 	volume->read = Read;
 	volume->scan = Scan;

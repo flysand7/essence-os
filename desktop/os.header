@@ -867,6 +867,7 @@ enum EsSyscallType {
 	ES_SYSCALL_PRINT
 	ES_SYSCALL_SHUTDOWN
 	ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT
+	ES_SYSCALL_PROCESSOR_COUNT
 
 	// End.
 
@@ -1256,7 +1257,7 @@ struct EsDebuggerMessage {
 }
 
 struct EsSnapshotProcessesItem {
-	int64_t pid, memoryUsage, cpuTimeSlices, idleTimeSlices, handleCount;
+	int64_t pid, memoryUsage, cpuTimeSlices, idleTimeSlices, handleCount, threadCount;
 	char name[ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH];
 	uint8_t nameBytes;
 	bool isKernel;
@@ -1284,7 +1285,6 @@ struct EsProcessStartupInformation {
 	uintptr_t tlsImageBytes;
 	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
 	uintptr_t timeStampTicksPerMs;
-	uintptr_t optimalWorkQueueThreadCount;
 	EsProcessCreateData data;
 };
 
@@ -1526,6 +1526,7 @@ struct EsVolumeInformation {
 	EsObjectID id;
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
+	EsUniqueIdentifier identifier;
 	EsUniqueIdentifier installationIdentifier; // Currently only supported by EsFS.
 };
 

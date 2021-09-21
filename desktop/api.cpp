@@ -1330,7 +1330,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 }
 
 uintptr_t EsSystemGetOptimalWorkQueueThreadCount() {
-	return api.startupInformation->optimalWorkQueueThreadCount;
+	return EsSyscall(ES_SYSCALL_PROCESSOR_COUNT, 0, 0, 0, 0);
 }
 
 void ThreadInitialise(ThreadLocalStorage *local) {

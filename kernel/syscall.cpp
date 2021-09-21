@@ -761,6 +761,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	information.id = fileSystem->objectID;
 	information.flags = fileSystem->write ? ES_FLAGS_DEFAULT : ES_VOLUME_READ_ONLY;
 	information.installationIdentifier = fileSystem->installationIdentifier;
+	information.identifier = fileSystem->identifier;
 
 	SYSCALL_WRITE(argument1, &information, sizeof(EsVolumeInformation));
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -1429,6 +1430,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 					snapshot->processes[index].cpuTimeSlices = process->cpuTimeSlices;
 					snapshot->processes[index].idleTimeSlices = process->idleTimeSlices;
 					snapshot->processes[index].handleCount = process->handleTable.handleCount;
+					snapshot->processes[index].threadCount = process->threads.count;
 					snapshot->processes[index].isKernel = process->type == PROCESS_KERNEL;
 
 					snapshot->processes[index].nameBytes = EsCStringLength(process->cExecutableName);
@@ -1453,6 +1455,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 
 	SYSCALL_WRITE(argument1, &bufferSize, sizeof(size_t));
 	SYSCALL_RETURN(MakeConstantBuffer(buffer, bufferSize, currentProcess), false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESSOR_COUNT) {
+	SYSCALL_RETURN(scheduler.currentProcessorID, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_OPEN) {

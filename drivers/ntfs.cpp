@@ -1255,6 +1255,8 @@ static void DeviceAttach(KDevice *parent) {
 	volume->fileSystem->enumerate = Enumerate;
 	volume->fileSystem->close = Close;
 
+	EsMemoryCopy(&volume->fileSystem->identifier, &volume->bootSector.serialNumber, sizeof(volume->bootSector.serialNumber));
+
 	KernelLog(LOG_INFO, "NTFS", "register file system", "EntryNTFS - Registering file system with name '%s'.\n", 
 			volume->fileSystem->nameBytes, volume->fileSystem->name);
 	FSRegisterFileSystem(volume->fileSystem); 

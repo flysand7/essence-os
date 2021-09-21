@@ -433,6 +433,7 @@ static void DeviceAttach(KDevice *parent) {
 
 	volume->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
 	volume->nodeDataBytes = sizeof(FSNode);
+	EsMemoryCopy(&volume->identifier, volume->type == TYPE_FAT32 ? &volume->sb32.serial : &volume->sb16.serial, sizeof(uint32_t));
 
 	FSRegisterFileSystem(volume); 
 }

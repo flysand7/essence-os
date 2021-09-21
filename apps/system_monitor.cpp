@@ -24,10 +24,11 @@ struct Instance : EsInstance {
 
 EsListViewColumn listViewProcessesColumns[] = {
 	{ EsLiteral("Name"), 0, 150 },
-	{ EsLiteral("PID"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ EsLiteral("Memory"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ EsLiteral("CPU"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ EsLiteral("Handles"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
+	{ EsLiteral("PID"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ EsLiteral("Memory"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ EsLiteral("CPU"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ EsLiteral("Handles"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ EsLiteral("Threads"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
 };
 
 EsListViewColumn listViewContextSwitchesColumns[] = {
@@ -316,6 +317,7 @@ int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 		else if (column == 2) GET_CONTENT("%D", item->data.memoryUsage);
 		else if (column == 3) GET_CONTENT("%d%%", item->cpuUsage);
 		else if (column == 4) GET_CONTENT("%d", item->data.handleCount);
+		else if (column == 5) GET_CONTENT("%d", item->data.threadCount);
 		else EsAssert(false);
 	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
 		message->selectItem.isSelected = processes[message->selectItem.index].data.pid == selectedPID;

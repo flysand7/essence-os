@@ -862,6 +862,7 @@ struct KFileSystem : KDevice {
 
 	EsFileOffsetDifference rootDirectoryInitialChildren;
 	EsFileOffset spaceTotal, spaceUsed;
+	EsUniqueIdentifier identifier;
 
 	size_t  	(*read)		(KNode *node, void *buffer, EsFileOffset offset, EsFileOffset count);
 	size_t  	(*write)	(KNode *node, const void *buffer, EsFileOffset offset, EsFileOffset count);

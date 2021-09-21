@@ -630,7 +630,6 @@ void NewProcess() {
 			startupInformation->tlsImageBytes = application.tlsImageBytes;
 			startupInformation->tlsBytes = application.tlsBytes;
 			startupInformation->timeStampTicksPerMs = timeStampTicksPerMs;
-			startupInformation->optimalWorkQueueThreadCount = scheduler.currentProcessorID; // TODO Update this as processors are added/removed.
 			EsMemoryCopy(&startupInformation->data, &thisProcess->data, sizeof(EsProcessCreateData));
 		}
 	}

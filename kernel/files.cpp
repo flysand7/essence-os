@@ -7,7 +7,6 @@
 // 	- Prevent launching executables without read permission.
 //
 // TODO Drivers:
-// 	- Parsing GPT partition tables.
 // 	- Get NTFS driver working again.
 //
 // TODO Allocate nodes/directory entries from arenas?
