@@ -174,9 +174,8 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 		message->animate.complete = false;
 		timeMs += message->animate.deltaMs;
 
-		int width, height;
-		EsElementGetSize(element, &width, &height);
-		EsRectangle imageBounds = EsRectangleCenter(ES_RECT_2S(width, height), ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
+		
+		EsRectangle imageBounds = EsRectangleCenter(EsElementGetInsetBounds(element), ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsElementRepaint(element, &imageBounds);
 		return ES_HANDLED;
 	}

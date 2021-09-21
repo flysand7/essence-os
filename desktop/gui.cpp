@@ -1681,7 +1681,6 @@ void ProcessAnimations() {
 		}
 
 		element->lastTimeStamp += m.animate.deltaMs * api.startupInformation->timeStampTicksPerMs;
-		UIWindowNeedsUpdate(element->window);
 	}
 
 	if (waitMs > 0) {
@@ -5592,6 +5591,13 @@ EsRectangle EsWindowGetBounds(EsWindow *window) {
 	EsRectangle bounds;
 	EsSyscall(ES_SYSCALL_WINDOW_GET_BOUNDS, window->handle, (uintptr_t) &bounds, 0, 0);
 	return bounds;
+}
+
+EsRectangle EsElementGetInsetBounds(EsElement *element) {
+	EsMessageMutexCheck();
+	EsRectangle insets = element->currentStyle->insets;
+	return ES_RECT_4(insets.l, element->width - insets.r, 
+			insets.t, element->height - insets.b);
 }
 
 EsRectangle EsElementGetInsetSize(EsElement *element) {

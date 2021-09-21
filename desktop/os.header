@@ -2344,6 +2344,7 @@ function void EsElementRelayout(EsElement *element);
 function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
 function EsRectangle EsElementGetInsets(EsElement *element); 
 function EsRectangle EsElementGetInsetSize(EsElement *element); // Get the size of the element, minus the insets.
+function EsRectangle EsElementGetInsetBounds(EsElement *element);
 function EsThemeMetrics EsElementGetMetrics(EsElement *element); // Returns the *scaled* metrics; the metrics given in the EsStyle passed to element creation functions should *not* be scaled.
 function float EsElementGetScaleFactor(EsElement *element);
 function EsRectangle EsElementGetPreferredSize(EsElement *element);
