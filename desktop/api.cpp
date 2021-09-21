@@ -41,8 +41,6 @@
 struct EnumString { const char *cName; int value; };
 #include <bin/enum_strings_array.h>
 
-#define ANIMATION_TIME_SCALE (1)
-
 #define DESKTOP_MSG_SET_TITLE                 (1)
 #define DESKTOP_MSG_SET_ICON                  (2)
 #define DESKTOP_MSG_REQUEST_SAVE              (3)

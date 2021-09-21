@@ -1477,7 +1477,7 @@ void _ThemeAnimationBuildAddProperties(ThemeAnimation *animation, UIStyle *style
 						// Prioritise before enter sequence durations.
 
 						if (!animation->properties[point].beforeEnter || beforeEnter) {
-							animation->properties[point].duration = sequenceHeader->duration * ANIMATION_TIME_SCALE;
+							animation->properties[point].duration = sequenceHeader->duration * api.global->animationTimeMultiplier;
 							animation->properties[point].beforeEnter = beforeEnter;
 						}
 					} else {
@@ -1489,7 +1489,7 @@ void _ThemeAnimationBuildAddProperties(ThemeAnimation *animation, UIStyle *style
 						ThemeAnimatingProperty property = {};
 						property.offset = key;
 						property.type = themeOverride->type;
-						property.duration = sequenceHeader->duration * ANIMATION_TIME_SCALE;
+						property.duration = sequenceHeader->duration * api.global->animationTimeMultiplier;
 						property.beforeEnter = beforeEnter;
 
 						if (themeOverride->type == THEME_OVERRIDE_I8) {

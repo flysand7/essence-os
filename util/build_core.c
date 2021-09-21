@@ -608,7 +608,7 @@ void BuildApplication(Application *application) {
 		// TODO.
 #else
 		application->error = system(application->customCompileCommand);
-		ExecuteForApp(application, toolchainStrip, "--strip-all", executable);
+		ExecuteForApp(application, toolchainStrip, "-o", executable, "--strip-all", symbolFile);
 #endif
 	} else {
 		for (uintptr_t i = 0; i < arrlenu(application->sources); i++) {
