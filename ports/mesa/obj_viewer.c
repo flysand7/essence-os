@@ -3,6 +3,7 @@
 #include <GL/osmesa.h>
 #include <GL/gl.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
@@ -11,13 +12,15 @@
 #include <math.h>
 
 #define MODERN_GL
-#define LIVE_UPDATE
 
 #define CHECK_ERRORS() do { GLenum error; while ((error = glGetError()) != GL_NO_ERROR) { EsPrint("Error on line %d: %d\n", __LINE__, error); } } while (0)
 
 #define IMAGE_WIDTH (700)
 #define IMAGE_HEIGHT (600)
 uint32_t *buffer;
+
+uint32_t modelVBO, modelIBO;
+bool loadedModel;
 
 #ifdef MODERN_GL
 static GLenum (*glCheckFramebufferStatus)(GLenum target);
@@ -115,6 +118,10 @@ void PrepareNormalTransform(float *_modelTransform, float *_normalTransform) {
 }
 
 void Render() {
+	if (!loadedModel) {
+		return;
+	}
+
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #ifdef MODERN_GL
@@ -146,14 +153,11 @@ void Render() {
 	glFinish();
 }
 
-#ifdef ESSENCE_WINDOW
 #include <essence.h>
 
 int CanvasCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT_BACKGROUND) {
-#ifdef LIVE_UPDATE
 		Render();
-#endif
 		EsRectangle bounds = EsPainterBoundsInset(message->painter);
 		EsRectangle imageBounds = EsRectangleCenter(bounds, ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsDrawBitmap(message->painter, imageBounds, buffer, IMAGE_WIDTH * 4, ES_DRAW_BITMAP_OPAQUE);
@@ -182,7 +186,105 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 
 	return 0;
 }
-#endif
+
+bool LoadModel(char *model, size_t modelBytes) {
+	triangleCount = 0, vertexCount = 0;
+
+	for (uintptr_t i = 0; i < modelBytes; i++) {
+		if (!i || model[i - 1] == '\n') {
+			if (model[i] == 'f' && model[i + 1] == ' ') {
+				triangleCount++;
+			} else if (model[i] == 'v' && model[i + 1] == ' ') {
+				vertexCount++;
+			}
+		}
+	}
+
+	float *modelVBOArray = (float *) EsHeapAllocate(6 * sizeof(float) * vertexCount, true, NULL);
+	uint32_t *modelIBOArray = (uint32_t *) EsHeapAllocate(3 * sizeof(uint32_t) * triangleCount, true, NULL);
+	uintptr_t triangleIndex = 0, vertexIndex = 0;
+
+	float minimumX = ES_INFINITY, maximumX = -ES_INFINITY; 
+	float minimumY = ES_INFINITY, maximumY = -ES_INFINITY;
+	float minimumZ = ES_INFINITY, maximumZ = -ES_INFINITY;
+
+	for (uintptr_t i = 0; i < modelBytes; i++) {
+		if (!i || model[i - 1] == '\n') {
+			if (model[i] == 'v' && model[i + 1] == ' ') {
+				char *position = model + i + 2;
+				modelVBOArray[6 * vertexIndex + 0] = strtod(position, &position);
+				modelVBOArray[6 * vertexIndex + 1] = strtod(position, &position);
+				modelVBOArray[6 * vertexIndex + 2] = strtod(position, &position);
+				minimumX = modelVBOArray[6 * vertexIndex + 0] < minimumX ? modelVBOArray[6 * vertexIndex + 0] : minimumX;
+				minimumY = modelVBOArray[6 * vertexIndex + 1] < minimumY ? modelVBOArray[6 * vertexIndex + 1] : minimumY;
+				minimumZ = modelVBOArray[6 * vertexIndex + 2] < minimumZ ? modelVBOArray[6 * vertexIndex + 2] : minimumZ;
+				maximumX = modelVBOArray[6 * vertexIndex + 0] > maximumX ? modelVBOArray[6 * vertexIndex + 0] : maximumX;
+				maximumY = modelVBOArray[6 * vertexIndex + 1] > maximumY ? modelVBOArray[6 * vertexIndex + 1] : maximumY;
+				maximumZ = modelVBOArray[6 * vertexIndex + 2] > maximumZ ? modelVBOArray[6 * vertexIndex + 2] : maximumZ;
+				vertexIndex++;
+			} else if (model[i] == 'f' && model[i + 1] == ' ') {
+				char *position = model + i + 2;
+				uint32_t i0 = strtoul(position, &position, 10) - 1;
+				uint32_t i1 = strtoul(position, &position, 10) - 1;
+				uint32_t i2 = strtoul(position, &position, 10) - 1;
+				if (i0 >= vertexCount) return false;
+				if (i1 >= vertexCount) return false;
+				if (i2 >= vertexCount) return false;
+				modelIBOArray[3 * triangleIndex + 0] = i0;
+				modelIBOArray[3 * triangleIndex + 1] = i1;
+				modelIBOArray[3 * triangleIndex + 2] = i2;
+				triangleIndex++;
+			}
+		}
+	}
+
+	EsPrint("Model bounds: %F -> %F, %F -> %F, %F -> %F\n", minimumX, maximumX, minimumY, maximumY, minimumZ, maximumZ);
+	EsAssert(vertexIndex == vertexCount);
+	EsAssert(triangleIndex == triangleCount);
+
+	for (uintptr_t i = 0; i < triangleCount; i++) {
+		// Calculate the normals as a weighted average of the face normals, 
+		// where the weight is the surface area of the face.
+
+		float d1x = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 0] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 0];
+		float d1y = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 1] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 1];
+		float d1z = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 2] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 2];
+		float d2x = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 0] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 0];
+		float d2y = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 1] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 1];
+		float d2z = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 2] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 2];
+		float nx = d1y * d2z - d1z * d2y;
+		float ny = d1z * d2x - d1x * d2z;
+		float nz = d1x * d2y - d1y * d2x;
+
+		for (uintptr_t j = 0; j < 3; j++) {
+			modelVBOArray[6 * modelIBOArray[3 * i + j] + 3] += nx;
+			modelVBOArray[6 * modelIBOArray[3 * i + j] + 4] += ny;
+			modelVBOArray[6 * modelIBOArray[3 * i + j] + 5] += nz;
+		}
+	}
+
+	for (uintptr_t i = 0; i < vertexCount; i++) {
+		// Normalize the normals.
+
+		float x = modelVBOArray[6 * i + 3];
+		float y = modelVBOArray[6 * i + 4];
+		float z = modelVBOArray[6 * i + 5];
+		float d = sqrtf(x * x + y * y + z * z);
+		modelVBOArray[6 * i + 3] /= d;
+		modelVBOArray[6 * i + 4] /= d;
+		modelVBOArray[6 * i + 5] /= d;
+	}
+
+	glBindBuffer(GL_ARRAY_BUFFER, modelVBO);
+	glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(float) * vertexCount, modelVBOArray, GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelIBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3 * sizeof(uint32_t) * triangleCount, modelIBOArray, GL_STATIC_DRAW);
+
+	EsHeapFree(modelVBOArray, 0, NULL);
+	EsHeapFree(modelIBOArray, 0, NULL);
+
+	return true;
+}
 
 int main(int argc, char **argv) {
 	(void) argc;
@@ -244,116 +346,8 @@ int main(int argc, char **argv) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_MULTISAMPLE);
 
-#if 0
-	triangleCount = 2, vertexCount = 4;
-	uint32_t modelIBOArray[] = { 0, 1, 2, 0, 2, 3 };
-
-	float modelVBOArray[] = { 
-		-1, -1, 0.5f, 0, 0, 0, 
-		-1, 1, 0.5f, 0, 0, 0, 
-		1, 1, 0.5f, 0, 0, 0, 
-		1, -1, 0.5f, 0, 0, 0,
-	};
-#else
-	// TODO Loading files properly.
-	size_t modelBytes;
-	char *model = (char *) EsFileReadAll(EsLiteral("0:/teapot.obj"), &modelBytes, NULL);
-
-	triangleCount = 0, vertexCount = 0;
-
-	for (uintptr_t i = 0; i < modelBytes; i++) {
-		if (!i || model[i - 1] == '\n') {
-			if (model[i] == 'f' && model[i + 1] == ' ') {
-				triangleCount++;
-			} else if (model[i] == 'v' && model[i + 1] == ' ') {
-				vertexCount++;
-			}
-		}
-	}
-
-	float *modelVBOArray = (float *) EsHeapAllocate(6 * sizeof(float) * vertexCount, true, NULL);
-	uint32_t *modelIBOArray = (uint32_t *) EsHeapAllocate(3 * sizeof(uint32_t) * triangleCount, true, NULL);
-	uintptr_t triangleIndex = 0, vertexIndex = 0;
-
-	float minimumX = ES_INFINITY, maximumX = -ES_INFINITY; 
-	float minimumY = ES_INFINITY, maximumY = -ES_INFINITY;
-	float minimumZ = ES_INFINITY, maximumZ = -ES_INFINITY;
-
-	for (uintptr_t i = 0; i < modelBytes; i++) {
-		if (!i || model[i - 1] == '\n') {
-			if (model[i] == 'v' && model[i + 1] == ' ') {
-				char *position = model + i + 2;
-				modelVBOArray[6 * vertexIndex + 0] = strtod(position, &position);
-				modelVBOArray[6 * vertexIndex + 1] = strtod(position, &position);
-				modelVBOArray[6 * vertexIndex + 2] = strtod(position, &position);
-				minimumX = modelVBOArray[6 * vertexIndex + 0] < minimumX ? modelVBOArray[6 * vertexIndex + 0] : minimumX;
-				minimumY = modelVBOArray[6 * vertexIndex + 1] < minimumY ? modelVBOArray[6 * vertexIndex + 1] : minimumY;
-				minimumZ = modelVBOArray[6 * vertexIndex + 2] < minimumZ ? modelVBOArray[6 * vertexIndex + 2] : minimumZ;
-				maximumX = modelVBOArray[6 * vertexIndex + 0] > maximumX ? modelVBOArray[6 * vertexIndex + 0] : maximumX;
-				maximumY = modelVBOArray[6 * vertexIndex + 1] > maximumY ? modelVBOArray[6 * vertexIndex + 1] : maximumY;
-				maximumZ = modelVBOArray[6 * vertexIndex + 2] > maximumZ ? modelVBOArray[6 * vertexIndex + 2] : maximumZ;
-				vertexIndex++;
-			} else if (model[i] == 'f' && model[i + 1] == ' ') {
-				char *position = model + i + 2;
-				uint32_t i0 = strtoul(position, &position, 10) - 1;
-				uint32_t i1 = strtoul(position, &position, 10) - 1;
-				uint32_t i2 = strtoul(position, &position, 10) - 1;
-				EsAssert(i0 < vertexCount); // TODO Error reporting.
-				EsAssert(i1 < vertexCount);
-				EsAssert(i2 < vertexCount);
-				modelIBOArray[3 * triangleIndex + 0] = i0;
-				modelIBOArray[3 * triangleIndex + 1] = i1;
-				modelIBOArray[3 * triangleIndex + 2] = i2;
-				triangleIndex++;
-			}
-		}
-	}
-
-	EsPrint("Model bounds: %F -> %F, %F -> %F, %F -> %F\n", minimumX, maximumX, minimumY, maximumY, minimumZ, maximumZ);
-	EsAssert(vertexIndex == vertexCount);
-	EsAssert(triangleIndex == triangleCount);
-#endif
-
-	for (uintptr_t i = 0; i < triangleCount; i++) {
-		// Calculate the normals as a weighted average of the face normals, 
-		// where the weight is the surface area of the face.
-
-		float d1x = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 0] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 0];
-		float d1y = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 1] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 1];
-		float d1z = modelVBOArray[6 * modelIBOArray[3 * i + 1] + 2] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 2];
-		float d2x = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 0] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 0];
-		float d2y = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 1] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 1];
-		float d2z = modelVBOArray[6 * modelIBOArray[3 * i + 2] + 2] - modelVBOArray[6 * modelIBOArray[3 * i + 0] + 2];
-		float nx = d1y * d2z - d1z * d2y;
-		float ny = d1z * d2x - d1x * d2z;
-		float nz = d1x * d2y - d1y * d2x;
-
-		for (uintptr_t j = 0; j < 3; j++) {
-			modelVBOArray[6 * modelIBOArray[3 * i + j] + 3] += nx;
-			modelVBOArray[6 * modelIBOArray[3 * i + j] + 4] += ny;
-			modelVBOArray[6 * modelIBOArray[3 * i + j] + 5] += nz;
-		}
-	}
-
-	for (uintptr_t i = 0; i < vertexCount; i++) {
-		// Normalize the normals.
-
-		float x = modelVBOArray[6 * i + 3];
-		float y = modelVBOArray[6 * i + 4];
-		float z = modelVBOArray[6 * i + 5];
-		float d = sqrtf(x * x + y * y + z * z);
-		modelVBOArray[6 * i + 3] /= d;
-		modelVBOArray[6 * i + 4] /= d;
-		modelVBOArray[6 * i + 5] /= d;
-	}
-
-	uint32_t modelVBO, modelIBO;
 	glGenBuffers(1, &modelVBO);
-	glBindBuffer(GL_ARRAY_BUFFER, modelVBO);
-	glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(float) * vertexCount, modelVBOArray, GL_STATIC_DRAW);
 	glGenBuffers(1, &modelIBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelIBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3 * sizeof(uint32_t) * triangleCount, modelIBOArray, GL_STATIC_DRAW);
 
 	const char *vertexShaderSource = 
 		"#version 330\n"
@@ -390,14 +384,14 @@ int main(int argc, char **argv) {
 	glCompileShader(vertexShader);
 	glGetShaderInfoLog(vertexShader, sizeof(shaderInfoLog), NULL, shaderInfoLog);
 	glAttachShader(shader, vertexShader);	
-	printf("Vertex shader log: '%s'\n", shaderInfoLog);
+	EsPrint("Vertex shader log: '%z'\n", shaderInfoLog);
 
 	unsigned fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, shaderSources + 1, shaderSourceLengths + 1);
 	glCompileShader(fragmentShader);
 	glGetShaderInfoLog(fragmentShader, sizeof(shaderInfoLog), NULL, shaderInfoLog);
 	glAttachShader(shader, fragmentShader);	
-	printf("Fragment shader log: '%s'\n", shaderInfoLog);
+	EsPrint("Fragment shader log: '%z'\n", shaderInfoLog);
 
 	glLinkProgram(shader);
 	glValidateProgram(shader);
@@ -423,39 +417,25 @@ int main(int argc, char **argv) {
 	glDepthFunc(GL_LESS);
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
-
 #endif
 	
-#ifndef ESSENCE_WINDOW
-	FILE *out = fopen("test.ppm", "wb");
-	fprintf(out, "P6\n%d %d\n255\n", IMAGE_WIDTH, IMAGE_HEIGHT);
-
-	for (int j = 0; j < IMAGE_HEIGHT; j++) {
-		for (int i = 0; i < IMAGE_WIDTH; i++) {
-			fwrite(buffer + j * IMAGE_WIDTH + i, 1, 3, out);
-		}
-	}
-
-	fclose(out);
-	OSMesaDestroyContext(context);
-	free(buffer);
-#else
 	while (true) {
 		EsMessage *message = EsMessageReceive();
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
-			EsInstance *instance = EsInstanceCreate(message, "GL Test", -1);
-			EsWindowSetTitle(instance->window, "GL Test", -1);
+			EsInstance *instance = EsInstanceCreate(message, "Object Viewer", -1);
+			EsWindowSetIcon(instance->window, ES_ICON_MODEL);
 			EsElement *canvas = EsCustomElementCreate(instance->window, ES_CELL_FILL, 0);
 			canvas->messageUser = (EsUICallback) CanvasCallback;
-#ifdef LIVE_UPDATE
 			EsElementStartAnimating(canvas);
-#else
-			Render();
-#endif
+		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+			size_t modelBytes;
+			void *model = EsFileStoreReadAll(message->instanceOpen.file, &modelBytes);
+			EsInstanceOpenComplete(message, LoadModel(model, modelBytes), NULL, 0);
+			EsHeapFree(model, 0, NULL);
+			loadedModel = true;
 		}
 	}
-#endif
 
 	return 0;
 }

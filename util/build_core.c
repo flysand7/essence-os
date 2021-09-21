@@ -139,8 +139,9 @@ File FileOpen(const char *path, char mode) {
 
 // Toolchain flags:
 
-char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address "
-	"-Wno-unused-function -Wno-format-truncation -ffreestanding -fno-exceptions -g -I. ";
+const char *commonCompileFlagsFreestanding = " -ffreestanding -fno-exceptions ";
+char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address -Wno-unused-function -Wno-format-truncation -g -I. ";
+char commonCompileFlagsWithCStdLib[4096];
 char cCompileFlags[4096] = "";
 char cppCompileFlags[4096] = " -std=c++14 -Wno-pmf-conversions -Wno-invalid-offsetof -fno-rtti ";
 char kernelCompileFlags[4096] = " -mno-red-zone -mcmodel=kernel -fno-omit-frame-pointer ";
@@ -523,7 +524,7 @@ typedef struct Application {
 	FileType *fileTypes;
 	Handler *handlers;
 
-	bool install, builtin;
+	bool install, builtin, withCStdLib;
 
 	const char **sources;
 	const char *compileFlags;
@@ -619,21 +620,26 @@ void BuildApplication(Application *application) {
 			snprintf(objectFile, sizeof(objectFile), "bin/%s_%d.o", application->name, (int) i);
 			objectFilesPosition += sprintf(objectFiles + objectFilesPosition, "\"%s\" ", objectFile);
 
-			if (sourceBytes > 2 && source[sourceBytes - 1] == 'c' && source[sourceBytes - 2] == '.') {
-				ExecuteForApp(application, toolchainCC, "-MD", "-o", objectFile, "-c", source, 
-						ArgString(cCompileFlags), ArgString(commonCompileFlags), ArgString(application->compileFlags));
-			} else {
-				ExecuteForApp(application, toolchainCXX, "-MD", "-o", objectFile, "-c", source, 
-						ArgString(cppCompileFlags), ArgString(commonCompileFlags), ArgString(application->compileFlags));
-			}
+			bool isC = sourceBytes > 2 && source[sourceBytes - 1] == 'c' && source[sourceBytes - 2] == '.';
+			const char *cstdlibFlags = application->withCStdLib ? commonCompileFlagsWithCStdLib : commonCompileFlags;
+			const char *languageFlags = isC ? cCompileFlags : cppCompileFlags;
+			const char *compiler = isC ? toolchainCC : toolchainCXX;
+
+			ExecuteForApp(application, compiler, "-MD", "-o", objectFile, "-c", source, 
+					ArgString(languageFlags), ArgString(application->compileFlags), ArgString(cstdlibFlags));
 		}
 
 		assert(objectFilesPosition < sizeof(objectFiles));
 		objectFiles[objectFilesPosition] = 0;
 
-		ExecuteForApp(application, toolchainCC, "-o", symbolFile, 
-				"-Wl,--start-group", ArgString(application->linkFlags), crti, crtbegin, ArgString(objectFiles), crtend, crtn, "-Wl,--end-group", 
-				ArgString(applicationLinkFlags), "-T", linkerScript);
+		if (application->withCStdLib) {
+			ExecuteForApp(application, toolchainCC, "-o", symbolFile, ArgString(objectFiles), ArgString(application->linkFlags));
+		} else {
+			ExecuteForApp(application, toolchainCC, "-o", symbolFile, 
+					"-Wl,--start-group", ArgString(application->linkFlags), crti, crtbegin, ArgString(objectFiles), crtend, crtn, "-Wl,--end-group", 
+					ArgString(applicationLinkFlags), "-T", linkerScript);
+		}
+
 		ExecuteForApp(application, toolchainStrip, "-o", strippedFile, "--strip-all", symbolFile);
 
 		ADD_BUNDLE_INPUT(strippedFile, "$Executables/x86_64", 0x1000);
@@ -708,6 +714,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 			INI_READ_STRING_PTR(compile_flags, application.compileFlags);
 			INI_READ_STRING_PTR(link_flags, application.linkFlags);
 			INI_READ_STRING_PTR(custom_compile_command, application.customCompileCommand);
+			INI_READ_BOOL(with_cstdlib, application.withCStdLib);
 			INI_READ_STRING_PTR(require, require);
 		} else if (0 == strcmp(s.section, "general")) {
 			INI_READ_STRING_PTR(name, application.name);
@@ -1398,6 +1405,9 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	strcpy(commonCompileFlagsWithCStdLib, commonCompileFlags);
+	strcat(commonCompileFlags, commonCompileFlagsFreestanding);
+
 	buildStartTimeStamp = time(NULL);
 	sh_new_strdup(applicationDependencies);
 
@@ -1508,26 +1518,33 @@ int main(int argc, char **argv) {
 
 		// Build all these applications.
 
+		bool skip = false;
+
 #ifdef PARALLEL_BUILD
-		if (useColoredOutput) StartSpinner();
-		pthread_t *threads = (pthread_t *) malloc(sizeof(pthread_t) * threadCount);
+		if (!verbose) {
+			if (useColoredOutput) StartSpinner();
+			pthread_t *threads = (pthread_t *) malloc(sizeof(pthread_t) * threadCount);
 
-		for (uintptr_t i = 0; i < threadCount; i++) {
-			pthread_create(threads + i, NULL, BuildApplicationThread, NULL);
-		}
+			for (uintptr_t i = 0; i < threadCount; i++) {
+				pthread_create(threads + i, NULL, BuildApplicationThread, NULL);
+			}
 
-		for (uintptr_t i = 0; i < threadCount; i++) {
-			pthread_join(threads[i], NULL);
-		}
+			for (uintptr_t i = 0; i < threadCount; i++) {
+				pthread_join(threads[i], NULL);
+			}
 
-		if (useColoredOutput) StopSpinner();
-#else
-		for (uintptr_t i = 0; i < arrlenu(applications); i++) {
-			Log("[%d/%d] Compiling %s...\n", i + 1, arrlenu(applications), applications[i].name);
-			if (applications[i].skipped) continue;
-			applications[i].buildCallback(&applications[i]);
+			if (useColoredOutput) StopSpinner();
+			skip = true;
 		}
 #endif
+
+		if (!skip) {
+			for (uintptr_t i = 0; i < arrlenu(applications); i++) {
+				Log("[%d/%d] Compiling %s...\n", (int) i + 1, (int) arrlenu(applications), applications[i].name);
+				if (applications[i].skipped) continue;
+				applications[i].buildCallback(&applications[i]);
+			}
+		}
 
 		// Output information about the built applications,
 		// and parse the dependency files for successfully built ones.

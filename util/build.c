@@ -162,10 +162,10 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 			"convert_svg=bin/render_svg\n"
 			"linker_scripts=util/\n"
 			"crt_objects=bin/\n"
-			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\nskip_header_generation=1\ncommon_compile_flags=",
+			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\nskip_header_generation=1\nverbose=%d\ncommon_compile_flags=",
 			compilerPath, getenv("TMPDIR") ?: "",
 			compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, 
-			buffer, coloredOutput, (int) sysconf(_SC_NPROCESSORS_CONF));
+			buffer, coloredOutput, (int) sysconf(_SC_NPROCESSORS_CONF), IsOptionEnabled("BuildCore.Verbose"));
 
 	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
 		Option *option = &options[i];
