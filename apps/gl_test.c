@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
 				uint32_t i0 = strtoul(position, &position, 10) - 1;
 				uint32_t i1 = strtoul(position, &position, 10) - 1;
 				uint32_t i2 = strtoul(position, &position, 10) - 1;
-				EsAssert(i0 < vertexCount);
+				EsAssert(i0 < vertexCount); // TODO Error reporting.
 				EsAssert(i1 < vertexCount);
 				EsAssert(i2 < vertexCount);
 				modelIBOArray[3 * triangleIndex + 0] = i0;
@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	EsPrint("%F -> %F, %F -> %F, %F -> %F\n", minimumX, maximumX, minimumY, maximumY, minimumZ, maximumZ);
+	EsPrint("Model bounds: %F -> %F, %F -> %F, %F -> %F\n", minimumX, maximumX, minimumY, maximumY, minimumZ, maximumZ);
 	EsAssert(vertexIndex == vertexCount);
 	EsAssert(triangleIndex == triangleCount);
 #endif

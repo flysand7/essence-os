@@ -921,11 +921,11 @@ void WriteNewConfiguration() {
 /////////////////////////////////////////////
 
 void ButtonViewLicenses(EsInstance *, EsElement *, EsCommand *) {
-	EsPanelSwitchTo(switcher, panelLicenses, ES_TRANSITION_FADE_IN);
+	EsPanelSwitchTo(switcher, panelLicenses, ES_TRANSITION_FADE);
 }
 
 void ButtonInstallOptions(EsInstance *, EsElement *, EsCommand *) {
-	EsPanelSwitchTo(switcher, panelInstallOptions, ES_TRANSITION_FADE_IN);
+	EsPanelSwitchTo(switcher, panelInstallOptions, ES_TRANSITION_FADE);
 }
 
 void ButtonShutdown(EsInstance *, EsElement *, EsCommand *) {
@@ -938,7 +938,7 @@ void ButtonRestart(EsInstance *, EsElement *, EsCommand *) {
 
 void ButtonInstall(EsInstance *, EsElement *, EsCommand *) {
 	useMBR = EsButtonGetCheck(useMBRCheckbox) == ES_CHECK_CHECKED;
-	EsPanelSwitchTo(switcher, panelCustomizeOptions, ES_TRANSITION_FADE_IN);
+	EsPanelSwitchTo(switcher, panelCustomizeOptions, ES_TRANSITION_FADE);
 	EsElementFocus(userNameTextbox);
 	startedInstallation = true;
 	EsThreadCreate(InstallThread, nullptr, 0);
@@ -956,7 +956,7 @@ void ButtonFont(EsInstance *, EsElement *element, EsCommand *) {
 void Complete() {
 	if (installError == ES_SUCCESS) {
 		WriteNewConfiguration();
-		EsPanelSwitchTo(switcher, panelComplete, ES_TRANSITION_FADE_IN);
+		EsPanelSwitchTo(switcher, panelComplete, ES_TRANSITION_FADE);
 	} else {
 		EsPanel *row = EsPanelCreate(panelError, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL);
 		EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_ERROR);
@@ -975,7 +975,7 @@ void Complete() {
 		EsSpacerCreate(buttonsRow, ES_CELL_H_FILL);
 		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopRestartAction)), ButtonRestart);
 
-		EsPanelSwitchTo(switcher, panelError, ES_TRANSITION_FADE_IN);
+		EsPanelSwitchTo(switcher, panelError, ES_TRANSITION_FADE);
 	}
 }
 
@@ -984,7 +984,7 @@ void ButtonFinish(EsInstance *, EsElement *, EsCommand *) {
 		Complete();
 	} else {
 		onWaitScreen = true;
-		EsPanelSwitchTo(switcher, panelWait, ES_TRANSITION_FADE_IN);
+		EsPanelSwitchTo(switcher, panelWait, ES_TRANSITION_FADE);
 	}
 }
 

@@ -505,10 +505,15 @@ void _start() {
 				InstanceCreateUI(instance);
 			}
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-			// TODO Cleanup/cancel any unfinished non-blocking tasks before we get here!
 			Instance *instance = message->instanceDestroy.instance;
-			InstanceDestroy(instance);
-			instances.FindAndDeleteSwap(instance, true);
+			EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
+			
+			if (request.flags & ES_APPLICATION_STARTUP_BACKGROUND_SERVICE) {
+				// No cleanup to do.
+			} else {
+				InstanceDestroy(instance);
+				instances.FindAndDeleteSwap(instance, true);
+			}
 		} else if (message->type == ES_MSG_APPLICATION_EXIT) {
 #ifdef DEBUG_BUILD
 			for (uintptr_t i = 0; i < drives.Length(); i++) {

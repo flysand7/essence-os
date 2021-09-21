@@ -674,7 +674,8 @@ define ES_MEMORY_RESERVE_COMMIT_ALL (1 << 0)
 define ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION (1 << 0)
 
 define ES_ELEMENT_TRANSITION_ENTRANCE (1 << 0)
-define ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE (1 << 1)
+define ES_ELEMENT_TRANSITION_EXIT (1 << 1)
+define ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE (1 << 2)
 
 define ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
 
@@ -1105,6 +1106,7 @@ enum EsTransitionType {
 	ES_TRANSITION_REVEAL_DOWN
 	ES_TRANSITION_FADE_IN
 	ES_TRANSITION_FADE_OUT
+	ES_TRANSITION_FADE
 	ES_TRANSITION_FADE_VIA_TRANSPARENT
 	ES_TRANSITION_SLIDE_UP_OVER
 	ES_TRANSITION_SLIDE_DOWN_OVER
@@ -1314,8 +1316,7 @@ struct EsThemeMetrics {
 	uint64_t mask;
 	EsRectangle insets, clipInsets;
 	EsRectangle globalOffset;
-	int clipEnabled, cursor, entranceTransition, exitTransition;
-	int entranceDuration, exitDuration;
+	int clipEnabled, cursor;
 	int preferredWidth, preferredHeight;
 	int minimumWidth, minimumHeight;
 	int maximumWidth, maximumHeight;

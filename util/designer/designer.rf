@@ -183,10 +183,10 @@ struct LayerMetrics LayerMetrics_Type LayerMetricsOp {
 	Size16_Type Size16 maximumSize #StringOption { "Maximum size" };
 	Gaps8_Type Gaps8 gaps #StringOption { "Gaps" };
 	Cursor_Type uint32_t cursor #StringOption { "Cursor" };
-	Transition_Type uint32_t entranceTransition #StringOption { "Entrance transition" };
-	StyleI16_Type int16_t entranceDuration #StringOption { "Entrance duration (ms)" };
-	Transition_Type uint32_t exitTransition #StringOption { "Exit transition" };
-	StyleI16_Type int16_t exitDuration #StringOption { "Exit duration (ms)" };
+	Transition_Type uint32_t entranceTransition #StringOption { "Entrance transition" } to 21;
+	StyleI16_Type int16_t entranceDuration #StringOption { "Entrance duration (ms)" } to 21;
+	Transition_Type uint32_t exitTransition #StringOption { "Exit transition" } to 21;
+	StyleI16_Type int16_t exitDuration #StringOption { "Exit duration (ms)" } to 21;
 	Rectangle8_Type Rectangle8 globalOffset #StringOption { "Global offset" };
 	Align_Type uint32_t textVerticalAlign #StringOption { "Text vertical align: " };
 	Align_Type uint32_t textHorizontalAlign #StringOption { "Text horizontal align: " };

@@ -200,8 +200,8 @@ typedef struct ThemeLayer {
 typedef struct ThemeMetrics {
 	Rectangle16 insets, clipInsets;
 	Rectangle16 globalOffset;
-	uint8_t clipEnabled, cursor, entranceTransition, exitTransition;
-	uint16_t entranceDuration, exitDuration, fontFamily;
+	uint8_t clipEnabled, cursor;
+	uint16_t fontFamily;
 	int16_t preferredWidth, preferredHeight;
 	int16_t minimumWidth, minimumHeight;
 	int16_t maximumWidth, maximumHeight;
@@ -1558,10 +1558,6 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 		if (customMetrics->mask & ES_THEME_METRICS_GLOBAL_OFFSET) style->metrics->globalOffset = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->globalOffset);
 		if (customMetrics->mask & ES_THEME_METRICS_CLIP_ENABLED) style->metrics->clipEnabled = customMetrics->clipEnabled;
 		if (customMetrics->mask & ES_THEME_METRICS_CURSOR) style->metrics->cursor = customMetrics->cursor;
-		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_TRANSITION) style->metrics->entranceTransition = customMetrics->entranceTransition;
-		if (customMetrics->mask & ES_THEME_METRICS_EXIT_TRANSITION) style->metrics->exitTransition = customMetrics->exitTransition;
-		if (customMetrics->mask & ES_THEME_METRICS_ENTRANCE_DURATION) style->metrics->entranceDuration = customMetrics->entranceDuration;
-		if (customMetrics->mask & ES_THEME_METRICS_EXIT_DURATION) style->metrics->exitDuration = customMetrics->exitDuration;
 		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_WIDTH) style->metrics->preferredWidth = customMetrics->preferredWidth;
 		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_HEIGHT) style->metrics->preferredHeight = customMetrics->preferredHeight;
 		if (customMetrics->mask & ES_THEME_METRICS_MINIMUM_WIDTH) style->metrics->minimumWidth = customMetrics->minimumWidth;

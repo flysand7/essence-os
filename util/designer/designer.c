@@ -85,7 +85,7 @@ typedef struct ModContext {
 	struct Keyframe *keyframe;
 } ModContext;
 
-const uint32_t saveFormatVersion = 21;
+const uint32_t saveFormatVersion = 22;
 
 void SetSelectedItems(ModContext context);
 void ColorListRefresh();
@@ -1402,6 +1402,10 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 
 			printf("exporting '%.*s' (id: %ld)\n", (int) style->name.byteCount, (char *) style->name.buffer, (style->id << 1) | 1);
 
+			for (uintptr_t i = 0; i < arrlenu(style->layers); i++) {
+				printf("\thas layer %ld\n", style->layers[i]);
+			}
+
 			if (style->id && stylesPath) {
 				fprintf(f, "%s ES_STYLE_", style->publicStyle ? "define" : "private define");
 
@@ -1491,6 +1495,9 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 					header.duration = sequence->duration;
 					header.isLastSequence = j == arrlenu(layer->sequences) - 1;
 					state->access(state, &header, sizeof(header));
+
+					if (sequence->flagBeforeEnter) printf("before enter %ld\n", layer->id);
+					if (sequence->flagAfterExit) printf("after exit %ld\n", layer->id);
 				}
 
 				uint32_t overrideCount = 0;

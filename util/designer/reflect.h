@@ -350,20 +350,22 @@ void RfEnumOp(RfState *state, RfItem *item, void *pointer) {
 	} else if (state->op == RF_OP_LOAD) {
 		RfIntegerLoad(state, pointer, item->byteCount);
 
-		uint32_t value = 0;
+		if (pointer) {
+			uint32_t value = 0;
 
-		if (item->byteCount == 1) {
-			value = *(uint8_t *) pointer;
-		} else if (item->byteCount == 2) {
-			value = *(uint16_t *) pointer;
-		} else if (item->byteCount == 4) {
-			value = *(uint32_t *) pointer;
-		} else {
-			RF_ASSERT(false);
-		}
+			if (item->byteCount == 1) {
+				value = *(uint8_t *) pointer;
+			} else if (item->byteCount == 2) {
+				value = *(uint16_t *) pointer;
+			} else if (item->byteCount == 4) {
+				value = *(uint32_t *) pointer;
+			} else {
+				RF_ASSERT(false);
+			}
 
-		if (value >= item->type->fieldCount) {
-			state->error = true;
+			if (value >= item->type->fieldCount) {
+				state->error = true;
+			}
 		}
 	}
 }

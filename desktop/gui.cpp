@@ -109,7 +109,6 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 
 #define UI_STATE_ANIMATING		(1 << 13)
 #define UI_STATE_ENTERED		(1 << 14)
-#define UI_STATE_EXITING		(1 << 15)
 #define UI_STATE_BLOCK_INTERACTION	(1 << 16)
 
 #define UI_STATE_TEMP			(1 << 17)
@@ -1172,7 +1171,7 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 	int width = Width(bounds), height = Height(bounds);
 	double ratio = (double) height / (double) width;
 
-	if (type == ES_TRANSITION_FADE_IN || type == ES_TRANSITION_FADE_OUT || type == ES_TRANSITION_FADE_VIA_TRANSPARENT) {
+	if (type == ES_TRANSITION_FADE_IN || type == ES_TRANSITION_FADE_OUT || type == ES_TRANSITION_FADE_VIA_TRANSPARENT || type == ES_TRANSITION_FADE) {
 		return bounds;
 	} else if (!to) {
 		if (type == ES_TRANSITION_SLIDE_UP) {
@@ -1269,7 +1268,7 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 }
 
 void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, EsRectangle bounds, EsTransitionType type, double progress, bool to) {
-	if (type == ES_TRANSITION_FADE_OUT && to) {
+	if ((type == ES_TRANSITION_FADE_OUT && to) || (type == ES_TRANSITION_FADE_IN && !to)) {
 		return;
 	}
 
@@ -1292,6 +1291,12 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 
 	if (!durationMs) {
 		return;
+	}
+
+	if (transitionType == ES_TRANSITION_FADE_IN) {
+		flags |= ES_ELEMENT_TRANSITION_ENTRANCE;
+	} else if (transitionType == ES_TRANSITION_FADE_OUT) {
+		flags |= ES_ELEMENT_TRANSITION_EXIT;
 	}
 
 	if (element->previousTransitionFrame) {
@@ -1459,24 +1464,23 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 		bounds.l -= paintOutsets.l, bounds.r += paintOutsets.r;
 		bounds.t -= paintOutsets.t, bounds.b += paintOutsets.b;
 
-		if (EsPaintTargetTake(&target, targetWidth, targetHeight)) {
-			if (previousTransitionFrame) {
-				UIDrawTransitionEffect(painter, previousTransitionFrame, bounds, 
-						(EsTransitionType) transitionType, progress, false);
+		if (previousTransitionFrame) {
+			UIDrawTransitionEffect(painter, previousTransitionFrame, bounds, (EsTransitionType) transitionType, progress, false);
+		}
+
+		if (~transitionFlags & ES_ELEMENT_TRANSITION_EXIT) {
+			if (EsPaintTargetTake(&target, targetWidth, targetHeight)) {
+				EsPainter p = {};
+				p.clip = ES_RECT_4(0, targetWidth, 0, targetHeight);
+				p.offsetX = paintOutsets.l;
+				p.offsetY = paintOutsets.t;
+				p.target = &target;
+				InternalPaint(&p, PAINT_NO_TRANSITION | PAINT_NO_OFFSET);
+				UIDrawTransitionEffect(painter, &target, bounds, (EsTransitionType) transitionType, progress, true);
+				EsPaintTargetReturn(&target);
+			} else {
+				goto paintBackground;
 			}
-
-			EsPainter p = {};
-			p.clip = ES_RECT_4(0, targetWidth, 0, targetHeight);
-			p.offsetX = paintOutsets.l;
-			p.offsetY = paintOutsets.t;
-			p.target = &target;
-			InternalPaint(&p, PAINT_NO_TRANSITION | PAINT_NO_OFFSET);
-
-			UIDrawTransitionEffect(painter, &target, bounds, (EsTransitionType) transitionType, progress, true);
-
-			EsPaintTargetReturn(&target);
-		} else {
-			goto paintBackground;
 		}
 	} else {
 		paintBackground:;
@@ -1672,17 +1676,6 @@ void ProcessAnimations() {
 			gui.animatingElements.DeleteSwap(i);
 			element->state &= ~UI_STATE_ANIMATING;
 			i--;
-
-			if (element->state & UI_STATE_EXITING) {
-				EsElement *ancestor = element;
-
-				while (ancestor) {
-					ancestor->state |= UI_STATE_DESTROYING_CHILD;
-					ancestor = ancestor->parent;
-				}
-
-				element->state &= ~UI_STATE_EXITING;
-			}
 		} else if (m.animate.waitMs < waitMs || waitMs == -1) {
 			waitMs = m.animate.waitMs;
 		}
@@ -1722,10 +1715,6 @@ bool EsElement::RefreshStyleState() {
 		if (state & UI_STATE_FOCUSED) {
 			styleStateFlags |= THEME_STATE_FOCUSED;
 		}
-	}
-
-	if (state & UI_STATE_EXITING) {
-		styleStateFlags |= THEME_STATE_AFTER_EXIT;
 	}
 
 	bool observedBitsChanged = false;
@@ -2387,10 +2376,6 @@ int EsElement::GetHeight(int width) {
 }
 
 void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY) {
-	if (state & UI_STATE_EXITING) {
-		return;
-	}
-
 #ifdef TRACE_LAYOUT
 	if (parent) {
 		EsElement *parent = this->parent->parent;
@@ -5456,26 +5441,6 @@ void EsElement::Destroy(bool manual) {
 	}
 
 	if (manual) {
-#ifndef DISABLE_ALL_ANIMATIONS
-		if (currentStyle->metrics->exitDuration) {
-			if (previousTransitionFrame) {
-				EsPaintTargetDestroy(previousTransitionFrame);
-			}
-
-			previousTransitionFrame = EsPaintTargetCreate(width, height, true);
-
-			if (previousTransitionFrame) {
-				// TODO Doesn't support shadows.
-				EsPainter painter = {};
-				painter.clip = ES_RECT_4(0, width, 0, height);
-				painter.target = previousTransitionFrame;
-				InternalPaint(&painter, PAINT_NO_TRANSITION | PAINT_NO_OFFSET);
-				state |= UI_STATE_EXITING;
-				RefreshStyle();
-			}
-		}
-#endif
-
 		EsElement *ancestor = parent;
 
 		while (ancestor && (~ancestor->state & UI_STATE_DESTROYING_CHILD)) {
@@ -5554,10 +5519,6 @@ bool EsElement::InternalDestroy() {
 	}
 
 	children.Free();
-
-	if (state & UI_STATE_EXITING) {
-		return false;
-	}
 
 	InspectorNotifyElementDestroyed(this);
 
@@ -6007,10 +5968,6 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	m.globalOffset = RECTANGLE_8_TO_ES_RECTANGLE(metrics->globalOffset);
 	m.clipEnabled = metrics->clipEnabled;
 	m.cursor = metrics->cursor;
-	m.entranceTransition = metrics->entranceTransition;
-	m.exitTransition = metrics->exitTransition;
-	m.entranceDuration = metrics->entranceDuration;
-	m.exitDuration = metrics->exitDuration;
 	m.preferredWidth = metrics->preferredWidth;
 	m.preferredHeight = metrics->preferredHeight;
 	m.minimumWidth = metrics->minimumWidth;

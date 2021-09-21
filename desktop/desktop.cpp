@@ -1070,7 +1070,7 @@ void TaskBarTasksButtonUpdate() {
 	if (desktop.allOngoingUserTasks.Length()) {
 		if (EsElementIsHidden(desktop.tasksButton)) {
 			EsPanelStartMovementAnimation((EsPanel *) EsElementGetLayoutParent(desktop.tasksButton), 1.5f /* duration scale */);
-			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_IN, ES_ELEMENT_TRANSITION_ENTRANCE, 1.5f);
+			EsElementStartTransition(desktop.tasksButton, ES_TRANSITION_FADE_IN, ES_FLAGS_DEFAULT, 1.5f);
 			EsElementSetHidden(desktop.tasksButton, false);
 		}
 
