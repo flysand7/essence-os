@@ -374,7 +374,10 @@ void MMPhysicalInsertZeroedPage(uintptr_t page) {
 	MMUpdateAvailablePageCount(true);
 }
 
-void MMPhysicalInsertFreePage(uintptr_t page) {
+void MMPhysicalInsertFreePagesStart() {
+}
+
+void MMPhysicalInsertFreePagesNext(uintptr_t page) {
 	MMPageFrame *frame = pmm.pageFrames + page;
 	frame->state = MMPageFrame::FREE;
 
@@ -387,7 +390,9 @@ void MMPhysicalInsertFreePage(uintptr_t page) {
 
 	pmm.freeOrZeroedPageBitset.Put(page);
 	pmm.countFreePages++;
+}
 
+void MMPhysicalInsertFreePagesEnd() {
 	if (pmm.countFreePages > MM_ZERO_PAGE_THRESHOLD) {
 		KEventSet(&pmm.zeroPageEvent, false, true);
 	}
@@ -550,6 +555,8 @@ void MMPhysicalFree(uintptr_t page, bool mutexAlreadyAcquired, size_t count) {
 
 	page >>= K_PAGE_BITS;
 
+	MMPhysicalInsertFreePagesStart();
+
 	for (uintptr_t i = 0; i < count; i++, page++) {
 		MMPageFrame *frame = pmm.pageFrames + page;
 
@@ -561,8 +568,10 @@ void MMPhysicalFree(uintptr_t page, bool mutexAlreadyAcquired, size_t count) {
 			pmm.countActivePages--;
 		}
 
-		MMPhysicalInsertFreePage(page);
+		MMPhysicalInsertFreePagesNext(page);
 	}
+
+	MMPhysicalInsertFreePagesEnd();
 
 	if (!mutexAlreadyAcquired) KMutexRelease(&pmm.pageFrameMutex);
 }
@@ -2291,12 +2300,20 @@ void MMInitialise() {
 		pmm.freeOrZeroedPageBitset.Initialise(physicalMemoryHighest >> K_PAGE_BITS, true);
 
 		uint64_t commitLimit = 0;
+		MMPhysicalInsertFreePagesStart();
 
-		while (physicalMemoryRegionsPagesCount) {
-			// TODO This loop is a bit slow...
-			MMPhysicalInsertFreePage(MMPhysicalAllocate(ES_FLAGS_DEFAULT) >> K_PAGE_BITS);
-			commitLimit++;
+		for (uintptr_t i = 0; i < physicalMemoryRegionsCount; i++) {
+			uintptr_t base = physicalMemoryRegions[i].baseAddress >> K_PAGE_BITS;
+			uintptr_t count = physicalMemoryRegions[i].pageCount;
+			commitLimit += count;
+
+			for (uintptr_t j = 0; j < count; j++) {
+				MMPhysicalInsertFreePagesNext(base + j);
+			}
 		}
+
+		MMPhysicalInsertFreePagesEnd();
+		physicalMemoryRegionsPagesCount = 0;
 
 		pmm.commitLimit = pmm.commitFixedLimit = commitLimit;
 		KernelLog(LOG_INFO, "Memory", "pmm initialised", "MMInitialise - PMM initialised with a fixed commit limit of %d pages.\n", pmm.commitLimit);

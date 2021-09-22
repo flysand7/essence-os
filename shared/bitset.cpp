@@ -15,7 +15,9 @@ struct Bitset {
 	size_t singleCount; 
 	size_t groupCount;
 
+#ifdef DEBUG_BUILD
 	bool modCheck;
+#endif
 };
 
 #else
@@ -36,8 +38,10 @@ void Bitset::PutAll() {
 }
 
 uintptr_t Bitset::Get(size_t count, uintptr_t align, uintptr_t below) {
+#ifdef DEBUG_BUILD
 	if (modCheck) KernelPanic("Bitset::Allocate - Concurrent modification.\n");
 	modCheck = true; EsDefer({modCheck = false;});
+#endif
 
 	uintptr_t returnValue = (uintptr_t) -1;
 
@@ -148,20 +152,25 @@ bool Bitset::Read(uintptr_t index) {
 }
 
 void Bitset::Take(uintptr_t index) {
+#ifdef DEBUG_BUILD
 	if (modCheck) KernelPanic("Bitset::Take - Concurrent modification.\n");
 	modCheck = true; EsDefer({modCheck = false;});
+#endif
 
 	uintptr_t group = index / BITSET_GROUP_SIZE;
 
+#ifdef DEBUG_BUILD
 	if (!(singleUsage[index >> 5] & (1 << (index & 31)))) {
 		KernelPanic("Bitset::Take - Attempting to take a entry that has already been taken.\n");
 	}
+#endif
 
 	groupUsage[group]--;
 	singleUsage[index >> 5] &= ~(1 << (index & 31));
 }
 
 void Bitset::Put(uintptr_t index) {
+#ifdef DEBUG_BUILD
 	if (modCheck) KernelPanic("Bitset::Put - Concurrent modification.\n");
 	modCheck = true; EsDefer({modCheck = false;});
 
@@ -172,6 +181,7 @@ void Bitset::Put(uintptr_t index) {
 	if (singleUsage[index >> 5] & (1 << (index & 31))) {
 		KernelPanic("Bitset::Put - Duplicate entry.\n");
 	}
+#endif
 
 	{
 		singleUsage[index >> 5] |= 1 << (index & 31);

@@ -1003,6 +1003,7 @@ void ACPI::Initialise() {
 	uint64_t end = ProcessorReadTimeStamp();
 	timeStampTicksPerMs = (end - start) >> 3;
 	ProcessorEnableInterrupts();
+	// EsPrint("timeStampTicksPerMs = %d\n", timeStampTicksPerMs);
 
 	// Add some entropy.
 	{
