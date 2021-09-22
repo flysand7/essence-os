@@ -285,6 +285,7 @@ Option options[] = {
 	{ "Flag.VGA_TEXT_MODE", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Flag.CHECK_FOR_NOT_RESPONDING", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Flag._ALWAYS_USE_VBE", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Flag.COM_OUTPUT", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.ACPICA", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_image", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_image_write", OPTION_TYPE_BOOL, { .b = true } },

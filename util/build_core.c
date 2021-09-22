@@ -150,6 +150,7 @@ char apiLinkFlags1[4096] = " -T util/linker/api64.ld -ffreestanding -nostdlib -g
 char apiLinkFlags2[4096] = " -lgcc ";
 char apiLinkFlags3[4096] = " -Wl,--end-group -Lroot/Applications/POSIX/lib ";
 char kernelLinkFlags[4096] = " -ffreestanding -nostdlib -lgcc -g -z max-page-size=0x1000 ";
+char kernelAssemblyFlags[4096] = " -felf64 -Fdwarf ";
 
 // Specific configuration options:
 
@@ -1046,8 +1047,7 @@ void LinkKernel() {
 }
 
 void BuildKernel(Application *application) {
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/kernel2.d", "-D", "COM_OUTPUT", 
-			"-felf64", "kernel/x86_64.s", "-o", "bin/kernel_x86_64.o", "-Fdwarf");
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/kernel2.d", "kernel/x86_64.s", "-o", "bin/kernel_x86_64.o", ArgString(kernelAssemblyFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "kernel/main.cpp", "-o", "bin/kernel.o", 
 			ArgString(kernelCompileFlags), ArgString(cppCompileFlags), ArgString(commonCompileFlags));
 }
@@ -1300,6 +1300,8 @@ int main(int argc, char **argv) {
 					convertFonts = false;
 				} else if (0 == strcmp(s.key, "Flag._ALWAYS_USE_VBE")) {
 					bootUseVBE = !!atoi(s.value);
+				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
+					strcat(kernelAssemblyFlags, " -DCOM_OUTPUT ");
 				} else if (0 == memcmp(s.key, "General.", 8)) {
 					EsINIState s2 = s;
 					s2.key += 8, s2.keyBytes -= 8;
