@@ -7,7 +7,6 @@ vbe_init:
 	jmp	vbe_bad
 %endif
 
-
 	; Get EDID information.
 	mov	ax,0x4F15
 	mov	bl,1

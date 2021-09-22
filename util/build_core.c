@@ -156,7 +156,7 @@ char kernelAssemblyFlags[4096] = " -felf64 -Fdwarf ";
 
 bool verbose;
 bool useColoredOutput;
-bool forEmulator, bootUseVBE;
+bool forEmulator, bootUseVBE, deletePOSIXBeforeImport;
 bool systemBuild;
 bool convertFonts = true;
 EsINIState *fontLines;
@@ -1169,6 +1169,12 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	_partitionOffset = 1048576;
 	Format(partitionSize - _partitionOffset, partitionLabel, installationIdentifier, kernel, kernelBytes);
 
+#ifndef OS_ESSENCE
+	if (deletePOSIXBeforeImport) {
+		system("rm -r root/Applications/POSIX");
+	}
+#endif
+
 	Log("Copying files to the drive... ");
 
 	ImportNode root = {};
@@ -1302,6 +1308,8 @@ int main(int argc, char **argv) {
 					bootUseVBE = !!atoi(s.value);
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
 					strcat(kernelAssemblyFlags, " -DCOM_OUTPUT ");
+				} else if (0 == strcmp(s.key, "BuildCore.DeletePOSIXBeforeImport")) {
+					deletePOSIXBeforeImport = !!atoi(s.value);
 				} else if (0 == memcmp(s.key, "General.", 8)) {
 					EsINIState s2 = s;
 					s2.key += 8, s2.keyBytes -= 8;

@@ -787,11 +787,11 @@ static void DeviceAttach(KDevice *parentDevice) {
 	ACPIInitialise2();
 #endif
 
-	KDeviceAttachByName(acpi.computer, "PCI");
-
 	if (!acpi.vgaControllerUnavailable) {
 		KDeviceAttachByName(acpi.computer, "SVGA");
 	}
+
+	KDeviceAttachByName(acpi.computer, "PCI");
 }
 
 KDriver driverACPI = {

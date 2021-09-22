@@ -22,13 +22,9 @@ void DebugWriteCharacter(uintptr_t character);
 bool printToDebugger = false;
 uintptr_t terminalPosition = 80;
 
-#define EARLY_DEBUGGING
-// #define VGA_TEXT_MODE
-
-#ifdef EARLY_DEBUGGING
-char kernelLog[262144];
+#define KERNEL_LOG_SIZE (262144)
+char kernelLog[KERNEL_LOG_SIZE];
 uintptr_t kernelLogPosition;
-#endif
 
 static void TerminalCallback(int character, void *) {
 	if (!character) return;
@@ -36,13 +32,11 @@ static void TerminalCallback(int character, void *) {
 	KSpinlockAcquire(&terminalLock);
 	EsDefer(KSpinlockRelease(&terminalLock));
 
-#ifdef EARLY_DEBUGGING
-	{
+	if (sizeof(kernelLog)) {
 		kernelLog[kernelLogPosition] = character;
 		kernelLogPosition++;
 		if (kernelLogPosition == sizeof(kernelLog)) kernelLogPosition = 0;
 	}
-#endif
 
 #ifdef VGA_TEXT_MODE
 	{
@@ -139,7 +133,7 @@ void DebugWriteCharacter(uintptr_t character) {
 }
 
 void StartDebugOutput() {
-	if (graphics.target && graphics.target->debugClearScreen && graphics.target->debugPutBlock) {
+	if (graphics.target && graphics.target->debugClearScreen && graphics.target->debugPutBlock && !printToDebugger) {
 		debugRows = (graphics.height - 1) / VGA_FONT_HEIGHT;
 		debugColumns = (graphics.width - 1) / VGA_FONT_WIDTH - 2;
 		debugCurrentRow = debugCurrentColumn = 0;
@@ -156,6 +150,7 @@ void KDebugKeyPressed() {
 	KernelPanic("Debug key pressed.\n");
 }
 
+#ifdef POST_PANIC_DEBUGGING
 uintptr_t DebugReadNumber() {
 	uintptr_t value = 0;
 
@@ -188,6 +183,7 @@ uintptr_t DebugReadNumber() {
 
 	return value;
 }
+#endif
 
 void KernelPanic(const char *format, ...) {
 	ProcessorDisableInterrupts();
@@ -201,7 +197,7 @@ void KernelPanic(const char *format, ...) {
 		DriversDumpState();
 	}
 
-	if (!printToDebugger) StartDebugOutput();
+	StartDebugOutput();
 
 	EsPrint("\n--- System Error ---\n>> ");
 
@@ -251,7 +247,7 @@ void KernelPanic(const char *format, ...) {
 		}
 	}
 
-#ifdef EARLY_DEBUGGING
+#ifdef POST_PANIC_DEBUGGING
 	uintptr_t kernelLogEnd = kernelLogPosition;
 	EsPrint("Press 'D' to enter debugger.\n");
 	while (KWaitKey() != ES_SCANCODE_D);
@@ -278,8 +274,6 @@ void KernelPanic(const char *format, ...) {
 		if (key == ES_SCANCODE_0) {
 			uintptr_t position = 0, nextPosition = 0;
 			uintptr_t x = 0, y = 0;
-
-			
 
 #ifdef VGA_TEXT_MODE
 			for (uintptr_t i = 0; i < 80 * 25; i++) {

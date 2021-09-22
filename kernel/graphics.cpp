@@ -103,12 +103,17 @@ void KRegisterGraphicsTarget(KGraphicsTarget *target) {
 
 	graphics.frameBuffer.Resize(graphics.width, graphics.height);
 
+#ifdef START_DEBUG_OUTPUT
+	StartDebugOutput();
+	EsPrint("Hello\n");
+#else
 	windowManager.Initialise();
 
 	EsMessage m;
 	EsMemoryZero(&m, sizeof(EsMessage));
 	m.type = ES_MSG_SET_SCREEN_RESOLUTION;
 	desktopProcess->messageQueue.SendMessage(nullptr, &m);
+#endif
 }
 
 bool Surface::Resize(size_t newResX, size_t newResY, uint32_t clearColor, bool copyOldBits) {
@@ -580,6 +585,11 @@ void GraphicsDebugPutBlock32(uintptr_t x, uintptr_t y, bool toggle,
 void GraphicsDebugClearScreen32(unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer) {
 	for (uintptr_t i = 0; i < screenHeight; i++) {
 		for (uintptr_t j = 0; j < screenWidth * 4; j += 4) {
+			linearBuffer[i * stride + j + 2] = 0x18;
+			linearBuffer[i * stride + j + 1] = 0x7E;
+			linearBuffer[i * stride + j + 0] = 0xCF;
+
+#if 0
 			if (graphics.debuggerActive) {
 				linearBuffer[i * stride + j + 2] = 0x18;
 				linearBuffer[i * stride + j + 1] = 0x7E;
@@ -589,6 +599,7 @@ void GraphicsDebugClearScreen32(unsigned screenWidth, unsigned screenHeight, uns
 				linearBuffer[i * stride + j + 1] >>= 1;
 				linearBuffer[i * stride + j + 0] >>= 1;
 			}
+#endif
 		}
 	}
 }

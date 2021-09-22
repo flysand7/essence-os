@@ -5,6 +5,15 @@
 #define K_PAGE_SIZE (4096)
 #define K_PAGE_BITS (12)
 
+typedef struct VideoModeInformation {
+	uint8_t valid : 1, edidValid : 1;
+	uint8_t bitsPerPixel;
+	uint16_t widthPixels, heightPixels;
+	uint16_t bytesPerScanlineLinear;
+	uint64_t bufferPhysical;
+	uint8_t edid[128];
+} VideoModeInformation;
+
 typedef struct ElfHeader {
 	uint32_t magicNumber; // 0x7F followed by 'ELF'
 	uint8_t bits; // 1 = 32 bit, 2 = 64 bit
@@ -79,13 +88,28 @@ void ZeroMemory(void *pointer, uint64_t size) {
 	}
 }
 
-void Error(WCHAR *message) {
+void Print(WCHAR *message) {
 	uefi_call_wrapper(systemTable->ConOut->OutputString, 2, systemTable->ConOut, message);
+}
+
+void Error(WCHAR *message) {
+	Print(message);
 	while (1);
 }
 
+void PrintHex(uint64_t value) {
+	const WCHAR *hexChars = L"0123456789ABCDEF";
+
+	for (uintptr_t i = 0; i < 16; i++) {
+		WCHAR b[2] = { hexChars[(value >> (60 - i * 4)) & 0xF], 0 };
+		Print((WCHAR *) b);
+	}
+
+	Print(L", ");
+}
+
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTable) {
-	UINTN mapKey;
+	UINTN mapKey = 0;
 	systemTable = _systemTable;
 	uint32_t *framebuffer, horizontalResolution, verticalResolution, pixelsPerScanline;
 	ElfHeader *header;
@@ -95,12 +119,14 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 		EFI_PHYSICAL_ADDRESS address = 0x100000;
 
 		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->AllocatePages, 4, AllocateAddress, EfiLoaderData, 0x200, &address)) {
-			Error(L"Error: Could not map 0x100000 -> 0x180000.\n");
+			Error(L"Error: Could not allocate 1MB->3MB.\n");
 		}
 	}
 
 	// Find the RSDP.
 	{
+		uint8_t foundRSDP = 0;
+
 		for (uintptr_t i = 0; i < systemTable->NumberOfTableEntries; i++) {
 			EFI_CONFIGURATION_TABLE *entry = systemTable->ConfigurationTable + i;
 			if (entry->VendorGuid.Data1 == 0x8868E871 && entry->VendorGuid.Data2 == 0xE4F1 && entry->VendorGuid.Data3 == 0x11D3
@@ -108,8 +134,13 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 					&& entry->VendorGuid.Data4[3] == 0x80 && entry->VendorGuid.Data4[4] == 0xC7 && entry->VendorGuid.Data4[5] == 0x3C
 					&& entry->VendorGuid.Data4[6] == 0x88 && entry->VendorGuid.Data4[7] == 0x81) {
 				*((uint64_t *) 0x107FE8) = (uint64_t) entry->VendorTable;
-				// Print(L"The RSDP can be found at 0x%x.\n", entry->VendorTable);
+				foundRSDP = 1;
+				break;
 			}
+		}
+
+		if (!foundRSDP) {
+			Error(L"Error: Could not find the RSDP.\n");
 		}
 	}
 
@@ -125,13 +156,15 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 
 		UINTN size;
 
-		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->OpenProtocol, 6, imageHandle, &loadedImageProtocolGUID, (void **) &loadedImageProtocol, imageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL)) {
+		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->OpenProtocol, 6, imageHandle, &loadedImageProtocolGUID, 
+					(void **) &loadedImageProtocol, imageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL)) {
 			Error(L"Error: Could not open protocol 1.\n");
 		}
 
 		EFI_HANDLE deviceHandle = loadedImageProtocol->DeviceHandle; 
 
-		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->OpenProtocol, 6, deviceHandle, &simpleFilesystemProtocolGUID, (void **) &simpleFilesystemProtocol, imageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL)) {
+		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->OpenProtocol, 6, deviceHandle, &simpleFilesystemProtocolGUID, 
+					(void **) &simpleFilesystemProtocol, imageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL)) {
 			Error(L"Error: Could not open procotol 2.\n");
 		}
 
@@ -152,7 +185,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 		// Print(L"Kernel size: %d bytes\n", size);
 
 		if (size == KERNEL_BUFFER_SIZE) {
-			Error(L"Kernel too large to fit into buffer.\n");
+			Error(L"Error: Kernel too large to fit into buffer.\n");
 		}
 
 		if (EFI_SUCCESS != uefi_call_wrapper(filesystemRoot->Open, 5, filesystemRoot, &iidFile, L"esiid.dat", EFI_FILE_MODE_READ, 0)) {
@@ -178,6 +211,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 
 	// Get the graphics mode information.
 	// TODO Mode picking.
+	// TODO Get EDID information, if available.
 	{
 		EFI_GRAPHICS_OUTPUT_PROTOCOL *graphicsOutputProtocol;
 		EFI_GUID graphicsOutputProtocolGUID = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
@@ -197,7 +231,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 		UINTN descriptorSize, size = MEMORY_MAP_BUFFER_SIZE;
 		UINT32 descriptorVersion;
 
-		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->GetMemoryMap, 5, &size, (EFI_MEMORY_DESCRIPTOR *) memoryMapBuffer, &mapKey, &descriptorSize, &descriptorVersion)) {
+		if (EFI_SUCCESS != uefi_call_wrapper(systemTable->BootServices->GetMemoryMap, 5, &size, 
+					(EFI_MEMORY_DESCRIPTOR *) memoryMapBuffer, &mapKey, &descriptorSize, &descriptorVersion)) {
 			Error(L"Error: Could not get memory map.\n");
 		}
 
@@ -228,14 +263,14 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 		uint64_t *paging = (uint64_t *) 0x140000;
 		ZeroMemory(paging, 0x5000);
 
-		paging[0x1FE] = 0x140003;
-		paging[0x000] = 0x141003;
-		paging[0x200] = 0x142003;
-		paging[0x400] = 0x143003;
+		paging[0x1FE] = 0x140003; // Recursive
+		paging[0x000] = 0x141003; // L4
+		paging[0x200] = 0x142003; // L3
+		paging[0x400] = 0x143003; // L2
 		paging[0x401] = 0x144003;
 
 		for (uintptr_t i = 0; i < 0x400; i++) {
-			paging[0x600 + i] = (i * 0x1000) | 3;
+			paging[0x600 + i] = (i * 0x1000) | 3; // L1
 		}
 	}
 
@@ -249,17 +284,16 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *_systemTabl
 	}
 
 	// Copy the graphics information across.
-	// TODO.
-#if 0
 	{
-		struct VESAVideoModeInformation *destination = (struct VESAVideoModeInformation *) (0x107000);
+		VideoModeInformation *destination = (VideoModeInformation *) (0x107000);
 		destination->widthPixels = horizontalResolution;
 		destination->heightPixels = verticalResolution;
-		destination->bufferPhysical = (uintptr_t) framebuffer; // TODO 64-bit framebuffers.
+		destination->bufferPhysical = (uint64_t) framebuffer;
 		destination->bytesPerScanlineLinear = pixelsPerScanline * 4;
 		destination->bitsPerPixel = 32;
+		destination->valid = 1;
+		destination->edidValid = 0;
 	}
-#endif
 
 	// Allocate and map memory for the kernel.
 	{

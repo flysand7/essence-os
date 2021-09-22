@@ -104,6 +104,8 @@ InterruptContext *ArchInitialiseThread(uintptr_t kernelStack, uintptr_t kernelSt
 		uintptr_t startAddress, uintptr_t argument1, uintptr_t argument2,
 		 bool userland, uintptr_t stack, uintptr_t userStackSize);
 
+void StartDebugOutput();
+
 uint64_t timeStampTicksPerMs;
 
 EsUniqueIdentifier installationID; // The identifier of this OS installation, given to us by the bootloader.

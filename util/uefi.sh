@@ -16,7 +16,7 @@ LINK="clang -target x86_64-unknown-windows -nostdlib -Wl,-entry:efi_main -Wl,-su
 $CC -o bin/uefi.o boot/x86/uefi.c 
 $LINK -o bin/uefi bin/uefi.o 
 
-mkdir mount
+mkdir -p mount
 sudo losetup --offset `fdisk -l bin/uefi_drive | grep 'EFI System' | awk '{print 512*$2}'` --sizelimit `fdisk -l bin/uefi_drive | grep 'EFI System' | awk '{print 512*$4}'` /dev/loop0 bin/uefi_drive
 # sudo mkfs.fat /dev/loop0
 sudo mount /dev/loop0 mount
