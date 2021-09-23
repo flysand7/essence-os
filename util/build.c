@@ -657,7 +657,7 @@ void BuildCrossCompiler() {
 
 		{
 			CallSystem("echo Preparing C standard library headers... >> bin/build_cross.log");
-			CallSystem("mkdir -p root/Essence root/Applications/POSIX/include root/Applications/POSIX/lib root/Applications/POSIX/bin");
+			CallSystem("mkdir -p root/" SYSTEM_FOLDER_NAME " root/Applications/POSIX/include root/Applications/POSIX/lib root/Applications/POSIX/bin");
 			CallSystem("ports/musl/build.sh >> bin/build_cross.log 2>&1");
 		}
 

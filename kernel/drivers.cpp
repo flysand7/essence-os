@@ -196,7 +196,7 @@ const KDriver *DriverLoad(KInstalledDriver *installedDriver) {
 	if (!module) return nullptr;
 
 	module->path = buffer;
-	module->pathBytes = EsStringFormat(buffer, K_MAX_PATH, K_OS_FOLDER "/Modules/%s.ekm", 
+	module->pathBytes = EsStringFormat(buffer, K_MAX_PATH, K_SYSTEM_FOLDER "/Modules/%s.ekm", 
 			installedDriver->nameBytes, installedDriver->name);
 	module->resolveSymbol = ResolveKernelSymbol;
 

@@ -655,7 +655,7 @@ EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice dr
 	// Load the kernel.
 
 	size_t kernelBytes;
-	void *kernel = EsFileReadAll(EsLiteral(K_OS_FOLDER "/Kernel.esx"), &kernelBytes);
+	void *kernel = EsFileReadAll(EsLiteral(K_SYSTEM_FOLDER "/Kernel.esx"), &kernelBytes);
 	if (!kernel) return ES_ERROR_FILE_DOES_NOT_EXIST;
 
 	m.user.context1.u = 3;
@@ -832,7 +832,7 @@ EsError Install() {
 	void *kernel;
 
 	if (useMBR) {
-		kernel = EsFileReadAll(EsLiteral(K_OS_FOLDER "/Kernel.esx"), &kernelBytes);
+		kernel = EsFileReadAll(EsLiteral(K_SYSTEM_FOLDER "/Kernel.esx"), &kernelBytes);
 		if (!kernel) return ES_ERROR_FILE_DOES_NOT_EXIST;
 		m.user.context1.u = 6;
 		EsMessagePost(nullptr, &m);
@@ -888,7 +888,7 @@ void InstallThread(EsGeneric) {
 
 void WriteNewConfiguration() {
 	size_t newSystemConfigurationPathBytes, newSystemConfigurationBytes;
-	char *newSystemConfigurationPath = EsStringAllocateAndFormat(&newSystemConfigurationPathBytes, "%s/Essence/Default.ini", 
+	char *newSystemConfigurationPath = EsStringAllocateAndFormat(&newSystemConfigurationPathBytes, "%s/" K_SYSTEM_FOLDER_NAME "/Default.ini", 
 			newFileSystemMountPoint.prefixBytes, newFileSystemMountPoint.prefix);
 	char *newSystemConfiguration = (char *) EsFileReadAll(newSystemConfigurationPath, newSystemConfigurationPathBytes, &newSystemConfigurationBytes); 
 

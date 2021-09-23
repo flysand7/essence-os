@@ -1,6 +1,9 @@
 #define BINUTILS_VERSION "2.36.1"
 #define GCC_VERSION "11.1.0"
 
+// Duplicated in prefix.h.
+#define SYSTEM_FOLDER_NAME "Essence"
+
 #ifndef OS_ESSENCE
 
 #include <sys/stat.h>

@@ -285,9 +285,10 @@ struct MemoryAvailable {
 #define K_BOOT_DRIVE "0:"
 #endif
 
-#define K_OS_FOLDER K_BOOT_DRIVE "/Essence"
-#define K_DESKTOP_EXECUTABLE K_OS_FOLDER "/Desktop.esx"
-#define K_SYSTEM_CONFIGURATION K_OS_FOLDER "/Default.ini"
+#define K_SYSTEM_FOLDER_NAME "Essence"
+#define K_SYSTEM_FOLDER K_BOOT_DRIVE "/" K_SYSTEM_FOLDER_NAME
+#define K_DESKTOP_EXECUTABLE K_SYSTEM_FOLDER "/Desktop.esx"
+#define K_SYSTEM_CONFIGURATION K_SYSTEM_FOLDER "/Default.ini"
 
 #define WINDOW_SET_BITS_NORMAL (0)
 #define WINDOW_SET_BITS_SCROLL_HORIZONTAL (1)

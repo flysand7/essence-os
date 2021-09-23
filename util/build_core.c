@@ -580,7 +580,7 @@ void BuildDesktop(Application *application) {
 	ADD_BUNDLE_INPUT("res/Themes/elementary Icons License.txt", "Icons License.txt", 16);
 	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000);
 
-	MakeBundle("root/Essence/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
+	MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 }
 
 void BuildApplication(Application *application) {
@@ -776,7 +776,7 @@ void OutputSystemConfiguration() {
 	EsINIState s = {};
 	char *config = (char *) LoadFile("res/System Configuration Template.ini", &s.bytes);
 	s.buffer = config;
-	File file = FileOpen("root/Essence/Default.ini", 'w');
+	File file = FileOpen("root/" SYSTEM_FOLDER_NAME "/Default.ini", 'w');
 
 	while (EsINIParse(&s)) {
 		EsINIZeroTerminate(&s);
@@ -792,6 +792,12 @@ void OutputSystemConfiguration() {
 			}
 		}
 	}
+
+	FilePrintFormat(file, "\n[paths]\n");
+	FilePrintFormat(file, "fonts=0:/" SYSTEM_FOLDER_NAME "/Fonts\n");
+	FilePrintFormat(file, "temporary=0:/" SYSTEM_FOLDER_NAME "/Temporary\n");
+	FilePrintFormat(file, "default_settings=0:/" SYSTEM_FOLDER_NAME "/Settings\n");
+	FilePrintFormat(file, "default_user_documents=0:/\n");
 
 	for (uintptr_t i = 0; i < arrlenu(applications); i++) {
 		if (!applications[i].install) {
@@ -833,7 +839,7 @@ void OutputSystemConfiguration() {
 		FilePrintFormat(file, "\n[@application %d]\n", applications[i].id);
 		FilePrintFormat(file, "name=%s\n", applications[i].name);
 		FilePrintFormat(file, "executable=0:/Applications/%s.esx\n", applications[i].name);
-		FilePrintFormat(file, "settings_path=0:/Essence/Settings/%s\n", applications[i].name);
+		FilePrintFormat(file, "settings_path=0:/" SYSTEM_FOLDER_NAME "/Settings/%s\n", applications[i].name);
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].properties); j++) {
 			FilePrintFormat(file, "%s=%s\n", applications[i].properties[j].key, applications[i].properties[j].value);
@@ -892,8 +898,8 @@ void BuildModule(Application *application) {
 
 	if (!application->builtin) {
 		char target[4096];
-		snprintf(target, sizeof(target), "root/Essence/Modules/%s.ekm", application->name);
-		MakeDirectory("root/Essence/Modules");
+		snprintf(target, sizeof(target), "root/" SYSTEM_FOLDER_NAME "/Modules/%s.ekm", application->name);
+		MakeDirectory("root/" SYSTEM_FOLDER_NAME "/Modules");
 		MoveFile(output, target);
 	}
 }
@@ -1047,7 +1053,7 @@ void LinkKernel() {
 
 	Execute(toolchainCXX, "-T", "util/linker/kernel64.ld", "-o", "bin/Kernel", "bin/kernel_symbols.o", "bin/kernel_all.o", "-mno-red-zone", ArgString(kernelLinkFlags));
 	Execute(toolchainStrip, "-o", "bin/Kernel.esx", "--strip-all", "bin/Kernel");
-	CopyFile("bin/Kernel.esx", "root/Essence/Kernel.esx", false);
+	CopyFile("bin/Kernel.esx", "root/" SYSTEM_FOLDER_NAME "/Kernel.esx", false);
 }
 
 void BuildKernel(Application *application) {
@@ -1181,7 +1187,7 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	// TODO Update this.
 #if 0
 	if (convertFonts) {
-		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, "Essence"), "Fonts");
+		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, SYSTEM_FOLDER_NAME), "Fonts");
 
 		for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
 			if (fontLines[i].key[0] == '.') {
@@ -1434,7 +1440,7 @@ int main(int argc, char **argv) {
 		MakeDirectory("root/Applications/POSIX/lib");
 		MakeDirectory("root/Applications/POSIX/tmp");
 		MakeDirectory("root/Applications/POSIX/lib/linker");
-		MakeDirectory("root/Essence");
+		MakeDirectory("root/" SYSTEM_FOLDER_NAME);
 
 		if (!skipHeaderGeneration) {
 			HeaderGeneratorMain(1, NULL);
