@@ -2568,7 +2568,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
 		ConfigurationWriteSectionsToBuffer("font", nullptr, false, pipe);
-		ConfigurationWriteSectionsToBuffer(nullptr, "ui", false, pipe);
+		ConfigurationWriteSectionsToBuffer(nullptr, "ui_fonts", false, pipe);
 
 		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
 			ConfigurationWriteSectionsToBuffer(nullptr, "paths", false, pipe);

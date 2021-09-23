@@ -426,9 +426,9 @@ void SystemConfigurationUnload() {
 	api.systemConfigurationGroups.Free();
 }
 
-void SystemConfigurationLoad(char *file, size_t fileBytes) {
+void SystemConfigurationLoad(const char *file, size_t fileBytes) {
 	EsINIState s = {};
-	s.buffer = file;
+	s.buffer = (char *) file;
 	s.bytes = fileBytes;
 
 	EsSystemConfigurationGroup *group = nullptr;
@@ -455,8 +455,6 @@ void SystemConfigurationLoad(char *file, size_t fileBytes) {
 			group->itemCount++;
 		}
 	}
-
-	EsHeapFree(file);
 }
 
 uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr) {
@@ -1383,6 +1381,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		void *file = EsFileReadAll(K_SYSTEM_CONFIGURATION, -1, &fileSize);
 		EsAssert(file); 
 		SystemConfigurationLoad((char *) file, fileSize);
+		EsHeapFree(file);
 
 		_EsNodeInformation node;
 		char *path;
@@ -1392,6 +1391,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		NodeAddMountPoint(EsLiteral("|Fonts:"), node.handle, false);
 		EsHeapFree(path);
 
+		SettingsLoadDefaults();
 		SettingsUpdateGlobalAndWindowManager();
 		SettingsWindowColorUpdated();
 	} else {
@@ -1428,6 +1428,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		EsBuffer responseBuffer = { .canGrow = true };
 		MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
 		SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
+		EsHeapFree(responseBuffer.out);
 	}
 
 	if (uiProcess) {

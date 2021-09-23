@@ -453,10 +453,10 @@ void FontInitialise() {
 		return;
 	}
 	
-	fontManagement.sansName       = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("font_sans"));
-	fontManagement.serifName      = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("font_serif"));
-	fontManagement.monospacedName = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("font_mono"));
-	fontManagement.fallbackName   = EsSystemConfigurationReadString(EsLiteral("ui"), EsLiteral("font_fallback")); 
+	fontManagement.sansName       = EsSystemConfigurationReadString(EsLiteral("ui_fonts"), EsLiteral("sans"));
+	fontManagement.serifName      = EsSystemConfigurationReadString(EsLiteral("ui_fonts"), EsLiteral("serif"));
+	fontManagement.monospacedName = EsSystemConfigurationReadString(EsLiteral("ui_fonts"), EsLiteral("mono"));
+	fontManagement.fallbackName   = EsSystemConfigurationReadString(EsLiteral("ui_fonts"), EsLiteral("fallback")); 
 
 	FontDatabaseEntry nullFont = {};
 	fontManagement.database.Add(nullFont);

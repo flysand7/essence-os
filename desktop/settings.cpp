@@ -134,6 +134,67 @@ const EsStyle styleSliderRow = {
 	},
 };
 
+bool SettingsPutValue(const char *cConfigurationSection, const char *cConfigurationKey, char *newValue, size_t newValueBytes, 
+		char **oldValue, size_t *oldValueBytes, bool duplicate, bool overwriteExisting) {
+	if (duplicate) {
+		char *newValueDuplicate = (char *) EsHeapAllocate(newValueBytes, false);
+
+		if (!newValueDuplicate) {
+			return false;
+		}
+
+		EsMemoryCopy(newValueDuplicate, newValue, newValueBytes);
+		newValue = newValueDuplicate;
+	}
+
+	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(cConfigurationSection, -1, true);
+
+	if (!group) {
+		EsHeapFree(newValue);
+		return false;
+	}
+
+	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, cConfigurationKey, -1, true);
+
+	if (!item) {
+		EsHeapFree(newValue);
+		return false;
+	}
+
+	if (oldValue) {
+		*oldValue = item->value;
+	}
+
+	if (oldValueBytes) {
+		*oldValueBytes = item->valueBytes;
+	}
+
+	if (!overwriteExisting && item->valueBytes) {
+		EsHeapFree(newValue);
+	} else {
+		if (!oldValue) {
+			EsHeapFree(item->value);
+		}
+
+		item->value = newValue;
+		item->valueBytes = newValueBytes;
+	}
+
+	return true;
+}
+
+void SettingsLoadDefaults() {
+	SettingsPutValue("general", "click_chain_timeout_ms", EsLiteral("500"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "show_cursor_shadow", EsLiteral("1"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "scroll_lines_per_notch", EsLiteral("3"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "ui_scale", EsLiteral("100"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "window_color", EsLiteral("6"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "use_smart_quotes", EsLiteral("1"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "enable_hover_state", EsLiteral("1"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "enable_animations", EsLiteral("1"), nullptr, nullptr, true, false);
+	SettingsPutValue("paths", "default_user_documents", EsLiteral("0:/"), nullptr, nullptr, true, false);
+}
+
 void SettingsUpdateGlobalAndWindowManager() {
 	api.global->clickChainTimeoutMs = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("click_chain_timeout_ms"));
 	api.global->swapLeftAndRightButtons = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("swap_left_and_right_buttons"));
@@ -196,18 +257,14 @@ void SettingsNumberBoxSetValue(EsElement *element, double newValueDouble) {
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
+	char *value = (char *) EsHeapAllocate(65, true), *_oldValue;
+	size_t valueBytes = EsStringFormat(value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue), _oldValueBytes;
 	int32_t oldValue = 0;
 
-	if (group) {
-		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
-
-		if (item) {
-			oldValue = EsIntegerParse(item->value, item->valueBytes);
-			EsHeapFree(item->value);
-			item->value = (char *) EsHeapAllocate(65, true);
-			item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
-		}
+	if (SettingsPutValue(control->cConfigurationSection, control->cConfigurationKey, value, valueBytes, 
+			&_oldValue, &_oldValueBytes, false, true)) {
+		oldValue = EsIntegerParse(_oldValue, _oldValueBytes);
+		EsHeapFree(_oldValue);
 	}
 
 	EsMutexRelease(&api.systemConfigurationMutex);
@@ -263,19 +320,15 @@ void SettingsCheckboxCommand(EsInstance *_instance, EsElement *element, EsComman
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
+	char *value = (char *) EsHeapAllocate(2, true), *_oldValue;
+	size_t _oldValueBytes;
+	value[0] = newValue ? '1' : '0';
 	bool oldValue = false;
 
-	if (group) {
-		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
-
-		if (item) {
-			oldValue = EsIntegerParse(item->value, item->valueBytes);
-			EsHeapFree(item->value);
-			item->value = (char *) EsHeapAllocate(2, true);
-			*item->value = newValue ? '1' : '0';
-			item->valueBytes = 1;
-		}
+	if (SettingsPutValue(control->cConfigurationSection, control->cConfigurationKey, value, 1, 
+			&_oldValue, &_oldValueBytes, false, true)) {
+		oldValue = EsIntegerParse(_oldValue, _oldValueBytes);
+		EsHeapFree(_oldValue);
 	}
 
 	EsMutexRelease(&api.systemConfigurationMutex);
@@ -389,19 +442,15 @@ int SettingsSliderMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_SLIDER_MOVED && !message->sliderMoved.inDrag) {
 		EsMutexAcquire(&api.systemConfigurationMutex);
 
-		EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(control->cConfigurationSection, -1, true);
-		int32_t oldValue = 0;
 		int32_t newValue = LinearMap(0, 1, control->minimumValue, control->maximumValue, EsSliderGetValue(slider));
+		char *value = (char *) EsHeapAllocate(65, true), *_oldValue;
+		size_t valueBytes = EsStringFormat(value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue), _oldValueBytes;
+		int32_t oldValue = 0;
 
-		if (group) {
-			EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, control->cConfigurationKey, -1, true);
-
-			if (item) {
-				oldValue = EsIntegerParse(item->value, item->valueBytes);
-				EsHeapFree(item->value);
-				item->value = (char *) EsHeapAllocate(65, true);
-				item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, newValue);
-			}
+		if (SettingsPutValue(control->cConfigurationSection, control->cConfigurationKey, value, valueBytes, 
+					&_oldValue, &_oldValueBytes, false, true)) {
+			oldValue = EsIntegerParse(_oldValue, _oldValueBytes);
+			EsHeapFree(_oldValue);
 		}
 
 		EsMutexRelease(&api.systemConfigurationMutex);
@@ -623,18 +672,9 @@ void SettingsColorButtonCommand(EsInstance *, EsElement *element, EsCommand *) {
 	}
 
 	EsMutexAcquire(&api.systemConfigurationMutex);
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup("general", -1, true);
-
-	if (group) {
-		EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, "window_color", -1, true);
-
-		if (item) {
-			EsHeapFree(item->value);
-			item->value = (char *) EsHeapAllocate(65, true);
-			item->valueBytes = EsStringFormat(item->value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, element->userData.u);
-		}
-	}
-
+	char *value = (char *) EsHeapAllocate(65, true);
+	size_t valueBytes = EsStringFormat(value, 64, "%fd", ES_STRING_FORMAT_SIMPLE, element->userData.u);
+	SettingsPutValue("general", "window_color", value, valueBytes, nullptr, nullptr, false, true);
 	EsMutexRelease(&api.systemConfigurationMutex);
 	SettingsWindowColorUpdated();
 	desktop.configurationModified = true;
@@ -665,18 +705,15 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 		if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
 			EsMutexAcquire(&api.systemConfigurationMutex);
 
-			EsSystemConfigurationGroup *group = SystemConfigurationGetGroup("general", -1, true);
+			size_t newValueBytes;
+			char *newValue = EsTextboxGetContents((EsTextbox *) element, &newValueBytes);
 
-			if (group) {
-				EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, "wallpaper", -1, true);
-
-				if (item) {
-					EsHeapFree(item->value);
-					item->value = EsTextboxGetContents((EsTextbox *) element, &item->valueBytes);
-					desktop.configurationModified = true;
-					EsThreadCreate(WallpaperLoad, nullptr, 0);
-				}
+			if (newValue) {
+				SettingsPutValue("general", "wallpaper", newValue, newValueBytes, nullptr, nullptr, false, true);
 			}
+
+			desktop.configurationModified = true;
+			EsThreadCreate(WallpaperLoad, nullptr, 0);
 
 			EsMutexRelease(&api.systemConfigurationMutex);
 			return ES_HANDLED;

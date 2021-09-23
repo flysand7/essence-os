@@ -898,9 +898,9 @@ void WriteNewConfiguration() {
 	EsBuffer buffer = { .canGrow = true };
 
 	while (EsINIParse(&s)) {
-		if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("ui"))
-				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("font_sans"))) {
-			EsBufferFormat(&buffer, "font_sans=%z\n", cSelectedFont);
+		if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("ui_fonts"))
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("sans"))) {
+			EsBufferFormat(&buffer, "sans=%z\n", cSelectedFont);
 		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general"))
 				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("installation_state"))) {
 			EsBufferFormat(&buffer, "installation_state=0\n");

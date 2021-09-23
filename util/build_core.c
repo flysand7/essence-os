@@ -773,31 +773,24 @@ void ParseApplicationManifest(const char *manifestPath) {
 }
 
 void OutputSystemConfiguration() {
-	EsINIState s = {};
-	char *config = (char *) LoadFile("res/System Configuration Template.ini", &s.bytes);
-	s.buffer = config;
 	File file = FileOpen("root/" SYSTEM_FOLDER_NAME "/Default.ini", 'w');
 
-	while (EsINIParse(&s)) {
-		EsINIZeroTerminate(&s);
+	FilePrintFormat(file, "\n[paths]\n"
+		"fonts=0:/" SYSTEM_FOLDER_NAME "/Fonts\n"
+		"temporary=0:/" SYSTEM_FOLDER_NAME "/Temporary\n"
+		"default_settings=0:/" SYSTEM_FOLDER_NAME "/Settings\n"
+		"\n[ui_fonts]\n"
+		"fallback=Inter\n"
+		"sans=Inter\n"
+		"serif=Inter\n"
+		"mono=Hack\n");
 
+	FilePrintFormat(file, "\n[general]\nnext_id=%d\n", nextID);
+
+	for (uintptr_t i = 0; i < arrlenu(generalOptions); i++) {
 		char buffer[4096];
-		FileWrite(file, EsINIFormat(&s, buffer, sizeof(buffer)), buffer);
-
-		if (0 == strcmp(s.section, "general") && (!EsINIPeek(&s) || !s.keyBytes)) {
-			FilePrintFormat(file, "next_id=%d\n", nextID);
-
-			for (uintptr_t i = 0; i < arrlenu(generalOptions); i++) {
-				FileWrite(file, EsINIFormat(generalOptions + i, buffer, sizeof(buffer)), buffer);
-			}
-		}
+		FileWrite(file, EsINIFormat(generalOptions + i, buffer, sizeof(buffer)), buffer);
 	}
-
-	FilePrintFormat(file, "\n[paths]\n");
-	FilePrintFormat(file, "fonts=0:/" SYSTEM_FOLDER_NAME "/Fonts\n");
-	FilePrintFormat(file, "temporary=0:/" SYSTEM_FOLDER_NAME "/Temporary\n");
-	FilePrintFormat(file, "default_settings=0:/" SYSTEM_FOLDER_NAME "/Settings\n");
-	FilePrintFormat(file, "default_user_documents=0:/\n");
 
 	for (uintptr_t i = 0; i < arrlenu(applications); i++) {
 		if (!applications[i].install) {
