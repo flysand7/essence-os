@@ -1358,10 +1358,6 @@ void DoCommand(const char *l) {
 		fclose(f);
 
 		LineCountFile("", "start.sh");
-		LineCountFile("", "README.md");
-		LineCountFile("", "LICENSE.md");
-		LineCountFile("", "CONTRIBUTING.md");
-		LineCountFile("res/", "System Configuration Template.ini");
 
 		const char *folders[] = {
 			"desktop/", "boot/x86/", "drivers/", "kernel/", "apps/", "apps/file_manager/", "shared/", "util/", "util/designer/"
@@ -1374,7 +1370,6 @@ void DoCommand(const char *l) {
 
 			while ((entry = readdir(directory))) {
 				if (0 == strcmp(entry->d_name, "nanosvg.h")) continue;
-				if (0 == strcmp(entry->d_name, "nanosvgrast.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_ds.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_image.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_sprintf.h")) continue;
