@@ -310,7 +310,7 @@ Option options[] = {
 	{ "Emulator.VBoxEFI", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Emulator.QemuEFI", OPTION_TYPE_BOOL, { .b = false } },
 	{ "BuildCore.Verbose", OPTION_TYPE_BOOL, { .b = false } },
-	{ "BuildCore.DeletePOSIXBeforeImport", OPTION_TYPE_BOOL, { .b = false } },
+	{ "BuildCore.NoImportPOSIX", OPTION_TYPE_BOOL, { .b = false } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.installation_state", OPTION_TYPE_STRING, { .s = "0" } },
@@ -318,11 +318,7 @@ Option options[] = {
 
 char *previousOptionsBuffer;
 
-void LoadOptions() {
-	free(previousOptionsBuffer);
-	EsINIState s = { .buffer = (char *) LoadFile("bin/config.ini", &s.bytes) };
-	previousOptionsBuffer = s.buffer;
-
+void LoadDefaultOptions() {
 	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
 		options[i].state = options[i].defaultState;
 		options[i].useDefaultState = true;
@@ -331,6 +327,13 @@ void LoadOptions() {
 			options[i].state.s = strdup(options[i].state.s);
 		}
 	}
+}
+
+void LoadOptions() {
+	free(previousOptionsBuffer);
+	EsINIState s = { .buffer = (char *) LoadFile("bin/config.ini", &s.bytes) };
+	previousOptionsBuffer = s.buffer;
+	LoadDefaultOptions();
 
 	while (s.buffer && EsINIParse(&s)) {
 		EsINIZeroTerminate(&s);

@@ -2030,6 +2030,8 @@ void EsPOSIXInitialise(int *, char ***) {
 			EsInstance *instance = EsInstanceCreate(message, INTERFACE_STRING(POSIXTitle));
 			EsPanel *panel = EsPanelCreate((EsElement *) instance->window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
 			EsTextDisplayCreate(panel, ES_CELL_H_CENTER | ES_CELL_V_FILL | ES_TEXT_DISPLAY_RICH_TEXT, nullptr, INTERFACE_STRING(POSIXUnavailable));
+		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+			EsInstanceOpenComplete(message, true);
 		}
 	}
 }

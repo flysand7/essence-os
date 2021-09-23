@@ -156,7 +156,7 @@ char kernelAssemblyFlags[4096] = " -felf64 -Fdwarf ";
 
 bool verbose;
 bool useColoredOutput;
-bool forEmulator, bootUseVBE, deletePOSIXBeforeImport;
+bool forEmulator, bootUseVBE, noImportPOSIX;
 bool systemBuild;
 bool convertFonts = true;
 EsINIState *fontLines;
@@ -380,7 +380,9 @@ void CreateImportNode(const char *path, ImportNode *node) {
 
 		ImportNode child = {};
 
-		if (children[i].type == ES_NODE_DIRECTORY) {
+		if (noImportPOSIX && 0 == strcmp(pathBuffer, "root/Applications/POSIX")) {
+			continue;
+		} else if (children[i].type == ES_NODE_DIRECTORY) {
 			CreateImportNode(pathBuffer, &child);
 		} else {
 			child.isFile = true;
@@ -411,7 +413,9 @@ void CreateImportNode(const char *path, ImportNode *node) {
 
 		ImportNode child = {};
 
-		if (S_ISDIR(s.st_mode)) {
+		if (noImportPOSIX && 0 == strcmp(pathBuffer, "root/Applications/POSIX")) {
+			continue;
+		} else if (S_ISDIR(s.st_mode)) {
 			CreateImportNode(pathBuffer, &child);
 		} else if ((s.st_mode & S_IFMT) == S_IFLNK) {
 			continue;
@@ -1169,12 +1173,6 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	_partitionOffset = 1048576;
 	Format(partitionSize - _partitionOffset, partitionLabel, installationIdentifier, kernel, kernelBytes);
 
-#ifndef OS_ESSENCE
-	if (deletePOSIXBeforeImport) {
-		system("rm -r root/Applications/POSIX");
-	}
-#endif
-
 	Log("Copying files to the drive... ");
 
 	ImportNode root = {};
@@ -1308,8 +1306,8 @@ int main(int argc, char **argv) {
 					bootUseVBE = !!atoi(s.value);
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
 					strcat(kernelAssemblyFlags, " -DCOM_OUTPUT ");
-				} else if (0 == strcmp(s.key, "BuildCore.DeletePOSIXBeforeImport")) {
-					deletePOSIXBeforeImport = !!atoi(s.value);
+				} else if (0 == strcmp(s.key, "BuildCore.NoImportPOSIX")) {
+					noImportPOSIX = !!atoi(s.value);
 				} else if (0 == memcmp(s.key, "General.", 8)) {
 					EsINIState s2 = s;
 					s2.key += 8, s2.keyBytes -= 8;

@@ -83,11 +83,7 @@ int OptionTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 }
 
 void ActionDefaults(void *_unused) {
-	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
-		options[i].state = options[i].defaultState;
-		options[i].useDefaultState = true;
-	}
-
+	LoadDefaultOptions();
 	UIElementRefresh(&optionTable->e);
 	UILabelSetContent(unsavedChangedLabel, "You have unsaved changes!", -1);
 	UIElementRefresh(&unsavedChangedLabel->e);
