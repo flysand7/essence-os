@@ -2291,7 +2291,7 @@ function void EsUndoEndGroup(EsUndoManager *manager);
 function void EsUndoInvokeGroup(EsUndoManager *manager, bool redo);
 function bool EsUndoPeek(EsUndoManager *manager, EsUndoCallback *callback, const void **item);
 function void EsUndoPop(EsUndoManager *manager);
-function void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes);
+function void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes, bool setAsActiveUndoManager = true);
 function bool EsUndoInUndo(EsUndoManager *manager);
 function bool EsUndoIsEmpty(EsUndoManager *manager, bool redo);
 function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
@@ -2440,8 +2440,8 @@ function EsElement *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_
 function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 
-function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, EsPanelBand *columns = ES_NULL, EsPanelBand *rows = ES_NULL);
-function void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column = ES_NULL, EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
+function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL);
+function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
 
 function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?

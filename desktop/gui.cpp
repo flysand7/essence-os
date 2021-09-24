@@ -1268,6 +1268,8 @@ EsRectangle UIGetTransitionEffectRectangle(EsRectangle bounds, EsTransitionType 
 }
 
 void UIDrawTransitionEffect(EsPainter *painter, EsPaintTarget *sourceSurface, EsRectangle bounds, EsTransitionType type, double progress, bool to) {
+	// TODO Proper blending in the FADE transition.
+
 	if ((type == ES_TRANSITION_FADE_OUT && to) || (type == ES_TRANSITION_FADE_IN && !to)) {
 		return;
 	}
@@ -2278,8 +2280,19 @@ void LayoutStackPrimary(EsPanel *panel, EsMessage *message) {
 	int available = horizontal ? hSpace : vSpace;
 	int perPush = LayoutStackDeterminePerPush(panel, available, horizontal ? vSpace : hSpace);
 
+	int secondary1 = horizontal ? insets.t : insets.l; 
+	int secondary2 = horizontal ? bounds.b - insets.b : bounds.r - insets.r;
+
 	int position = horizontal ? (reverse ? insets.r : insets.l) : (reverse ? insets.b : insets.t);
 	bool anyNonHiddenChildren = false;
+
+	if (message->type == ES_MSG_LAYOUT) {
+		if (!horizontal && panel->scroll.enabled[0]) {
+			secondary2 += panel->scroll.limit[0];
+		} else if (horizontal && panel->scroll.enabled[1]) {
+			secondary2 += panel->scroll.limit[1];
+		}
+	}
 
 	for (uintptr_t i = 0; i < childCount; i++) {
 		EsElement *child = panel->GetChild(i);
@@ -2291,7 +2304,7 @@ void LayoutStackPrimary(EsPanel *panel, EsMessage *message) {
 			int width = (child->flags & ES_CELL_H_PUSH) ? perPush : child->GetWidth(vSpace);
 
 			if (reverse) {
-				relative = ES_RECT_4(bounds.r - position - width, bounds.r - position, insets.t, bounds.b - insets.b);
+				relative = ES_RECT_4(bounds.r - position - width, bounds.r - position, secondary1, secondary2);
 			} else {
 				relative = ES_RECT_4(position, position + width, insets.t, bounds.b - insets.b);
 			}
@@ -2301,9 +2314,9 @@ void LayoutStackPrimary(EsPanel *panel, EsMessage *message) {
 			int height = (child->flags & ES_CELL_V_PUSH) ? perPush : child->GetHeight(hSpace);
 
 			if (reverse) {
-				relative = ES_RECT_4(insets.l, bounds.r - insets.r, bounds.b - position - height, bounds.b - position);
+				relative = ES_RECT_4(secondary1, secondary2, bounds.b - position - height, bounds.b - position);
 			} else {
-				relative = ES_RECT_4(insets.l, bounds.r - insets.r, position, position + height);
+				relative = ES_RECT_4(secondary1, secondary2, position, position + height);
 			}
 
 			position += height + gap;
@@ -3392,7 +3405,7 @@ void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo, in
 	element->tableCell = cell;
 }
 
-void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount, EsPanelBand *columns, EsPanelBand *rows) {
+void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount, const EsPanelBand *columns, const EsPanelBand *rows) {
 	EsMessageMutexCheck();
 	EsAssert(panel->flags & ES_PANEL_TABLE); // Cannot set the bands layout for a non-table panel.
 	EsHeapFree(panel->bands[0]);
@@ -3407,11 +3420,11 @@ void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount, EsPane
 	if (rows && panel->bands[1]) EsMemoryCopy(panel->bands[1], rows, rowCount * sizeof(EsPanelBand));
 }
 
-void EsPanelSetBandsAll(EsPanel *panel, EsPanelBand *column, EsPanelBand *row) {
+void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column, const EsPanelBand *row) {
 	EsMessageMutexCheck();
 	EsAssert(panel->flags & ES_PANEL_TABLE); // Cannot set the bands layout for a non-table panel.
 
-	EsPanelBand *templates[2] = { column, row };
+	const EsPanelBand *templates[2] = { column, row };
 
 	for (uintptr_t axis = 0; axis < 2; axis++) {
 		if (!templates[axis]) continue;
@@ -3884,7 +3897,7 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 	}
 
 	EsButtonSetCheck(button, (EsCheckState) (flags & 3), false);
-
+	button->MaybeRefreshStyle();
 	return button;
 }
 

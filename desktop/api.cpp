@@ -1629,9 +1629,12 @@ void EsUndoClear(EsUndoManager *manager) {
 	}
 }
 
-void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes) {
+void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes, bool setAsActiveUndoManager) {
 	EsMessageMutexCheck();
-	EsInstanceSetActiveUndoManager(manager->instance, manager);
+
+	if (setAsActiveUndoManager) {
+		EsInstanceSetActiveUndoManager(manager->instance, manager);
+	}
 
 	Array<uint8_t> *stack = manager->state == UNDO_MANAGER_STATE_UNDOING ? &manager->redoStack : &manager->undoStack;
 
@@ -1651,8 +1654,10 @@ void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *ite
 		manager->state = UNDO_MANAGER_STATE_NORMAL;
 	}
 
-	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_UNDO), !manager->undoStack.Length());
-	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
+	if (((APIInstance *) manager->instance->_private)->activeUndoManager == manager) {
+		EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_UNDO), !manager->undoStack.Length());
+		EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
+	}
 
 	if (manager->instance->undoManager == manager) {
 		InstanceSetModified(manager->instance, true);

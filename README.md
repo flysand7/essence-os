@@ -1,8 +1,8 @@
 # **Essence** — An Operating System
 
-![Screenshot of the OS running in an emulator, showing File Manager, and the new tab screen.](https://handmade.network/public/media/image/p-essence-s1.png)
-![Screenshot of the OS running in an emulator, showing GCC running under the POSIX subsystem.](https://handmade.network/public/media/image/p-essence-s3.png)
-![Screenshot of the OS running in an emulator, showing the shutdown dialog.](https://handmade.network/public/media/image/p-essence-s5.png)
+![Screenshot of the operating system running in an emulator, showing File Manager, and the new tab screen.](https://handmade.network/public/media/image/p-essence-s1.png)
+![Screenshot of the operating system running in an emulator, showing GCC running under the POSIX subsystem.](https://handmade.network/public/media/image/p-essence-s3.png)
+![Screenshot of the operating system running in an emulator, showing the shutdown dialog.](https://handmade.network/public/media/image/p-essence-s5.png)
 
 ## Support
 
@@ -90,4 +90,4 @@ If you want your project to target Essence, you need to generate the API header 
 
 Currently supported languages are 'c' (also works for C++), 'zig' and 'odin'.
 
-There is currently no documentation for the API; for examples of how to use the API, consult the standard applications in the `apps/` folder of the source tree. A minimal application is demonstrated in `apps/hello.c` and `apps/hello.ini`. By placing your application's `.ini` file in the `apps/` folder, it will be automatically built by the build system.
+There is currently no documentation for the API; for examples of how to use the API, consult the standard applications in the `apps/` folder of the source tree. Minimal sample applications are placed in the `apps/samples` folder. By placing your application's `.ini` file in the `apps/` folder, it will be automatically built by the build system.

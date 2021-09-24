@@ -3960,7 +3960,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 		}
 
 		undoItem->textbox = textbox;
-		EsUndoPush(textbox->undo, TextboxUndoItemCallback, undoItem, undoItemBytes);
+		EsUndoPush(textbox->undo, TextboxUndoItemCallback, undoItem, undoItemBytes, false /* do not set instance's undo manager */);
 	}
 
 	EsHeapFree(undoItem);
