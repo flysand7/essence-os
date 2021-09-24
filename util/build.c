@@ -41,6 +41,10 @@ char compilerPath[4096];
 int argc;
 char **argv;
 
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
+
 #include "build_common.h"
 
 BuildFont fonts[] = {
@@ -327,7 +331,9 @@ void BuildUtilities() {
 
 	BUILD_UTILITY("render_svg", "-lm", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
+#ifndef __APPLE__ // Luigi doesn't support macOS.
 	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
+#endif
 	BUILD_UTILITY("reflect_gen", "", "designer/");
 
 	if (CheckDependencies("Utilities.DesignerHeader")) {
@@ -339,8 +345,7 @@ void BuildUtilities() {
 		}
 	}
 
-	//util/designer_luigi.c -lX11 -lm
-
+#ifndef __APPLE__ // Luigi doesn't support macOS.
 	if (CheckDependencies("Utilities.Designer1") || CheckDependencies("Utilities.Designer2")) {
 		if (!CallSystem("gcc -MMD -o bin/designer.o -c util/designer/designer.c -g -std=c2x -fsanitize=address " WARNING_FLAGS_C)
 					&& !CallSystem("gcc -MMD -o bin/designer_luigi.o -c util/designer/designer_luigi.c -g -std=c2x " WARNING_FLAGS_C)
@@ -349,6 +354,7 @@ void BuildUtilities() {
 			ParseDependencies("bin/designer_luigi.d", "Utilities.Designer2", false);
 		}
 	}
+#endif
 }
 
 void Build(int optimise, bool compile) {
@@ -559,6 +565,7 @@ bool PatchGCC() {
 	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_essence.h bin/gcc-" GCC_VERSION "/gcc/config/essence.h")) return false; 
 	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_i386_t-x86_64-essence bin/gcc-" GCC_VERSION "/gcc/config/i386/t-x86_64-essence")) return false; 
 	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config.gcc bin/gcc-" GCC_VERSION "/gcc/config.gcc")) return false; 
+	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_host_darwin.c bin/gcc-" GCC_VERSION "/gcc/config/host-darwin.c")) return false;
 	if (CallSystem("cp ports/gcc/changes/gcc_libgcc_config.host bin/gcc-" GCC_VERSION "/libgcc/config.host")) return false; 
 	if (CallSystem("cp ports/gcc/changes/gcc_libstdc++-v3_configure bin/gcc-" GCC_VERSION "/libstdc++-v3/configure")) return false; 
 
@@ -582,22 +589,30 @@ void BuildCrossCompiler() {
 		printf("- You must fully update your system before building.\n\n");
 
 		bool missingPackages = false;
-		if (CallSystem("g++ --version > /dev/null 2>&1")) { printf("Error: Missing GCC/G++.\n"); missingPackages = true; }
-		if (CallSystem("make --version > /dev/null 2>&1")) { printf("Error: Missing GNU Make.\n"); missingPackages = true; }
-		if (CallSystem("bison --version > /dev/null 2>&1")) { printf("Error: Missing GNU Bison.\n"); missingPackages = true; }
-		if (CallSystem("flex --version > /dev/null 2>&1")) { printf("Error: Missing Flex.\n"); missingPackages = true; }
-		if (CallSystem("curl --version > /dev/null 2>&1")) { printf("Error: Missing curl.\n"); missingPackages = true; }
-		if (CallSystem("nasm --version > /dev/null 2>&1")) { printf("Error: Missing nasm.\n"); missingPackages = true; }
-		if (CallSystem("ctags --version > /dev/null 2>&1")) { printf("Error: Missing ctags.\n"); missingPackages = true; }
-		if (CallSystem("xz --version > /dev/null 2>&1")) { printf("Error: Missing xz.\n"); missingPackages = true; }
-		if (CallSystem("gzip --version > /dev/null 2>&1")) { printf("Error: Missing gzip.\n"); missingPackages = true; }
-		if (CallSystem("tar --version > /dev/null 2>&1")) { printf("Error: Missing tar.\n"); missingPackages = true; }
-		if (CallSystem("grep --version > /dev/null 2>&1")) { printf("Error: Missing grep.\n"); missingPackages = true; }
-		if (CallSystem("sed --version > /dev/null 2>&1")) { printf("Error: Missing sed.\n"); missingPackages = true; }
-		if (CallSystem("awk --version > /dev/null 2>&1")) { printf("Error: Missing awk.\n"); missingPackages = true; }
-		if (CallSystem("gcc -lmpc 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
-		if (CallSystem("gcc -lmpfr 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
-		if (CallSystem("gcc -lgmp 2>&1 | grep undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+		if (CallSystem("which g++ > /dev/null 2>&1")) { printf("Error: Missing GCC/G++.\n"); missingPackages = true; }
+		if (CallSystem("which make > /dev/null 2>&1")) { printf("Error: Missing GNU Make.\n"); missingPackages = true; }
+		if (CallSystem("which bison > /dev/null 2>&1")) { printf("Error: Missing GNU Bison.\n"); missingPackages = true; }
+		if (CallSystem("which flex > /dev/null 2>&1")) { printf("Error: Missing Flex.\n"); missingPackages = true; }
+		if (CallSystem("which curl > /dev/null 2>&1")) { printf("Error: Missing curl.\n"); missingPackages = true; }
+		if (CallSystem("which nasm > /dev/null 2>&1")) { printf("Error: Missing nasm.\n"); missingPackages = true; }
+		if (CallSystem("which ctags > /dev/null 2>&1")) { printf("Error: Missing ctags.\n"); missingPackages = true; }
+		if (CallSystem("which xz > /dev/null 2>&1")) { printf("Error: Missing xz.\n"); missingPackages = true; }
+		if (CallSystem("which gzip > /dev/null 2>&1")) { printf("Error: Missing gzip.\n"); missingPackages = true; }
+		if (CallSystem("which tar > /dev/null 2>&1")) { printf("Error: Missing tar.\n"); missingPackages = true; }
+		if (CallSystem("which grep > /dev/null 2>&1")) { printf("Error: Missing grep.\n"); missingPackages = true; }
+		if (CallSystem("which sed > /dev/null 2>&1")) { printf("Error: Missing sed.\n"); missingPackages = true; }
+		if (CallSystem("which awk > /dev/null 2>&1")) { printf("Error: Missing awk.\n"); missingPackages = true; }
+
+#ifdef __APPLE__
+		if (CallSystem("gcc -L/opt/homebrew/lib -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
+		if (CallSystem("gcc -L/opt/homebrew/lib -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
+		if (CallSystem("gcc -L/opt/homebrew/lib -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+#else
+		if (CallSystem("gcc -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+#endif
+
 		if (missingPackages) exit(0);
 
 		char installationFolder[4096];

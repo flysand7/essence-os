@@ -18,17 +18,23 @@ if [ ! -d "bin/harfbuzz" ]; then
 
 	cd bin/harfbuzz/src
 
-	find . -type f -exec sed -i 's/#include <assert.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <atomic.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <builtins.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <float.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <locale.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <math.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <stdio.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <stdlib.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <string.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <unistd.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec sed -i 's/#include <xlocale.h>/#include <essence.h>/g' {} \;
+	SED=sed
+
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		SED=gsed
+	fi
+
+	find . -type f -exec $SED -i 's/#include <assert.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <atomic.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <builtins.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <float.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <locale.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <math.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <stdio.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <stdlib.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <string.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <unistd.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <xlocale.h>/#include <essence.h>/g' {} \;
 
 	CC="x86_64-essence-g++ -DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O2 -DHB_TINY -fno-exceptions -fno-threadsafe-statics -fvisibility-inlines-hidden"
 
@@ -80,7 +86,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 	$CC -c hb-unicode.cc -o hb-unicode.o
 	$CC -c hb-ft.cc -o hb-ft.o
 
-	ar cr libharfbuzz.a hb-aat-layout.o hb-aat-map.o hb-blob.o hb-buffer-serialize.o hb-buffer.o hb-common.o hb-face.o hb-fallback-shape.o hb-font.o hb-map.o hb-number.o hb-ot-cff1-table.o hb-ot-cff2-table.o hb-ot-color.o hb-ot-face.o hb-ot-font.o hb-ot-layout.o hb-ot-map.o hb-ot-math.o hb-ot-meta.o hb-ot-metrics.o hb-ot-name.o hb-ot-shape-complex-arabic.o hb-ot-shape-complex-default.o hb-ot-shape-complex-hangul.o hb-ot-shape-complex-hebrew.o hb-ot-shape-complex-indic-table.o hb-ot-shape-complex-indic.o hb-ot-shape-complex-khmer.o hb-ot-shape-complex-myanmar.o hb-ot-shape-complex-thai.o hb-ot-shape-complex-use-table.o hb-ot-shape-complex-use.o hb-ot-shape-complex-vowel-constraints.o hb-ot-shape-fallback.o hb-ot-shape-normalize.o hb-ot-shape.o hb-ot-tag.o hb-ot-var.o hb-set.o hb-shape-plan.o hb-shape.o hb-shaper.o hb-static.o hb-ucd.o hb-unicode.o hb-ft.o
+	x86_64-essence-ar cr libharfbuzz.a hb-aat-layout.o hb-aat-map.o hb-blob.o hb-buffer-serialize.o hb-buffer.o hb-common.o hb-face.o hb-fallback-shape.o hb-font.o hb-map.o hb-number.o hb-ot-cff1-table.o hb-ot-cff2-table.o hb-ot-color.o hb-ot-face.o hb-ot-font.o hb-ot-layout.o hb-ot-map.o hb-ot-math.o hb-ot-meta.o hb-ot-metrics.o hb-ot-name.o hb-ot-shape-complex-arabic.o hb-ot-shape-complex-default.o hb-ot-shape-complex-hangul.o hb-ot-shape-complex-hebrew.o hb-ot-shape-complex-indic-table.o hb-ot-shape-complex-indic.o hb-ot-shape-complex-khmer.o hb-ot-shape-complex-myanmar.o hb-ot-shape-complex-thai.o hb-ot-shape-complex-use-table.o hb-ot-shape-complex-use.o hb-ot-shape-complex-vowel-constraints.o hb-ot-shape-fallback.o hb-ot-shape-normalize.o hb-ot-shape.o hb-ot-tag.o hb-ot-var.o hb-set.o hb-shape-plan.o hb-shape.o hb-shaper.o hb-static.o hb-ucd.o hb-unicode.o hb-ft.o
 
 	cd ../../..
 fi

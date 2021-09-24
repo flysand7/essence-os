@@ -6,11 +6,22 @@ cd "$(dirname "$0")"
 # Create the bin directory.
 mkdir -p bin
 
-# Check that we are running on a sensible platform.
-uname -o | grep Cygwin > /dev/null
-if [ $? -ne 1 ]; then
-	echo Cygwin is not supported. Please install a modern GNU/Linux distro.
-	exit
+if [[ "$OSTYPE" == "darwin"* ]]; then
+	export CC=gcc-11
+	export CXX=g++-11
+	export CPPFLAGS=-I/opt/homebrew/include
+	export LDFLAGS=-L/opt/homebrew/lib
+	alias md5sum="md5"
+	alias gcc="gcc-11"
+	alias g++="g++-11"
+	alias sed="gsed"
+else
+	# Check that we are running on a sensible platform.
+	uname -o | grep Cygwin > /dev/null
+	if [ $? -ne 1 ]; then
+		echo Cygwin is not supported. Please install a modern GNU/Linux distro.
+		exit
+	fi
 fi
 
 # Check that the source code is valid.

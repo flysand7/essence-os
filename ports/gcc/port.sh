@@ -30,6 +30,7 @@ cp ports/gcc/changes/gcc_fixincludes_mkfixinc.sh bin/gcc-src/fixincludes/mkfixin
 cp ports/gcc/changes/gcc_gcc_config_essence.h bin/gcc-src/gcc/config/essence.h
 cp ports/gcc/changes/gcc_gcc_config_i386_t-x86_64-essence bin/gcc-src/gcc/config/i386/t-x86_64-essence
 cp ports/gcc/changes/gcc_gcc_config.gcc bin/gcc-src/gcc/config.gcc
+cp ports/gcc/changes/gcc_gcc_config_host_darwin.c bin/gcc-src/gcc/config/host-darwin.c
 cp ports/gcc/changes/gcc_libgcc_config.host bin/gcc-src/libgcc/config.host
 cp ports/gcc/changes/gcc_libstdc++-v3_configure bin/gcc-src/libstdc++-v3/configure
 
