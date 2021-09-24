@@ -122,11 +122,11 @@ void Render() {
 		return;
 	}
 
-	glClearColor(0, 0, 0, 1);
+	glClearColor(0.21f, 0.2f, 0.2f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #ifdef MODERN_GL
 	float m = timeMs / 1000.0f;
-	float transform[16] = { 1, 0, 0, 0, /**/ 0, 1, 0, 0, /**/ 0, 0, 1, 0, /**/ 0, 0, 0, 1 };
+	float transform[16] = { 0.9f, 0, 0, 0, /**/ 0, 1, 0, 0, /**/ 0, 0, 1, 0, /**/ 0, 0, 0, 1 };
 	float normalTransform[9];
 	float rotation[16] = { cosf(m), 0, sinf(m), 0, /**/ 0, 1, 0, 0, /**/ -sinf(m), 0, cosf(m), 0, /**/ 0, 0, 0, 1 };
 	float rotation2[16] = { 1, 0, 0, 0, /**/ 0, cosf(0.3f), sinf(0.3f), 0, /**/ 0, -sinf(0.3f), cosf(0.3f), 0, /**/ 0, 0, 0, 1 };
@@ -161,10 +161,10 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 		EsRectangle bounds = EsPainterBoundsInset(message->painter);
 		EsRectangle imageBounds = EsRectangleCenter(bounds, ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsDrawBitmap(message->painter, imageBounds, buffer, IMAGE_WIDTH * 4, ES_DRAW_BITMAP_OPAQUE);
-		EsDrawBlock(message->painter, ES_RECT_4(bounds.l, imageBounds.l, bounds.t, bounds.b), 0xFF000000);
-		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.r, bounds.r, bounds.t, bounds.b), 0xFF000000);
-		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, bounds.t, imageBounds.t), 0xFF000000);
-		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, imageBounds.b, bounds.b), 0xFF000000);
+		EsDrawBlock(message->painter, ES_RECT_4(bounds.l, imageBounds.l, bounds.t, bounds.b), 0xFF333336);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.r, bounds.r, bounds.t, bounds.b), 0xFF333336);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, bounds.t, imageBounds.t), 0xFF333336);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, imageBounds.b, bounds.b), 0xFF333336);
 		framesDrawn++;
 	} else if (message->type == ES_MSG_ANIMATE) {
 		double currentTime = EsTimeStampMs();
@@ -341,7 +341,6 @@ int main(int argc, char **argv) {
 	LOADEXT(glVertexAttribPointer);
 #undef LOADEXT
 
-	glClearColor(0, 0, 0, 1);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_MULTISAMPLE);
@@ -367,10 +366,11 @@ int main(int argc, char **argv) {
 		"void main() { \n"
 		"	vec3 n = normalize(Normal0);\n"
 		"	vec3 lightDirection = vec3(0, -0.707, 0.707);\n"
+		"	vec3 color = vec3(1.0, 0.9, 0.9);\n"
 		"	float lightFactor = max(0, -dot(n, lightDirection));\n"
 		"	// FragColor = vec4(n.xyz, 1);\n" // Visualize normals.
 		"	// FragColor = vec4(vec3(gl_FragCoord.z), 1);\n" // Visualize Z coordinates.
-		"	FragColor = vec4(vec3(lightFactor), 1);\n"
+		"	FragColor = vec4(color * vec3(lightFactor), 1);\n"
 		"}\n";
 
 	const char *shaderSources[] = { vertexShaderSource, fragmentShaderSource };
