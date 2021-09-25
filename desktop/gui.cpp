@@ -59,8 +59,11 @@ struct {
 	Array<EsWindow *> allWindows;
 	HashTable keyboardShortcutNames;
 	EsCursorStyle resizeCursor;
-	bool resizing;
 	EsElement *insertAfter;
+
+	// Resizing data.
+	bool resizing, resizingBothSides;
+	EsRectangle resizeStartBounds;
 
 	// Click chains.
 	double clickChainStartMs;
@@ -560,12 +563,12 @@ void WindowRestore(EsWindow *window) {
 	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &window->beforeMaximiseBounds, 0, ES_WINDOW_MOVE_DYNAMIC);
 }
 
-void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *originalY, EsWindow *window) {
-	EsRectangle bounds = EsWindowGetBounds(window), bounds2;
-	bounds2 = bounds;
+void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *originalY, EsWindow *window, 
+		bool bothSides = false, EsRectangle *startBounds = nullptr) {
+	EsRectangle previousBounds = EsWindowGetBounds(window);
+	int oldWidth = Width(previousBounds);
+	int oldHeight = Height(previousBounds);
 
-	int oldWidth = bounds.r - bounds.l;
-	int oldHeight = bounds.b - bounds.t;
 	bool restored = false, canSnap = true;
 
 	if (window->restoreOnNextMove) {
@@ -575,10 +578,20 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 		restored = true;
 	}
 
-	if (direction & RESIZE_LEFT)   bounds.l = newX + BORDER_THICKNESS / 2 - WINDOW_INSET;
-	if (direction & RESIZE_RIGHT)  bounds.r = newX - BORDER_THICKNESS / 2 + WINDOW_INSET;
-	if (direction & RESIZE_TOP)    bounds.t = newY + BORDER_THICKNESS / 2 - WINDOW_INSET;
-	if (direction & RESIZE_BOTTOM) bounds.b = newY - BORDER_THICKNESS / 2 + WINDOW_INSET;
+	int offset = BORDER_THICKNESS / 2 - WINDOW_INSET;
+	EsRectangle bounds = previousBounds;
+
+	if (direction & RESIZE_LEFT)   bounds.l = newX + offset;
+	if (direction & RESIZE_RIGHT)  bounds.r = newX - offset;
+	if (direction & RESIZE_TOP)    bounds.t = newY + offset;
+	if (direction & RESIZE_BOTTOM) bounds.b = newY - offset;
+
+	if (startBounds && direction != RESIZE_MOVE) {
+		if (direction & RESIZE_LEFT)   bounds.r = gui.resizeStartBounds.r + (bothSides ? gui.resizeStartBounds.l - newX : 0);
+		if (direction & RESIZE_RIGHT)  bounds.l = gui.resizeStartBounds.l + (bothSides ? gui.resizeStartBounds.r - newX : 0);
+		if (direction & RESIZE_TOP)    bounds.b = gui.resizeStartBounds.b + (bothSides ? gui.resizeStartBounds.t - newY : 0);
+		if (direction & RESIZE_BOTTOM) bounds.t = gui.resizeStartBounds.t + (bothSides ? gui.resizeStartBounds.b - newY : 0);
+	}
 
 	EsRectangle screen;
 	EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_GET, 0, (uintptr_t) &screen, 0, 0);
@@ -607,8 +620,8 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 				// The user previously snapped/maximised the window in a previous operation.
 				// Therefore, the movement anchor won't be what the user expects.
 				// Try to put it in the center.
-				int positionAlongWindow = *originalX - bounds2.l;
-				int maxPosition = bounds2.r - bounds2.l;
+				int positionAlongWindow = *originalX - previousBounds.l;
+				int maxPosition = previousBounds.r - previousBounds.l;
 				if (positionAlongWindow > maxPosition - oldWidth / 2) *originalX = gui.lastClickX = positionAlongWindow - maxPosition + oldWidth;
 				else if (positionAlongWindow > oldWidth / 2) *originalX = gui.lastClickX = oldWidth / 2;
 				*originalY = gui.lastClickY = windowRestoreDragYPosition;
@@ -622,12 +635,25 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 		}
 	} else {
 		EsRectangle targetBounds = bounds;
-#define WINDOW_CLAMP_SIZE(_size, _direction, _side, _target) \
-		if (_size(bounds) < windowMinimum ## _size && (direction & _direction)) targetBounds._side = _target, bounds._side = RubberBand(bounds._side, _target)
-		WINDOW_CLAMP_SIZE(Width,  RESIZE_LEFT,   l, bounds.r - windowMinimumWidth);
-		WINDOW_CLAMP_SIZE(Width,  RESIZE_RIGHT,  r, bounds.l + windowMinimumWidth);
-		WINDOW_CLAMP_SIZE(Height, RESIZE_TOP,    t, bounds.b - windowMinimumHeight);
-		WINDOW_CLAMP_SIZE(Height, RESIZE_BOTTOM, b, bounds.t + windowMinimumHeight);
+
+#define WINDOW_CLAMP_SIZE(_size, _direction, _side, _otherSide, _minimum) \
+		if (_size(bounds) < windowMinimum ## _size && (direction & _direction)) { \
+			if (bothSides && startBounds) { \
+				int32_t center = (startBounds->_otherSide + startBounds->_side) / 2; \
+				targetBounds._side      = center + (_minimum / 2); \
+				targetBounds._otherSide = center - (_minimum / 2); \
+				bounds._side      = RubberBand(bounds._side,      targetBounds._side); \
+				bounds._otherSide = RubberBand(bounds._otherSide, targetBounds._otherSide); \
+			} else { \
+				targetBounds._side = bounds._otherSide + _minimum; \
+				bounds._side = RubberBand(bounds._side, targetBounds._side); \
+			} \
+		}
+
+		WINDOW_CLAMP_SIZE(Width,  RESIZE_LEFT,   l, r, -windowMinimumWidth);
+		WINDOW_CLAMP_SIZE(Width,  RESIZE_RIGHT,  r, l,  windowMinimumWidth);
+		WINDOW_CLAMP_SIZE(Height, RESIZE_TOP,    t, b, -windowMinimumHeight);
+		WINDOW_CLAMP_SIZE(Height, RESIZE_BOTTOM, b, t,  windowMinimumHeight);
 
 		window->animateToTargetBoundsAfterResize = !EsRectangleEquals(targetBounds, bounds);
 		window->animateFromBounds = bounds;
@@ -671,13 +697,23 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 		}
 
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+		gui.resizeStartBounds = EsWindowGetBounds(window);
+	} else if (message->type == ES_MSG_KEY_DOWN || message->type == ES_MSG_KEY_UP) {
+		gui.resizingBothSides = EsKeyboardIsCtrlHeld() && !window->isMaximised;
+
+		if (gui.resizing) {
+			EsPoint screenPosition = EsMouseGetPosition(nullptr);
+			WindowChangeBounds(gui.resizeType, screenPosition.x, screenPosition.y, 
+					&gui.lastClickX, &gui.lastClickY, window,
+					gui.resizingBothSides, &gui.resizeStartBounds);
+		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 		EsPoint screenPosition = EsMouseGetPosition(nullptr);
 
 		if (!window->isMaximised || gui.resizeType == RESIZE_MOVE) {
-			WindowChangeBounds(gui.resizeType, 
-					screenPosition.x, screenPosition.y, 
-					&gui.lastClickX, &gui.lastClickY, window);
+			WindowChangeBounds(gui.resizeType, screenPosition.x, screenPosition.y, 
+					&gui.lastClickX, &gui.lastClickY, window,
+					gui.resizingBothSides, &gui.resizeStartBounds);
 			gui.resizing = true;
 		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_UP) {
