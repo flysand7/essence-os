@@ -1211,19 +1211,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_WINDOW, window, Window);
-	_EsMessageWithObject m;
-	EsMemoryZero(&m, sizeof(_EsMessageWithObject));
-	KMutexAcquire(&windowManager.mutex);
-	m.object = window->apiWindow;
-	EsMemoryCopy(&m.message, &window->lastEmbedKeyboardMessage, sizeof(EsMessage));
-	window->lastEmbedKeyboardMessage.type = ES_MSG_INVALID;
-	KMutexRelease(&windowManager.mutex);
-	SYSCALL_WRITE(argument1, &m, sizeof(_EsMessageWithObject));
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_PAUSE) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 	scheduler.PauseProcess(process, (bool) argument1);

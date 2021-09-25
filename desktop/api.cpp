@@ -55,7 +55,6 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_CLIPBOARD_GET             (12)
 #define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET  (13)
 #define DESKTOP_MSG_FILE_TYPES_GET            (14)
-#define DESKTOP_MSG_UNHANDLED_KEY_EVENT       (15)
 #define DESKTOP_MSG_START_USER_TASK           (16)
 #define DESKTOP_MSG_SET_PROGRESS              (17)
 #define DESKTOP_MSG_RENAME                    (18)

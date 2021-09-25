@@ -38,7 +38,6 @@ struct Window {
 	EsRectangle solidInsets, embedInsets;
 	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, queuedScrollUpdate, activationClick, noBringToFront;
 	volatile bool closed;
-	EsMessage lastEmbedKeyboardMessage; // The most recent keyboard message sent to the embedded window.
 
 	// Appearance:
 	Surface surface;
@@ -66,8 +65,9 @@ struct WindowManager {
 	void Initialise();
 
 	void MoveCursor(int64_t xMovement, int64_t yMovement);
-	void ClickCursor(unsigned buttons);
-	void PressKey(unsigned scancode);
+	void ClickCursor(uint32_t buttons);
+	void ScrollWheel(int32_t dx, int32_t dy);
+	void PressKey(uint32_t scancode);
 
 	void Redraw(EsPoint position, int width, int height, Window *except = nullptr, int startingAt = 0, bool addToModifiedRegion = true);
 
@@ -225,13 +225,16 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 		} else {
 			window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		}
+	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
+		if (window->hoveringOverEmbed) {
+			window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
+		} else {
+			window->owner->messageQueue.SendMessage(window->apiWindow, message);
+		}
 	} else if (message->type == ES_MSG_KEY_DOWN || message->type == ES_MSG_KEY_UP) {
-		// If the embedded window doesn't handle the key event,
-		// then the container window can get it from here.
-		// See DESKTOP_MSG_UNHANDLED_KEY_EVENT and ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD.
-		EsMemoryCopy(&window->lastEmbedKeyboardMessage, message, sizeof(EsMessage));
-
+		// TODO Only send certain key messages to the container, like modifiers keys and global shortcuts.
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
+		window->owner->messageQueue.SendMessage(window->apiWindow, message);
 	} else if (message->type == ES_MSG_MOUSE_EXIT) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);
@@ -638,6 +641,18 @@ void WindowManager::MoveCursor(int64_t xMovement, int64_t yMovement) {
 	}
 
 	GraphicsUpdateScreen();
+}
+
+void WindowManager::ScrollWheel(int32_t dx, int32_t dy) {
+	KMutexAssertLocked(&mutex);
+	Window *window = pressedWindow ?: FindWindowAtPosition(cursorX, cursorY);
+	if (!window) return;
+	EsMessage message;
+	EsMemoryZero(&message, sizeof(EsMessage));
+	message.type = ES_MSG_SCROLL_WHEEL;
+	message.scrollWheel.dx = dx;
+	message.scrollWheel.dy = dy;
+	SendMessageToWindow(window, &message);
 }
 
 void _CloseWindows(uintptr_t) {
@@ -1208,7 +1223,7 @@ void WindowManager::StartEyedrop(uintptr_t object, Window *avoid, uint32_t cance
 	KMutexRelease(&mutex);
 }
 
-void KCursorUpdate(int xMovement, int yMovement, unsigned buttons) {
+void KMouseUpdate(int32_t xMovement, int32_t yMovement, uint32_t buttons, int32_t scrollX, int32_t scrollY) {
 	if (!windowManager.initialised) {
 		return;
 	}
@@ -1222,6 +1237,12 @@ void KCursorUpdate(int xMovement, int yMovement, unsigned buttons) {
 			KMutexRelease(&windowManager.mutex);
 		}
 	} 
+
+	if (scrollX || scrollY) {
+		KMutexAcquire(&windowManager.mutex);
+		windowManager.ScrollWheel(scrollX, scrollY);
+		KMutexRelease(&windowManager.mutex);
+	}
 
 	windowManager.ClickCursor(buttons);
 }
@@ -1314,7 +1335,7 @@ void KGameControllerDisconnect(uint64_t id) {
 	KMutexRelease(&windowManager.gameControllersMutex);
 }
 
-void KGameControllerUpdateState(EsGameControllerState *state) {
+void KGameControllerUpdate(EsGameControllerState *state) {
 	KMutexAcquire(&windowManager.gameControllersMutex);
 	
 	for (uintptr_t i = 0; i < windowManager.gameControllerCount; i++) {

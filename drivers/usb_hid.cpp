@@ -1,5 +1,7 @@
 #include <module.h>
 
+// #define TRACE_REPORTS
+
 // TODO Key repeat not working on Qemu.
 
 struct ReportItem {
@@ -101,6 +103,7 @@ struct UsageString {
 #define HID_USAGE_X_ROTATION      	(0x010033)
 #define HID_USAGE_Y_ROTATION      	(0x010034)
 #define HID_USAGE_Z_ROTATION      	(0x010035)
+#define HID_USAGE_WHEEL    		(0x010038)
 #define HID_USAGE_HAT_SWITCH		(0x010039)
 #define HID_USAGE_KEYCODES		(0x070000)
 #define HID_USAGE_BUTTON_1    		(0x090001)
@@ -418,7 +421,8 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 #endif
 
 	bool mouseEvent = false;
-	int mouseXMovement = 0, mouseYMovement = 0, mouseButtons = 0;
+	int mouseXMovement = 0, mouseYMovement = 0;
+	int mouseScrollWheel = 0, mouseButtons = 0;
 	bool keyboardEvent = false;
 	uint16_t keysDown[32];
 	size_t keysDownCount = 0;
@@ -502,6 +506,8 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 					if (buffer->ReadUnsigned(item->bits)) mouseButtons |= 1 << 2;
 				} else if (item->usage == HID_USAGE_BUTTON_3) {
 					if (buffer->ReadUnsigned(item->bits)) mouseButtons |= 1 << 1;
+				} else if (item->usage == HID_USAGE_WHEEL) {
+					mouseScrollWheel = buffer->ReadSigned(item->bits);
 				} else {
 					handled = false;
 				}
@@ -559,9 +565,18 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 		}
 	}
 
-	if (mouseEvent) KCursorUpdate(mouseXMovement * K_CURSOR_MOVEMENT_SCALE, mouseYMovement * K_CURSOR_MOVEMENT_SCALE, mouseButtons);
-	if (keyboardEvent) KKeyboardUpdate(keysDown, keysDownCount);
-	if (gameControllerEvent) KGameControllerUpdateState(&controllerState);
+	if (mouseEvent) {
+		KMouseUpdate(mouseXMovement * K_CURSOR_MOVEMENT_SCALE, mouseYMovement * K_CURSOR_MOVEMENT_SCALE, 
+				mouseButtons, 0, mouseScrollWheel * ES_SCROLL_WHEEL_SCALE);
+	}
+
+	if (keyboardEvent) {
+		KKeyboardUpdate(keysDown, keysDownCount);
+	}
+
+	if (gameControllerEvent) {
+		KGameControllerUpdate(&controllerState);
+	}
 
 	if (device->flags & K_DEVICE_REMOVED) {
 		KDeviceCloseHandle(this);

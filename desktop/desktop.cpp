@@ -2754,13 +2754,6 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			desktop.installedApplications.Add(application);
 			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_UNHANDLED_KEY_EVENT && instance->tab) {
-		_EsMessageWithObject message;
-		EsSyscall(ES_SYSCALL_WINDOW_GET_EMBED_KEYBOARD, instance->tab->window->handle, (uintptr_t) &message, 0, 0);
-
-		if (message.message.type != ES_MSG_INVALID) {
-			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
-		}
 	} else {
 		EsPrint("DesktopSyscall - Received unhandled message %d.\n", buffer[0]);
 	}

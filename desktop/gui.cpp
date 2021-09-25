@@ -2858,6 +2858,9 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			EsMessageSend(parent, &m);
 			parent->internalOffsetRight = (m.measure.height + fixedViewport[1] > message->measure.height) ? bar[1]->currentStyle->preferredWidth : 0;
 		}
+	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
+		SetPosition(0, position[0] + message->scrollWheel.dx, true);
+		SetPosition(1, position[1] + message->scrollWheel.dy, true);
 	}
 }
 
@@ -7212,10 +7215,14 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 				goto doneInputMessage;
 			}
 		}
+	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
+		EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
 
-		if (window->windowStyle == ES_WINDOW_NORMAL) {
-			uint8_t m = DESKTOP_MSG_UNHANDLED_KEY_EVENT;
-			MessageDesktop(&m, 1, window->handle);
+		message->scrollWheel.dx /= 5;
+		message->scrollWheel.dy /= -5;
+
+		if (element && (~element->flags & ES_ELEMENT_DISABLED) && (~element->state & UI_STATE_BLOCK_INTERACTION)) {
+			UIMessageSendPropagateToAncestors(element, message);
 		}
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {
 		AccessKeyModeExit();
