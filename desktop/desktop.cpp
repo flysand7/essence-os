@@ -1214,10 +1214,10 @@ void ShutdownModalCreate() {
 
 	// Setup the UI.
 
-	EsPanel *stack = EsPanelCreate(window, ES_CELL_FILL | ES_PANEL_Z_STACK, ES_STYLE_PANEL_NORMAL_WINDOW_ROOT);
+	EsPanel *stack = EsPanelCreate(window, ES_CELL_FILL | ES_PANEL_Z_STACK);
 	stack->cName = "window stack";
 	EsPanelCreate(stack, ES_CELL_FILL, ES_STYLE_PANEL_SHUTDOWN_OVERLAY)->cName = "modal overlay";
-	EsPanel *dialog = EsPanelCreate(stack, ES_PANEL_VERTICAL | ES_CELL_CENTER, ES_STYLE_PANEL_DIALOG_ROOT);
+	EsPanel *dialog = EsPanelCreate(stack, ES_PANEL_VERTICAL | ES_CELL_CENTER, ES_STYLE_DIALOG_SHADOW);
 	dialog->cName = "dialog";
 	EsPanel *heading = EsPanelCreate(dialog, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, ES_STYLE_DIALOG_HEADING);
 	EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, ES_ICON_SYSTEM_SHUTDOWN);

@@ -75,7 +75,7 @@ void _start() {
 			// Add a second layout panel to panelStack to contain the elements of the form.
 			EsPanel *panelForm = EsPanelCreate(
 				panelStack,            // Add it to panelStack.
-				ES_PANEL_TABLE       // Use table layout.
+				ES_PANEL_TABLE         // Use table layout.
 				| ES_PANEL_HORIZONTAL, // Left to right, then top to bottom.
 				&stylePanelForm);
 

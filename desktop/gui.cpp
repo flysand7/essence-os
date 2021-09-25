@@ -762,8 +762,11 @@ EsElement *EsDialogShow(EsWindow *window) {
 	window->hasDialog = true;
 	window->dialogOverlay = EsPanelCreate(mainStack, ES_CELL_FILL, ES_STYLE_PANEL_MODAL_OVERLAY);
 	window->dialogOverlay->cName = "modal overlay";
-	window->dialogPanel = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_CENTER | ES_CELL_SHRINK, ES_STYLE_PANEL_DIALOG_ROOT);
+	window->dialogPanel = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_CENTER | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
 	window->dialogPanel->cName = "dialog";
+
+	// EsElementStartTransition(window->dialogOverlay, ES_TRANSITION_FADE_IN, ES_FLAGS_DEFAULT, 3.0f);
+	// EsElementStartTransition(window->dialogPanel, ES_TRANSITION_FADE_IN, ES_FLAGS_DEFAULT, 3.0f);
 
 	return window->dialogPanel;
 }
@@ -912,9 +915,9 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, (uintptr_t) window, ES_WINDOW_PROPERTY_OBJECT);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0xFF000000 | GetConstantNumber("windowFillColor"), 0, ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR);
 		window->activated = true;
-		EsPanel *panel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL | ES_PANEL_Z_STACK, ES_STYLE_PANEL_NORMAL_WINDOW_ROOT);
+		EsPanel *panel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL | ES_PANEL_Z_STACK);
 		panel->cName = "window stack";
-		window->mainPanel = EsPanelCreate(panel, ES_CELL_FILL, ES_STYLE_PANEL_NORMAL_WINDOW_ROOT);
+		window->mainPanel = EsPanelCreate(panel, ES_CELL_FILL);
 		window->mainPanel->cName = "window root";
 		window->toolbarSwitcher = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_PANEL_SWITCHER | ES_CELL_FILL, ES_STYLE_PANEL_TOOLBAR_ROOT);
 		window->toolbarSwitcher->cName = "toolbar";
@@ -1662,9 +1665,18 @@ void ProcessAnimations() {
 		element->transitionTimeMs += m.animate.deltaMs;
 		bool transitionComplete = element->transitionTimeMs >= element->transitionDurationMs;
 
-		if (!transitionComplete) {
+		if (element->transitionDurationMs) {
 			element->Repaint(true, ES_RECT_1(0));
-		} else {
+		}
+
+		if (transitionComplete) {
+			element->transitionDurationMs = 0;
+
+			if (element->previousTransitionFrame) {
+				EsPaintTargetDestroy(element->previousTransitionFrame);
+				element->previousTransitionFrame = nullptr;
+			}
+
 			if (element->transitionFlags & ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE) {
 				EsElementSetHidden(element, true);
 			}
