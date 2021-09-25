@@ -198,7 +198,14 @@ uint16_t scancodeConversionTable2[] = {
 
 void PS2MouseUpdated(EsGeneric _update) {
 	PS2Update *update = (PS2Update *) _update.p;
-	KMouseUpdate(update->xMovement * K_CURSOR_MOVEMENT_SCALE, update->yMovement * K_CURSOR_MOVEMENT_SCALE, update->buttons);
+
+	KMouseUpdateData data = { 
+		.xMovement = update->xMovement * K_CURSOR_MOVEMENT_SCALE, 
+		.yMovement = update->yMovement * K_CURSOR_MOVEMENT_SCALE,
+		.buttons = update->buttons,
+	};
+
+	KMouseUpdate(&data);
 }
 
 void PS2KeyboardUpdated(EsGeneric _update) {

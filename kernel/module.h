@@ -364,8 +364,16 @@ void KTimerRemove(KTimer *timer); // Timers with callbacks cannot be removed (it
 // Window manager.
 // ---------------------------------------------------------------------------------------------------------------
 
-#define K_CURSOR_MOVEMENT_SCALE ES_SCROLL_WHEEL_SCALE
-void KMouseUpdate(int32_t xMovement, int32_t yMovement, uint32_t buttons, int32_t scrollX = 0, int32_t scrollY = 0);
+struct KMouseUpdateData {
+	int32_t xMovement, yMovement;
+	bool xIsAbsolute, yIsAbsolute;
+	int32_t xFrom, xTo, yFrom, yTo;
+	int32_t xScroll, yScroll;
+	uint32_t buttons;
+};
+
+#define K_CURSOR_MOVEMENT_SCALE (0x100)
+void KMouseUpdate(const KMouseUpdateData *data);
 void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount);
 void KKeyPress(uint32_t scancode);
 

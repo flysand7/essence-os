@@ -1,6 +1,6 @@
 #include <module.h>
 
-// #define TRACE_REPORTS
+#define TRACE_REPORTS
 
 // TODO Key repeat not working on Qemu.
 
@@ -421,8 +421,7 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 #endif
 
 	bool mouseEvent = false;
-	int mouseXMovement = 0, mouseYMovement = 0;
-	int mouseScrollWheel = 0, mouseButtons = 0;
+	KMouseUpdateData mouse = {};
 	bool keyboardEvent = false;
 	uint16_t keysDown[32];
 	size_t keysDownCount = 0;
@@ -491,23 +490,39 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 			bool handled = false;
 
 			if (item->application == HID_APPLICATION_MOUSE) {
-				// TODO Handle unsigned, absolute, and wrapping movements.
+				// TODO Handle absolute, and wrapping movements.
 
 				mouseEvent = true;
 				handled = true;
 
 				if (item->usage == HID_USAGE_X_AXIS) {
-					mouseXMovement = buffer->ReadSigned(item->bits);
+					if (item->flags & REPORT_ITEM_SIGNED) {
+						mouse.xMovement = buffer->ReadSigned(item->bits) * K_CURSOR_MOVEMENT_SCALE;
+					} else {
+						mouse.xMovement = buffer->ReadUnsigned(item->bits) * K_CURSOR_MOVEMENT_SCALE;
+					}
+
+					mouse.xIsAbsolute = !(item->flags & REPORT_ITEM_RELATIVE);
+					mouse.xFrom = item->logicalMinimum; 
+					mouse.xTo = item->logicalMaximum;
 				} else if (item->usage == HID_USAGE_Y_AXIS) {
-					mouseYMovement = buffer->ReadSigned(item->bits);
+					if (item->flags & REPORT_ITEM_SIGNED) {
+						mouse.yMovement = buffer->ReadSigned(item->bits) * K_CURSOR_MOVEMENT_SCALE;
+					} else {
+						mouse.yMovement = buffer->ReadUnsigned(item->bits) * K_CURSOR_MOVEMENT_SCALE;
+					}
+
+					mouse.yIsAbsolute = !(item->flags & REPORT_ITEM_RELATIVE);
+					mouse.yFrom = item->logicalMinimum; 
+					mouse.yTo = item->logicalMaximum;
 				} else if (item->usage == HID_USAGE_BUTTON_1) {
-					if (buffer->ReadUnsigned(item->bits)) mouseButtons |= 1 << 0;
+					if (buffer->ReadUnsigned(item->bits)) mouse.buttons |= 1 << 0;
 				} else if (item->usage == HID_USAGE_BUTTON_2) {
-					if (buffer->ReadUnsigned(item->bits)) mouseButtons |= 1 << 2;
+					if (buffer->ReadUnsigned(item->bits)) mouse.buttons |= 1 << 2;
 				} else if (item->usage == HID_USAGE_BUTTON_3) {
-					if (buffer->ReadUnsigned(item->bits)) mouseButtons |= 1 << 1;
+					if (buffer->ReadUnsigned(item->bits)) mouse.buttons |= 1 << 1;
 				} else if (item->usage == HID_USAGE_WHEEL) {
-					mouseScrollWheel = buffer->ReadSigned(item->bits);
+					mouse.yScroll = buffer->ReadSigned(item->bits) * K_CURSOR_MOVEMENT_SCALE;
 				} else {
 					handled = false;
 				}
@@ -566,8 +581,7 @@ void HIDDevice::ReportReceived(BitBuffer *buffer) {
 	}
 
 	if (mouseEvent) {
-		KMouseUpdate(mouseXMovement * K_CURSOR_MOVEMENT_SCALE, mouseYMovement * K_CURSOR_MOVEMENT_SCALE, 
-				mouseButtons, 0, mouseScrollWheel * ES_SCROLL_WHEEL_SCALE);
+		KMouseUpdate(&mouse);
 	}
 
 	if (keyboardEvent) {
@@ -624,7 +638,6 @@ void HIDDevice::Initialise() {
 	if (!device->controlTransfer(device, 0x21, 0x0B /* set protocol */, 1 /* report protocol */, 
 				device->interfaceDescriptor.interfaceIndex, nullptr, 0, K_ACCESS_WRITE, nullptr)) {
 		KernelLog(LOG_ERROR, "USBHID", "set protocol failure", "Could not switch to the report protocol.\n");
-		return;
 	}
 
 	// Get the report descriptor and parse it.

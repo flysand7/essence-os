@@ -1223,28 +1223,33 @@ void WindowManager::StartEyedrop(uintptr_t object, Window *avoid, uint32_t cance
 	KMutexRelease(&mutex);
 }
 
-void KMouseUpdate(int32_t xMovement, int32_t yMovement, uint32_t buttons, int32_t scrollX, int32_t scrollY) {
+void KMouseUpdate(const KMouseUpdateData *data) {
 	if (!windowManager.initialised) {
 		return;
 	}
 
-	if (xMovement || yMovement) {
-		if (xMovement * xMovement + yMovement * yMovement < 10 && buttons != windowManager.lastButtons) {
+	KMutexAcquire(&windowManager.mutex);
+
+	if (data->xMovement || data->yMovement) {
+		int32_t xMovement = data->xMovement;
+		int32_t yMovement = data->yMovement;
+
+		// TODO Handling xIsAbsolute and yIsAbsolute
+
+		if (xMovement * xMovement + yMovement * yMovement < 10 && data->buttons != windowManager.lastButtons) {
 			// This seems to be movement noise generated when the buttons were pressed/released.
 		} else {
-			KMutexAcquire(&windowManager.mutex);
 			windowManager.MoveCursor(xMovement, yMovement);
-			KMutexRelease(&windowManager.mutex);
 		}
 	} 
 
-	if (scrollX || scrollY) {
-		KMutexAcquire(&windowManager.mutex);
-		windowManager.ScrollWheel(scrollX, scrollY);
-		KMutexRelease(&windowManager.mutex);
+	if (data->xScroll || data->yScroll) {
+		windowManager.ScrollWheel(data->xScroll, data->yScroll);
 	}
 
-	windowManager.ClickCursor(buttons);
+	KMutexRelease(&windowManager.mutex);
+
+	windowManager.ClickCursor(data->buttons);
 }
 
 void KKeyPress(unsigned scancode) {

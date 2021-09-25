@@ -735,8 +735,6 @@ define ES_PATH_MOVE_ALLOW_COPY_AND_DELETE (1 << 0) // Copy and delete the file i
 
 define ES_CLIPBOARD_ADD_LAZY_CUT (1 << 0) // Only perform the deletion after pasting; often implemented as a move.
 
-define ES_SCROLL_WHEEL_SCALE (0x100)
-
 include desktop/icons.header
 
 enum EsFatalError {
