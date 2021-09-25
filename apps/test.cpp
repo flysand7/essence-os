@@ -151,6 +151,19 @@ void InitialiseInstance(EsInstance *instance) {
 
 	EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, &stylePanel);
 	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Alert 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
+		EsDialogShowAlert(element->window, "Title", -1, "Content.", -1, ES_ICON_DIALOG_WARNING, ES_DIALOG_ALERT_OK_BUTTON);
+	});
+
+	EsPanel *table = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE_H_JUSTIFY);
+	EsPanelSetBands(table, 3);
+
+	for (uintptr_t i = 0; i < 8; i++) {
+		EsButtonCreate(table, ES_FLAGS_DEFAULT, 0, "Justified columns");
+	}
+
+#if 0
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash"), [] (EsInstance *, EsElement *, EsCommand *) { EsAssert(false); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Hang"), [] (EsInstance *, EsElement *, EsCommand *) { while (true); });
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Wait"), [] (EsInstance *, EsElement *, EsCommand *) { EsSleep(8000); });
@@ -176,6 +189,7 @@ void InitialiseInstance(EsInstance *instance) {
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash 6"), [] (EsInstance *, EsElement *, EsCommand *) { 
 		EsMemoryCopy(nullptr, nullptr, 1);
 	});
+#endif
 
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Move file"), [] (EsInstance *, EsElement *, EsCommand *) { 
 		EsPathMove("0:/A Study in Scarlet.txt", -1, "0:/moved.txt", -1, ES_PATH_MOVE_ALLOW_COPY_AND_DELETE);

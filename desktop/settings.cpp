@@ -85,14 +85,6 @@ const EsStyle styleSettingsNumberTextbox = {
 	},
 };
 
-const EsStyle styleSettingsTable = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
-		.gapMajor = 7,
-		.gapMinor = 7,
-	},
-};
-
 const EsStyle styleSettingsCheckboxGroup = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
@@ -307,7 +299,7 @@ void SettingsPageUnimplemented(EsElement *element, SettingsPage *page) {
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
-	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 }
@@ -529,7 +521,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseCursorTrails), 'T', "general", "cursor_trails", 0, 7, 8, 
 			INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone), INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany));
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch), 'S', "general", "scroll_lines_per_notch", 
@@ -542,7 +534,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed), 'D', "general", "click_chain_timeout_ms", 
@@ -561,11 +553,11 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
-	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 
 	EsTextbox *textbox;
@@ -606,11 +598,11 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
-	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsDisplayUIScale), 'S', "general", "ui_scale", 
 			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
@@ -687,11 +679,11 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
-	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	EsPanel *table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsTable);
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsThemeWallpaper)); 
 

@@ -84,11 +84,11 @@ const EsStyle styleBitmapSizeTextbox = {
 };
 
 const EsStyle styleImageMenuTable = {
+	.inherit = ES_STYLE_PANEL_FORM_TABLE,
+
 	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_ALL | ES_THEME_METRICS_INSETS,
+		.mask = ES_THEME_METRICS_INSETS,
 		.insets = ES_RECT_4(20, 20, 5, 8),
-		.gapMajor = 6,
-		.gapMinor = 6,
 	},
 };
 

@@ -225,6 +225,9 @@ struct APIInstance {
 		  commandSave,
 		  commandShowInFileManager;
 
+	char *newName;
+	size_t newNameBytes;
+
 	const char *applicationName;
 	size_t applicationNameBytes;
 
@@ -234,6 +237,8 @@ struct APIInstance {
 	EsUndoManager *activeUndoManager;
 
 	EsFileStore *fileStore;
+
+	bool closeAfterSaveCompletes;
 
 	// Do not propagate messages about this instance to the application. 
 	// Currently only used for inspectors.
@@ -247,7 +252,7 @@ struct APIInstance {
 	// For the file menu.
 	EsPanel *fileMenuNameSwitcher;
 	EsPanel *fileMenuNamePanel;
-	EsTextbox *fileMenuNameTextbox;
+	EsTextbox *fileMenuNameTextbox; // Also used by the file save dialog.
 };
 
 MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
@@ -651,6 +656,86 @@ void InstanceSave(EsInstance *_instance) {
 	}
 }
 
+void InstanceClose(EsInstance *instance) {
+	if (EsCommandByID(instance, ES_COMMAND_SAVE)->disabled) {
+		EsInstanceDestroy(instance);
+		return;
+	}
+
+	// The document has unsaved changes.
+	// Ask the user if they want to save.
+
+	// TODO Handling shutdown.
+
+	APIInstance *apiInstance = (APIInstance *) instance->_private;
+	char content[512];
+	size_t contentBytes;
+	const char *cTitle;
+
+	if (apiInstance->startupInformation->filePathBytes) {
+		cTitle = interfaceString_FileCloseWithModificationsTitle;
+		contentBytes = EsStringFormat(content, sizeof(content), interfaceString_FileCloseWithModificationsContent, 
+				apiInstance->startupInformation->filePathBytes, apiInstance->startupInformation->filePath);
+	} else {
+		cTitle = interfaceString_FileCloseNewTitle;
+		contentBytes = EsStringFormat(content, sizeof(content), interfaceString_FileCloseNewContent, 
+				apiInstance->applicationNameBytes, apiInstance->applicationName);
+	}
+
+	// NOTE Duplicated from EsDialogShowAlert.
+	// TODO Is there a good way to make more modular dialogs?
+	EsElement *dialog = EsDialogShow(instance->window);
+	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
+	EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
+	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, cTitle);
+	EsPanel *contentArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT);
+	EsTextDisplayCreate(contentArea, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, content, contentBytes);
+	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
+
+	if (!apiInstance->startupInformation->filePathBytes) {
+		EsPanel *row = EsPanelCreate(contentArea, ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
+		EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(FileCloseNewName));
+		EsTextbox *textbox = EsTextboxCreate(row);
+		EsInstanceClassEditorSettings *editorSettings = &apiInstance->editorSettings;
+		EsTextboxInsert(textbox, editorSettings->newDocumentFileName, editorSettings->newDocumentFileNameBytes);
+		EsElementFocus(textbox);
+		TextboxSelectSectionBeforeFileExtension(textbox, editorSettings->newDocumentFileName, editorSettings->newDocumentFileNameBytes);
+		apiInstance->fileMenuNameTextbox = textbox;
+	}
+
+	EsButton *button;
+
+	button = EsButtonCreate(buttonArea, ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonCancel));
+
+	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+		EsDialogClose(instance->window); 
+	});
+
+	button = EsButtonCreate(buttonArea, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(FileCloseWithModificationsDelete));
+
+	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+		EsInstanceDestroy(instance);
+	});
+
+	button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, INTERFACE_STRING(FileCloseWithModificationsSave));
+
+	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+		APIInstance *apiInstance = (APIInstance *) instance->_private;
+
+		if (apiInstance->startupInformation->filePathBytes) {
+			InstanceSave(instance);
+		} else {
+			InstanceRenameFromTextbox(instance->window, apiInstance, apiInstance->fileMenuNameTextbox);
+		}
+	
+		apiInstance->closeAfterSaveCompletes = true;
+	});
+
+	if (apiInstance->startupInformation->filePathBytes) {
+		EsElementFocus(button);
+	}
+}
+
 void FileStoreCloseHandle(EsFileStore *fileStore) {
 	EsMessageMutexCheck(); // TODO Remove this limitation?
 	EsAssert(fileStore->handles < 0x80000000);
@@ -934,10 +1019,12 @@ EsMessage *EsMessageReceive() {
 
 			if (instance->startupInformation) {
 				EsHeapFree((void *) instance->startupInformation->filePath);
+				EsHeapFree((void *) instance->startupInformation->containingFolder);
 			}
 
 			EsHeapFree(instance->startupInformation);
 			EsHeapFree(instance->documentPath);
+			EsHeapFree(instance->newName);
 
 			for (uintptr_t i = 0; i < instance->commands.Count(); i++) {
 				EsCommand *command = instance->commands[i];
@@ -1012,7 +1099,10 @@ EsMessage *EsMessageReceive() {
 			}
 		} else if (type == ES_MSG_TAB_CLOSE_REQUEST) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
-			if (instance) EsInstanceDestroy(instance);
+
+			if (instance) {
+				InstanceClose(instance);
+			}
 		} else if (type == ES_MSG_INSTANCE_SAVE_RESPONSE) {
 			EsMessage m = {};
 			m.type = ES_MSG_INSTANCE_SAVE;
@@ -1046,11 +1136,15 @@ EsMessage *EsMessageReceive() {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 
 			if (instance) {
+				APIInstance *apiInstance = (APIInstance *) instance->_private;
+
 				if (message.message.tabOperation.error == ES_SUCCESS) {
 					EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
 					EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, INTERFACE_STRING(FileRenameSuccess));
 				} else {
+					char buffer[512];
 					const char *errorMessage = interfaceString_FileSaveErrorUnknown;
+					ptrdiff_t errorMessageBytes = -1;
 
 					switch (message.message.tabOperation.error) {
 						case ES_ERROR_FILE_DOES_NOT_EXIST: 
@@ -1068,14 +1162,20 @@ EsMessage *EsMessageReceive() {
 						case ES_ERROR_INSUFFICIENT_RESOURCES:
 							errorMessage = interfaceString_FileSaveErrorResourcesLow;
 							break;
-						case ES_ERROR_FILE_ALREADY_EXISTS:
-							errorMessage = interfaceString_FileSaveErrorAlreadyExists;
-							break;
+
+						case ES_ERROR_FILE_ALREADY_EXISTS: {
+							errorMessage = buffer;
+							errorMessageBytes = EsStringFormat(buffer, sizeof(buffer), interfaceString_FileSaveErrorAlreadyExists, 
+									apiInstance->newNameBytes, apiInstance->newName);
+						} break;
 					}
 
 					EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotRename), 
-							errorMessage, -1, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
+							errorMessage, errorMessageBytes, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 				}
+
+				EsHeapFree(apiInstance->newName);
+				apiInstance->newName = nullptr;
 			}
 		} else if (type == ES_MSG_INSTANCE_DOCUMENT_RENAMED) {
 			char *buffer = (char *) EsHeapAllocate(message.message.tabOperation.bytes, false);
@@ -1279,8 +1379,16 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, message, messageBytes);
 			EsHeapFree(message);
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
+
+			if (apiInstance->closeAfterSaveCompletes) {
+				EsInstanceDestroy(instance);
+			}
 		} else {
+			apiInstance->closeAfterSaveCompletes = false;
+
+			char buffer[512];
 			const char *errorMessage = interfaceString_FileSaveErrorUnknown;
+			ptrdiff_t errorMessageBytes = -1;
 
 			switch (message->instanceSave.file->error) {
 				case ES_ERROR_FILE_DOES_NOT_EXIST: 
@@ -1310,16 +1418,19 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 				case ES_ERROR_INSUFFICIENT_RESOURCES:
 					errorMessage = interfaceString_FileSaveErrorResourcesLow;
 					break;
-				case ES_ERROR_FILE_ALREADY_EXISTS:
-					errorMessage = interfaceString_FileSaveErrorAlreadyExists;
-					break;
 				case ES_ERROR_TOO_MANY_FILES_WITH_NAME:
 					errorMessage = interfaceString_FileSaveErrorTooManyFiles;
 					break;
+
+				case ES_ERROR_FILE_ALREADY_EXISTS: {
+					errorMessage = buffer;
+					errorMessageBytes = EsStringFormat(buffer, sizeof(buffer), interfaceString_FileSaveErrorAlreadyExists, 
+							apiInstance->newNameBytes, apiInstance->newName);
+				} break;
 			}
 
 			EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotSave), 
-					errorMessage, -1, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
+					errorMessage, errorMessageBytes, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		}
 	}
 

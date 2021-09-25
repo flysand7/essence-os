@@ -443,14 +443,14 @@ struct EsWindow : EsElement {
 	EsWindowStyle windowStyle;
 	uint32_t windowWidth, windowHeight;
 
-	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, hasDialog, doNotPaint;
+	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, doNotPaint;
 	bool restoreOnNextMove, resetPositionOnNextMove, receivedFirstResize, isMaximised;
 	bool hovering, activated, appearActivated;
 	bool visualizeRepaints, visualizeLayoutBounds, visualizePaintSteps; // Inspector properties.
 
 	EsElement *mainPanel, *toolbar;
 	EsPanel *toolbarSwitcher;
-	EsElement *dialogWrapper;
+	Array<EsElement *> dialogs;
 
 	EsPoint mousePosition;
 
@@ -728,6 +728,7 @@ void UIWindowDestroy(EsWindow *window) {
 	EsSyscall(ES_SYSCALL_WINDOW_CLOSE, window->handle, 0, 0, 0);
 	EsHandleClose(window->handle);
 	window->checkVisible.Free();
+	window->dialogs.Free();
 	window->handle = ES_INVALID_HANDLE;
 }
 
@@ -1918,9 +1919,6 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 
 	EsRectangle insets = panel->GetInsets();
 
-#define TABLE_AXIS_HORIZONTAL (0)
-#define TABLE_AXIS_VERTICAL (1)
-
 	for (int _axis = 0; _axis < 2; _axis++) {
 		int axis = (~panel->flags & ES_PANEL_HORIZONTAL) ? (1 - _axis) : _axis;
 		int gapSize = _axis ? panel->GetGapMinor() : panel->GetGapMajor();
@@ -1941,7 +1939,7 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 				size = 0;
 			} else {
 				int alternate = _axis ? calculatedSize[1 - axis][i] : 0;
-				size = axis == TABLE_AXIS_HORIZONTAL ? child->GetWidth(alternate) : child->GetHeight(alternate);
+				size = axis ? child->GetHeight(alternate) : child->GetWidth(alternate);
 			}
 
 			if (debug) EsPrint("\tChild %d (%z) in cells %d->%d has size %d\n", i, child->cName, child->tableCell.from[axis], child->tableCell.to[axis], size);
@@ -2091,7 +2089,20 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 			calculatedSize[axis][i] = size;
 		}
 
-		// Step 5: Calculate the position of the bands.
+		// Step 5: Calculate justification gap.
+
+		if ((axis ? (panel->flags & ES_PANEL_TABLE_V_JUSTIFY) : (panel->flags & ES_PANEL_TABLE_H_JUSTIFY))
+				&& panel->bandCount[axis] > 1 && message->type == ES_MSG_LAYOUT) {
+			int32_t usedSize = 0;
+
+			for (int i = 0; i < panel->bandCount[axis]; i++) {
+				usedSize += calculatedProperties[axis][i].preferredSize;
+			}
+
+			gapSize = (in[axis] - usedSize) / (panel->bandCount[axis] - 1);
+		}
+
+		// Step 6: Calculate the position of the bands.
 
 		int position = insetStart;
 
@@ -2099,14 +2110,14 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 			if (i) position += gapSize;
 			EsPanelBand *band = calculatedProperties[axis] + i;
 			int size = band->preferredSize;
-			band->maximumSize = position; // Aliasing maximumSize with position.
+			band->maximumSize = position; // HACK Aliasing maximumSize with position.
 			position += size;
 		}
 
 		out[axis] = position + insetEnd;
 	}
 
-	// Step 6: Move the children to their new location.
+	// Step 7: Move the children to their new location.
 
 	if (message->type == ES_MSG_GET_WIDTH) {
 		message->measure.width = out[0];
@@ -3513,21 +3524,25 @@ int ProcessDialogClosingMessage(EsElement *element, EsMessage *message) {
 
 void EsDialogClose(EsWindow *window) {
 	EsMessageMutexCheck();
-	EsAssert(window->hasDialog);
+	EsAssert(window->dialogs.Length());
 
-	EsAssert(window->dialogWrapper->children[0]->messageClass == ProcessPanelMessage);
-	window->dialogWrapper->children[0]->messageClass = ProcessDialogClosingMessage;
-	EsElementStartTransition(window->dialogWrapper->children[0], ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
+	EsElement *dialog = window->dialogs.Pop();
 
-	window->dialogWrapper = nullptr;
-	window->children[0]->children[0]->state &= ~UI_STATE_BLOCK_INTERACTION;
-	window->children[1]->state &= ~UI_STATE_BLOCK_INTERACTION;
-	window->hasDialog = false;
+	EsAssert(dialog->messageClass == ProcessPanelMessage);
+	dialog->messageClass = ProcessDialogClosingMessage;
+	EsElementStartTransition(dialog, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
 
-	if (window->inactiveFocus) {
-		EsElementFocus(window->inactiveFocus, false);
-		window->inactiveFocus->Repaint(true);
-		window->inactiveFocus = nullptr;
+	if (!window->dialogs.Length()) {
+		window->children[0]->children[0]->state &= ~UI_STATE_BLOCK_INTERACTION;
+		window->children[1]->state &= ~UI_STATE_BLOCK_INTERACTION;
+
+		if (window->inactiveFocus) {
+			EsElementFocus(window->inactiveFocus, false);
+			window->inactiveFocus->Repaint(true);
+			window->inactiveFocus = nullptr;
+		}
+	} else {
+		window->dialogs.Last()->state &= ~UI_STATE_BLOCK_INTERACTION;
 	}
 }
 
@@ -3539,7 +3554,7 @@ EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titl
 	if (!heading) return nullptr;
 
 	if (iconID) {
-		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, iconID);
+		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, 0, iconID);
 	}
 
 	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, 
@@ -3552,7 +3567,7 @@ EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titl
 	if (!buttonArea) return nullptr;
 
 	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
-		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, "OK");
+		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT | ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonOK));
 		EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { EsDialogClose(instance->window); });
 		EsElementFocus(button);
 	}
@@ -3562,10 +3577,9 @@ EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titl
 
 EsElement *EsDialogShow(EsWindow *window) {
 	// TODO Show on a separate window?
-	// TODO Maybe allow nested dialogs?
+	// TODO Support dialogs owned by other processes.
 
 	EsAssert(window->windowStyle == ES_WINDOW_NORMAL); // Can only show dialogs on normal windows.
-	EsAssert(!window->hasDialog); // Cannot nest dialogs.
 
 	if (window->focused) {
 		window->inactiveFocus = window->focused;
@@ -3575,15 +3589,20 @@ EsElement *EsDialogShow(EsWindow *window) {
 	}
 
 	EsElement *mainStack = window->children[0];
-	mainStack->children[0]->state |= UI_STATE_BLOCK_INTERACTION; // Main content.
-	window->children[1]->state |= UI_STATE_BLOCK_INTERACTION; // Toolbar.
 
-	window->hasDialog = true;
-	window->dialogWrapper = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_DIALOG_WRAPPER);
-	window->dialogWrapper->cName = "dialog wrapper";
-	EsPanel *dialog = EsPanelCreate(window->dialogWrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
+	if (!window->dialogs.Length()) {
+		mainStack->children[0]->state |= UI_STATE_BLOCK_INTERACTION; // Main content.
+		window->children[1]->state |= UI_STATE_BLOCK_INTERACTION; // Toolbar.
+	} else {
+		window->dialogs.Last()->state |= UI_STATE_BLOCK_INTERACTION;
+	}
+
+	EsElement *wrapper = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_DIALOG_WRAPPER);
+	wrapper->cName = "dialog wrapper";
+	EsPanel *dialog = EsPanelCreate(wrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
 	dialog->cName = "dialog";
 	EsElementStartTransition(dialog, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_FLAGS_DEFAULT, 1.0f);
+	window->dialogs.Add(dialog);
 
 	return dialog;
 }
@@ -3874,8 +3893,11 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 		if (button->window->enterButton == button) {
 			button->customStyleState &= ~THEME_STATE_DEFAULT_BUTTON;
 			button->window->enterButton = button->window->defaultEnterButton;
-			button->window->enterButton->customStyleState |= THEME_STATE_DEFAULT_BUTTON;
-			button->window->enterButton->MaybeRefreshStyle();
+
+			if (button->window->enterButton) {
+				button->window->enterButton->customStyleState |= THEME_STATE_DEFAULT_BUTTON;
+				button->window->enterButton->MaybeRefreshStyle();
+			}
 		}
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		EsBufferFormat(message->getContent.buffer, "'%s'", button->labelBytes, button->label);
@@ -3932,7 +3954,9 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 		button->window->defaultEnterButton = button;
 		button->window->enterButton = button;
 		button->customStyleState |= THEME_STATE_DEFAULT_BUTTON;
-	} else if (flags & ES_BUTTON_CANCEL) {
+	} 
+	
+	if (flags & ES_BUTTON_CANCEL) {
 		button->window->escapeButton = button;
 	}
 
@@ -5330,19 +5354,25 @@ const EsStyle styleFileMenuNameTextbox = {
 	},
 };
 
+void InstanceRenameFromTextbox(EsWindow *window, APIInstance *instance, EsTextbox *textbox) {
+	size_t newNameBytes;
+	char *newName = EsTextboxGetContents(textbox, &newNameBytes);
+	uint8_t *buffer = (uint8_t *) EsHeapAllocate(1 + newNameBytes, false);
+	buffer[0] = DESKTOP_MSG_RENAME;
+	EsMemoryCopy(buffer + 1, newName, newNameBytes);
+	MessageDesktop(buffer, 1 + newNameBytes, window->handle);
+	EsHeapFree(buffer);
+	EsHeapFree(instance->newName);
+	instance->newName = newName;
+	instance->newNameBytes = newNameBytes;
+}
+
 int FileMenuNameTextboxMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
 		APIInstance *instance = (APIInstance *) element->instance->_private;
 
 		if (!message->endEdit.rejected && !message->endEdit.unchanged) {
-			size_t newNameBytes;
-			char *newName = EsTextboxGetContents(instance->fileMenuNameTextbox, &newNameBytes);
-			uint8_t *buffer = (uint8_t *) EsHeapAllocate(1 + newNameBytes, false);
-			buffer[0] = DESKTOP_MSG_RENAME;
-			EsMemoryCopy(buffer + 1, newName, newNameBytes);
-			MessageDesktop(buffer, 1 + newNameBytes, element->instance->window->handle);
-			EsHeapFree(buffer);
-			EsHeapFree(newName);
+			InstanceRenameFromTextbox(element->instance->window, instance, instance->fileMenuNameTextbox);
 			EsElementDestroy(element->window);
 		} else {
 			EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNamePanel, ES_TRANSITION_SLIDE_DOWN);
@@ -5354,11 +5384,28 @@ int FileMenuNameTextboxMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
+void TextboxSelectSectionBeforeFileExtension(EsTextbox *textbox, const char *name, ptrdiff_t nameBytes) {
+	uintptr_t extensionOffset = 0;
+
+	if (nameBytes == -1) {
+		nameBytes = EsCStringLength(name);
+	}
+
+	for (intptr_t i = 1; i < nameBytes; i++) {
+		if (name[i] == '.') {
+			extensionOffset = i;
+		}
+	}
+
+	if (extensionOffset) {
+		EsTextboxSetSelection(textbox, 0, 0, 0, extensionOffset);
+	}
+}
+
 void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
 	APIInstance *instance = (APIInstance *) _instance->_private;
 	EsTextboxClear(instance->fileMenuNameTextbox, false);
 
-	uintptr_t extensionOffset = 0;
 	const char *initialName = nullptr;
 	ptrdiff_t initialNameBytes = 0;
 
@@ -5376,17 +5423,10 @@ void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
 	}
 
 	EsTextboxInsert(instance->fileMenuNameTextbox, initialName, initialNameBytes, false);
-
-	for (intptr_t i = 1; i < initialNameBytes; i++) {
-		if (initialName[i] == '.') {
-			extensionOffset = i;
-		}
-	}
-
 	EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNameTextbox, ES_TRANSITION_SLIDE_UP);
 	EsElementFocus(instance->fileMenuNameTextbox);
 	EsTextboxStartEdit(instance->fileMenuNameTextbox);
-	if (extensionOffset) EsTextboxSetSelection(instance->fileMenuNameTextbox, 0, 0, 0, extensionOffset);
+	TextboxSelectSectionBeforeFileExtension(instance->fileMenuNameTextbox, initialName, initialNameBytes);
 	instance->fileMenuNameTextbox->messageUser = FileMenuNameTextboxMessage;
 }
 
@@ -6577,7 +6617,7 @@ int AccessKeyLayerMessage(EsElement *element, EsMessage *message) {
 }
 
 void AccessKeyModeEnter(EsWindow *window) {
-	if (window->hasDialog || gui.menuMode || gui.accessKeyMode || window->windowStyle != ES_WINDOW_NORMAL) {
+	if (window->dialogs.Length() || gui.menuMode || gui.accessKeyMode || window->windowStyle != ES_WINDOW_NORMAL) {
 		return;
 	}
 
@@ -6795,7 +6835,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		return true;
 	}
 
-	if (!window->hasDialog) {
+	if (!window->dialogs.Length()) {
 		// TODO Sort out what commands can be used from within dialogs and menus.
 
 		if (!gui.keyboardShortcutNames.itemCount) UIInitialiseKeyboardShortcutNamesTable();

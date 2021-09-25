@@ -5,12 +5,15 @@
 
 #define ELLIPSIS "…"
 #define HYPHENATION_POINT "‧"
+#define OPEN_SPEECH "\u201C"
+#define CLOSE_SPEECH "\u201D"
 #define SYSTEM_BRAND_SHORT "Essence"
 
 // Common.
 
 DEFINE_INTERFACE_STRING(CommonErrorTitle, "Error");
 
+DEFINE_INTERFACE_STRING(CommonOK, "OK");
 DEFINE_INTERFACE_STRING(CommonCancel, "Cancel");
 
 DEFINE_INTERFACE_STRING(CommonUndo, "Undo");
@@ -162,7 +165,7 @@ DEFINE_INTERFACE_STRING(FileSaveErrorTooLarge, "The drive does not support files
 DEFINE_INTERFACE_STRING(FileSaveErrorConcurrentAccess, "Another application is modifying the file.");
 DEFINE_INTERFACE_STRING(FileSaveErrorDriveFull, "The drive is full. Try deleting some files to free up space.");
 DEFINE_INTERFACE_STRING(FileSaveErrorResourcesLow, "The system is low on resources. Close some applcations and try again.");
-DEFINE_INTERFACE_STRING(FileSaveErrorAlreadyExists, "There is already a file with this name.");
+DEFINE_INTERFACE_STRING(FileSaveErrorAlreadyExists, "There is already a file called " OPEN_SPEECH "%s" CLOSE_SPEECH " in this folder.");
 DEFINE_INTERFACE_STRING(FileSaveErrorTooManyFiles, "Too many files already have the same name.");
 DEFINE_INTERFACE_STRING(FileSaveErrorUnknown, "An unknown error occurred. Please try again later.");
 
@@ -170,6 +173,14 @@ DEFINE_INTERFACE_STRING(FileLoadErrorCorrupt, "The file has been corrupted, and 
 DEFINE_INTERFACE_STRING(FileLoadErrorDrive, "The drive containing the file was unable to access its contents.");
 DEFINE_INTERFACE_STRING(FileLoadErrorResourcesLow, "The system is low on resources. Close some applcations and try again.");
 DEFINE_INTERFACE_STRING(FileLoadErrorUnknown, "An unknown error occurred. Please try again later.");
+
+DEFINE_INTERFACE_STRING(FileCloseWithModificationsTitle, "Do you want to save this document?");
+DEFINE_INTERFACE_STRING(FileCloseWithModificationsContent, "You need to save your changes to " OPEN_SPEECH "%s" CLOSE_SPEECH " before you can close it.");
+DEFINE_INTERFACE_STRING(FileCloseWithModificationsSave, "Save and close");
+DEFINE_INTERFACE_STRING(FileCloseWithModificationsDelete, "Discard");
+DEFINE_INTERFACE_STRING(FileCloseNewTitle, "Do you want to keep this document?");
+DEFINE_INTERFACE_STRING(FileCloseNewContent, "You need to save it before you can close " OPEN_SPEECH "%s" CLOSE_SPEECH ".");
+DEFINE_INTERFACE_STRING(FileCloseNewName, "Name:");
 
 // Image Editor.
 

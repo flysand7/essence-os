@@ -13,16 +13,6 @@ const EsStyle stylePanelStack = {
 	},
 };
 
-// Define the metrics for panelForm.
-const EsStyle stylePanelForm = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR 
-			| ES_THEME_METRICS_GAP_MINOR,
-		.gapMajor = 5, // Spacing between columns.
-		.gapMinor = 8, // Spacing between rows.
-	},
-};
-
 // Global variables.
 EsTextbox     *textboxRate;
 EsTextbox     *textboxAmount;
@@ -74,10 +64,10 @@ void _start() {
 
 			// Add a second layout panel to panelStack to contain the elements of the form.
 			EsPanel *panelForm = EsPanelCreate(
-				panelStack,            // Add it to panelStack.
-				ES_PANEL_TABLE         // Use table layout.
-				| ES_PANEL_HORIZONTAL, // Left to right, then top to bottom.
-				&stylePanelForm);
+				panelStack,                 // Add it to panelStack.
+				ES_PANEL_TABLE              // Use table layout.
+				| ES_PANEL_HORIZONTAL,      // Left to right, then top to bottom.
+				ES_STYLE_PANEL_FORM_TABLE); // Use the standard metrics for a form.
 
 			// Set the number of columns for the panelForm's table layout.
 			EsPanelSetBands(panelForm, 2); 

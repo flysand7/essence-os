@@ -475,15 +475,8 @@ define ES_PANEL_SWITCHER_MEASURE_SHOWN   (0 << 15) // Use the shown child to det
 define ES_PANEL_SWITCHER_MEASURE_LARGEST (1 << 15) // Use the largest child to determine size.
 
 // For ES_PANEL_TABLE.
-// TODO Implement these!
-define ES_PANEL_H_LEFT			(1 << 16)
-define ES_PANEL_H_RIGHT			(1 << 17)
-define ES_PANEL_H_CENTER		(1 << 18)
-define ES_PANEL_H_JUSTIFY		(1 << 19)
-define ES_PANEL_V_TOP			(1 << 20)
-define ES_PANEL_V_BOTTOM		(1 << 21)
-define ES_PANEL_V_CENTER		(1 << 22)
-define ES_PANEL_V_JUSTIFY		(1 << 23)
+define ES_PANEL_TABLE_H_JUSTIFY		(1 << 16)
+define ES_PANEL_TABLE_V_JUSTIFY		(1 << 17)
 
 define ES_PANEL_RADIO_GROUP		(1 << 30) // Determines how arrow keys/tabs behave.
 

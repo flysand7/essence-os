@@ -49,14 +49,6 @@ const EsStyle styleButtonsRow = {
 	},
 };
 
-const EsStyle styleCustomizeTable = {
-	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
-		.gapMajor = 7,
-		.gapMinor = 7,
-	},
-};
-
 InstallerMetadata *metadata;
 Array<EsMessageDevice> connectedDrives;
 EsListView *drivesList;
@@ -1085,7 +1077,7 @@ void _start() {
 		EsTextDisplayCreate(panelCustomizeOptions, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0, INTERFACE_STRING(InstallerTitle));
 		EsTextDisplayCreate(panelCustomizeOptions, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING1, INTERFACE_STRING(InstallerCustomizeOptions));
 
-		EsPanel *table = EsPanelCreate(panelCustomizeOptions, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE, &styleCustomizeTable);
+		EsPanel *table = EsPanelCreate(panelCustomizeOptions, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE, ES_STYLE_PANEL_FORM_TABLE);
 		EsPanelSetBands(table, 2 /* columns */);
 
 		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(InstallerUserName));
