@@ -85,6 +85,7 @@ EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int offsetY, EsPoint position);
 const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent);
 void AccessKeysCenterHint(EsElement *element, EsMessage *message);
+void UIRemoveFocusFromElement(EsElement *oldFocus);
 
 void InspectorSetup(EsWindow *window);
 void InspectorNotifyElementEvent(EsElement *element, const char *cCategory, const char *cFormat, ...);
@@ -449,7 +450,7 @@ struct EsWindow : EsElement {
 
 	EsElement *mainPanel, *toolbar;
 	EsPanel *toolbarSwitcher;
-	EsElement *dialogOverlay, *dialogPanel;
+	EsElement *dialogWrapper;
 
 	EsPoint mousePosition;
 
@@ -708,67 +709,6 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 	}
 
 	return ES_HANDLED;
-}
-
-// --------------------------------- Dialogs.
-
-void EsDialogClose(EsWindow *window) {
-	EsMessageMutexCheck();
-	EsAssert(window->hasDialog); // The window does not have an open dialog.
-	window->dialogPanel->Destroy();
-	window->dialogOverlay->Destroy(); // TODO This looks bad if we immediately open a new dialog. But maybe it'll look alright with exiting transitions?
-	window->dialogOverlay = window->dialogPanel = nullptr;
-	window->children[0]->children[0]->flags &= ~ES_ELEMENT_BLOCK_FOCUS;
-	window->children[1]->state &= ~UI_STATE_BLOCK_INTERACTION;
-	window->hasDialog = false;
-}
-
-EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titleBytes, 
-		const char *content, ptrdiff_t contentBytes, uint32_t iconID, uint32_t flags) {
-	EsElement *dialog = EsDialogShow(window);
-	if (!dialog) return nullptr;
-	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
-	if (!heading) return nullptr;
-
-	if (iconID) {
-		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, iconID);
-	}
-
-	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, 
-			title, titleBytes)->cName = "dialog heading";
-	EsTextDisplayCreate(EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT), 
-			ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, 
-			content, contentBytes)->cName = "dialog contents";
-
-	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
-	if (!buttonArea) return nullptr;
-
-	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
-		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, "OK");
-		EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { EsDialogClose(instance->window); });
-		EsElementFocus(button);
-	}
-
-	return buttonArea;
-}
-
-EsElement *EsDialogShow(EsWindow *window) {
-	EsAssert(window->windowStyle == ES_WINDOW_NORMAL); // Can only show dialogs on normal windows.
-	EsAssert(!window->hasDialog); // Cannot nest dialogs.
-
-	EsElement *mainStack = window->children[0];
-	mainStack->children[0]->flags |= ES_ELEMENT_BLOCK_FOCUS;
-	window->children[1]->state |= UI_STATE_BLOCK_INTERACTION;
-	window->hasDialog = true;
-	window->dialogOverlay = EsPanelCreate(mainStack, ES_CELL_FILL, ES_STYLE_PANEL_MODAL_OVERLAY);
-	window->dialogOverlay->cName = "modal overlay";
-	window->dialogPanel = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_CENTER | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
-	window->dialogPanel->cName = "dialog";
-
-	// EsElementStartTransition(window->dialogOverlay, ES_TRANSITION_FADE_IN, ES_FLAGS_DEFAULT, 3.0f);
-	// EsElementStartTransition(window->dialogPanel, ES_TRANSITION_FADE_IN, ES_FLAGS_DEFAULT, 3.0f);
-
-	return window->dialogPanel;
 }
 
 // --------------------------------- Windows.
@@ -1298,6 +1238,10 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 		return;
 	}
 
+	if (~element->state & UI_STATE_ENTERED) {
+		flags |= ES_ELEMENT_TRANSITION_ENTRANCE;
+	}
+
 	if (transitionType == ES_TRANSITION_FADE_IN) {
 		flags |= ES_ELEMENT_TRANSITION_ENTRANCE;
 	} else if (transitionType == ES_TRANSITION_FADE_OUT) {
@@ -1680,6 +1624,9 @@ void ProcessAnimations() {
 			if (element->transitionFlags & ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE) {
 				EsElementSetHidden(element, true);
 			}
+
+			EsMessage m = { .type = ES_MSG_TRANSITION_COMPLETE };
+			EsMessageSend(element, &m);
 		}
 
 		bool backgroundAnimationComplete = ThemeAnimationComplete(&element->animation);
@@ -3551,6 +3498,94 @@ EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel) {
 	}
 
 	return (EsButton *) panel->GetChild(0);
+}
+
+// --------------------------------- Dialogs.
+
+int ProcessDialogClosingMessage(EsElement *element, EsMessage *message) {
+	if (message->type == ES_MSG_TRANSITION_COMPLETE) {
+		// Destroy the dialog and its wrapper.
+		EsElementDestroy(EsElementGetLayoutParent(element));
+	}
+
+	return ProcessPanelMessage(element, message);
+}
+
+void EsDialogClose(EsWindow *window) {
+	EsMessageMutexCheck();
+	EsAssert(window->hasDialog);
+
+	EsAssert(window->dialogWrapper->children[0]->messageClass == ProcessPanelMessage);
+	window->dialogWrapper->children[0]->messageClass = ProcessDialogClosingMessage;
+	EsElementStartTransition(window->dialogWrapper->children[0], ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
+
+	window->dialogWrapper = nullptr;
+	window->children[0]->children[0]->state &= ~UI_STATE_BLOCK_INTERACTION;
+	window->children[1]->state &= ~UI_STATE_BLOCK_INTERACTION;
+	window->hasDialog = false;
+
+	if (window->inactiveFocus) {
+		EsElementFocus(window->inactiveFocus, false);
+		window->inactiveFocus->Repaint(true);
+		window->inactiveFocus = nullptr;
+	}
+}
+
+EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titleBytes, 
+		const char *content, ptrdiff_t contentBytes, uint32_t iconID, uint32_t flags) {
+	EsElement *dialog = EsDialogShow(window);
+	if (!dialog) return nullptr;
+	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
+	if (!heading) return nullptr;
+
+	if (iconID) {
+		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, iconID);
+	}
+
+	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, 
+			title, titleBytes)->cName = "dialog heading";
+	EsTextDisplayCreate(EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT), 
+			ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, 
+			content, contentBytes)->cName = "dialog contents";
+
+	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
+	if (!buttonArea) return nullptr;
+
+	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
+		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, "OK");
+		EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { EsDialogClose(instance->window); });
+		EsElementFocus(button);
+	}
+
+	return buttonArea;
+}
+
+EsElement *EsDialogShow(EsWindow *window) {
+	// TODO Show on a separate window?
+	// TODO Maybe allow nested dialogs?
+
+	EsAssert(window->windowStyle == ES_WINDOW_NORMAL); // Can only show dialogs on normal windows.
+	EsAssert(!window->hasDialog); // Cannot nest dialogs.
+
+	if (window->focused) {
+		window->inactiveFocus = window->focused;
+		window->inactiveFocus->Repaint(true);
+		UIRemoveFocusFromElement(window->focused);
+		window->focused = nullptr;
+	}
+
+	EsElement *mainStack = window->children[0];
+	mainStack->children[0]->state |= UI_STATE_BLOCK_INTERACTION; // Main content.
+	window->children[1]->state |= UI_STATE_BLOCK_INTERACTION; // Toolbar.
+
+	window->hasDialog = true;
+	window->dialogWrapper = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_DIALOG_WRAPPER);
+	window->dialogWrapper->cName = "dialog wrapper";
+	EsPanel *dialog = EsPanelCreate(window->dialogWrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
+	dialog->cName = "dialog";
+	EsElementStartTransition(dialog, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_FLAGS_DEFAULT, 1.0f);
+
+	return dialog;
 }
 
 // --------------------------------- Canvas panes.

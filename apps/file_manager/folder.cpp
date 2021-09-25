@@ -56,6 +56,8 @@ EsError FSDirRenameItem(Folder *folder, String oldName, String newName) {
 
 EsError FSDirEnumerate(Folder *folder) {
 	// TODO Recurse mode.
+	
+	EsSleep(2000); 
 
 	EsNodeType type;
 
