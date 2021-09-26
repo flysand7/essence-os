@@ -932,6 +932,8 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		
 		window->mainPanel = panel;
 
+		EsElementStartTransition(window, ES_TRANSITION_FADE_IN);
+
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, panel->currentStyle->insets.l, ES_WINDOW_PROPERTY_SOLID);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);
 	}
@@ -1272,6 +1274,8 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 	uint32_t durationMs = timeMultiplier * GetConstantNumber("transitionTime") * api.global->animationTimeMultiplier;
 
 	if (!durationMs) {
+		EsMessage m = { .type = ES_MSG_TRANSITION_COMPLETE };
+		EsMessageSend(element, &m);
 		return;
 	}
 
@@ -1356,12 +1360,14 @@ void EsElement::Repaint(bool all, EsRectangle region) {
 			Rectangle16 clipInsets = parent->currentStyle->metrics->clipInsets;
 			region = EsRectangleIntersection(region, EsRectangleAddBorder(parentBounds, RECT16_TO_RECT(clipInsets)));
 		}
-
-		UIWindowNeedsUpdate(window);
 	}
 
-	if (THEME_RECT_VALID(region)) {
-		window->updateRegion = EsRectangleBounding(window->updateRegion, region);
+	if (window) {
+		if (THEME_RECT_VALID(region)) {
+			window->updateRegion = EsRectangleBounding(window->updateRegion, region);
+		}
+
+		UIWindowNeedsUpdate(window);
 	}
 }
 
@@ -1648,22 +1654,22 @@ void ProcessAnimations() {
 
 		if (element->transitionDurationMs) {
 			element->Repaint(true, ES_RECT_1(0));
-		}
 
-		if (transitionComplete) {
-			element->transitionDurationMs = 0;
+			if (transitionComplete) {
+				element->transitionDurationMs = 0;
 
-			if (element->previousTransitionFrame) {
-				EsPaintTargetDestroy(element->previousTransitionFrame);
-				element->previousTransitionFrame = nullptr;
+				if (element->previousTransitionFrame) {
+					EsPaintTargetDestroy(element->previousTransitionFrame);
+					element->previousTransitionFrame = nullptr;
+				}
+
+				if (element->transitionFlags & ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE) {
+					EsElementSetHidden(element, true);
+				}
+
+				EsMessage m = { .type = ES_MSG_TRANSITION_COMPLETE };
+				EsMessageSend(element, &m);
 			}
-
-			if (element->transitionFlags & ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE) {
-				EsElementSetHidden(element, true);
-			}
-
-			EsMessage m = { .type = ES_MSG_TRANSITION_COMPLETE };
-			EsMessageSend(element, &m);
 		}
 
 		bool backgroundAnimationComplete = ThemeAnimationComplete(&element->animation);
