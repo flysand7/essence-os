@@ -49,7 +49,9 @@ struct Instance : EsInstance {
 	EsCommand commandFindNext,
 		  commandFindPrevious,
 		  commandFind,
-		  commandFormat;
+		  commandFormat,
+		  commandZoomIn,
+		  commandZoomOut;
 
 	uint32_t syntaxHighlightingLanguage;
 	int32_t textSize;
@@ -190,37 +192,40 @@ void FormatPopupCreate(Instance *instance) {
 	EsMenuShow(menu);
 }
 
+void CommandZoom(Instance *instance, EsElement *, EsCommand *command) {
+	int32_t delta = instance->scrollCumulative > 0 
+		? instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH 
+		: -(-instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH);
+	instance->scrollCumulative -= delta * ES_SCROLL_WHEEL_NOTCH;
+
+	if (command) delta += command->data.i;
+
+	intptr_t presetSizeCount = sizeof(presetTextSizes) / sizeof(presetTextSizes[0]);
+	int32_t newIndex = delta;
+
+	for (intptr_t i = 0; i <= presetSizeCount; i++) {
+		if (i == presetSizeCount || presetTextSizes[i] > instance->textSize) {
+			newIndex = i - 1 + delta;
+			break;
+		}
+	}
+
+	if (newIndex < 0) newIndex = 0;
+	if (newIndex > presetSizeCount - 1) newIndex = presetSizeCount - 1;
+
+	if (instance->textSize != presetTextSizes[newIndex]) {
+		globalTextSize = instance->textSize = presetTextSizes[newIndex];
+		EsTextboxSetTextSize(instance->textboxDocument, instance->textSize);
+	}
+}
+
 int TextboxDocumentMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_SCROLL_WHEEL && EsKeyboardIsCtrlHeld()) {
 		// TODO Maybe detecting the input needed to do this (Ctrl+Scroll) should be dealt with in the API,
 		// 	so that the user could potentially customize it.
-
 		Instance *instance = element->instance;
 		instance->scrollCumulative += message->scrollWheel.dy;
-
-		int32_t delta = instance->scrollCumulative > 0 
-			? instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH 
-			: -(-instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH);
-		instance->scrollCumulative -= delta * ES_SCROLL_WHEEL_NOTCH;
-
-		intptr_t presetSizeCount = sizeof(presetTextSizes) / sizeof(presetTextSizes[0]);
-		int32_t newIndex = delta;
-
-		for (intptr_t i = 0; i <= presetSizeCount; i++) {
-			if (i == presetSizeCount || presetTextSizes[i] > instance->textSize) {
-				newIndex = i - 1 + delta;
-				break;
-			}
-		}
-
-		if (newIndex < 0) newIndex = 0;
-		if (newIndex > presetSizeCount - 1) newIndex = presetSizeCount - 1;
-
-		if (instance->textSize != presetTextSizes[newIndex]) {
-			globalTextSize = instance->textSize = presetTextSizes[newIndex];
-			EsTextboxSetTextSize(instance->textboxDocument, instance->textSize);
-		}
-
+		CommandZoom(instance, element, nullptr);
 		return ES_HANDLED;
 	} else {
 		return 0;
@@ -242,25 +247,23 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		EsCommandRegister(&instance->commandFindNext, instance, INTERFACE_STRING(CommonSearchNext), [] (Instance *instance, EsElement *, EsCommand *) {
 			Find(instance, false);
-		}, stableID++, "F3"); 
+		}, stableID++, "F3", true); 
 
 		EsCommandRegister(&instance->commandFindPrevious, instance, INTERFACE_STRING(CommonSearchPrevious), [] (Instance *instance, EsElement *, EsCommand *) {
 			Find(instance, true);
-		}, stableID++, "Shift+F3"); 
+		}, stableID++, "Shift+F3", true); 
 
 		EsCommandRegister(&instance->commandFind, instance, INTERFACE_STRING(CommonSearchOpen), [] (Instance *instance, EsElement *, EsCommand *) {
 			EsWindowSwitchToolbar(instance->window, instance->toolbarSearch, ES_TRANSITION_ZOOM_OUT);
 			EsElementFocus(instance->textboxSearch);
-		}, stableID++, "Ctrl+F");
+		}, stableID++, "Ctrl+F", true);
 
 		EsCommandRegister(&instance->commandFormat, instance, INTERFACE_STRING(CommonFormatPopup), [] (Instance *instance, EsElement *, EsCommand *) {
 			FormatPopupCreate(instance);
-		}, stableID++, "Ctrl+Alt+T"); 
+		}, stableID++, "Ctrl+Alt+T", true); 
 
-		EsCommandSetDisabled(&instance->commandFindNext, false);
-		EsCommandSetDisabled(&instance->commandFindPrevious, false);
-		EsCommandSetDisabled(&instance->commandFind, false);
-		EsCommandSetDisabled(&instance->commandFormat, false);
+		EsCommandRegister(&instance->commandZoomIn,  instance, INTERFACE_STRING(CommonZoomIn),  CommandZoom, stableID++, "Ctrl+=", true)->data.i =  1; 
+		EsCommandRegister(&instance->commandZoomOut, instance, INTERFACE_STRING(CommonZoomOut), CommandZoom, stableID++, "Ctrl+-", true)->data.i = -1; 
 
 		// Content:
 

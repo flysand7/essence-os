@@ -39,6 +39,9 @@ DEFINE_INTERFACE_STRING(CommonFileMenuFileSize, "Size:");
 DEFINE_INTERFACE_STRING(CommonFileMenuFileLocation, "Where:");
 DEFINE_INTERFACE_STRING(CommonFileUnchanged, "(All changes saved.)");
 
+DEFINE_INTERFACE_STRING(CommonZoomIn, "Zoom in");
+DEFINE_INTERFACE_STRING(CommonZoomOut, "Zoom out");
+
 DEFINE_INTERFACE_STRING(CommonSearchOpen, "Search");
 DEFINE_INTERFACE_STRING(CommonSearchNoMatches, "No matches found.");
 DEFINE_INTERFACE_STRING(CommonSearchNext, "Find next");
