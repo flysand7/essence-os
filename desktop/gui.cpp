@@ -2859,8 +2859,8 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			parent->internalOffsetRight = (m.measure.height + fixedViewport[1] > message->measure.height) ? bar[1]->currentStyle->preferredWidth : 0;
 		}
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
-		SetPosition(0, position[0] + message->scrollWheel.dx, true);
-		SetPosition(1, position[1] + message->scrollWheel.dy, true);
+		SetPosition(0, position[0] + 60 * message->scrollWheel.dx / ES_SCROLL_WHEEL_NOTCH, true);
+		SetPosition(1, position[1] - 60 * message->scrollWheel.dy / ES_SCROLL_WHEEL_NOTCH, true);
 	}
 }
 
@@ -7230,9 +7230,6 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		}
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
-
-		message->scrollWheel.dx /= 5;
-		message->scrollWheel.dy /= -5;
 
 		if (element && (~element->flags & ES_ELEMENT_DISABLED) && (~element->state & UI_STATE_BLOCK_INTERACTION)) {
 			UIMessageSendPropagateToAncestors(element, message);

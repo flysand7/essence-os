@@ -53,6 +53,15 @@ struct Instance : EsInstance {
 
 	uint32_t syntaxHighlightingLanguage;
 	int32_t textSize;
+	int32_t scrollCumulative;
+};
+
+const int presetTextSizes[] = {
+	8, 9, 10, 11, 12, 13,
+	14, 16,
+	18, 24, 30,
+	36, 48, 60,
+	72, 96, 120, 144,
 };
 
 int32_t globalTextSize = 10;
@@ -120,27 +129,19 @@ void FormatPopupCreate(Instance *instance) {
 		EsTextDisplayCreate(column, ES_CELL_H_EXPAND, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(CommonFormatSize));
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 
-		const int presetSizes[] = {
-			8, 9, 10, 11, 12, 13,
-			14, 16,
-			18, 24, 30,
-			36, 48, 60,
-			72, 96, 120, 144,
-		};
-
-		size_t presetSizeCount = sizeof(presetSizes) / sizeof(presetSizes[0]);
+		size_t presetSizeCount = sizeof(presetTextSizes) / sizeof(presetTextSizes[0]);
 		int currentSize = instance->textSize;
 		char buffer[64];
 
-		if (currentSize < presetSizes[0]) {
+		if (currentSize < presetTextSizes[0]) {
 			// The current size is not in the list; add it.
 			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize), currentSize);
 		}
 
 		for (uintptr_t i = 0; i < presetSizeCount; i++) {
-			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetSizes[i]), presetSizes[i]);
+			EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", presetTextSizes[i]), presetTextSizes[i]);
 
-			if (currentSize > presetSizes[i] && (i == presetSizeCount - 1 || (i != presetSizeCount - 1 && currentSize < presetSizes[i + 1]))) {
+			if (currentSize > presetTextSizes[i] && (i == presetSizeCount - 1 || (i != presetSizeCount - 1 && currentSize < presetTextSizes[i + 1]))) {
 				// The current size is not in the list; add it.
 				EsListViewFixedItemInsert(list, buffer, EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize), currentSize);
 			}
@@ -155,7 +156,7 @@ void FormatPopupCreate(Instance *instance) {
 
 				if (EsListViewFixedItemGetSelected(((EsListView *) element), &newSize)) {
 					globalTextSize = instance->textSize = newSize.u;
-					EsTextboxSetTextSize(instance->textboxDocument, newSize.u);
+					EsTextboxSetTextSize(instance->textboxDocument, instance->textSize);
 				}
 			}
 
@@ -187,6 +188,43 @@ void FormatPopupCreate(Instance *instance) {
 	}
 
 	EsMenuShow(menu);
+}
+
+int TextboxDocumentMessage(EsElement *element, EsMessage *message) {
+	if (message->type == ES_MSG_SCROLL_WHEEL && EsKeyboardIsCtrlHeld()) {
+		// TODO Maybe detecting the input needed to do this (Ctrl+Scroll) should be dealt with in the API,
+		// 	so that the user could potentially customize it.
+
+		Instance *instance = element->instance;
+		instance->scrollCumulative += message->scrollWheel.dy;
+
+		int32_t delta = instance->scrollCumulative > 0 
+			? instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH 
+			: -(-instance->scrollCumulative / ES_SCROLL_WHEEL_NOTCH);
+		instance->scrollCumulative -= delta * ES_SCROLL_WHEEL_NOTCH;
+
+		intptr_t presetSizeCount = sizeof(presetTextSizes) / sizeof(presetTextSizes[0]);
+		int32_t newIndex = delta;
+
+		for (intptr_t i = 0; i <= presetSizeCount; i++) {
+			if (i == presetSizeCount || presetTextSizes[i] > instance->textSize) {
+				newIndex = i - 1 + delta;
+				break;
+			}
+		}
+
+		if (newIndex < 0) newIndex = 0;
+		if (newIndex > presetSizeCount - 1) newIndex = presetSizeCount - 1;
+
+		if (instance->textSize != presetTextSizes[newIndex]) {
+			globalTextSize = instance->textSize = presetTextSizes[newIndex];
+			EsTextboxSetTextSize(instance->textboxDocument, instance->textSize);
+		}
+
+		return ES_HANDLED;
+	} else {
+		return 0;
+	}
 }
 
 void ProcessApplicationMessage(EsMessage *message) {
@@ -230,6 +268,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 		uint64_t documentFlags = ES_CELL_FILL | ES_TEXTBOX_MULTILINE | ES_TEXTBOX_ALLOW_TABS | ES_TEXTBOX_MARGIN;
 		instance->textboxDocument = EsTextboxCreate(panel, documentFlags, ES_STYLE_TEXTBOX_NO_BORDER);
 		instance->textboxDocument->cName = "document";
+		instance->textboxDocument->messageUser = TextboxDocumentMessage;
 		instance->textSize = globalTextSize;
 		EsTextboxSetTextSize(instance->textboxDocument, globalTextSize);
 		EsTextboxSetUndoManager(instance->textboxDocument, instance->undoManager);
