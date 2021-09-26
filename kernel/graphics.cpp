@@ -240,7 +240,7 @@ void Surface::Scroll(EsRectangle region, ptrdiff_t delta, bool vertical) {
 #define C2(p) ((p & 0x00FF0000) >> 0x10)
 #define C3(p) ((p & 0xFF000000) >> 0x18)
 
-ES_FUNCTION_OPTIMISE_O2 
+ES_FUNCTION_OPTIMISE_O3
 void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint16_t *k, uintptr_t repeat) {
 	if (width <= 3 || height <= 3) {
 		return;
@@ -281,7 +281,7 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uint1
 	}
 }
 
-ES_FUNCTION_OPTIMISE_O2 
+ES_FUNCTION_OPTIMISE_O3
 void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uintptr_t repeat) {
 	if (width <= 3 || height <= 3) {
 		return;
@@ -296,9 +296,9 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uintp
 
 			for (int i = 0; i < width; i++, u++, v++) {
 				if (i + 3 < width) g = *v;
-				*u = 	  (((C0(a) * 0x07 + C0(b) * 0x1A + C0(c) * 0x38 + C0(d) * 0x49 + C0(e) * 0x38 + C0(f) * 0x1A + C0(g) * 0x07) >> 8) << 0x00)
-					+ (((C1(a) * 0x07 + C1(b) * 0x1A + C1(c) * 0x38 + C1(d) * 0x49 + C1(e) * 0x38 + C1(f) * 0x1A + C1(g) * 0x07) >> 8) << 0x08)
-					+ (((C2(a) * 0x07 + C2(b) * 0x1A + C2(c) * 0x38 + C2(d) * 0x49 + C2(e) * 0x38 + C2(f) * 0x1A + C2(g) * 0x07) >> 8) << 0x10)
+				*u = 	  (((C0(a) * 0x07 + C0(b) * 0x1A + C0(c) * 0x38 + C0(d) * 0x4D + C0(e) * 0x38 + C0(f) * 0x1A + C0(g) * 0x07) >> 8) << 0x00)
+					+ (((C1(a) * 0x07 + C1(b) * 0x1A + C1(c) * 0x38 + C1(d) * 0x4D + C1(e) * 0x38 + C1(f) * 0x1A + C1(g) * 0x07) >> 8) << 0x08)
+					+ (((C2(a) * 0x07 + C2(b) * 0x1A + C2(c) * 0x38 + C2(d) * 0x4D + C2(e) * 0x38 + C2(f) * 0x1A + C2(g) * 0x07) >> 8) << 0x10)
 					+ (C3(d) << 0x18);
 				a = b, b = c, c = d, d = e, e = f, f = g;
 			}
@@ -314,9 +314,9 @@ void BlurRegionOfImage(uint32_t *image, int width, int height, int stride, uintp
 
 			for (int i = 0; i < height; i++, u += stride, v += stride) {
 				if (i + 3 < height) g = *v;
-				*u = 	  (((C0(a) * 0x07 + C0(b) * 0x1A + C0(c) * 0x38 + C0(d) * 0x49 + C0(e) * 0x38 + C0(f) * 0x1A + C0(g) * 0x07) >> 8) << 0x00)
-					+ (((C1(a) * 0x07 + C1(b) * 0x1A + C1(c) * 0x38 + C1(d) * 0x49 + C1(e) * 0x38 + C1(f) * 0x1A + C1(g) * 0x07) >> 8) << 0x08)
-					+ (((C2(a) * 0x07 + C2(b) * 0x1A + C2(c) * 0x38 + C2(d) * 0x49 + C2(e) * 0x38 + C2(f) * 0x1A + C2(g) * 0x07) >> 8) << 0x10)
+				*u = 	  (((C0(a) * 0x07 + C0(b) * 0x1A + C0(c) * 0x38 + C0(d) * 0x4D + C0(e) * 0x38 + C0(f) * 0x1A + C0(g) * 0x07) >> 8) << 0x00)
+					+ (((C1(a) * 0x07 + C1(b) * 0x1A + C1(c) * 0x38 + C1(d) * 0x4D + C1(e) * 0x38 + C1(f) * 0x1A + C1(g) * 0x07) >> 8) << 0x08)
+					+ (((C2(a) * 0x07 + C2(b) * 0x1A + C2(c) * 0x38 + C2(d) * 0x4D + C2(e) * 0x38 + C2(f) * 0x1A + C2(g) * 0x07) >> 8) << 0x10)
 					+ (C3(d) << 0x18);
 				a = b, b = c, c = d, d = e, e = f, f = g;
 			}

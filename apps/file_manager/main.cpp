@@ -313,10 +313,17 @@ void BlockingTaskThread(EsGeneric _instance) {
 void BlockingTaskComplete(Instance *instance) {
 	EsAssert(instance->blockingTaskInProgress); // Task should have been in progress.
 	instance->blockingTaskInProgress = false;
-	if (instance->blockingTaskReachedTimeout) EsDialogClose(instance->blockingDialog);
+
+	if (instance->blockingTaskReachedTimeout && instance->blockingDialog) {
+		EsDialogClose(instance->blockingDialog);
+	}
+
 	instance->blockingDialog = nullptr;
 	Task *task = &instance->blockingTask;
-	if (task->then) task->then(instance, task);
+
+	if (task->then) {
+		task->then(instance, task);
+	}
 }
 
 void BlockingTaskQueue(Instance *instance, Task task) {

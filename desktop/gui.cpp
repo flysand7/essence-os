@@ -912,12 +912,9 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, style == ES_WINDOW_PLAIN ? ES_WINDOW_SOLID_TRUE : ES_FLAGS_DEFAULT, 0, ES_WINDOW_PROPERTY_SOLID);
 		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, nullptr);
 	} else if (style == ES_WINDOW_MENU) {
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 9 * theming.scale, ES_WINDOW_PROPERTY_SOLID);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);
+		window->SetStyle(ES_STYLE_MENU_ROOT);
 
-		window->SetStyle(ES_STYLE_PANEL_MENU_ROOT);
-
-		EsPanel *panel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_PANEL_HORIZONTAL | ES_CELL_FILL, ES_STYLE_PANEL_MENU_CONTAINER);
+		EsPanel *panel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_PANEL_HORIZONTAL | ES_CELL_FILL, ES_STYLE_MENU_CONTAINER);
 		panel->cName = "menu";
 		panel->separatorStylePart = ES_STYLE_MENU_SEPARATOR_VERTICAL;
 		panel->separatorFlags = ES_CELL_V_FILL;
@@ -934,6 +931,9 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		};
 		
 		window->mainPanel = panel;
+
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, panel->currentStyle->insets.l, ES_WINDOW_PROPERTY_SOLID);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);
 	}
 
 	if (style == ES_WINDOW_INSPECTOR) {
@@ -966,7 +966,7 @@ void EsMenuAddSeparator(EsMenu *menu) {
 }
 
 void EsMenuNextColumn(EsMenu *menu, uint64_t flags) {
-	EsPanelCreate(menu->children[0], ES_PANEL_VERTICAL | ES_CELL_V_TOP | flags, ES_STYLE_PANEL_MENU_COLUMN);
+	EsPanelCreate(menu->children[0], ES_PANEL_VERTICAL | ES_CELL_V_TOP | flags, ES_STYLE_MENU_COLUMN);
 }
 
 EsElement *EsMenuGetSource(EsMenu *menu) {
@@ -1037,20 +1037,20 @@ void EsMenuShow(EsMenu *menu, int fixedWidth, int fixedHeight) {
 
 		EsRectangle windowBounds = menu->source->window->GetScreenBounds();
 
-		if (position.x + width >= windowBounds.r) {
-			position.x = windowBounds.r - width - 1;
+		if (position.x + width - menuInsets.r >= windowBounds.r) {
+			position.x = windowBounds.r - width - 1 + menuInsets.r;
 		}
 
-		if (position.x < windowBounds.l) {
-			position.x = windowBounds.l;
+		if (position.x + menuInsets.l < windowBounds.l) {
+			position.x = windowBounds.l - menuInsets.l;
 		} 
 			
-		if (position.y + height >= windowBounds.b) {
-			position.y = windowBounds.b - height - 1;
+		if (position.y + height - menuInsets.b >= windowBounds.b) {
+			position.y = windowBounds.b - height - 1 + menuInsets.b;
 		}
 		
-		if (position.y < windowBounds.t) {
-			position.y = windowBounds.t;
+		if (position.y + menuInsets.t < windowBounds.t) {
+			position.y = windowBounds.t - menuInsets.t;
 		} 
 	} else {
 		position = EsMouseGetPosition();
