@@ -765,6 +765,7 @@ void UIWindowDestroy(EsWindow *window) {
 	EsSyscall(ES_SYSCALL_WINDOW_CLOSE, window->handle, 0, 0, 0);
 	EsHandleClose(window->handle);
 	window->checkVisible.Free();
+	window->sizeAlternatives.Free();
 	EsAssert(!window->dialogs.Length());
 	window->dialogs.Free();
 	window->handle = ES_INVALID_HANDLE;
