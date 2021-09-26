@@ -3556,9 +3556,20 @@ struct EsDialog {
 	EsElement *mainPanel;
 	EsElement *buttonArea;
 	EsElement *contentArea;
+	EsButton *cancelButton;
 };
 
-int ProcessDialogClosingMessage(EsElement *element, EsMessage *message) {
+void DialogDismissAll(EsWindow *window) {
+	for (intptr_t i = window->dialogs.Length() - 1; i >= 0; i--) {
+		EsButton *button = window->dialogs[i]->cancelButton;
+
+		if (button && button->onCommand) {
+			button->onCommand(button->instance, button, button->command);
+		}
+	}
+}
+
+int DialogClosingMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_TRANSITION_COMPLETE) {
 		// Destroy the dialog and its wrapper.
 		EsElementDestroy(EsElementGetLayoutParent(element));
@@ -3575,7 +3586,7 @@ void EsDialogClose(EsDialog *dialog) {
 	window->dialogs.FindAndDelete(dialog, true);
 
 	EsAssert(dialog->mainPanel->messageClass == ProcessPanelMessage);
-	dialog->mainPanel->messageClass = ProcessDialogClosingMessage;
+	dialog->mainPanel->messageClass = DialogClosingMessage;
 	EsElementStartTransition(dialog->mainPanel, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
 
 	if (!isTop) {
@@ -3655,7 +3666,15 @@ EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes
 
 EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, EsStyle *style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
 	EsButton *button = EsButtonCreate(dialog->buttonArea, flags, style, label, labelBytes);
-	if (button) EsButtonOnCommand(button, callback);
+
+	if (button) {
+		if (flags & ES_BUTTON_CANCEL) {
+			dialog->cancelButton = button;
+		}
+
+		EsButtonOnCommand(button, callback);
+	}
+
 	return button;
 }
 

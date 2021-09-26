@@ -666,6 +666,8 @@ void InstanceClose(EsInstance *instance) {
 
 	// TODO Handling shutdown.
 
+	DialogDismissAll(instance->window); // Dismiss any dialogs that are already open, if they have cancel buttons.
+
 	APIInstance *apiInstance = (APIInstance *) instance->_private;
 	char content[512];
 	size_t contentBytes;
