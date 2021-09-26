@@ -718,7 +718,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			ApplicationInstanceClose(tab->notRespondingInstance);
 			tab->notRespondingInstance = nullptr;
 		}
-	} else if (message->type == ES_MSG_PRESSED_START) {
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 		tab->BringToFront();
 		WindowTabActivate(tab);
 	} else if (message->type == ES_MSG_HIT_TEST) {

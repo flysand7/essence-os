@@ -1192,6 +1192,8 @@ void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 		message.type = windowManager.activeWindow == this ? ES_MSG_WINDOW_ACTIVATED : ES_MSG_WINDOW_DEACTIVATED;
 		embed->owner->messageQueue.SendMessage(embed->apiWindow, &message);
 	}
+
+	windowManager.CloseMenus();
 }
 
 void WindowManager::StartEyedrop(uintptr_t object, Window *avoid, uint32_t cancelColor) {

@@ -2380,6 +2380,7 @@ function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCom
 function void EsMenuAddSeparator(EsMenu *menu);
 function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
 function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
+function void EsMenuClose(EsMenu *menu);
 function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 

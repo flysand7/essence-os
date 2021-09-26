@@ -122,6 +122,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_CHECK_VISIBLE		(1 << 21)
 #define UI_STATE_INSPECTING		(1 << 22)
 #define UI_STATE_RADIO_GROUP		(1 << 23)
+#define UI_STATE_MENU_EXITING           (1 << 24)
 
 struct EsElement : EsElementPublic {
 	EsUICallback messageClass;
@@ -806,6 +807,10 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 			if (window->GetChildCount()) {
 				EsElementMove(window->GetChild(0), 0, 0, bounds.r, bounds.b);
 			}
+		} else if (message->type == ES_MSG_TRANSITION_COMPLETE) {
+			if (window->state & UI_STATE_MENU_EXITING) {
+				EsElementDestroy(window);
+			}
 		}
 	} else if (window->windowStyle == ES_WINDOW_INSPECTOR) {
 		if (message->type == ES_MSG_LAYOUT) {
@@ -846,10 +851,7 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 		}
 
 		if (window->windowStyle == ES_WINDOW_MENU) {
-			window->source->state &= ~UI_STATE_MENU_SOURCE;
-			window->source->MaybeRefreshStyle();
-			EsAssert(window->source->window->targetMenu == window);
-			window->source->window->targetMenu = nullptr;
+			EsAssert(window->state & UI_STATE_MENU_EXITING);
 		}
 	}
 
@@ -1004,6 +1006,20 @@ void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element) {
 	}
 }
 
+void EsMenuClose(EsMenu *menu) {
+	EsAssert(menu->windowStyle == ES_WINDOW_MENU);
+	if (menu->state & UI_STATE_MENU_EXITING) return;
+	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, menu->handle, BLEND_WINDOW_MATERIAL_NONE, 0, ES_WINDOW_PROPERTY_MATERIAL);
+	EsAssert(menu->source->state & UI_STATE_MENU_SOURCE);
+	menu->source->state &= ~UI_STATE_MENU_SOURCE;
+	menu->source->MaybeRefreshStyle();
+	EsAssert(menu->source->window->targetMenu == menu);
+	menu->source->window->targetMenu = nullptr;
+	menu->mainPanel->state |= UI_STATE_BLOCK_INTERACTION;
+	menu->state |= UI_STATE_MENU_EXITING; // Set flag before EsElementStartTransition to receive ES_MSG_TRANSITION_COMPLETE when animations disabled.
+	EsElementStartTransition(menu, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT);
+}
+
 void EsMenuShow(EsMenu *menu, int fixedWidth, int fixedHeight) {
 	EsAssert(!menu->source->window->targetMenu);
 	EsAssert(~menu->source->state & UI_STATE_MENU_SOURCE);
@@ -1067,7 +1083,7 @@ void EsMenuShow(EsMenu *menu, int fixedWidth, int fixedHeight) {
 void EsMenuCloseAll() {
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 		if (gui.allWindows[i]->windowStyle == ES_WINDOW_MENU) {
-			EsElementDestroy(gui.allWindows[i]);
+			EsMenuClose((EsMenu *) gui.allWindows[i]);
 		}
 	}
 }
@@ -3593,6 +3609,7 @@ void EsDialogClose(EsDialog *dialog) {
 
 	EsAssert(dialog->mainPanel->messageClass == ProcessPanelMessage);
 	dialog->mainPanel->messageClass = DialogClosingMessage;
+	dialog->mainPanel->state |= UI_STATE_BLOCK_INTERACTION;
 	EsElementStartTransition(dialog->mainPanel, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
 
 	if (!isTop) {
@@ -3948,7 +3965,8 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 		}
 
 		if (button->flags & ES_BUTTON_MENU_ITEM) {
-			button->window->Destroy();
+			EsAssert(button->window->windowStyle == ES_WINDOW_MENU);
+			EsMenuClose((EsMenu *) button->window);
 		} else {
 			button->MaybeRefreshStyle();
 		}
@@ -5450,7 +5468,7 @@ int FileMenuNameTextboxMessage(EsElement *element, EsMessage *message) {
 
 		if (!message->endEdit.rejected && !message->endEdit.unchanged) {
 			InstanceRenameFromTextbox(element->instance->window, instance, instance->fileMenuNameTextbox);
-			EsElementDestroy(element->window);
+			EsMenuClose((EsMenu *) element->window);
 		} else {
 			EsPanelSwitchTo(instance->fileMenuNameSwitcher, instance->fileMenuNamePanel, ES_TRANSITION_SLIDE_DOWN);
 		}
@@ -5629,7 +5647,7 @@ void EsElement::Destroy(bool manual) {
 		for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 			if (gui.allWindows[i]->source == this) {
 				// Close the menu attached to this element.
-				EsElementDestroy(gui.allWindows[i]);
+				EsMenuClose((EsMenu *) gui.allWindows[i]);
 				break;
 			}
 		}
@@ -6834,7 +6852,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_FLAG ) gui.rightModifiers |= ES_MODIFIER_FLAG;
 
 	if (window->windowStyle == ES_WINDOW_MENU && message->keyboard.scancode == ES_SCANCODE_ESCAPE) {
-		window->Destroy();
+		EsMenuClose((EsMenu *) window);
 		return true;
 	}
 
@@ -7307,7 +7325,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			AccessKeyModeExit();
 
 			if (window->windowStyle == ES_WINDOW_MENU) {
-				window->Destroy();
+				EsMenuClose((EsMenu *) window);
 			}
 
 			window->activated = false;
