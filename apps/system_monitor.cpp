@@ -372,7 +372,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_CREATE) {
 		Instance *instance = EsInstanceCreate(message, "System Monitor");
 
-		EsCommandRegister(&instance->commandTerminateProcess, instance, TerminateProcess, 1, "Del", false);
+		EsCommandRegister(&instance->commandTerminateProcess, instance, EsLiteral("Terminate process"), TerminateProcess, 1, "Del", false);
 
 		EsWindow *window = instance->window;
 		EsWindowSetIcon(window, ES_ICON_UTILITIES_SYSTEM_MONITOR);

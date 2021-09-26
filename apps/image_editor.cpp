@@ -704,11 +704,11 @@ void InstanceCreate(EsMessage *message) {
 
 	// Register commands.
 
-	EsCommandRegister(&instance->commandBrush, instance, CommandSelectTool, 1, "N", true);
-	EsCommandRegister(&instance->commandFill, instance, CommandSelectTool, 2, "Shift+B", true);
-	EsCommandRegister(&instance->commandRectangle, instance, CommandSelectTool, 3, "Shift+R", true);
-	EsCommandRegister(&instance->commandSelect, instance, CommandSelectTool, 4, "R", false);
-	EsCommandRegister(&instance->commandText, instance, CommandSelectTool, 5, "T", false);
+	EsCommandRegister(&instance->commandBrush, instance, INTERFACE_STRING(ImageEditorToolBrush), CommandSelectTool, 1, "N", true);
+	EsCommandRegister(&instance->commandFill, instance, INTERFACE_STRING(ImageEditorToolFill), CommandSelectTool, 2, "Shift+B", true);
+	EsCommandRegister(&instance->commandRectangle, instance, INTERFACE_STRING(ImageEditorToolRectangle), CommandSelectTool, 3, "Shift+R", true);
+	EsCommandRegister(&instance->commandSelect, instance, INTERFACE_STRING(ImageEditorToolSelect), CommandSelectTool, 4, "R", false);
+	EsCommandRegister(&instance->commandText, instance, INTERFACE_STRING(ImageEditorToolText), CommandSelectTool, 5, "T", false);
 
 	EsCommandSetCheck(&instance->commandBrush, ES_CHECK_CHECKED, false);
 

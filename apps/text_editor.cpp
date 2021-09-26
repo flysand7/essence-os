@@ -202,20 +202,20 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		uint32_t stableID = 1;
 
-		EsCommandRegister(&instance->commandFindNext, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+		EsCommandRegister(&instance->commandFindNext, instance, INTERFACE_STRING(CommonSearchNext), [] (Instance *instance, EsElement *, EsCommand *) {
 			Find(instance, false);
 		}, stableID++, "F3"); 
 
-		EsCommandRegister(&instance->commandFindPrevious, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+		EsCommandRegister(&instance->commandFindPrevious, instance, INTERFACE_STRING(CommonSearchPrevious), [] (Instance *instance, EsElement *, EsCommand *) {
 			Find(instance, true);
 		}, stableID++, "Shift+F3"); 
 
-		EsCommandRegister(&instance->commandFind, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+		EsCommandRegister(&instance->commandFind, instance, INTERFACE_STRING(CommonSearchOpen), [] (Instance *instance, EsElement *, EsCommand *) {
 			EsWindowSwitchToolbar(instance->window, instance->toolbarSearch, ES_TRANSITION_ZOOM_OUT);
 			EsElementFocus(instance->textboxSearch);
 		}, stableID++, "Ctrl+F");
 
-		EsCommandRegister(&instance->commandFormat, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+		EsCommandRegister(&instance->commandFormat, instance, INTERFACE_STRING(CommonFormatPopup), [] (Instance *instance, EsElement *, EsCommand *) {
 			FormatPopupCreate(instance);
 		}, stableID++, "Ctrl+Alt+T"); 
 

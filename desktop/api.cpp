@@ -656,7 +656,7 @@ void InstanceSave(EsInstance *_instance) {
 }
 
 void InstanceClose(EsInstance *instance) {
-	if (EsCommandByID(instance, ES_COMMAND_SAVE)->disabled) {
+	if (!EsCommandByID(instance, ES_COMMAND_SAVE)->enabled) {
 		EsInstanceDestroy(instance);
 		return;
 	}
@@ -803,15 +803,15 @@ APIInstance *InstanceSetup(EsInstance *instance) {
 	instance->undoManager->instance = instance;
 	apiInstance->activeUndoManager = instance->undoManager;
 
-	EsCommandRegister(&apiInstance->commandDelete, instance, nullptr, ES_COMMAND_DELETE, "Del");
-	EsCommandRegister(&apiInstance->commandSelectAll, instance, nullptr, ES_COMMAND_SELECT_ALL, "Ctrl+A");
-	EsCommandRegister(&apiInstance->commandCopy, instance, nullptr, ES_COMMAND_COPY, "Ctrl+C|Ctrl+Ins");
-	EsCommandRegister(&apiInstance->commandCut, instance, nullptr, ES_COMMAND_CUT, "Ctrl+X|Shift+Del");
-	EsCommandRegister(&apiInstance->commandPaste, instance, nullptr, ES_COMMAND_PASTE, "Ctrl+V|Shift+Ins");
-	EsCommandRegister(&apiInstance->commandUndo, instance, nullptr, ES_COMMAND_UNDO, "Ctrl+Z");
-	EsCommandRegister(&apiInstance->commandRedo, instance, nullptr, ES_COMMAND_REDO, "Ctrl+Y");
-	EsCommandRegister(&apiInstance->commandSave, instance, nullptr, ES_COMMAND_SAVE, "Ctrl+S");
-	EsCommandRegister(&apiInstance->commandShowInFileManager, instance, nullptr, ES_COMMAND_SHOW_IN_FILE_MANAGER, "Ctrl+Shift+O");
+	EsCommandRegister(&apiInstance->commandDelete, instance, INTERFACE_STRING(CommonSelectionDelete), nullptr, ES_COMMAND_DELETE, "Del");
+	EsCommandRegister(&apiInstance->commandSelectAll, instance, INTERFACE_STRING(CommonSelectionSelectAll), nullptr, ES_COMMAND_SELECT_ALL, "Ctrl+A");
+	EsCommandRegister(&apiInstance->commandCopy, instance, INTERFACE_STRING(CommonClipboardCopy), nullptr, ES_COMMAND_COPY, "Ctrl+C|Ctrl+Ins");
+	EsCommandRegister(&apiInstance->commandCut, instance, INTERFACE_STRING(CommonClipboardCut), nullptr, ES_COMMAND_CUT, "Ctrl+X|Shift+Del");
+	EsCommandRegister(&apiInstance->commandPaste, instance, INTERFACE_STRING(CommonClipboardPaste), nullptr, ES_COMMAND_PASTE, "Ctrl+V|Shift+Ins");
+	EsCommandRegister(&apiInstance->commandUndo, instance, INTERFACE_STRING(CommonUndo), nullptr, ES_COMMAND_UNDO, "Ctrl+Z");
+	EsCommandRegister(&apiInstance->commandRedo, instance, INTERFACE_STRING(CommonRedo), nullptr, ES_COMMAND_REDO, "Ctrl+Y");
+	EsCommandRegister(&apiInstance->commandSave, instance, INTERFACE_STRING(CommonFileSave), nullptr, ES_COMMAND_SAVE, "Ctrl+S");
+	EsCommandRegister(&apiInstance->commandShowInFileManager, instance, INTERFACE_STRING(CommonFileShowInFileManager), nullptr, ES_COMMAND_SHOW_IN_FILE_MANAGER, "Ctrl+Shift+O");
 
 	EsCommandSetCallback(&apiInstance->commandUndo, [] (EsInstance *instance, EsElement *, EsCommand *) {
 		EsUndoInvokeGroup(((APIInstance *) instance->_private)->activeUndoManager, false);
@@ -1566,11 +1566,13 @@ void EsCommandAddButton(EsCommand *command, EsButton *button) {
 	command->elements = elements.array;
 	EsButtonOnCommand(button, command->callback, command);
 	button->state |= UI_STATE_COMMAND_BUTTON;
-	EsElementSetDisabled(button, command->disabled);
+	EsElementSetEnabled(button, command->enabled);
 	EsButtonSetCheck(button, command->check);
 }
 
-EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsCommandCallback callback, uint32_t stableID, 
+EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, 
+		const char *title, ptrdiff_t titleBytes,
+		EsCommandCallback callback, uint32_t stableID, 
 		const char *cDefaultKeyboardShortcut, bool enabled) {
 	if (!command) {
 		command = (EsCommand *) EsHeapAllocate(sizeof(EsCommand), true);
@@ -1583,7 +1585,9 @@ EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsComman
 	command->registered = true;
 	command->stableID = stableID;
 	command->cKeyboardShortcut = cDefaultKeyboardShortcut;
-	command->disabled = !enabled;
+	command->enabled = enabled;
+	command->title = title;
+	command->titleBytes = titleBytes == -1 ? EsCStringLength(title) : titleBytes;
 	EsAssert(!instance->commands.Get(&stableID)); // Command already registered.
 	*instance->commands.Put(&stableID) = command;
 	return command;
@@ -1592,8 +1596,8 @@ EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, EsComman
 void EsCommandSetDisabled(EsCommand *command, bool disabled) {
 	EsAssert(command->registered); // Command has not been registered.
 
-	if (disabled != command->disabled) {
-		command->disabled = disabled;
+	if (command->enabled != !disabled) {
+		command->enabled = !disabled;
 
 		for (uintptr_t i = 0; i < ArrayLength(command->elements); i++) {
 			EsElementSetDisabled(command->elements[i], disabled);

@@ -5550,7 +5550,7 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 	if (instance->instanceClass == ES_INSTANCE_CLASS_EDITOR) {
 		EsMenuAddSeparator(menu);
 
-		if (instance->commandSave.disabled && !newDocument) {
+		if (!instance->commandSave.enabled && !newDocument) {
 			EsMenuAddItem(menu, ES_ELEMENT_DISABLED, INTERFACE_STRING(CommonFileUnchanged));
 		} else {
 			EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonFileSave), &instance->commandSave);
@@ -6905,7 +6905,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 
 			for (uintptr_t i = 0; i < instance->commands.Count(); i++) {
 				EsCommand *command = instance->commands[i];
-				if (!command->cKeyboardShortcut || command->disabled) continue;
+				if (!command->cKeyboardShortcut || !command->enabled) continue;
 				const char *position = EsCRTstrstr(command->cKeyboardShortcut, keyboardShortcutString);
 				if (!position) continue;
 

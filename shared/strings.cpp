@@ -298,6 +298,9 @@ DEFINE_INTERFACE_STRING(FileManagerRefresh, "Refresh");
 DEFINE_INTERFACE_STRING(FileManagerListContextActions, "Actions");
 DEFINE_INTERFACE_STRING(FileManagerCopyTask, "Copying" ELLIPSIS);
 DEFINE_INTERFACE_STRING(FileManagerMoveTask, "Moving" ELLIPSIS);
+DEFINE_INTERFACE_STRING(FileManagerGoBack, "Go back");
+DEFINE_INTERFACE_STRING(FileManagerGoForwards, "Go forwards");
+DEFINE_INTERFACE_STRING(FileManagerGoUp, "Go to containing folder");
 
 // 2048.
 

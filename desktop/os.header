@@ -1393,11 +1393,12 @@ function_pointer void EsCommandCallback(ES_INSTANCE_TYPE *instance, EsElement *e
 struct EsCommand {
 	EsElement **elements;
 	EsCommandCallback callback;
-	bool disabled, registered, allocated;
+	bool enabled, registered, allocated;
 	EsCheckState check;
 	uint32_t stableID;
 	EsCString cKeyboardShortcut;
 	EsGeneric data;
+	STRING title;
 };
 
 struct EsListViewColumn {
@@ -2298,7 +2299,7 @@ function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
 
 function void EsCommandAddButton(EsCommand *command, EsButton *button);
 function EsCommand *EsCommandByID(EsInstance *instance, uint32_t stableID);
-function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
+function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, STRING title, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
 function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback);
 function void EsCommandSetDisabled(EsCommand *command, bool disabled);
 function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);

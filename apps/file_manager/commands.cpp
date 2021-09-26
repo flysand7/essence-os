@@ -464,7 +464,7 @@ void CommandPaste(Instance *instance, EsElement *, EsCommand *) {
 void InstanceRegisterCommands(Instance *instance) {
 	uint32_t stableCommandID = 1;
 
-	EsCommandRegister(&instance->commandGoBackwards, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandGoBackwards, instance, INTERFACE_STRING(FileManagerGoBack), [] (Instance *instance, EsElement *, EsCommand *) {
 		EsAssert(instance->pathBackwardHistory.Length()); 
 		HistoryEntry entry = instance->pathBackwardHistory.Pop();
 		StringDestroy(&instance->delayedFocusItem);
@@ -472,7 +472,7 @@ void InstanceRegisterCommands(Instance *instance) {
 		InstanceLoadFolder(instance, entry.path, LOAD_FOLDER_BACK);
 	}, stableCommandID++, "Backspace|Alt+Left");
 
-	EsCommandRegister(&instance->commandGoForwards, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandGoForwards, instance, INTERFACE_STRING(FileManagerGoForwards), [] (Instance *instance, EsElement *, EsCommand *) {
 		EsAssert(instance->pathForwardHistory.Length());
 		HistoryEntry entry = instance->pathForwardHistory.Pop();
 		StringDestroy(&instance->delayedFocusItem);
@@ -480,31 +480,31 @@ void InstanceRegisterCommands(Instance *instance) {
 		InstanceLoadFolder(instance, entry.path, LOAD_FOLDER_FORWARD);
 	}, stableCommandID++, "Alt+Right");
 
-	EsCommandRegister(&instance->commandGoParent, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandGoParent, instance, INTERFACE_STRING(FileManagerGoUp), [] (Instance *instance, EsElement *, EsCommand *) {
 		String parent = PathGetParent(instance->folder->path);
 		InstanceLoadFolder(instance, StringDuplicate(parent));
 	}, stableCommandID++, "Alt+Up");
 
-	EsCommandRegister(&instance->commandRefresh, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandRefresh, instance, INTERFACE_STRING(FileManagerRefresh), [] (Instance *instance, EsElement *, EsCommand *) {
 		FolderRefresh(instance->folder);
 	}, stableCommandID++, "F5");
 
-	EsCommandRegister(&instance->commandNewFolder, instance, CommandNewFolder, stableCommandID++, "Ctrl+Shift+N");
-	EsCommandRegister(&instance->commandRename, instance, CommandRename, stableCommandID++, "F2");
+	EsCommandRegister(&instance->commandNewFolder, instance, INTERFACE_STRING(FileManagerNewFolderToolbarItem), CommandNewFolder, stableCommandID++, "Ctrl+Shift+N");
+	EsCommandRegister(&instance->commandRename, instance, INTERFACE_STRING(FileManagerRenameAction), CommandRename, stableCommandID++, "F2");
 
-	EsCommandRegister(&instance->commandViewDetails, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandViewDetails, instance, INTERFACE_STRING(CommonListViewTypeDetails), [] (Instance *instance, EsElement *, EsCommand *) {
 		instance->viewSettings.viewType = VIEW_DETAILS;
 		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
-	EsCommandRegister(&instance->commandViewTiles, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandViewTiles, instance, INTERFACE_STRING(CommonListViewTypeTiles), [] (Instance *instance, EsElement *, EsCommand *) {
 		instance->viewSettings.viewType = VIEW_TILES;
 		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
-	EsCommandRegister(&instance->commandViewThumbnails, instance, [] (Instance *instance, EsElement *, EsCommand *) {
+	EsCommandRegister(&instance->commandViewThumbnails, instance, INTERFACE_STRING(CommonListViewTypeThumbnails), [] (Instance *instance, EsElement *, EsCommand *) {
 		instance->viewSettings.viewType = VIEW_THUMBNAILS;
 		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
