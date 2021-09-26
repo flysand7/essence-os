@@ -231,7 +231,8 @@ void OpenDocumentOpenReference(EsObjectID id);
 void OpenDocumentCloseReference(EsObjectID id);
 void WallpaperLoad(EsGeneric);
 WindowTab *WindowTabCreate(ContainerWindow *container);
-ContainerWindow *ContainerWindowCreate(int32_t width, int32_t height);
+ContainerWindow *ContainerWindowCreate();
+void ContainerWindowShow(ContainerWindow *, int32_t width, int32_t height);
 
 #include "settings.cpp"
 
@@ -540,8 +541,15 @@ void WindowTabDestroy(WindowTab *tab) {
 }
 
 WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *container, int32_t width, int32_t height) {
-	// Create the new tab and container window.
-	WindowTab *newTab = WindowTabCreate(container ?: ContainerWindowCreate(width, height));
+	if (!container) {
+		// Create a new container.
+		container = ContainerWindowCreate();
+		if (!container) return nullptr;
+		ContainerWindowShow(container, width, height);
+	}
+
+	// Create the new tab.
+	WindowTab *newTab = WindowTabCreate(container);
 	if (!newTab) return nullptr;
 
 	// Move ownership of the instance to the new tab.
@@ -950,13 +958,9 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-ContainerWindow *ContainerWindowCreate(int32_t width, int32_t height) {
-	ContainerWindow *container = (ContainerWindow *) EsHeapAllocate(sizeof(ContainerWindow), true);
-	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_CONTAINER);
-	desktop.allContainerWindows.Add(container);
+void ContainerWindowShow(ContainerWindow *container, int32_t width, int32_t height) {
+	EsWindow *window = container->window;
 
-	window->messageUser = ContainerWindowMessage;
-	window->userData = container;
 	window->windowWidth = width ?: GetConstantNumber("windowDefaultWidth");
 	window->windowHeight = height ?: GetConstantNumber("windowDefaultHeight");
 
@@ -972,8 +976,17 @@ ContainerWindow *ContainerWindowCreate(int32_t width, int32_t height) {
 	if (bounds.b > workArea.b - cascadeMargin) bounds.b = workArea.b - cascadeMargin;
 	cascadeX += cascadeOffset, cascadeY += cascadeOffset;
 
-	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_FLAGS_DEFAULT);
+	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_DYNAMIC);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
+}
+
+ContainerWindow *ContainerWindowCreate() {
+	ContainerWindow *container = (ContainerWindow *) EsHeapAllocate(sizeof(ContainerWindow), true);
+	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_CONTAINER);
+	desktop.allContainerWindows.Add(container);
+
+	window->messageUser = ContainerWindowMessage;
+	window->userData = container;
 	
 	window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_CONTAINER_WINDOW_ROOT);
 	window->SetStyle(ES_STYLE_CONTAINER_WINDOW);
@@ -1701,7 +1714,7 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 
 ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartupInformation *startupInformation, ContainerWindow *container, bool hidden) {
 	ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
-	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate(0, 0)) : nullptr;
+	WindowTab *tab = !hidden ? WindowTabCreate(container ?: ContainerWindowCreate()) : nullptr;
 	if (tab) tab->applicationInstance = instance;
 	instance->title[0] = ' ';
 	instance->titleBytes = 1;
@@ -1709,11 +1722,14 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartup
 	desktop.allApplicationInstances.Add(instance);
 
 	if (ApplicationInstanceStart(id, startupInformation, instance)) {
-		if (!hidden) WindowTabActivate(tab);
+		if (!hidden) {
+			WindowTabActivate(tab);
+			ContainerWindowShow(tab->container, 0, 0);
+		}
+
 		return instance;
 	} else {
-		// TODO Destroy the tab/container window.
-		// 	Or, we probably didn't want to create them in the first place.
+		if (!hidden) WindowTabDestroy(tab); // TODO Test this.
 		EsHeapFree(instance);
 		return nullptr;
 	}
