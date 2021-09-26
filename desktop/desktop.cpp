@@ -1683,7 +1683,6 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 
 	EsHandle handle = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
 	instance->embeddedWindowHandle = handle;
-	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, 0xFF000000 | GetConstantNumber("windowFillColor"), 0, ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR);
 	instance->embeddedWindowID = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, handle, 0, 0, 0);
 	m.createInstance.window = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, process->handle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
 

@@ -19,7 +19,6 @@ struct EmbeddedWindow {
 	volatile uint32_t handles;
 	struct Window *container;
 	EsObjectID id;
-	uint32_t resizeClearColor;
 	bool closed;
 };
 
@@ -43,7 +42,6 @@ struct Window {
 	Surface surface;
 	EsRectangle opaqueBounds, blurBounds;
 	uint8_t alpha, material;
-	uint32_t resizeClearColor;
 
 	// Owner and children:
 	Process *owner;

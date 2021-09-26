@@ -723,7 +723,6 @@ define ES_WINDOW_PROPERTY_EMBED              (0x07)
 define ES_WINDOW_PROPERTY_EMBED_INSETS       (0x08)
 define ES_WINDOW_PROPERTY_OBJECT             (0x81) // Embedded window properties.
 define ES_WINDOW_PROPERTY_EMBED_OWNER        (0x82)
-define ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR (0x83)
 
 define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
 define ES_DRAW_BITMAP_XOR    (0xFFFE)

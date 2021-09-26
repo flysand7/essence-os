@@ -890,7 +890,6 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 
 	if (style == ES_WINDOW_NORMAL) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0, (uintptr_t) window, ES_WINDOW_PROPERTY_OBJECT);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0xFF000000 | GetConstantNumber("windowFillColor"), 0, ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR);
 		window->activated = true;
 		EsPanel *panel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL | ES_PANEL_Z_STACK);
 		panel->cName = "window stack";

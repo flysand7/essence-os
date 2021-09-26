@@ -463,8 +463,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		embed->SetEmbedOwner(process);
 		KMutexRelease(&windowManager.mutex);
 		SYSCALL_RETURN(process->handleTable.OpenHandle(embed, 0, KERNEL_OBJECT_EMBEDDED_WINDOW), false);
-	} else if (property == ES_WINDOW_PROPERTY_RESIZE_CLEAR_COLOR) {
-		embed->resizeClearColor = argument1;
 	} else {
 		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
 	}

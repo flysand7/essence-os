@@ -1,6 +1,6 @@
 #include <module.h>
 
-#define TRACE_REPORTS
+// #define TRACE_REPORTS
 
 // TODO Key repeat not working on Qemu.
 
