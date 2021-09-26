@@ -1724,7 +1724,7 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartup
 	if (ApplicationInstanceStart(id, startupInformation, instance)) {
 		if (!hidden) {
 			WindowTabActivate(tab);
-			ContainerWindowShow(tab->container, 0, 0);
+			if (!container) ContainerWindowShow(tab->container, 0, 0);
 		}
 
 		return instance;
