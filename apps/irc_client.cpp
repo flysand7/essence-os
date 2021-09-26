@@ -257,7 +257,7 @@ void NetworkingThread(EsGeneric argument) {
 	EsMessageMutexAcquire();
 
 	if (errorMessageBytes) {
-		EsDialogShowAlert(instance->window, EsLiteral("Connection failed"), errorMessage, errorMessageBytes, 
+		EsDialogShow(instance->window, EsLiteral("Connection failed"), errorMessage, errorMessageBytes, 
 				ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
 	}
 

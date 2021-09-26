@@ -21,6 +21,7 @@ opaque_type EsHeap             none;
 opaque_type EsFileStore        none;
 opaque_type EsUserTask         none;
 opaque_type EsBundle           none;
+opaque_type EsDialog           none;
 
 type_name uint8_t EsNodeType;
 type_name intptr_t EsError;
@@ -2379,9 +2380,10 @@ function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
 function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
-function void EsDialogClose(EsWindow *window);
-function EsElement *EsDialogShow(EsWindow *window);
-function EsElement *EsDialogShowAlert(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT); // Returns the button container.
+function void EsDialogClose(EsDialog *dialog);
+function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, EsStyle *style = ES_NULL, 
+		STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL);
 
 function void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings = ES_NULL);
 

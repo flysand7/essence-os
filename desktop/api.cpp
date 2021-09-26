@@ -681,18 +681,10 @@ void InstanceClose(EsInstance *instance) {
 				apiInstance->applicationNameBytes, apiInstance->applicationName);
 	}
 
-	// NOTE Duplicated from EsDialogShowAlert.
-	// TODO Is there a good way to make more modular dialogs?
-	EsElement *dialog = EsDialogShow(instance->window);
-	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
-	EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
-	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, cTitle);
-	EsPanel *contentArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT);
-	EsTextDisplayCreate(contentArea, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, content, contentBytes);
-	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
+	EsDialog *dialog = EsDialogShow(instance->window, cTitle, -1, content, contentBytes, ES_ICON_DIALOG_WARNING);
 
 	if (!apiInstance->startupInformation->filePathBytes) {
-		EsPanel *row = EsPanelCreate(contentArea, ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
+		EsPanel *row = EsPanelCreate(dialog->contentArea, ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 		EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(FileCloseNewName));
 		EsTextbox *textbox = EsTextboxCreate(row);
 		EsInstanceClassEditorSettings *editorSettings = &apiInstance->editorSettings;
@@ -702,23 +694,18 @@ void InstanceClose(EsInstance *instance) {
 		apiInstance->fileMenuNameTextbox = textbox;
 	}
 
-	EsButton *button;
-
-	button = EsButtonCreate(buttonArea, ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonCancel));
-
-	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
-		EsDialogClose(instance->window); 
+	EsDialogAddButton(dialog, ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonCancel), 
+			[] (EsInstance *instance, EsElement *, EsCommand *) { 
+		EsDialogClose(instance->window->dialogs.Last()); 
 	});
 
-	button = EsButtonCreate(buttonArea, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(FileCloseWithModificationsDelete));
-
-	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+	EsDialogAddButton(dialog, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(FileCloseWithModificationsDelete), 
+			[] (EsInstance *instance, EsElement *, EsCommand *) { 
 		EsInstanceDestroy(instance);
 	});
 
-	button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT, 0, INTERFACE_STRING(FileCloseWithModificationsSave));
-
-	EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+	EsButton *button = EsDialogAddButton(dialog, ES_BUTTON_DEFAULT, 0, INTERFACE_STRING(FileCloseWithModificationsSave), 
+			[] (EsInstance *instance, EsElement *, EsCommand *) { 
 		APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 		if (apiInstance->startupInformation->filePathBytes) {
@@ -1169,7 +1156,7 @@ EsMessage *EsMessageReceive() {
 						} break;
 					}
 
-					EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotRename), 
+					EsDialogShow(instance->window, INTERFACE_STRING(FileCannotRename), 
 							errorMessage, errorMessageBytes, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 				}
 
@@ -1313,7 +1300,7 @@ void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorT
 
 	if (!success || message->instanceOpen.file->error != ES_SUCCESS) {
 		if (errorTextBytes) {
-			EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotOpen),
+			EsDialogShow(instance->window, INTERFACE_STRING(FileCannotOpen),
 					errorText, errorTextBytes,
 					ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		} else {
@@ -1331,7 +1318,7 @@ void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorT
 					break;
 			}
 
-			EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotOpen), 
+			EsDialogShow(instance->window, INTERFACE_STRING(FileCannotOpen), 
 					errorMessage, -1, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		}
 
@@ -1428,7 +1415,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 				} break;
 			}
 
-			EsDialogShowAlert(instance->window, INTERFACE_STRING(FileCannotSave), 
+			EsDialogShow(instance->window, INTERFACE_STRING(FileCannotSave), 
 					errorMessage, errorMessageBytes, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		}
 	}

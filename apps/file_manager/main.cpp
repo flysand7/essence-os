@@ -128,6 +128,7 @@ struct Instance : EsInstance {
 	EsTextbox *breadcrumbBar;
 	EsButton *newFolderButton;
 	EsTextDisplay *status;
+	EsDialog *blockingDialog;
 
 	union {
 		struct {
@@ -312,7 +313,8 @@ void BlockingTaskThread(EsGeneric _instance) {
 void BlockingTaskComplete(Instance *instance) {
 	EsAssert(instance->blockingTaskInProgress); // Task should have been in progress.
 	instance->blockingTaskInProgress = false;
-	if (instance->blockingTaskReachedTimeout) EsDialogClose(instance->window);
+	if (instance->blockingTaskReachedTimeout) EsDialogClose(instance->blockingDialog);
+	instance->blockingDialog = nullptr;
 	Task *task = &instance->blockingTask;
 	if (task->then) task->then(instance, task);
 }
@@ -331,7 +333,7 @@ void BlockingTaskQueue(Instance *instance, Task task) {
 
 	if (result == ES_ERROR_TIMEOUT_REACHED) {
 		instance->blockingTaskReachedTimeout = true;
-		EsDialogShowAlert(instance->window, task.cDescription, -1, INTERFACE_STRING(FileManagerOngoingTaskDescription), ES_ICON_TOOLS_TIMER_SYMBOLIC);
+		EsDialogShow(instance->window, task.cDescription, -1, INTERFACE_STRING(FileManagerOngoingTaskDescription), ES_ICON_TOOLS_TIMER_SYMBOLIC);
 		// TODO Progress bar; cancelling tasks.
 	} else {
 		instance->blockingTaskReachedTimeout = false;

@@ -453,7 +453,7 @@ struct EsWindow : EsElement {
 
 	EsElement *mainPanel, *toolbar;
 	EsPanel *toolbarSwitcher;
-	Array<EsElement *> dialogs;
+	Array<EsDialog *> dialogs;
 
 	EsPoint mousePosition;
 
@@ -764,6 +764,7 @@ void UIWindowDestroy(EsWindow *window) {
 	EsSyscall(ES_SYSCALL_WINDOW_CLOSE, window->handle, 0, 0, 0);
 	EsHandleClose(window->handle);
 	window->checkVisible.Free();
+	EsAssert(!window->dialogs.Length());
 	window->dialogs.Free();
 	window->handle = ES_INVALID_HANDLE;
 }
@@ -3551,6 +3552,12 @@ EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel) {
 
 // --------------------------------- Dialogs.
 
+struct EsDialog {
+	EsElement *mainPanel;
+	EsElement *buttonArea;
+	EsElement *contentArea;
+};
+
 int ProcessDialogClosingMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_TRANSITION_COMPLETE) {
 		// Destroy the dialog and its wrapper.
@@ -3560,17 +3567,19 @@ int ProcessDialogClosingMessage(EsElement *element, EsMessage *message) {
 	return ProcessPanelMessage(element, message);
 }
 
-void EsDialogClose(EsWindow *window) {
+void EsDialogClose(EsDialog *dialog) {
 	EsMessageMutexCheck();
-	EsAssert(window->dialogs.Length());
 
-	EsElement *dialog = window->dialogs.Pop();
+	EsWindow *window = dialog->mainPanel->window;
+	bool isTop = window->dialogs.Last() == dialog;
+	window->dialogs.FindAndDelete(dialog, true);
 
-	EsAssert(dialog->messageClass == ProcessPanelMessage);
-	dialog->messageClass = ProcessDialogClosingMessage;
-	EsElementStartTransition(dialog, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
+	EsAssert(dialog->mainPanel->messageClass == ProcessPanelMessage);
+	dialog->mainPanel->messageClass = ProcessDialogClosingMessage;
+	EsElementStartTransition(dialog->mainPanel, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_ELEMENT_TRANSITION_EXIT, 1.0f);
 
-	if (!window->dialogs.Length()) {
+	if (!isTop) {
+	} else if (!window->dialogs.Length()) {
 		window->children[0]->children[0]->state &= ~UI_STATE_BLOCK_INTERACTION;
 		window->children[1]->state &= ~UI_STATE_BLOCK_INTERACTION;
 
@@ -3580,42 +3589,17 @@ void EsDialogClose(EsWindow *window) {
 			window->inactiveFocus = nullptr;
 		}
 	} else {
-		window->dialogs.Last()->state &= ~UI_STATE_BLOCK_INTERACTION;
+		window->dialogs.Last()->mainPanel->state &= ~UI_STATE_BLOCK_INTERACTION;
 	}
 }
 
-EsElement *EsDialogShowAlert(EsWindow *window, const char *title, ptrdiff_t titleBytes, 
+EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes, 
 		const char *content, ptrdiff_t contentBytes, uint32_t iconID, uint32_t flags) {
-	EsElement *dialog = EsDialogShow(window);
-	if (!dialog) return nullptr;
-	EsPanel *heading = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
-	if (!heading) return nullptr;
-
-	if (iconID) {
-		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, 0, iconID);
-	}
-
-	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, 
-			title, titleBytes)->cName = "dialog heading";
-	EsTextDisplayCreate(EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT), 
-			ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, 
-			content, contentBytes)->cName = "dialog contents";
-
-	EsPanel *buttonArea = EsPanelCreate(dialog, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
-	if (!buttonArea) return nullptr;
-
-	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
-		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT | ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonOK));
-		EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { EsDialogClose(instance->window); });
-		EsElementFocus(button);
-	}
-
-	return buttonArea;
-}
-
-EsElement *EsDialogShow(EsWindow *window) {
 	// TODO Show on a separate window?
 	// TODO Support dialogs owned by other processes.
+
+	EsDialog *dialog = (EsDialog *) EsHeapAllocate(sizeof(EsDialog), true);
+	if (!dialog) return nullptr;
 
 	EsAssert(window->windowStyle == ES_WINDOW_NORMAL); // Can only show dialogs on normal windows.
 
@@ -3632,17 +3616,47 @@ EsElement *EsDialogShow(EsWindow *window) {
 		mainStack->children[0]->state |= UI_STATE_BLOCK_INTERACTION; // Main content.
 		window->children[1]->state |= UI_STATE_BLOCK_INTERACTION; // Toolbar.
 	} else {
-		window->dialogs.Last()->state |= UI_STATE_BLOCK_INTERACTION;
+		window->dialogs.Last()->mainPanel->state |= UI_STATE_BLOCK_INTERACTION;
 	}
 
 	EsElement *wrapper = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_DIALOG_WRAPPER);
 	wrapper->cName = "dialog wrapper";
-	EsPanel *dialog = EsPanelCreate(wrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
-	dialog->cName = "dialog";
-	EsElementStartTransition(dialog, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_FLAGS_DEFAULT, 1.0f);
+	dialog->mainPanel = EsPanelCreate(wrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
+	dialog->mainPanel->cName = "dialog";
+	EsElementStartTransition(dialog->mainPanel, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_FLAGS_DEFAULT, 1.0f);
 	window->dialogs.Add(dialog);
 
+	EsElement *mainPanel = dialog->mainPanel;
+	EsPanel *heading = EsPanelCreate(mainPanel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_DIALOG_HEADING);
+
+	if (iconID) {
+		EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, 0, iconID);
+	}
+
+	EsTextDisplayCreate(heading, ES_CELL_H_FILL | ES_CELL_V_CENTER, ES_STYLE_TEXT_HEADING2, title, titleBytes)->cName = "dialog heading";
+
+	dialog->contentArea = EsPanelCreate(mainPanel, ES_CELL_H_FILL | ES_PANEL_VERTICAL, ES_STYLE_DIALOG_CONTENT);
+	EsTextDisplayCreate(dialog->contentArea, ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, content, contentBytes)->cName = "dialog contents";
+
+	EsPanel *buttonArea = EsPanelCreate(mainPanel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE, ES_STYLE_DIALOG_BUTTON_AREA);
+	dialog->buttonArea = buttonArea;
+
+	if (flags & ES_DIALOG_ALERT_OK_BUTTON) {
+		EsButton *button = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT | ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonOK));
+		EsElementFocus(button);
+
+		EsButtonOnCommand(button, [] (EsInstance *instance, EsElement *, EsCommand *) { 
+			EsDialogClose(instance->window->dialogs.Last()); 
+		});
+	}
+
 	return dialog;
+}
+
+EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, EsStyle *style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
+	EsButton *button = EsButtonCreate(dialog->buttonArea, flags, style, label, labelBytes);
+	if (button) EsButtonOnCommand(button, callback);
+	return button;
 }
 
 // --------------------------------- Canvas panes.

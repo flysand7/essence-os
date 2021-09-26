@@ -799,7 +799,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 					EsApplicationStart(&request);
 					StringDestroy(&path);
 				} else {
-					EsDialogShowAlert(instance->window, INTERFACE_STRING(FileManagerOpenFileError),
+					EsDialogShow(instance->window, INTERFACE_STRING(FileManagerOpenFileError),
 							INTERFACE_STRING(FileManagerNoRegisteredApplicationsForFile),
 							ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
 				}
@@ -1100,7 +1100,7 @@ void InstanceReportError(Instance *instance, int error, EsError code) {
 		message = interfaceString_FileManagerPermissionNotGrantedError;
 	}
 
-	EsDialogShowAlert(instance->window, errorTypeStrings[error], -1, message, -1, 
+	EsDialogShow(instance->window, errorTypeStrings[error], -1, message, -1, 
 			ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
 }
 

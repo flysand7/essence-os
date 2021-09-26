@@ -153,7 +153,7 @@ void InitialiseInstance(EsInstance *instance) {
 	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
 
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Alert 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
-		EsDialogShowAlert(element->window, "Title", -1, "Content.", -1, ES_ICON_DIALOG_WARNING, ES_DIALOG_ALERT_OK_BUTTON);
+		EsDialogShow(element->window, "Title", -1, "Content.", -1, ES_ICON_DIALOG_WARNING, ES_DIALOG_ALERT_OK_BUTTON);
 	});
 
 	EsPanel *table = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE_H_JUSTIFY);

@@ -180,10 +180,10 @@ void SpawnTile() {
 	if (!MoveTiles(-1, 0, true) && !MoveTiles(1, 0, true) && !MoveTiles(0, -1, true) && !MoveTiles(0, 1, true)) {
 		// No moves are possible.
 		if (highScore < score) {
-			EsDialogShowAlert(instance->window, INTERFACE_STRING(Game2048GameOver), INTERFACE_STRING(Game2048NewHighScore), 
+			EsDialogShow(instance->window, INTERFACE_STRING(Game2048GameOver), INTERFACE_STRING(Game2048NewHighScore), 
 					ES_ICON_DIALOG_INFORMATION, ES_DIALOG_ALERT_OK_BUTTON);
 		} else {
-			EsDialogShowAlert(instance->window, INTERFACE_STRING(Game2048GameOver), INTERFACE_STRING(Game2048GameOverExplanation), 
+			EsDialogShow(instance->window, INTERFACE_STRING(Game2048GameOver), INTERFACE_STRING(Game2048GameOverExplanation), 
 					ES_ICON_DIALOG_INFORMATION, ES_DIALOG_ALERT_OK_BUTTON);
 		}
 	}
