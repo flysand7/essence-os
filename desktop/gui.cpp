@@ -5526,7 +5526,7 @@ void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
 	instance->fileMenuNameTextbox->messageUser = FileMenuNameTextboxMessage;
 }
 
-void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
+void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFlags) {
 	// TODO Make this user-customizable?
 
 	// const EsFileMenuSettings *settings = (const EsFileMenuSettings *) element->userData.p;
@@ -5535,7 +5535,7 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 	EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
 	bool newDocument = !instance->startupInformation || !instance->startupInformation->filePath;
 
-	EsMenu *menu = EsMenuCreate(element, ES_FLAGS_DEFAULT);
+	EsMenu *menu = EsMenuCreate(element, menuFlags);
 	if (!menu) return;
 	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
 	if (!panel1) goto show;
@@ -5611,7 +5611,11 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 	show: EsMenuShow(menu);
 }
 
-void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings) {
+void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
+	EsFileMenuCreate(_instance, element);
+}
+
+void EsFileMenuAddToToolbar(EsElement *element, const EsFileMenuSettings *settings) {
 	EsButton *button = EsButtonCreate(element, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
 	if (!button) return;
 	button->accessKey = 'F';

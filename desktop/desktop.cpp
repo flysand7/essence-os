@@ -1471,7 +1471,7 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 	if (desktop.inShutdown) {
 		return false;
 	}
-
+	
 	InstalledApplication *application = nullptr;
 
 	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
@@ -1497,6 +1497,10 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 	
 	if (!startupInformation) {
 		startupInformation = &_startupInformation;
+	}
+
+	if (instance->tab) {
+		EsButtonSetCheck(instance->tab->closeButton, ES_CHECK_UNCHECKED, false);
 	}
 
 	if (instance->tab && instance->tab->notRespondingInstance) {

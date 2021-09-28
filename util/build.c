@@ -334,6 +334,7 @@ void BuildUtilities() {
 #ifndef __APPLE__ // Luigi doesn't support macOS.
 	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
 #endif
+#ifndef __APPLE__ // Luigi doesn't support macOS.
 	BUILD_UTILITY("reflect_gen", "", "designer/");
 
 	if (CheckDependencies("Utilities.DesignerHeader")) {
@@ -345,13 +346,18 @@ void BuildUtilities() {
 		}
 	}
 
-#ifndef __APPLE__ // Luigi doesn't support macOS.
-	if (CheckDependencies("Utilities.Designer1") || CheckDependencies("Utilities.Designer2")) {
+	if (CheckDependencies("Utilities.OldDesigner1") || CheckDependencies("Utilities.OldDesigner2")) {
 		if (!CallSystem("gcc -MMD -o bin/designer.o -c util/designer/designer.c -g -std=c2x -fsanitize=address " WARNING_FLAGS_C)
 					&& !CallSystem("gcc -MMD -o bin/designer_luigi.o -c util/designer/designer_luigi.c -g -std=c2x " WARNING_FLAGS_C)
 					&& !CallSystem("gcc -o bin/designer -g bin/designer.o bin/designer_luigi.o -lX11 -lm -fsanitize=address ")) {
 			ParseDependencies("bin/designer.d", "Utilities.Designer1", false);
 			ParseDependencies("bin/designer_luigi.d", "Utilities.Designer2", false);
+		}
+	}
+
+	if (CheckDependencies("Utilities.Designer")) {
+		if (!CallSystem("g++ -MMD -D UI_LINUX util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
+			ParseDependencies("bin/designer2.d", "Utilities.Designer", false);
 		}
 	}
 #endif
@@ -1174,6 +1180,9 @@ void DoCommand(const char *l) {
 	} else if (0 == strcmp(l, "designer")) {
 		BuildUtilities();
 		CallSystem("bin/designer \"res/Theme Source.dat\" \"res/Themes/Theme.dat\" \"res/Cursors.png\" \"desktop/styles.header\"");
+	} else if (0 == strcmp(l, "designer2")) {
+		BuildUtilities();
+		CallSystem("bin/designer2");
 	} else if (0 == strcmp(l, "replace-many")) {
 		forceRebuild = true;
 		printf("Enter the name of the replacement file: ");

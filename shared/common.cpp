@@ -1323,7 +1323,7 @@ void EsMemoryZero(void *destination, size_t bytes) {
 }
 
 void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace) {
-	// TODO Prevent this from being optimised out in the kernel./
+	// TODO Prevent this from being optimised out in the kernel.
 
 	uint8_t *start = (uint8_t *) _start;
 	uint8_t *end = (uint8_t *) _end;

@@ -281,7 +281,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		EsElement *toolbarMain = instance->toolbarMain = EsWindowGetToolbar(window, true);
 
-		EsToolbarAddFileMenu(toolbarMain);
+		EsFileMenuAddToToolbar(toolbarMain);
 		
 		button = EsButtonCreate(toolbarMain, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchOpen));
 		button->accessKey = 'S';

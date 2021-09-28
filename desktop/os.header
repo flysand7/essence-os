@@ -2313,6 +2313,7 @@ function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInsta
 function EsApplicationStartupRequest EsInstanceGetStartupRequest(ES_INSTANCE_TYPE *instance);
 function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(EsMessage *message, bool success);
+function void EsInstanceSetModified(ES_INSTANCE_TYPE *instance, bool modified);
 
 function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, STRING title, uint32_t iconID);
 function void EsUserTaskSetProgress(EsUserTask *task, double progress, EsFileOffsetDifference bytesPerSecond); // Set bytesPerSecond to -1 if not applicable.
@@ -2389,7 +2390,8 @@ function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, 
 function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, EsStyle *style = ES_NULL, 
 		STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL);
 
-function void EsToolbarAddFileMenu(EsElement *element, const EsFileMenuSettings *settings = ES_NULL);
+function void EsFileMenuAddToToolbar(EsElement *toolbar, const EsFileMenuSettings *settings = ES_NULL);
+function void EsFileMenuCreate(ES_INSTANCE_TYPE *instance, EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT);
 
 private function EsHandle _EsWindowGetHandle(EsWindow *window); 
 private function void _EsUISetFont(EsFontFamily id);

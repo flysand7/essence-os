@@ -716,7 +716,7 @@ void InstanceCreate(EsMessage *message) {
 
 	EsButton *button;
 
-	EsToolbarAddFileMenu(toolbar);
+	EsFileMenuAddToToolbar(toolbar);
 	button = EsButtonCreate(toolbar, ES_BUTTON_DROPDOWN, ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG, INTERFACE_STRING(ImageEditorImage));
 	EsButtonSetIcon(button, ES_ICON_IMAGE_X_GENERIC);
 	button->accessKey = 'I';

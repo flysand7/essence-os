@@ -703,11 +703,14 @@ void InstanceClose(EsInstance *instance) {
 
 	EsDialogAddButton(dialog, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(FileCloseWithModificationsDelete), 
 			[] (EsInstance *instance, EsElement *, EsCommand *) { 
+		EsDialogClose(instance->window->dialogs.Last()); 
 		EsInstanceDestroy(instance);
 	});
 
 	EsButton *button = EsDialogAddButton(dialog, ES_BUTTON_DEFAULT, 0, INTERFACE_STRING(FileCloseWithModificationsSave), 
 			[] (EsInstance *instance, EsElement *, EsCommand *) { 
+		EsDialogClose(instance->window->dialogs.Last()); 
+
 		APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 		if (apiInstance->startupInformation->filePathBytes) {
@@ -1288,7 +1291,7 @@ EsMessage *EsMessageReceive() {
 	}
 }
 
-void InstanceSetModified(EsInstance *instance, bool modified) {
+void EsInstanceSetModified(EsInstance *instance, bool modified) {
 	EsCommandSetEnabled(EsCommandByID(instance, ES_COMMAND_SAVE), modified);
 
 	uint8_t m[2];
@@ -1330,7 +1333,7 @@ void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorT
 			EsUndoClear(instance->undoManager);
 		}
 
-		InstanceSetModified(instance, false);
+		EsInstanceSetModified(instance, false);
 	}
 
 	EsAssert(!message->instanceOpen.file->operationComplete);
@@ -1359,7 +1362,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 		MessageDesktop(buffer, 1, instance->window->handle);
 
 		if (success) {
-			InstanceSetModified(instance, false);
+			EsInstanceSetModified(instance, false);
 			EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
 			size_t messageBytes;
 			char *message = EsStringAllocateAndFormat(&messageBytes, "Saved to %s", // TODO Localization.
@@ -1763,7 +1766,7 @@ void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *ite
 	}
 
 	if (manager->instance->undoManager == manager) {
-		InstanceSetModified(manager->instance, true);
+		EsInstanceSetModified(manager->instance, true);
 	}
 }
 
