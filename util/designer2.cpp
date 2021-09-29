@@ -16,7 +16,7 @@
 
 // Needed to replace the old designer:
 // TODO Previewing state transitions.
-// TODO Implement radial gradients and path layers.
+// TODO Implement path layers, and test radial gradients with them.
 // TODO Import and reorganize old theming data.
 // TODO Export.
 
@@ -108,6 +108,14 @@ void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace
 	}
 }
 
+bool EsColorIsLight(uint32_t color) {
+	float r = (color & 0xFF0000) >> 16;
+	float g = (color & 0x00FF00) >>  8;
+	float b = (color & 0x0000FF) >>  0;
+	float brightness = r * r * 0.241f + g * g * 0.691f + b * b * 0.068f;
+	return brightness >= 180.0f * 180.0f;
+}
+
 #endif
 
 struct EsPaintTarget {
@@ -146,34 +154,17 @@ const char *cStateBitStrings[] = {
 };
 
 const char *cCursorStrings[] = {
-	"Normal",
-	"Text",
-	"Resize vertical",
-	"Resize horizontal",
-	"Diagonal 1",
-	"Diagonal 2",
-	"Split vertical",
-	"Split horizontal",
-	"Hand hover",
-	"Hand drag",
-	"Hand point",
-	"Scroll up-left",
-	"Scroll up",
-	"Scroll up-right",
-	"Scroll left",
-	"Scroll center",
-	"Scroll right",
-	"Scroll down-left",
-	"Scroll down",
-	"Scroll down-right",
-	"Select lines",
-	"Drop text",
-	"Cross hair pick",
-	"Cross hair resize",
-	"Move hover",
-	"Move drag",
-	"Rotate hover",
-	"Rotate drag",
+	"Normal", "Text",
+	"Resize vertical", "Resize horizontal",
+	"Diagonal 1", "Diagonal 2",
+	"Split vertical", "Split horizontal",
+	"Hand hover", "Hand drag", "Hand point",
+	"Scroll up-left", "Scroll up", "Scroll up-right", "Scroll left",
+	"Scroll center", "Scroll right", "Scroll down-left", "Scroll down", "Scroll down-right",
+	"Select lines", "Drop text",
+	"Cross hair pick", "Cross hair resize",
+	"Move hover", "Move drag",
+	"Rotate hover", "Rotate drag",
 	"Blank",
 };
 
@@ -251,8 +242,10 @@ enum ObjectType : uint8_t {
 
 struct Object {
 	ObjectType type;
-#define OBJECT_NAME_SIZE (47)
+#define OBJECT_NAME_SIZE (46)
 	char cName[OBJECT_NAME_SIZE];
+#define OBJECT_IS_SELECTED (1 << 0)
+	uint8_t flags;
 	uint64_t id;
 	Array<Property> properties;
 };
@@ -303,6 +296,20 @@ Object *ObjectFind(uint64_t id) {
 	}
 
 	return nullptr;
+}
+
+void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection = true) {
+	if (selectedObjectID && removeSelectedFlagFromPreviousSelection) {
+		Object *object = ObjectFind(selectedObjectID);
+		if (object) object->flags &= ~OBJECT_IS_SELECTED;
+	}
+
+	selectedObjectID = id;
+
+	if (selectedObjectID) {
+		Object *object = ObjectFind(selectedObjectID);
+		if (object) object->flags |= OBJECT_IS_SELECTED;
+	}
 }
 
 Property *PropertyFind(Object *object, const char *cName, uint8_t type = 0) {
@@ -492,13 +499,14 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		InspectorPopulate();
 	} else if (step.type == STEP_ADD_OBJECT) {
 		objects.Add(step.object);
-		selectedObjectID = step.object.id;
 		UIElementRepaint(canvas, nullptr);
 		step.objectID = step.object.id;
 		step.type = STEP_DELETE_OBJECT;
-		InspectorPopulate();
 	} else if (step.type == STEP_DELETE_OBJECT) {
-		if (selectedObjectID == step.objectID) selectedObjectID = 0;
+		if (selectedObjectID == step.objectID) {
+			ObjectSetSelected(0);
+		}
+
 		step.type = STEP_ADD_OBJECT;
 
 		for (uintptr_t i = 0; i < objects.Length(); i++) {
@@ -509,6 +517,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 			}
 		}
 
+		step.object.flags = 0;
 		UIElementRepaint(canvas, nullptr);
 		InspectorPopulate();
 	} else {
@@ -519,7 +528,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		bool merge = false;
 
 		if (allowMerge && undoStack.Length() > 2 && !redoStack.Length() && (~step.flags & STEP_UPDATE_INSPECTOR)) {
-			Step last = undoStack[undoStack.Length() - 2];
+			Step last = undoStack[undoStack.Length() - (undoStack.Last().type == STEP_GROUP_MARKER ? 2 : 1)];
 
 			if (step.type == STEP_MODIFY_PROPERTY && last.type == STEP_MODIFY_PROPERTY 
 					&& last.objectID == step.objectID && 0 == strcmp(last.property.cName, step.property.cName)) {
@@ -1377,10 +1386,19 @@ void InspectorPopulate() {
 			InspectorBind(&UIButtonCreate(0, 0, "Add layer", -1)->e, object->id, "layers_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_PAINT_OVERWRITE) {
 			InspectorAddLink(object, "Color:", "color");
-		} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
-			InspectorAddFloat(object, "Transform X:", "transformX");
-			InspectorAddFloat(object, "Transform Y:", "transformY");
-			InspectorAddFloat(object, "Transform start:", "transformStart");
+		} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
+			if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
+				InspectorAddFloat(object, "Transform X:", "transformX");
+				InspectorAddFloat(object, "Transform Y:", "transformY");
+				InspectorAddFloat(object, "Transform start:", "transformStart");
+			} else {
+				InspectorAddFloat(object, "Transform X scale:",  "transform0");
+				InspectorAddFloat(object, "Transform X offset:", "transform2");
+				InspectorAddFloat(object, "Transform Y scale:",  "transform4");
+				InspectorAddFloat(object, "Transform Y offset:", "transform5");
+				InspectorAddFloat(object, "Transform X skew:",   "transform1");
+				InspectorAddFloat(object, "Transform Y skew:",   "transform3");
+			}
 
 			UILabelCreate(0, 0, "Repeat mode:", -1);
 			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
@@ -1391,7 +1409,10 @@ void InspectorPopulate() {
 			UIParentPop();
 
 			InspectorAddBooleanToggle(object, "Use gamma interpolation", "useGammaInterpolation");
-			InspectorAddBooleanToggle(object, "Use window tint color", "useSystemColor");
+
+			if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
+				InspectorAddBooleanToggle(object, "Use window tint color", "useSystemColor");
+			}
 
 			int32_t stopCount = PropertyReadInt32(object, "stops_count");
 			if (stopCount < 0) stopCount = 0;
@@ -1420,8 +1441,6 @@ void InspectorPopulate() {
 			}
 
 			InspectorBind(&UIButtonCreate(0, 0, "Add stop", -1)->e, object->id, "stops_count", INSPECTOR_ADD_ARRAY_ITEM);
-		} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
-			// TODO.
 		} else if (object->type == OBJ_MOD_COLOR) {
 			InspectorAddLink(object, "Base color:", "base");
 			UILabelCreate(0, 0, "Brightness (%):", -1);
@@ -1500,6 +1519,21 @@ uint32_t GraphGetColor(Object *object, int depth = 0) {
 
 //////////////////////////////////////////////////////////////
 
+void ExportGradientStopArray(Object *object, EsBuffer *data, size_t stopCount) {
+	for (uintptr_t i = 0; i < stopCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
+		Property *color = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
+		Property *position = PropertyFind(object, cPropertyName, PROP_OBJECT);
+
+		ThemeGradientStop stop = {};
+		stop.color = GraphGetColor(ObjectFind(color ? color->object : 0));
+		stop.position = GraphGetIntegerFromProperty(position);
+		EsBufferWrite(data, &stop, sizeof(stop));
+	}
+}
+
 int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	if (!object || depth == 100) {
 		return 0;
@@ -1538,23 +1572,37 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 			paint.repeatMode = repeatMode ? repeatMode->integer : 0;
 			EsBufferWrite(data, &paint, sizeof(paint));
 
-			for (uintptr_t i = 0; i < paint.stopCount; i++) {
-				char cPropertyName[PROPERTY_NAME_SIZE];
-				sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
-				Property *color = PropertyFind(object, cPropertyName, PROP_OBJECT);
-				sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
-				Property *position = PropertyFind(object, cPropertyName, PROP_OBJECT);
-
-				ThemeGradientStop stop = {};
-				stop.color = GraphGetColor(ObjectFind(color ? color->object : 0));
-				stop.position = GraphGetIntegerFromProperty(position);
-				EsBufferWrite(data, &stop, sizeof(stop));
-			}
+			ExportGradientStopArray(object, data, paint.stopCount);
 		}
 
 		return THEME_PAINT_LINEAR_GRADIENT;
 	} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
-		// TODO.
+		if (data) {
+			Property *transform0 = PropertyFindOrInherit(false, object, "transform0", PROP_FLOAT);
+			Property *transform1 = PropertyFindOrInherit(false, object, "transform1", PROP_FLOAT);
+			Property *transform2 = PropertyFindOrInherit(false, object, "transform2", PROP_FLOAT);
+			Property *transform3 = PropertyFindOrInherit(false, object, "transform3", PROP_FLOAT);
+			Property *transform4 = PropertyFindOrInherit(false, object, "transform4", PROP_FLOAT);
+			Property *transform5 = PropertyFindOrInherit(false, object, "transform5", PROP_FLOAT);
+			Property *stopCount = PropertyFindOrInherit(false, object, "stops_count", PROP_INT);
+			Property *useGammaInterpolation = PropertyFindOrInherit(false, object, "useGammaInterpolation", PROP_INT);
+			Property *repeatMode = PropertyFindOrInherit(false, object, "repeatMode", PROP_INT);
+
+			ThemePaintRadialGradient paint = {};
+			paint.transform[0] = transform0 ? transform0->floating : 0;
+			paint.transform[1] = transform1 ? transform1->floating : 0;
+			paint.transform[2] = transform2 ? transform2->floating : 0;
+			paint.transform[3] = transform3 ? transform3->floating : 0;
+			paint.transform[4] = transform4 ? transform4->floating : 0;
+			paint.transform[5] = transform5 ? transform5->floating : 0;
+			paint.stopCount = stopCount ? stopCount->integer : 0;
+			paint.useGammaInterpolation = useGammaInterpolation ? !!useGammaInterpolation->integer : false;
+			paint.repeatMode = repeatMode ? repeatMode->integer : 0;
+			EsBufferWrite(data, &paint, sizeof(paint));
+
+			ExportGradientStopArray(object, data, paint.stopCount);
+		}
+
 		return THEME_PAINT_RADIAL_GRADIENT;
 	} else {
 		return 0;
@@ -1597,8 +1645,9 @@ void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
 
 float canvasPanX, canvasPanY;
 float canvasLastPanPointX, canvasLastPanPointY;
-bool canvasDragging, canvasCanDrag;
-int32_t canvasDragNewX, canvasDragNewY;
+bool canvasDragging, canvasCanDrag, canvasSelecting;
+int32_t canvasDragDeltaX, canvasDragDeltaY;
+int32_t canvasSelectX, canvasSelectY;
 int32_t canvasDragOffsetX, canvasDragOffsetY;
 int32_t canvasLeftDownX, canvasLeftDownY;
 bool canvasShowArrows;
@@ -1609,19 +1658,23 @@ UIRectangle CanvasGetObjectBounds(Object *object) {
 	int32_t w = PropertyReadInt32(object, "_graphW");
 	int32_t h = PropertyReadInt32(object, "_graphH");
 
-	if (object->id == selectedObjectID && canvasDragging) {
-		x = canvasDragNewX - canvasPanX + canvas->bounds.l;
-		y = canvasDragNewY - canvasPanY + canvas->bounds.t;
+	if (object->flags & OBJECT_IS_SELECTED && canvasDragging) {
+		x += canvasDragDeltaX;
+		y += canvasDragDeltaY;
 	}
 
 	return UI_RECT_4(x, x + w, y, y + h);
 }
 
 void CanvasSelectObject(Object *object) {
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		objects[i].flags &= ~OBJECT_IS_SELECTED;
+	}
+
 	UIRectangle bounds = CanvasGetObjectBounds(object);
 	canvasPanX += bounds.l - UI_RECT_WIDTH(canvas->bounds) / 2;
 	canvasPanY += bounds.t - UI_RECT_HEIGHT(canvas->bounds) / 2;
-	selectedObjectID = object->id;
+	ObjectSetSelected(object->id);
 	UIElementRepaint(canvas, nullptr);
 	InspectorPopulate();
 }
@@ -1719,6 +1772,12 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_PAINT) {
 		UIPainter *painter = (UIPainter *) dp;
 		UIDrawBlock(painter, element->bounds, 0xFFC0C0C0);
+		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvasLeftDownX, canvasSelectX), MaximumInteger(canvasLeftDownX, canvasSelectX),
+				MinimumInteger(canvasLeftDownY, canvasSelectY), MaximumInteger(canvasLeftDownY, canvasSelectY));
+
+		if (canvasSelecting) {
+			UIDrawBlock(painter, selectionBounds, 0xFF99CCFF);
+		}
 
 		for (uintptr_t i = 0; i < objects.Length(); i++) {
 			Object *object = &objects[i];
@@ -1729,7 +1788,10 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				continue;
 			}
 
-			if ((object->id == selectedObjectID) == (inspectorPickData == nullptr)) {
+			UIRectangle selectionIntersection = UIRectangleIntersection(bounds, selectionBounds);
+
+			if ((object->flags & OBJECT_IS_SELECTED) == (inspectorPickData == nullptr)
+					|| (canvasSelecting && UI_RECT_VALID(selectionIntersection))) {
 				UIDrawBorder(painter, UIRectangleAdd(bounds, UI_RECT_1I(-3)), 0xFF4092FF, UI_RECT_1(3));
 			} 
 
@@ -1755,9 +1817,16 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				UIDrawString(painter, bounds, buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP) {
 				CanvasDrawLayer(object, bounds, painter);
-			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
-					|| object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
+			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 				CanvasDrawColorSwatch(object, bounds, painter);
+			} else if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
+				CanvasDrawColorSwatch(object, bounds, painter);
+				uint32_t color = GraphGetColor(object);
+				bool isLight = EsColorIsLight(color);
+				char buffer[32];
+				snprintf(buffer, sizeof(buffer), "%.8X", color);
+				UIRectangle area = UI_RECT_4(bounds.l, bounds.r, bounds.t, bounds.t + UIMeasureStringHeight());
+				UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
 			} else {
 				// TODO Preview for more object types: style, text style, icon style, metrics layer, text layer.
 			}
@@ -1783,7 +1852,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		}
 	} else if (message == UI_MSG_LEFT_DOWN) {
 		canvasCanDrag = true;
-		selectedObjectID = 0;
+		bool foundObjectToSelect = false;
 
 		for (uintptr_t i = objects.Length(); i > 0; i--) {
 			Object *object = &objects[i - 1];
@@ -1791,7 +1860,6 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 
 			if (UIRectangleContains(bounds, element->window->cursorX, element->window->cursorY)) {
 				if (inspectorPickData) {
-					selectedObjectID = inspectorPickData->objectID;
 					canvasCanDrag = false;
 
 					Step step = {};
@@ -1803,12 +1871,27 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 					InspectorBroadcastStep(step, inspectorPickData);
 					DocumentApplyStep(step);
 				} else {
-					selectedObjectID = object->id;
+					if (~object->flags & OBJECT_IS_SELECTED) {
+						for (uintptr_t i = 0; i < objects.Length(); i++) {
+							objects[i].flags &= ~OBJECT_IS_SELECTED;
+						}
+					}
+
+					ObjectSetSelected(object->id, false /* do not clear selection flag from previous */);
 					canvasDragOffsetX = bounds.l - element->window->cursorX;
 					canvasDragOffsetY = bounds.t - element->window->cursorY;
 				}
 
+				foundObjectToSelect = true;
 				break;
+			}
+		}
+
+		if (!foundObjectToSelect) {
+			ObjectSetSelected(0);
+
+			for (uintptr_t i = 0; i < objects.Length(); i++) {
+				objects[i].flags &= ~OBJECT_IS_SELECTED;
 			}
 		}
 
@@ -1823,16 +1906,31 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		int32_t oldX = PropertyReadInt32(object, "_graphX");
 		int32_t oldY = PropertyReadInt32(object, "_graphY");
 
-		if ((oldX != canvasDragNewX || oldY != canvasDragNewY) && selectedObjectID) {
+		if ((canvasDragDeltaX || canvasDragDeltaY) && object) {
 			Step step = {};
 			step.type = STEP_MODIFY_PROPERTY;
-			step.objectID = selectedObjectID;
 			step.property.type = PROP_INT;
+
+			for (uintptr_t i = 0; i < objects.Length(); i++) {
+				Object *object = &objects[i];
+
+				if ((object->flags & OBJECT_IS_SELECTED) && object->id != selectedObjectID) {
+					step.objectID = object->id;
+					strcpy(step.property.cName, "_graphX");
+					step.property.integer = PropertyReadInt32(object, "_graphX") + canvasDragDeltaX;
+					DocumentApplyStep(step, STEP_APPLY_GROUPED);
+					strcpy(step.property.cName, "_graphY");
+					step.property.integer = PropertyReadInt32(object, "_graphY") + canvasDragDeltaY;
+					DocumentApplyStep(step, STEP_APPLY_GROUPED);
+				}
+			}
+
+			step.objectID = selectedObjectID;
 			strcpy(step.property.cName, "_graphX");
-			step.property.integer = canvasDragNewX;
+			step.property.integer = oldX + canvasDragDeltaX;
 			DocumentApplyStep(step, STEP_APPLY_GROUPED);
 			strcpy(step.property.cName, "_graphY");
-			step.property.integer = canvasDragNewY;
+			step.property.integer = oldY + canvasDragDeltaY;
 			DocumentApplyStep(step);
 		}
 
@@ -1843,12 +1941,35 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		int32_t dy = canvasLeftDownY - element->window->cursorY;
 
 		if (canvasDragging || dx * dx + dy * dy > 200) {
-			canvasDragNewX = element->window->cursorX + canvasPanX + canvasDragOffsetX - element->bounds.l;
-			canvasDragNewY = element->window->cursorY + canvasPanY + canvasDragOffsetY - element->bounds.t;
+			int32_t canvasDragNewX = element->window->cursorX + canvasPanX + canvasDragOffsetX - element->bounds.l;
+			int32_t canvasDragNewY = element->window->cursorY + canvasPanY + canvasDragOffsetY - element->bounds.t;
 			canvasDragNewX -= canvasDragNewX % CANVAS_ALIGN, canvasDragNewY -= canvasDragNewY % CANVAS_ALIGN;
+			canvasDragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphX");
+			canvasDragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphY");
 			canvasDragging = true;
 			UIElementRepaint(element, nullptr);
 		}
+	} else if (message == UI_MSG_LEFT_UP && canvasSelecting) {
+		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvasLeftDownX, canvasSelectX), MaximumInteger(canvasLeftDownX, canvasSelectX),
+				MinimumInteger(canvasLeftDownY, canvasSelectY), MaximumInteger(canvasLeftDownY, canvasSelectY));
+
+		for (uintptr_t i = 0; i < objects.Length(); i++) {
+			Object *object = &objects[i];
+			UIRectangle bounds = CanvasGetObjectBounds(object);
+			UIRectangle selectionIntersection = UIRectangleIntersection(bounds, selectionBounds);
+
+			if (UI_RECT_VALID(selectionIntersection)) {
+				object->flags |= OBJECT_IS_SELECTED;
+			}
+		}
+
+		canvasSelecting = false;
+		UIElementRepaint(element, nullptr);
+	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1 && !selectedObjectID) {
+		canvasSelectX = element->window->cursorX;
+		canvasSelectY = element->window->cursorY;
+		canvasSelecting = true;
+		UIElementRepaint(element, nullptr);
 	} else if (message == UI_MSG_MIDDLE_DOWN) {
 		canvasLastPanPointX = element->window->cursorX;
 		canvasLastPanPointY = element->window->cursorY;
@@ -1886,7 +2007,7 @@ void ObjectAddCommandInternal(void *cp) {
 	int32_t x = canvasPanX + UI_RECT_WIDTH(canvas->bounds) / 2;
 	int32_t y = canvasPanY + UI_RECT_HEIGHT(canvas->bounds) / 2;
 	x -= x % CANVAS_ALIGN, y -= y % CANVAS_ALIGN;
-	int32_t w = object.type == OBJ_COMMENT ? 30 : 60;
+	int32_t w = object.type == OBJ_COMMENT ? 30 : 80;
 	int32_t h = object.type == OBJ_COMMENT ? 10 : 60;
 	p = { .type = PROP_INT, .integer = x }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
 	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
@@ -1897,6 +2018,13 @@ void ObjectAddCommandInternal(void *cp) {
 	step.type = STEP_ADD_OBJECT;
 	step.object = object;
 	DocumentApplyStep(step);
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		objects[i].flags &= ~OBJECT_IS_SELECTED;
+	}
+
+	ObjectSetSelected(object.id);
+	InspectorPopulate();
 }
 
 void ObjectAddCommand(void *) {
@@ -1920,11 +2048,25 @@ void ObjectAddCommand(void *) {
 }
 
 void ObjectDeleteCommand(void *) {
-	if (!selectedObjectID) return;
+	Array<uint64_t> list = {};
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if (object->flags & OBJECT_IS_SELECTED) {
+			list.Add(object->id);
+		}
+	}
+
 	Step step = {};
 	step.type = STEP_DELETE_OBJECT;
-	step.objectID = selectedObjectID;
-	DocumentApplyStep(step);
+
+	for (uintptr_t i = 0; i < list.Length(); i++) {
+		step.objectID = list[i];
+		DocumentApplyStep(step, i == list.Length() - 1 ? STEP_APPLY_NORMAL : STEP_APPLY_GROUPED);
+	}
+
+	list.Free();
 }
 
 void ObjectDuplicateCommand(void *) {
