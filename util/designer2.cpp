@@ -16,7 +16,7 @@
 
 // Needed to replace the old designer:
 // TODO Previewing state transitions.
-// TODO Implement gradient paints and path layers.
+// TODO Implement radial gradients and path layers.
 // TODO Import and reorganize old theming data.
 // TODO Export.
 
@@ -209,6 +209,7 @@ enum PropertyType : uint8_t {
 	PROP_COLOR,
 	PROP_INT,
 	PROP_OBJECT,
+	PROP_FLOAT,
 };
 
 struct Property {
@@ -219,6 +220,7 @@ struct Property {
 	union {
 		int32_t integer;
 		uint64_t object;
+		float floating;
 	};
 };
 
@@ -234,8 +236,8 @@ enum ObjectType : uint8_t {
 	OBJ_VAR_ICON_STYLE,
 	
 	OBJ_PAINT_OVERWRITE = 0x60,
-	// OBJ_PAINT_LINEAR_GRADIENT,
-	// OBJ_PAINT_RADIAL_GRADIENT,
+	OBJ_PAINT_LINEAR_GRADIENT,
+	OBJ_PAINT_RADIAL_GRADIENT,
 
 	OBJ_LAYER_BOX = 0x80,
 	OBJ_LAYER_METRICS,
@@ -628,6 +630,7 @@ enum InspectorElementType {
 	INSPECTOR_COLOR_TEXTBOX,
 	INSPECTOR_INTEGER_TEXTBOX,
 	INSPECTOR_INTEGER_TEXTBOX_BROADCAST,
+	INSPECTOR_FLOAT_TEXTBOX,
 	INSPECTOR_LINK,
 	INSPECTOR_LINK_BROADCAST,
 	INSPECTOR_BOOLEAN_TOGGLE,
@@ -721,6 +724,14 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UITextboxClear(textbox, false);
 		UITextboxReplace(textbox, buffer, -1, false);
 		UIElementRefresh(&textbox->e);
+	} else if (data->elementType == INSPECTOR_FLOAT_TEXTBOX) {
+		UITextbox *textbox = (UITextbox *) data->element;
+		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_FLOAT);
+		char buffer[32] = "";
+		if (property) snprintf(buffer, sizeof(buffer), "%f", property->floating);
+		UITextboxClear(textbox, false);
+		UITextboxReplace(textbox, buffer, -1, false);
+		UIElementRefresh(&textbox->e);
 	} else if (data->elementType == INSPECTOR_LINK || data->elementType == INSPECTOR_LINK_BROADCAST) {
 		UIButton *button = (UIButton *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_OBJECT);
@@ -804,8 +815,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			buffer[length] = 0;
 			step.property.type = PROP_COLOR;
 			step.property.integer = (int32_t) strtoul(buffer, nullptr, 16);
-		} else if (data->elementType == INSPECTOR_INTEGER_TEXTBOX 
-				|| data->elementType == INSPECTOR_INTEGER_TEXTBOX_BROADCAST) {
+		} else if (data->elementType == INSPECTOR_INTEGER_TEXTBOX || data->elementType == INSPECTOR_INTEGER_TEXTBOX_BROADCAST) {
 			UITextbox *textbox = (UITextbox *) element;
 			char buffer[32];
 			int length = 31 > textbox->bytes ? textbox->bytes : 31;
@@ -813,6 +823,15 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			buffer[length] = 0;
 			step.property.type = PROP_INT;
 			step.property.integer = (int32_t) strtol(buffer, nullptr, 0);
+			InspectorBroadcastStep(step, data);
+		} else if (data->elementType == INSPECTOR_FLOAT_TEXTBOX) {
+			UITextbox *textbox = (UITextbox *) element;
+			char buffer[32];
+			int length = 31 > textbox->bytes ? textbox->bytes : 31;
+			memcpy(buffer, textbox->string, length);
+			buffer[length] = 0;
+			step.property.type = PROP_FLOAT;
+			step.property.floating = strtof(buffer, nullptr);
 			InspectorBroadcastStep(step, data);
 		} else {
 			UI_ASSERT(false);
@@ -955,7 +974,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 	} else if (message == UI_MSG_UPDATE) {
 		if (di == UI_UPDATE_FOCUSED && element->window->focused == element 
 				&& (data->elementType == INSPECTOR_COLOR_TEXTBOX || data->elementType == INSPECTOR_INTEGER_TEXTBOX
-					|| data->elementType == INSPECTOR_INTEGER_TEXTBOX_BROADCAST)) {
+					|| data->elementType == INSPECTOR_INTEGER_TEXTBOX_BROADCAST || data->elementType == INSPECTOR_FLOAT_TEXTBOX)) {
 			UITextbox *textbox = (UITextbox *) element;
 			textbox->carets[0] = 0;
 			textbox->carets[1] = textbox->bytes;
@@ -1094,6 +1113,14 @@ void InspectorAddIntegerTextbox(Object *object, const char *cLabel, const char *
 			broadcast ? INSPECTOR_INTEGER_TEXTBOX_BROADCAST : INSPECTOR_INTEGER_TEXTBOX, 0, cEnablePropertyName);
 }
 
+void InspectorAddFloat(Object *object, const char *cLabel, const char *cPropertyName, const char *cEnablePropertyName = nullptr) {
+	if (cLabel) UILabelCreate(0, 0, cLabel, -1);
+	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_H_FILL | UI_PANEL_HORIZONTAL);
+	InspectorBind(&UITextboxCreate(0, UI_ELEMENT_H_FILL)->e, object->id, cPropertyName, INSPECTOR_FLOAT_TEXTBOX, 0, cEnablePropertyName);
+	InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, cPropertyName, INSPECTOR_REMOVE_BUTTON);
+	UIParentPop();
+}
+
 void InspectorAddInteger(Object *object, const char *cLabel, const char *cPropertyName) {
 	if (cLabel) UILabelCreate(0, 0, cLabel, -1);
 	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_H_FILL | UI_PANEL_HORIZONTAL);
@@ -1164,7 +1191,8 @@ void InspectorPopulate() {
 			UIParentPop();
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE 
-				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT;
+				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT
+				|| object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT;
 			bool inheritWithoutAnimation = object->type == OBJ_STYLE || object->type == OBJ_LAYER_METRICS;
 
 			if (inheritWithAnimation || inheritWithoutAnimation) {
@@ -1349,6 +1377,51 @@ void InspectorPopulate() {
 			InspectorBind(&UIButtonCreate(0, 0, "Add layer", -1)->e, object->id, "layers_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_PAINT_OVERWRITE) {
 			InspectorAddLink(object, "Color:", "color");
+		} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
+			InspectorAddFloat(object, "Transform X:", "transformX");
+			InspectorAddFloat(object, "Transform Y:", "transformY");
+			InspectorAddFloat(object, "Transform start:", "transformStart");
+
+			UILabelCreate(0, 0, "Repeat mode:", -1);
+			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+			InspectorAddRadioSwitch(object, "Clamp", "repeatMode", RAST_REPEAT_CLAMP);
+			InspectorAddRadioSwitch(object, "Normal", "repeatMode", RAST_REPEAT_NORMAL);
+			InspectorAddRadioSwitch(object, "Mirror", "repeatMode", RAST_REPEAT_MIRROR);
+			InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "repeatMode", INSPECTOR_REMOVE_BUTTON);
+			UIParentPop();
+
+			InspectorAddBooleanToggle(object, "Use gamma interpolation", "useGammaInterpolation");
+			InspectorAddBooleanToggle(object, "Use window tint color", "useSystemColor");
+
+			int32_t stopCount = PropertyReadInt32(object, "stops_count");
+			if (stopCount < 0) stopCount = 0;
+			if (stopCount > 100) stopCount = 100;
+
+			UILabelCreate(0, 0, "Gradient stops:", -1);
+
+			for (int32_t i = 0; i < stopCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
+				sprintf(cPropertyName, "stops_%d_", i);
+				UIPanel *row = UIPanelCreate(0, UI_PANEL_HORIZONTAL);
+				UISpacerCreate(&row->e, UI_ELEMENT_H_FILL, 0, 0);
+				InspectorBind(&UIButtonCreate(&row->e, UI_BUTTON_SMALL, "Delete", -1)->e, object->id, cPropertyName, INSPECTOR_DELETE_ARRAY_ITEM);
+				sprintf(cPropertyName, "stops_%d_color", i);
+				InspectorAddLink(object, "Color:", cPropertyName);
+				sprintf(cPropertyName, "stops_%d_position", i);
+				InspectorAddInteger(object, "Position (%):", cPropertyName);
+				UIParentPop();
+
+				if (i != stopCount - 1) {
+					sprintf(cPropertyName, "stops_%d_", i);
+					InspectorBind(&UIButtonCreate(&UIPanelCreate(0, 0)->e, UI_BUTTON_SMALL, "Swap", -1)->e, 
+							object->id, cPropertyName, INSPECTOR_SWAP_ARRAY_ITEMS);
+				}
+			}
+
+			InspectorBind(&UIButtonCreate(0, 0, "Add stop", -1)->e, object->id, "stops_count", INSPECTOR_ADD_ARRAY_ITEM);
+		} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
+			// TODO.
 		} else if (object->type == OBJ_MOD_COLOR) {
 			InspectorAddLink(object, "Base color:", "base");
 			UILabelCreate(0, 0, "Brightness (%):", -1);
@@ -1359,8 +1432,6 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Base integer:", "base");
 			UILabelCreate(0, 0, "Factor (%):", -1);
 			InspectorBind(&UITextboxCreate(0, UI_ELEMENT_H_FILL)->e, object->id, "factor", INSPECTOR_INTEGER_TEXTBOX);
-		} else {
-			// TODO.
 		}
 	} else {
 		UILabelCreate(0, 0, "Select an object to inspect.", -1);
@@ -1438,7 +1509,7 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 		if (data) {
 			ThemePaintSolid solid = {};
 			solid.color = GraphGetColor(object);
-			EsBufferWrite(data, &solid, sizeof(ThemePaintSolid));
+			EsBufferWrite(data, &solid, sizeof(solid));
 		}
 
 		return THEME_PAINT_SOLID;
@@ -1447,6 +1518,44 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 		Object *object = ObjectFind(property ? property->object : 0);
 		ExportPaint(object, data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
+	} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
+		if (data) {
+			Property *transformX = PropertyFindOrInherit(false, object, "transformX", PROP_FLOAT);
+			Property *transformY = PropertyFindOrInherit(false, object, "transformY", PROP_FLOAT);
+			Property *transformStart = PropertyFindOrInherit(false, object, "transformStart", PROP_FLOAT);
+			Property *stopCount = PropertyFindOrInherit(false, object, "stops_count", PROP_INT);
+			Property *useGammaInterpolation = PropertyFindOrInherit(false, object, "useGammaInterpolation", PROP_INT);
+			Property *useSystemColor = PropertyFindOrInherit(false, object, "useSystemColor", PROP_INT);
+			Property *repeatMode = PropertyFindOrInherit(false, object, "repeatMode", PROP_INT);
+
+			ThemePaintLinearGradient paint = {};
+			paint.transform[0] = transformX ? transformX->floating : 0;
+			paint.transform[1] = transformY ? transformY->floating : 0;
+			paint.transform[2] = transformStart ? transformStart->floating : 0;
+			paint.stopCount = stopCount ? stopCount->integer : 0;
+			paint.useGammaInterpolation = useGammaInterpolation ? !!useGammaInterpolation->integer : false;
+			paint.useSystemColor = useSystemColor ? !!useSystemColor->integer : false;
+			paint.repeatMode = repeatMode ? repeatMode->integer : 0;
+			EsBufferWrite(data, &paint, sizeof(paint));
+
+			for (uintptr_t i = 0; i < paint.stopCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
+				Property *color = PropertyFind(object, cPropertyName, PROP_OBJECT);
+				sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
+				Property *position = PropertyFind(object, cPropertyName, PROP_OBJECT);
+
+				ThemeGradientStop stop = {};
+				stop.color = GraphGetColor(ObjectFind(color ? color->object : 0));
+				stop.position = GraphGetIntegerFromProperty(position);
+				EsBufferWrite(data, &stop, sizeof(stop));
+			}
+		}
+
+		return THEME_PAINT_LINEAR_GRADIENT;
+	} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
+		// TODO.
+		return THEME_PAINT_RADIAL_GRADIENT;
 	} else {
 		return 0;
 	}
@@ -1473,6 +1582,13 @@ void ExportLayerBox(bool first, Object *object, EsBuffer *data) {
 	EsBufferWrite(data, &box, sizeof(box));
 	ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), data);
 	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
+}
+
+void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
+	ThemeLayerBox box = {};
+	box.mainPaintType = ExportPaint(object, nullptr);
+	EsBufferWrite(data, &box, sizeof(box));
+	ExportPaint(object, data);
 }
 
 //////////////////////////////////////////////////////////////
@@ -1510,22 +1626,6 @@ void CanvasSelectObject(Object *object) {
 	InspectorPopulate();
 }
 
-void CanvasDrawColorSwatch(UIPainter *painter, UIRectangle bounds, uint32_t color) {
-	uint32_t colors[2] = { 0xFFFFFFFF, 0xFFC0C0C0 };
-	BlendPixel(&colors[0], color, false);
-	BlendPixel(&colors[1], color, false);
-	int x = bounds.l, y = bounds.t;
-	bounds = UIRectangleIntersection(bounds, painter->clip);
-
-	if (UI_RECT_VALID(bounds)) {
-		for (int32_t j = bounds.t; j < bounds.b; j++) {
-			for (int32_t i = bounds.l; i < bounds.r; i++) {
-				painter->bits[j * painter->width + i] = colors[(((j - y) >> 3) ^ ((i - x) >> 3)) & 1];
-			}
-		}
-	}
-}
-
 void CanvasDrawArrow(UIPainter *painter, int x0, int y0, int x1, int y1, uint32_t color) {
 	if (!UIDrawLine(painter, x0, y0, x1, y1, color)) return;
 	float angle = atan2f(y1 - y0, x1 - x0);
@@ -1552,9 +1652,16 @@ void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer da
 	ThemeDrawLayer(&themePainter, bounds, &data, 1 /* TODO preview scale */, UI_RECT_1(0) /* TODO opaqueRegion */);
 }
 
-void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
-	// TODO Proper rendering.
+void CanvasDrawColorSwatch(Object *object, UIRectangle bounds, UIPainter *painter) {
+	uint8_t buffer[4096];
+	EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+	ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
+	EsBufferWrite(&data, &layer, sizeof(layer));
+	ExportPaintAsLayerBox(object, &data);
+	CanvasDrawLayerFromData(painter, bounds, data);
+}
 
+void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
 	if (!object || depth == 100) {
 		return;
 	}
@@ -1641,20 +1748,18 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 
 			bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
 
-			if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
-				CanvasDrawColorSwatch(painter, bounds, GraphGetColor(object));
-			} else if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
+			if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
 				int32_t value = GraphGetInteger(object);
 				char buffer[32];
 				snprintf(buffer, sizeof(buffer), "%d", value);
 				UIDrawString(painter, bounds, buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
-			} else if (object->type == OBJ_VAR_TEXT_STYLE) {
-				// TODO Proper rendering.
-				UIDrawString(painter, bounds, "Text", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP) {
 				CanvasDrawLayer(object, bounds, painter);
+			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
+					|| object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
+				CanvasDrawColorSwatch(object, bounds, painter);
 			} else {
-				// TODO Preview for more object types.
+				// TODO Preview for more object types: style, text style, icon style, metrics layer, text layer.
 			}
 		}
 
@@ -1804,6 +1909,8 @@ void ObjectAddCommand(void *) {
 	UIMenuAddItem(menu, 0, "Icon style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_ICON_STYLE);
 	UIMenuAddItem(menu, 0, "Metrics", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_METRICS);
 	UIMenuAddItem(menu, 0, "Overwrite paint", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
+	UIMenuAddItem(menu, 0, "Linear gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
+	UIMenuAddItem(menu, 0, "Radial gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_RADIAL_GRADIENT);
 	UIMenuAddItem(menu, 0, "Box layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_BOX);
 	UIMenuAddItem(menu, 0, "Text layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_TEXT);
 	UIMenuAddItem(menu, 0, "Layer group", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_GROUP);
