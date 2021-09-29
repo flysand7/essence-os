@@ -15,13 +15,13 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // Needed to replace the old designer:
-// TODO Rendering state transitions.
-// TODO Implement remaining objects.
+// TODO Previewing state transitions.
+// TODO Implement gradient paints and path layers.
 // TODO Import and reorganize old theming data.
 // TODO Export.
 
 // Additional features:
-// TODO Selecting multiple objects.
+// TODO Selecting and moving multiple objects.
 // TODO Resizing objects?
 // TODO Find object in graph by name.
 // TODO Prototyping display. (Multiple instances of each object can be placed, resized and interacted with).
@@ -121,7 +121,31 @@ struct EsPainter {
 	EsPaintTarget *target;
 };
 
-const char *cursorStrings[] = {
+#define IN_DESIGNER
+#define DESIGNER2
+
+#define SHARED_COMMON_WANT_RECTANGLES
+#define SHARED_COMMON_WANT_RENDERING
+#include "../shared/common.cpp"
+#define SHARED_MATH_WANT_BASIC_UTILITIES
+#define SHARED_MATH_WANT_INTERPOLATION
+#include "../shared/math.cpp"
+
+#include "../shared/array.cpp"
+#include "../desktop/renderer.cpp"
+#include "../desktop/theme.cpp"
+
+//////////////////////////////////////////////////////////////
+
+const char *cPrimaryStateStrings[] = {
+	"Any", "Idle", "Hovered", "Pressed", "Disabled", "Inactive",
+};
+
+const char *cStateBitStrings[] = {
+	"Focus", "Check", "Indtm", "DefBtn", "Sel", "FcItem", "ListFc", "BfEnt", "AfExt",
+};
+
+const char *cCursorStrings[] = {
 	"Normal",
 	"Text",
 	"Resize vertical",
@@ -152,20 +176,6 @@ const char *cursorStrings[] = {
 	"Rotate drag",
 	"Blank",
 };
-
-#define IN_DESIGNER
-#define DESIGNER2
-
-#define SHARED_COMMON_WANT_RECTANGLES
-#define SHARED_COMMON_WANT_RENDERING
-#include "../shared/common.cpp"
-#define SHARED_MATH_WANT_BASIC_UTILITIES
-#define SHARED_MATH_WANT_INTERPOLATION
-#include "../shared/math.cpp"
-
-#include "../shared/array.cpp"
-#include "../desktop/renderer.cpp"
-#include "../desktop/theme.cpp"
 
 //////////////////////////////////////////////////////////////
 
@@ -216,6 +226,7 @@ enum ObjectType : uint8_t {
 	OBJ_NONE,
 
 	OBJ_STYLE,
+	OBJ_COMMENT,
 
 	OBJ_VAR_COLOR = 0x40,
 	OBJ_VAR_INT,
@@ -231,8 +242,6 @@ enum ObjectType : uint8_t {
 	OBJ_LAYER_TEXT,
 	OBJ_LAYER_GROUP,
 	// OBJ_LAYER_PATH,
-	// OBJ_LAYER_SELECTOR,
-	// OBJ_LAYER_SEQUENCE,
 
 	OBJ_MOD_COLOR = 0xC0,
 	OBJ_MOD_MULTIPLY,
@@ -310,24 +319,41 @@ Property *PropertyFind(Object *object, const char *cName, uint8_t type = 0) {
 	return nullptr;
 }
 
-Property *PropertyFindOrInherit(Object *object, const char *cName, uint8_t type = 0) {
-	while (object) {
-		Property *property = PropertyFind(object, cName);
-
-		if (property) {
-			return type && property->type != type ? nullptr : property;
-		}
-
-		property = PropertyFind(object, "_parent", PROP_OBJECT);
-		object = ObjectFind(property ? property->object : 0);
-	}
-
-	return nullptr;
-}
-
 int32_t PropertyReadInt32(Object *object, const char *cName, int32_t defaultValue = 0) {
 	Property *property = PropertyFind(object, cName);
 	return !property || property->type == PROP_OBJECT ? defaultValue : property->integer;
+}
+
+bool ObjectIsConditional(Object *object) {
+	return PropertyReadInt32(object, "_primaryState")
+		|| PropertyReadInt32(object, "_stateFocused")
+		|| PropertyReadInt32(object, "_stateChecked")
+		|| PropertyReadInt32(object, "_stateIndeterminate")
+		|| PropertyReadInt32(object, "_stateDefaultButton")
+		|| PropertyReadInt32(object, "_stateSelected")
+		|| PropertyReadInt32(object, "_stateFocusedItem")
+		|| PropertyReadInt32(object, "_stateListFocused")
+		|| PropertyReadInt32(object, "_stateBeforeEnter")
+		|| PropertyReadInt32(object, "_stateAfterExit");
+}
+
+Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, uint8_t type = 0) {
+	while (object) {
+		if (first || !ObjectIsConditional(object)) {
+			// Return the value if the object has this property.
+			Property *property = PropertyFind(object, cName);
+			if (property) return type && property->type != type ? nullptr : property;
+		} else {
+			// Skip the object if it has a condition and it's not the original object.
+		}
+
+		// Go to the inheritance parent object.
+		Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
+		object = ObjectFind(property ? property->object : 0);
+		first = false;
+	}
+
+	return nullptr;
 }
 
 void DocumentSave(void *) {
@@ -401,6 +427,8 @@ void DocumentFree() {
 	}
 
 	objects.Free();
+	undoStack.Free();
+	redoStack.Free();
 }
 
 void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
@@ -656,6 +684,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 	} else if (data->elementType == INSPECTOR_BOOLEAN_TOGGLE) {
 		UICheckbox *box = (UICheckbox *) data->element;
 		box->check = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName, 2);
+		if ((~box->e.flags & UI_CHECKBOX_ALLOW_INDETERMINATE)) box->check &= 1;
 		UIElementRefresh(&box->e);
 	} else if (data->elementType == INSPECTOR_RADIO_SWITCH) {
 		UIButton *button = (UIButton *) data->element;
@@ -667,7 +696,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UIButton *button = (UIButton *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_INT);
 		UI_FREE(button->label);
-		button->label = UIStringCopy(property ? cursorStrings[property->integer] : "---", (button->labelBytes = -1));
+		button->label = UIStringCopy(property ? cCursorStrings[property->integer] : "---", (button->labelBytes = -1));
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_COLOR_PICKER) {
 		UIColorPicker *colorPicker = (UIColorPicker *) data->element;
@@ -696,7 +725,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UIButton *button = (UIButton *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_OBJECT);
 		Object *target = ObjectFind(property ? property->object : 0);
-		const char *string = target ? target->cName : "---";
+		const char *string = target ? (target->cName[0] ? target->cName : "(untitled)") : "---";
 		UI_FREE(button->label);
 		button->label = UIStringCopy(string, (button->labelBytes = -1));
 		UIElementRefresh(&button->e);
@@ -834,16 +863,16 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			DocumentApplyStep(step);
 		} else if (data->elementType == INSPECTOR_BOOLEAN_TOGGLE) {
 			UICheckbox *box = (UICheckbox *) element;
-			step.property.type = (box->check + 1) == UI_CHECK_INDETERMINATE ? PROP_NONE : PROP_INT;
-			step.property.integer = (box->check + 1) % 3;
+			step.property.integer = (box->check + 1) % ((box->e.flags & UI_CHECKBOX_ALLOW_INDETERMINATE) ? 3 : 2);
+			step.property.type = step.property.integer == UI_CHECK_INDETERMINATE ? PROP_NONE : PROP_INT;
 			DocumentApplyStep(step);
 			return 1; // InspectorUpdateSingleElement will update the check.
 		} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
 			UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL);
 			UIMenuAddItem(menu, 0, "Inherit", -1, InspectorCursorDropDownMenuInvoke, (void *) (intptr_t) -1);
 
-			for (uintptr_t i = 0; i < sizeof(cursorStrings) / sizeof(cursorStrings[0]); i++) {
-				UIMenuAddItem(menu, 0, cursorStrings[i], -1, InspectorCursorDropDownMenuInvoke, (void *) (intptr_t) i);
+			for (uintptr_t i = 0; i < sizeof(cCursorStrings) / sizeof(cCursorStrings[0]); i++) {
+				UIMenuAddItem(menu, 0, cCursorStrings[i], -1, InspectorCursorDropDownMenuInvoke, (void *) (intptr_t) i);
 			}
 
 			inspectorMenuData = data;
@@ -962,15 +991,52 @@ void InspectorRenameObject(void *) {
 	const char *result = UIDialogShow(window, 0, "Enter the new name for the object:\n%t\n\n%l\n\n%f%b%b", &name, "OK", "Cancel");
 
 	if (0 == strcmp(result, "OK")) {
-		if (!name || strlen(name) >= sizeof(step.cName) - 1) {
-			UIDialogShow(window, 0, "Error: Name must be between 1 and 46 characters.\n%f%b", "OK");
+		if (name && strlen(name) >= sizeof(step.cName) - 1) {
+			UIDialogShow(window, 0, "Error: Name cannot have more than 46 characters.\n%f%b", "OK");
 		} else {
-			strcpy(step.cName, name);
+			strcpy(step.cName, name ?: "");
 			DocumentApplyStep(step);
 		}
 	}
 
 	free(name);
+}
+
+void InspectorAutoNameObject(void *) {
+	Object *object = ObjectFind(selectedObjectID);
+
+	if (!ObjectIsConditional(object)) {
+		UIDialogShow(window, 0, "Error: The object needs to be conditional to use auto-name.\n%f%b", "OK");
+		return;
+	}
+
+	int32_t primaryState = PropertyReadInt32(object, "_primaryState");
+
+	int32_t stateBits[] = { 
+		PropertyReadInt32(object, "_stateFocused"),
+		PropertyReadInt32(object, "_stateChecked"),
+		PropertyReadInt32(object, "_stateIndeterminate"),
+		PropertyReadInt32(object, "_stateDefaultButton"),
+		PropertyReadInt32(object, "_stateSelected"),
+		PropertyReadInt32(object, "_stateFocusedItem"),
+		PropertyReadInt32(object, "_stateListFocused"),
+		PropertyReadInt32(object, "_stateBeforeEnter"),
+		PropertyReadInt32(object, "_stateAfterExit"),
+	};
+
+	Step step = {};
+	step.type = STEP_RENAME_OBJECT;
+	step.objectID = selectedObjectID;
+
+	snprintf(step.cName, sizeof(step.cName), "?%s", primaryState ? cPrimaryStateStrings[primaryState] : "");
+
+	for (uintptr_t i = 0; i < sizeof(stateBits) / sizeof(stateBits[0]); i++) {
+		if (stateBits[i]) {
+			snprintf(step.cName + strlen(step.cName), sizeof(step.cName) - strlen(step.cName), "%s%s", i || primaryState ? "&" : "", cStateBitStrings[i]);
+		}
+	}
+
+	DocumentApplyStep(step);
 }
 
 void InspectorPickTargetCommand(void *cp) {
@@ -1071,8 +1137,9 @@ void InspectorAddFourGroup(Object *object, const char *cLabel, const char *cProp
 	UIParentPop();
 }
 
-void InspectorAddBooleanToggle(Object *object, const char *cLabel, const char *cPropertyName) {
-	InspectorBind(&UICheckboxCreate(0, UI_CHECKBOX_ALLOW_INDETERMINATE, cLabel, -1)->e, object->id, cPropertyName, INSPECTOR_BOOLEAN_TOGGLE);
+void InspectorAddBooleanToggle(Object *object, const char *cLabel, const char *cPropertyName, bool allowIndeterminate = true) {
+	InspectorBind(&UICheckboxCreate(0, allowIndeterminate ? UI_CHECKBOX_ALLOW_INDETERMINATE : 0, cLabel, -1)->e, 
+			object->id, cPropertyName, INSPECTOR_BOOLEAN_TOGGLE);
 }
 
 void InspectorAddRadioSwitch(Object *object, const char *cLabel, const char *cPropertyName, int32_t radioValue) {
@@ -1089,16 +1156,52 @@ void InspectorPopulate() {
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
 			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
 			char buffer[256];
-			snprintf(buffer, sizeof(buffer), "%s (%lu)", object->cName, object->id);
+			snprintf(buffer, sizeof(buffer), "%lu: %s", object->id, object->cName[0] ? object->cName : "(untitled)");
 			UILabelCreate(0, 0, buffer, -1);
 			UISpacerCreate(0, UI_ELEMENT_H_FILL, 0, 0);
-			UIButtonCreate(0, 0, "Rename", -1)->invoke = InspectorRenameObject;
+			UIButtonCreate(0, UI_BUTTON_SMALL, "Auto", -1)->invoke = InspectorAutoNameObject;
+			UIButtonCreate(0, UI_BUTTON_SMALL, "Rename", -1)->invoke = InspectorRenameObject;
 			UIParentPop();
 
-			if (object->type != OBJ_VAR_COLOR && object->type != OBJ_VAR_INT
-					&& object->type != OBJ_MOD_COLOR && object->type != OBJ_MOD_MULTIPLY
-					&& object->type != OBJ_LAYER_GROUP) {
+			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE 
+				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT;
+			bool inheritWithoutAnimation = object->type == OBJ_STYLE || object->type == OBJ_LAYER_METRICS;
+
+			if (inheritWithAnimation || inheritWithoutAnimation) {
 				InspectorAddLink(object, "Inherit from:", "_parent");
+
+				UILabelCreate(0, 0, "Primary state:", -1);
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+				InspectorAddRadioSwitch(object, "Idle", "_primaryState", THEME_PRIMARY_STATE_IDLE);
+				InspectorAddRadioSwitch(object, "Hovered", "_primaryState", THEME_PRIMARY_STATE_HOVERED);
+				InspectorAddRadioSwitch(object, "Pressed", "_primaryState", THEME_PRIMARY_STATE_PRESSED);
+				InspectorAddRadioSwitch(object, "Disabled", "_primaryState", THEME_PRIMARY_STATE_DISABLED);
+				InspectorAddRadioSwitch(object, "Inactive", "_primaryState", THEME_PRIMARY_STATE_INACTIVE);
+				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "_primaryState", INSPECTOR_REMOVE_BUTTON);
+				UIParentPop();
+
+				// TODO Change these to be stored internally as a mask of bits.
+				UILabelCreate(0, 0, "State bits:", -1);
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+				InspectorAddBooleanToggle(object, cStateBitStrings[0], "_stateFocused", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[1], "_stateChecked", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[2], "_stateIndeterminate", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[3], "_stateDefaultButton", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[4], "_stateSelected", false);
+				UIParentPop();
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+				InspectorAddBooleanToggle(object, cStateBitStrings[5], "_stateFocusedItem", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[6], "_stateListFocused", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[7], "_stateBeforeEnter", false);
+				InspectorAddBooleanToggle(object, cStateBitStrings[8], "_stateAfterExit", false);
+				UIParentPop();
+				UIParentPop();
+
+				if (inheritWithAnimation) {
+					UILabelCreate(0, 0, "Transition duration:", -1);
+					InspectorAddInteger(object, nullptr, "_duration");
+				}
 			}
 		UIParentPop();
 
@@ -1270,7 +1373,7 @@ void InspectorPopulate() {
 //////////////////////////////////////////////////////////////
 
 int32_t GraphGetInteger(Object *object, int depth = 0) {
-	if (!object || depth == 10) {
+	if (!object || depth == 100) {
 		return 0;
 	}
 
@@ -1299,7 +1402,7 @@ int32_t GraphGetIntegerFromProperty(Property *property) {
 }
 
 uint32_t GraphGetColor(Object *object, int depth = 0) {
-	if (!object || depth == 10) {
+	if (!object || depth == 100) {
 		return 0;
 	}
 
@@ -1327,7 +1430,7 @@ uint32_t GraphGetColor(Object *object, int depth = 0) {
 //////////////////////////////////////////////////////////////
 
 int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
-	if (!object || depth == 10) {
+	if (!object || depth == 100) {
 		return 0;
 	}
 
@@ -1340,7 +1443,7 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 
 		return THEME_PAINT_SOLID;
 	} else if (object->type == OBJ_PAINT_OVERWRITE) {
-		Property *property = PropertyFind(object, "color", PROP_OBJECT);
+		Property *property = PropertyFindOrInherit(false, object, "color", PROP_OBJECT);
 		Object *object = ObjectFind(property ? property->object : 0);
 		ExportPaint(object, data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
@@ -1349,24 +1452,24 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	}
 }
 
-void ExportLayerBox(Object *object, EsBuffer *data) {
-	Property *mainPaint = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
-	Property *borderPaint = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
+void ExportLayerBox(bool first, Object *object, EsBuffer *data) {
+	Property *mainPaint = PropertyFindOrInherit(first, object, "mainPaint", PROP_OBJECT);
+	Property *borderPaint = PropertyFindOrInherit(first, object, "borderPaint", PROP_OBJECT);
 	ThemeLayerBox box = {};
 	box.mainPaintType = ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), nullptr);
 	box.borderPaintType = ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), nullptr);
-	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
-	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
-	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
-	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
-	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners0"));
-	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners1"));
-	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners2"));
-	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners3"));
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
+	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders0"));
+	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders1"));
+	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders2"));
+	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders3"));
+	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners0"));
+	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners1"));
+	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners2"));
+	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners3"));
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
 	EsBufferWrite(data, &box, sizeof(box));
 	ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), data);
 	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
@@ -1452,7 +1555,7 @@ void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer da
 void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
 	// TODO Proper rendering.
 
-	if (!object || depth == 10) {
+	if (!object || depth == 100) {
 		return;
 	}
 
@@ -1461,7 +1564,7 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
 		EsBufferWrite(&data, &layer, sizeof(layer));
-		ExportLayerBox(object, &data);
+		ExportLayerBox(depth == 0, object, &data);
 		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
@@ -1529,6 +1632,12 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			UIDrawRectangle(painter, bounds, 0xFFE0E0E0, 0xFF404040, UI_RECT_1(1));
 			UIDrawBlock(painter, UI_RECT_4(bounds.l + 1, bounds.r + 1, bounds.b, bounds.b + 1), 0xFF404040);
 			UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
+
+			if (ObjectIsConditional(object)) {
+				UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
+				UIDrawBlock(painter, indicator, 0xFFFFFF00);
+				UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
+			}
 
 			bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
 
@@ -1667,16 +1776,17 @@ void CanvasToggleArrows(void *) {
 void ObjectAddCommandInternal(void *cp) {
 	Object object = {};
 	object.type = (ObjectType) (uintptr_t) cp;
-	strcpy(object.cName, "untitled");
 	object.id = ++objectIDAllocator;
 	Property p;
 	int32_t x = canvasPanX + UI_RECT_WIDTH(canvas->bounds) / 2;
 	int32_t y = canvasPanY + UI_RECT_HEIGHT(canvas->bounds) / 2;
 	x -= x % CANVAS_ALIGN, y -= y % CANVAS_ALIGN;
-	p = { .type = PROP_INT, .integer = x  }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = y  }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = 60 }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = 60 }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
+	int32_t w = object.type == OBJ_COMMENT ? 30 : 60;
+	int32_t h = object.type == OBJ_COMMENT ? 10 : 60;
+	p = { .type = PROP_INT, .integer = x }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = w }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = h }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
 	
 	Step step = {};
 	step.type = STEP_ADD_OBJECT;
@@ -1687,6 +1797,7 @@ void ObjectAddCommandInternal(void *cp) {
 void ObjectAddCommand(void *) {
 	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL);
 	UIMenuAddItem(menu, 0, "Style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_STYLE);
+	UIMenuAddItem(menu, 0, "Comment", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_COMMENT);
 	UIMenuAddItem(menu, 0, "Color variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_COLOR);
 	UIMenuAddItem(menu, 0, "Integer variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_INT);
 	UIMenuAddItem(menu, 0, "Text style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_TEXT_STYLE);
@@ -1717,7 +1828,6 @@ void ObjectDuplicateCommand(void *) {
 
 	Object object = {};
 	object.type = source->type;
-	strcpy(object.cName, "duplicate");
 	object.id = ++objectIDAllocator;
 	object.properties.InsertMany(0, source->properties.Length());
 	memcpy(object.properties.array, source->properties.array, source->properties.Length() * sizeof(Property));
@@ -1800,6 +1910,9 @@ int main() {
 
 	int result = UIMessageLoop();
 	DocumentFree();
+	UIElementDestroy(&window->e);
+	_UIUpdate();
+	inspectorBoundElements.Free();
 	return result;
 }
 
