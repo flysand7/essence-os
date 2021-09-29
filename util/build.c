@@ -417,9 +417,6 @@ void Run(int emulator, int log, int debug) {
 
 	switch (emulator) {
 		case EMULATOR_QEMU: {
-			// -serial file:out.txt
-			// -enable-kvm (doesn't work with GDB)
-
 			const char *biosFlags = "";
 			const char *drivePrefix = "-drive file=bin/drive";
 
@@ -494,14 +491,29 @@ void Run(int emulator, int log, int debug) {
 				if (cpuCores > 16) cpuCores = 16;
 			}
 
+			char serialFlags[256];
+
+			if (IsOptionEnabled("Emulator.SerialToFile")) {
+				system("mv bin/qemu_serial7.txt bin/qemu_serial8.txt 2> /dev/null");
+				system("mv bin/qemu_serial6.txt bin/qemu_serial7.txt 2> /dev/null");
+				system("mv bin/qemu_serial5.txt bin/qemu_serial6.txt 2> /dev/null");
+				system("mv bin/qemu_serial4.txt bin/qemu_serial5.txt 2> /dev/null");
+				system("mv bin/qemu_serial3.txt bin/qemu_serial4.txt 2> /dev/null");
+				system("mv bin/qemu_serial2.txt bin/qemu_serial3.txt 2> /dev/null");
+				system("mv bin/qemu_serial1.txt bin/qemu_serial2.txt 2> /dev/null");
+				strcpy(serialFlags, "-serial file:bin/qemu_serial1.txt");
+			} else {
+				serialFlags[0] = 0;
+			}
+
 			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
-					" %s %s %s %s %s %s ", 
+					" %s %s %s %s %s %s %s ", 
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
-					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags);
+					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags);
 		} break;
 
 		case EMULATOR_BOCHS: {
@@ -1465,6 +1477,25 @@ void DoCommand(const char *l) {
 
 		if (CallSystemF("tar -vx%cf %s", decompressFlag, name)) exit(1);
 		if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
+	} else if (0 == strcmp(l, "make-crash-report")) {
+		system("rm crash-report.tar.gz");
+		system("mkdir crash-report");
+		system("cp bin/qemu_serial* crash-report");
+		system("cp bin/Kernel crash-report");
+		system("cp bin/Desktop crash-report");
+		system("cp bin/File\\ Manager crash-report");
+		system("cp bin/config.ini crash-report");
+		system("cp bin/build.ini crash-report");
+		system("cp root/Essence/Default.ini crash-report");
+		system("cp -r kernel crash-report");
+		system("cp -r desktop crash-report");
+		system("git diff > crash-report/git-diff.txt");
+		system("tar -czf crash-report.tar.gz crash-report");
+		system("rm -r crash-report");
+		char cwd[PATH_MAX];
+		getcwd(cwd, sizeof(cwd));
+		strcat(cwd, "/crash-report.tar.gz");
+		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
 		printf("build (b)                         - Build.\n");
@@ -1488,6 +1519,7 @@ void DoCommand(const char *l) {
 		printf("line-count                        - Count lines of code.\n");
 		printf("ascii <string>                    - Convert a string to a list of ASCII codepoints.\n");
 		printf("a2l <executable>                  - Translate addresses to lines.\n");
+		printf("make-crash-report                 - Make a crash report.\n");
 	} else {
 		printf("Unrecognised command '%s'. Enter 'help' to get a list of commands.\n", l);
 	}

@@ -312,6 +312,7 @@ Option options[] = {
 	{ "Emulator.SecondaryDriveMB", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "Emulator.VBoxEFI", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Emulator.QemuEFI", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Emulator.SerialToFile", OPTION_TYPE_BOOL, { .b = true } },
 	{ "BuildCore.Verbose", OPTION_TYPE_BOOL, { .b = false } },
 	{ "BuildCore.NoImportPOSIX", OPTION_TYPE_BOOL, { .b = false } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
