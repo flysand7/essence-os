@@ -15,10 +15,10 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // Needed to replace the old designer:
-// TODO Export.
-// TODO Proper rendering using theme.cpp.
+// TODO Rendering state transitions.
 // TODO Implement remaining objects.
 // TODO Import and reorganize old theming data.
+// TODO Export.
 
 // Additional features:
 // TODO Selecting multiple objects.
@@ -65,14 +65,11 @@
 #define EsMemoryCopyReverse memmove
 #define EsMemoryZero(a, b) memset((a), 0, (b))
 #define EsPanic(...) UI_ASSERT(false)
+#define EsRectangle UIRectangle
 
 #define ES_MEMORY_MOVE_BACKWARDS -
 
 #define SHARED_COMMON_WANT_BUFFERS
-
-struct EsRectangle { 
-	int32_t l, r, t, b; 
-};
 
 struct EsBuffer {
 	union { const uint8_t *in; uint8_t *out; };
@@ -1272,6 +1269,111 @@ void InspectorPopulate() {
 
 //////////////////////////////////////////////////////////////
 
+int32_t GraphGetInteger(Object *object, int depth = 0) {
+	if (!object || depth == 10) {
+		return 0;
+	}
+
+	if (object->type == OBJ_VAR_INT) {
+		return PropertyReadInt32(object, "value");
+	} else if (object->type == OBJ_MOD_MULTIPLY) {
+		Property *property = PropertyFind(object, "base", PROP_OBJECT);
+		int32_t base = GraphGetInteger(ObjectFind(property ? property->object : 0), depth + 1);
+		int32_t factor = PropertyReadInt32(object, "factor");
+		return base * factor / 100;
+	} else {
+		return 0;
+	}
+}
+
+int32_t GraphGetIntegerFromProperty(Property *property) {
+	if (!property) {
+		return 0;
+	} else if (property->type == PROP_INT) {
+		return property->integer;
+	} else if (property->type == PROP_OBJECT) {
+		return GraphGetInteger(ObjectFind(property->object));
+	} else {
+		return 0;
+	}
+}
+
+uint32_t GraphGetColor(Object *object, int depth = 0) {
+	if (!object || depth == 10) {
+		return 0;
+	}
+
+	if (object->type == OBJ_VAR_COLOR) {
+		return PropertyReadInt32(object, "color");
+	} else if (object->type == OBJ_MOD_COLOR) {
+		Property *property = PropertyFind(object, "base", PROP_OBJECT);
+		uint32_t base = GraphGetColor(ObjectFind(property ? property->object : 0), depth + 1);
+		uint32_t alpha = base & 0xFF000000;
+		int32_t brightness = PropertyReadInt32(object, "brightness");
+		int32_t hueShift = PropertyReadInt32(object, "hueShift");
+		double hue, saturation, luminosity, red, green, blue;
+		rgb2hsluv(UI_COLOR_RED_F(base), UI_COLOR_GREEN_F(base), UI_COLOR_BLUE_F(base), &hue, &saturation, &luminosity);
+		luminosity += luminosity * brightness / 100.0f;
+		hue = fmod(hue + hueShift, 360.0);
+		if (luminosity < 0.0) luminosity = 0.0;
+		if (luminosity > 100.0) luminosity = 100.0;
+		hsluv2rgb(hue, saturation, luminosity, &red, &green, &blue);
+		return UI_COLOR_FROM_FLOAT(red, green, blue) | alpha;
+	} else {
+		return 0;
+	}
+}
+
+//////////////////////////////////////////////////////////////
+
+int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
+	if (!object || depth == 10) {
+		return 0;
+	}
+
+	if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
+		if (data) {
+			ThemePaintSolid solid = {};
+			solid.color = GraphGetColor(object);
+			EsBufferWrite(data, &solid, sizeof(ThemePaintSolid));
+		}
+
+		return THEME_PAINT_SOLID;
+	} else if (object->type == OBJ_PAINT_OVERWRITE) {
+		Property *property = PropertyFind(object, "color", PROP_OBJECT);
+		Object *object = ObjectFind(property ? property->object : 0);
+		ExportPaint(object, data, depth + 1);
+		return THEME_PAINT_OVERWRITE;
+	} else {
+		return 0;
+	}
+}
+
+void ExportLayerBox(Object *object, EsBuffer *data) {
+	Property *mainPaint = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
+	Property *borderPaint = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
+	ThemeLayerBox box = {};
+	box.mainPaintType = ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), nullptr);
+	box.borderPaintType = ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), nullptr);
+	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
+	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
+	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
+	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
+	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners0"));
+	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners1"));
+	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners2"));
+	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners3"));
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
+	EsBufferWrite(data, &box, sizeof(box));
+	ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), data);
+	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
+}
+
+//////////////////////////////////////////////////////////////
+
 #define CANVAS_ALIGN (20)
 
 float canvasPanX, canvasPanY;
@@ -1328,59 +1430,23 @@ void CanvasDrawArrow(UIPainter *painter, int x0, int y0, int x1, int y1, uint32_
 	UIDrawLine(painter, x0, y0, x0 + cosf(angle - 0.5f) * 15, y0 + sinf(angle - 0.5f) * 15, color);
 }
 
-int32_t CanvasGetInteger(Object *object, int depth = 0) {
-	if (!object || depth == 10) {
-		return 0;
-	}
+void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer data) {
+	EsPaintTarget paintTarget = {};
+	EsPainter themePainter = {};
+	themePainter.target = &paintTarget;
+	themePainter.clip.l = painter->clip.l;
+	themePainter.clip.r = painter->clip.r;
+	themePainter.clip.t = painter->clip.t;
+	themePainter.clip.b = painter->clip.b;
+	themePainter.target->bits = painter->bits;
+	themePainter.target->width = painter->width;
+	themePainter.target->height = painter->height;
+	themePainter.target->stride = painter->width * 4;
 
-	if (object->type == OBJ_VAR_INT) {
-		return PropertyReadInt32(object, "value");
-	} else if (object->type == OBJ_MOD_MULTIPLY) {
-		Property *property = PropertyFind(object, "base", PROP_OBJECT);
-		int32_t base = CanvasGetInteger(ObjectFind(property ? property->object : 0), depth + 1);
-		int32_t factor = PropertyReadInt32(object, "factor");
-		return base * factor / 100;
-	} else {
-		return 0;
-	}
-}
+	data.bytes = data.position;
+	data.position = 0;
 
-int32_t CanvasGetIntegerFromProperty(Property *property) {
-	if (!property) {
-		return 0;
-	} else if (property->type == PROP_INT) {
-		return property->integer;
-	} else if (property->type == PROP_OBJECT) {
-		return CanvasGetInteger(ObjectFind(property->object));
-	} else {
-		return 0;
-	}
-}
-
-uint32_t CanvasGetColorFromPaint(Object *object, int depth = 0) {
-	if (!object || depth == 10) {
-		return 0;
-	}
-
-	if (object->type == OBJ_VAR_COLOR) {
-		return PropertyReadInt32(object, "color");
-	} else if (object->type == OBJ_MOD_COLOR) {
-		Property *property = PropertyFind(object, "base", PROP_OBJECT);
-		uint32_t base = CanvasGetColorFromPaint(ObjectFind(property ? property->object : 0), depth + 1);
-		uint32_t alpha = base & 0xFF000000;
-		int32_t brightness = PropertyReadInt32(object, "brightness");
-		int32_t hueShift = PropertyReadInt32(object, "hueShift");
-		double hue, saturation, luminosity, red, green, blue;
-		rgb2hsluv(UI_COLOR_RED_F(base), UI_COLOR_GREEN_F(base), UI_COLOR_BLUE_F(base), &hue, &saturation, &luminosity);
-		luminosity += luminosity * brightness / 100.0f;
-		hue = fmod(hue + hueShift, 360.0);
-		if (luminosity < 0.0) luminosity = 0.0;
-		if (luminosity > 100.0) luminosity = 100.0;
-		hsluv2rgb(hue, saturation, luminosity, &red, &green, &blue);
-		return UI_COLOR_FROM_FLOAT(red, green, blue) | alpha;
-	} else {
-		return 0;
-	}
+	ThemeDrawLayer(&themePainter, bounds, &data, 1 /* TODO preview scale */, UI_RECT_1(0) /* TODO opaqueRegion */);
 }
 
 void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
@@ -1391,21 +1457,12 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 
 	if (object->type == OBJ_LAYER_BOX) {
-		UIRectangle borders;
-		borders.l = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
-		borders.r = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
-		borders.t = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
-		borders.b = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
-
-		Property *mainPaintProperty = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
-		Object *mainPaint = ObjectFind(mainPaintProperty ? mainPaintProperty->object : 0);
-		uint32_t mainPaintColor = CanvasGetColorFromPaint(mainPaint);
-
-		Property *borderPaintProperty = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
-		Object *borderPaint = ObjectFind(borderPaintProperty ? borderPaintProperty->object : 0);
-		uint32_t borderPaintColor = CanvasGetColorFromPaint(borderPaint);
-
-		UIDrawRectangle(painter, bounds, mainPaintColor, borderPaintColor, borders);
+		uint8_t buffer[4096];
+		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
+		EsBufferWrite(&data, &layer, sizeof(layer));
+		ExportLayerBox(object, &data);
+		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
 		if (layerCount < 0) layerCount = 0;
@@ -1476,9 +1533,9 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
 
 			if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
-				CanvasDrawColorSwatch(painter, bounds, CanvasGetColorFromPaint(object));
+				CanvasDrawColorSwatch(painter, bounds, GraphGetColor(object));
 			} else if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
-				int32_t value = CanvasGetInteger(object);
+				int32_t value = GraphGetInteger(object);
 				char buffer[32];
 				snprintf(buffer, sizeof(buffer), "%d", value);
 				UIDrawString(painter, bounds, buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);

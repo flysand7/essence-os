@@ -127,13 +127,14 @@ typedef struct ThemePaintRadialGradient {
 
 #ifndef IN_DESIGNER
 typedef uint32_t (*EsFragmentShaderCallback)(int x, int y, struct StyledBox *box);
-#endif
 
 typedef struct ThemePaintCustom {
-#ifndef IN_DESIGNER
 	EsFragmentShaderCallback callback;
-#endif
 } ThemePaintCustom;
+#else
+typedef struct ThemePaintCustom {
+} ThemePaintCustom;
+#endif
 
 typedef struct ThemeLayerBox {
 	Rectangle8 borders;
@@ -1143,8 +1144,6 @@ void ThemeDrawPath(EsPainter *painter, EsRectangle rect, EsBuffer *data, float s
 	RastPathDestroy(&path);
 }
 
-#ifdef IN_DESIGNER
-
 void ThemeDrawLayer(EsPainter *painter, EsRectangle _bounds, EsBuffer *data, float scale, EsRectangle opaqueRegion) {
 	const ThemeLayer *layer = (const ThemeLayer *) EsBufferRead(data, sizeof(ThemeLayer));
 
@@ -1172,8 +1171,6 @@ void ThemeDrawLayer(EsPainter *painter, EsRectangle _bounds, EsBuffer *data, flo
 		}
 	}
 }
-
-#endif
 
 //////////////////////////////////////////
 
