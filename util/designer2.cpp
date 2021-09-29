@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <math.h>
 #endif
+#include "hsluv.h"
 
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
@@ -16,12 +17,10 @@
 // TODO Import and reorganize old theming data.
 
 // Additional features:
-// TODO Better color modification space -- HSLuv.
 // TODO Selecting multiple objects.
 // TODO Resizing objects?
 // TODO Find object in graph by name.
 // TODO Prototyping display. (Multiple instances of each object can be placed, resized and interacted with).
-// TODO Running on Essence: x86_64-essence-g++ -o root/designer2 -D UI_ESSENCE util/designer2.cpp 
 		
 //////////////////////////////////////////////////////////////
 
@@ -1123,8 +1122,10 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Color:", "color");
 		} else if (object->type == OBJ_MOD_COLOR) {
 			InspectorAddLink(object, "Base color:", "base");
-			UILabelCreate(0, 0, "Brightness:", -1);
+			UILabelCreate(0, 0, "Brightness (%):", -1);
 			InspectorBind(&UITextboxCreate(0, UI_ELEMENT_H_FILL)->e, object->id, "brightness", INSPECTOR_INTEGER_TEXTBOX);
+			UILabelCreate(0, 0, "Hue shift (deg):", -1);
+			InspectorBind(&UITextboxCreate(0, UI_ELEMENT_H_FILL)->e, object->id, "hueShift", INSPECTOR_INTEGER_TEXTBOX);
 		} else if (object->type == OBJ_MOD_MULTIPLY) {
 			InspectorAddLink(object, "Base integer:", "base");
 			UILabelCreate(0, 0, "Factor (%):", -1);
@@ -1239,13 +1240,15 @@ uint32_t CanvasGetColorFromPaint(Object *object, int depth = 0) {
 		uint32_t base = CanvasGetColorFromPaint(ObjectFind(property ? property->object : 0), depth + 1);
 		uint32_t alpha = base & 0xFF000000;
 		int32_t brightness = PropertyReadInt32(object, "brightness");
-		float hue, saturation, value;
-		UIColorToHSV(base, &hue, &saturation, &value);
-		value += brightness / 100.0f;
-		if (value < 0) value = 0;
-		if (value > 1) value = 1;
-		UIColorToRGB(hue, saturation, value, &base);
-		return base | alpha;
+		int32_t hueShift = PropertyReadInt32(object, "hueShift");
+		double hue, saturation, luminosity, red, green, blue;
+		rgb2hsluv(UI_COLOR_RED_F(base), UI_COLOR_GREEN_F(base), UI_COLOR_BLUE_F(base), &hue, &saturation, &luminosity);
+		luminosity += luminosity * brightness / 100.0f;
+		hue = fmod(hue + hueShift, 360.0);
+		if (luminosity < 0.0) luminosity = 0.0;
+		if (luminosity > 100.0) luminosity = 100.0;
+		hsluv2rgb(hue, saturation, luminosity, &red, &green, &blue);
+		return UI_COLOR_FROM_FLOAT(red, green, blue) | alpha;
 	} else {
 		return 0;
 	}
@@ -1530,7 +1533,7 @@ int main() {
 #else
 		UIButtonCreate(0, 0, "Save", -1)->invoke = DocumentSave;
 #endif
-		UIButtonCreate(0, 0, "Add object", -1)->invoke = ObjectAddCommand;
+		UIButtonCreate(0, 0, "Add object...", -1)->invoke = ObjectAddCommand;
 		UISpacerCreate(0, 0, 15, 0);
 		labelMessage = UILabelCreate(0, UI_ELEMENT_H_FILL, 0, 0);
 	UIParentPop();

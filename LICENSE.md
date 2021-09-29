@@ -24,6 +24,7 @@ This project also include the work of other projects.
 All trademarks are registered trademarks of their respective owners.
 They licenses may be found in the following files:
 	- util/nanosvg.h
+	- util/hsluv.h
 	- shared/stb_image.h, shared/stb_sprintf.h, shared/stb_ds.h and util/stb_truetype.h
 	- res/Fonts/Hack License.txt, res/Fonts/Inter License.txt
 	- res/Icons/elementary Icons License.txt

@@ -836,6 +836,14 @@ float EsCRTpowf(float x, float y) {
 	return EsCRTexp2f(y * EsCRTlog2f(x));
 }
 
+double EsCRTcbrt(double x) {
+	return EsCRTpow(x, 1.0 / 3.0);
+}
+
+float EsCRTcbrtf(float x) {
+	return EsCRTpowf(x, 1.0f / 3.0f);
+}
+
 double EsCRTexp(double x) {
 	return EsCRTexp2(x * 1.4426950408889634073);
 }
