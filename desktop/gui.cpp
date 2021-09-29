@@ -3869,6 +3869,12 @@ int AnnouncementMessage(EsElement *element, EsMessage *message) {
 void EsAnnouncementShow(EsWindow *parent, uint64_t flags, int32_t x, int32_t y, const char *text, ptrdiff_t textBytes) {
 	(void) flags;
 
+	if (x == -1 && y == -1) {
+		EsRectangle bounds = EsElementGetWindowBounds((EsElement *) parent->toolbarSwitcher ?: parent);
+		x = (bounds.l + bounds.r) / 2;
+		y = bounds.t + 40 * theming.scale;
+	}
+
 	EsWindow *window = EsWindowCreate(nullptr, ES_WINDOW_TIP);
 	if (!window) return;
 	window->messageUser = AnnouncementMessage;
@@ -3878,7 +3884,7 @@ void EsAnnouncementShow(EsWindow *parent, uint64_t flags, int32_t x, int32_t y, 
 	int32_t height = display ? display->GetHeight(width) : 0;
 
 	EsRectangle parentBounds = {};
-       	if (parent) parentBounds = EsWindowGetBounds(parent);
+	if (parent) parentBounds = EsWindowGetBounds(parent);
 	EsRectangle bounds = ES_RECT_4PD(x - width / 2 + parentBounds.l, y - height + parentBounds.t, width, height);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0x00, 0, ES_WINDOW_PROPERTY_ALPHA);
 	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN | ES_WINDOW_MOVE_ALWAYS_ON_TOP);

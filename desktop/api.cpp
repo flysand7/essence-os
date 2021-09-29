@@ -24,6 +24,7 @@
 #include <emmintrin.h>
 
 #define SHARED_COMMON_WANT_ALL
+#define SHARED_MATH_WANT_ALL
 #include <shared/ini.h>
 #include <shared/avl_tree.cpp>
 #include <shared/heap.cpp>
@@ -1130,8 +1131,7 @@ EsMessage *EsMessageReceive() {
 				APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 				if (message.message.tabOperation.error == ES_SUCCESS) {
-					EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
-					EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, INTERFACE_STRING(FileRenameSuccess));
+					EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, -1, -1, INTERFACE_STRING(FileRenameSuccess));
 				} else {
 					char buffer[512];
 					const char *errorMessage = interfaceString_FileSaveErrorUnknown;
@@ -1363,11 +1363,10 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 
 		if (success) {
 			EsInstanceSetModified(instance, false);
-			EsRectangle bounds = EsElementGetWindowBounds(instance->window->toolbarSwitcher);
 			size_t messageBytes;
 			char *message = EsStringAllocateAndFormat(&messageBytes, "Saved to %s", // TODO Localization.
 					apiInstance->startupInformation->filePathBytes, apiInstance->startupInformation->filePath); 
-			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, (bounds.l + bounds.r) / 2, bounds.b, message, messageBytes);
+			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, -1, -1, message, messageBytes);
 			EsHeapFree(message);
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
 

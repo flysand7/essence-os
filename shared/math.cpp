@@ -2,6 +2,8 @@
 // Basic utilities.
 /////////////////////////////////
 
+#if defined(SHARED_MATH_WANT_BASIC_UTILITIES) || defined(SHARED_MATH_WANT_ALL)
+
 template <class T>
 T RoundDown(T value, T divisor) {
 	value /= divisor;
@@ -80,11 +82,13 @@ inline int64_t AbsoluteInteger64(int64_t a) {
 	return a > 0 ? a : -a;
 }
 
+#endif
+
 /////////////////////////////////
 // Interpolation.
 /////////////////////////////////
 
-#ifndef KERNEL
+#if defined(SHARED_MATH_WANT_INTERPOLATION) || defined(SHARED_MATH_WANT_ALL)
 
 float LinearMap(float inFrom, float inTo, float outFrom, float outTo, float value) {
 	float raw = (value - inFrom) / (inTo - inFrom);
@@ -94,6 +98,36 @@ float LinearMap(float inFrom, float inTo, float outFrom, float outTo, float valu
 float LinearInterpolate(float from, float to, float progress) {
 	return from + progress * (to - from);
 }
+
+float RubberBand(float original, float target) {
+	float sign = SignFloat(original - target);
+	float distance = AbsoluteFloat(original - target);
+	float amount = EsCRTlog2f(distance);
+	return target + sign * amount * 2.0f;
+}
+
+float GammaInterpolate(float from, float to, float progress) {
+	from = from * from;
+	to = to * to;
+	return EsCRTsqrtf(from + progress * (to - from));
+}
+
+double SmoothAnimationTime(double progress) {
+	if (progress > 1) return 1;
+	progress -= 1;
+	return 1 + progress * progress * progress;
+}
+
+double SmoothAnimationTimeSharp(double progress) {
+	if (progress > 1) return 1;
+	progress -= 1;
+	double progressSquared = progress * progress;
+	return 1 + progressSquared * progressSquared * progress;
+}
+
+#endif
+
+#ifdef SHARED_MATH_WANT_ALL
 
 EsRectangle EsRectangleLinearInterpolate(EsRectangle from, EsRectangle to, float progress) {
 	return ES_RECT_4(LinearInterpolate(from.l, to.l, progress), LinearInterpolate(from.r, to.r, progress), 
@@ -119,37 +153,13 @@ uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress) {
 		| (uint32_t) (LinearInterpolate(fa, ta, progress) * 255.0f) << 24;
 }
 
-float RubberBand(float original, float target) {
-	float sign = SignFloat(original - target);
-	float distance = AbsoluteFloat(original - target);
-	float amount = EsCRTlog2f(distance);
-	return target + sign * amount * 2.0f;
-}
-
-#ifndef KERNEL
-float GammaInterpolate(float from, float to, float progress) {
-	from = from * from;
-	to = to * to;
-	return EsCRTsqrtf(from + progress * (to - from));
-}
 #endif
-
-double SmoothAnimationTime(double progress) {
-	if (progress > 1) return 1;
-	progress -= 1;
-	return 1 + progress * progress * progress;
-}
-
-double SmoothAnimationTimeSharp(double progress) {
-	if (progress > 1) return 1;
-	progress -= 1;
-	double progressSquared = progress * progress;
-	return 1 + progressSquared * progressSquared * progress;
-}
 
 /////////////////////////////////
 // HSV colors.
 /////////////////////////////////
+
+#ifdef SHARED_MATH_WANT_ALL
 
 uint32_t EsColorConvertToRGB(float h, float s, float v) {
 	float r = 0, g = 0, b = 0;
@@ -204,9 +214,13 @@ bool EsColorIsLight(uint32_t color) {
 	return brightness >= 180.0f;
 }
 
+#endif
+
 /////////////////////////////////
 // Standard mathematical functions.
 /////////////////////////////////
+
+#ifdef SHARED_MATH_WANT_ALL
 
 union ConvertFloatInteger {
 	float f;
@@ -869,9 +883,13 @@ bool EsCRTisnanf(float x) {
 #undef D
 #undef F
 
+#endif
+
 /////////////////////////////////
 // High precision floats.
 /////////////////////////////////
+
+#ifdef SHARED_MATH_WANT_ALL
 
 #define MANTISSA_BITS (256)
 #include <x86intrin.h>
@@ -1502,9 +1520,13 @@ void BigFloatInitialise() {
 	}
 }
 
+#endif
+
 /////////////////////////////////
 // Calculating expressions.
 /////////////////////////////////
+
+#ifdef SHARED_MATH_WANT_ALL
 
 namespace Calculator {
 	enum ValueType : uint8_t {

@@ -380,7 +380,7 @@ void ThemeFillRectangle(EsPainter *painter, EsRectangle bounds, ThemePaintData p
 	if (!THEME_RECT_VALID(bounds)) return;
 
 	if (paint.type == THEME_PAINT_SOLID) {
-#ifndef IN_DESIGNER
+#if !defined(IN_DESIGNER) || defined(DESIGNER2)
 		_DrawBlock(painter->target->stride, bits, bounds, paint.solid->color, painter->target->fullAlpha);
 #else
 		uint32_t color = paint.solid->color;

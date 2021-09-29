@@ -1,26 +1,8 @@
-#ifdef SHARED_COMMON_WANT_ALL
-#define SHARED_COMMON_WANT_RECTANGLES
-#define SHARED_COMMON_WANT_RENDERING
-#define SHARED_COMMON_WANT_STRINGS
-#define SHARED_COMMON_WANT_MEMORY
-#define SHARED_COMMON_WANT_AUDIO
-#define SHARED_COMMON_WANT_PRINTING
-#define SHARED_COMMON_WANT_TIMING
-#define SHARED_COMMON_WANT_RANDOM
-#define SHARED_COMMON_WANT_ALGORITHMS
-#define SHARED_COMMON_WANT_MISCELLANEOUS
-#define SHARED_COMMON_WANT_SYNC
-#define SHARED_COMMON_WANT_BYTE_SWAP
-#define SHARED_COMMON_WANT_CSTDLIB
-#define SHARED_COMMON_WANT_BUFFERS
-#define SHARED_COMMON_WANT_AUDIO
-#endif
-
 /////////////////////////////////
 // EsRectangle utility functions.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_RECTANGLES
+#if defined(SHARED_COMMON_WANT_RECTANGLES) || defined(SHARED_COMMON_WANT_ALL)
 
 struct Corners8 { int8_t tl, tr, bl, br; };
 struct Corners32 { int32_t tl, tr, bl, br; };
@@ -39,7 +21,9 @@ inline int Height(EsRectangle rectangle) {
 }
 
 EsRectangle Translate(EsRectangle rectangle, int x, int y) {
-	return EsRectangleAdd(rectangle, ES_RECT_2(x, y));
+	rectangle.l += x, rectangle.r += x;
+	rectangle.t += y, rectangle.b += y;
+	return rectangle;
 }
 
 bool EsRectangleClip(EsRectangle parent, EsRectangle rectangle, EsRectangle *output) {
@@ -53,7 +37,7 @@ bool EsRectangleClip(EsRectangle parent, EsRectangle rectangle, EsRectangle *out
 		intersection.r = current.r < rectangle.r ? current.r : rectangle.r;
 		intersection.b = current.b < rectangle.b ? current.b : rectangle.b;
 	} else {
-		intersection = ES_RECT_4(0, 0, 0, 0);
+		intersection = {};
 	}
 
 	if (output) {
@@ -62,6 +46,10 @@ bool EsRectangleClip(EsRectangle parent, EsRectangle rectangle, EsRectangle *out
 
 	return intersection.l < intersection.r && intersection.t < intersection.b;
 }
+
+#endif
+
+#ifdef SHARED_COMMON_WANT_ALL
 
 EsRectangle EsRectangleAddBorder(EsRectangle rectangle, EsRectangle border) {
 	rectangle.l += border.l;
@@ -165,7 +153,7 @@ EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side) {
 // Rendering.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_RENDERING
+#if defined(SHARED_COMMON_WANT_RENDERING) || defined(SHARED_COMMON_WANT_ALL)
 
 ES_FUNCTION_OPTIMISE_O3 
 void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
@@ -208,6 +196,41 @@ void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
 	uint32_t result = a | (0x0000FF00 & ((g1 + g2) >> 8)) | (0x00FF00FF & ((r1 + r2) >> 8));
 	*destinationPixel = result;
 }
+
+void _DrawBlock(uintptr_t stride, void *bits, EsRectangle bounds, uint32_t color, bool fullAlpha) {
+	stride /= 4;
+	uint32_t *lineStart = (uint32_t *) bits + bounds.t * stride + bounds.l;
+
+	__m128i color4 = _mm_set_epi32(color, color, color, color);
+
+	for (int i = 0; i < bounds.b - bounds.t; i++, lineStart += stride) {
+		uint32_t *destination = lineStart;
+		int j = bounds.r - bounds.l;
+
+		if ((color & 0xFF000000) != 0xFF000000) {
+			do {
+				BlendPixel(destination, color, fullAlpha);
+				destination++;
+			} while (--j);
+		} else {
+			while (j >= 4) {
+				_mm_storeu_si128((__m128i *) destination, color4);
+				destination += 4;
+				j -= 4;
+			} 
+
+			while (j > 0) {
+				*destination = color;
+				destination++;
+				j--;
+			} 
+		}
+	}
+}
+
+#endif
+
+#ifdef SHARED_COMMON_WANT_ALL
 
 uint32_t EsColorBlend(uint32_t under, uint32_t over, bool fullAlpha) {
 	BlendPixel(&under, over, fullAlpha);
@@ -277,37 +300,6 @@ void EsDrawClear(EsPainter *painter, EsRectangle bounds) {
 			destination++;
 			j--;
 		} 
-	}
-}
-
-void _DrawBlock(uintptr_t stride, void *bits, EsRectangle bounds, uint32_t color, bool fullAlpha) {
-	stride /= 4;
-	uint32_t *lineStart = (uint32_t *) bits + bounds.t * stride + bounds.l;
-
-	__m128i color4 = _mm_set_epi32(color, color, color, color);
-
-	for (int i = 0; i < bounds.b - bounds.t; i++, lineStart += stride) {
-		uint32_t *destination = lineStart;
-		int j = bounds.r - bounds.l;
-
-		if ((color & 0xFF000000) != 0xFF000000) {
-			do {
-				BlendPixel(destination, color, fullAlpha);
-				destination++;
-			} while (--j);
-		} else {
-			while (j >= 4) {
-				_mm_storeu_si128((__m128i *) destination, color4);
-				destination += 4;
-				j -= 4;
-			} 
-
-			while (j > 0) {
-				*destination = color;
-				destination++;
-				j--;
-			} 
-		}
 	}
 }
 
@@ -478,7 +470,7 @@ void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle de
 // String utility functions.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_STRINGS
+#ifdef SHARED_COMMON_WANT_ALL
 
 size_t EsCStringLength(const char *string) {
 	if (!string) {
@@ -1256,7 +1248,7 @@ double EsDoubleParse(const char *nptr, ptrdiff_t maxBytes, char **endptr) {
 // Memory utility functions.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_MEMORY
+#ifdef SHARED_COMMON_WANT_ALL
 
 void EsMemoryCopy(void *_destination, const void *_source, size_t bytes) {
 	// TODO Prevent this from being optimised out in the kernel.
@@ -1393,7 +1385,7 @@ void EsMemoryFill(void *from, void *to, uint8_t byte) {
 // Printing.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_PRINTING
+#ifdef SHARED_COMMON_WANT_ALL
 
 #ifdef USE_STB_SPRINTF
 #define STB_SPRINTF_IMPLEMENTATION
@@ -1447,7 +1439,7 @@ void EsPrintHelloWorld() {
 // Timing utility functions.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_TIMING
+#ifdef SHARED_COMMON_WANT_ALL
 
 #ifdef KERNEL
 
@@ -1486,7 +1478,7 @@ int __tsi = 1;
 // Random number generator.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_RANDOM
+#ifdef SHARED_COMMON_WANT_ALL
 
 struct RNGState {
 	uint64_t s[4];
@@ -1556,7 +1548,7 @@ uint8_t EsRandomU8() {
 // Standard algorithms.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_ALGORITHMS
+#ifdef SHARED_COMMON_WANT_ALL
 
 void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, int (*compar)(const void *, const void *, EsGeneric), 
 		EsGeneric argument, void (*swap)(const void *, const void *, EsGeneric)) {
@@ -1604,7 +1596,7 @@ void EsSort(void *_base, size_t nmemb, size_t size, int (*compar)(const void *, 
 // Miscellaneous.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_MISCELLANEOUS
+#ifdef SHARED_COMMON_WANT_ALL
 
 void EnterDebugger() {
 	// Do nothing.
@@ -1722,7 +1714,7 @@ void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int des
 // Synchronisation.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_SYNC
+#ifdef SHARED_COMMON_WANT_ALL
 
 void EsSpinlockAcquire(EsSpinlock *spinlock) {
 	__sync_synchronize();
@@ -1812,7 +1804,7 @@ void EsMutexDestroy(EsMutex *mutex) {
 // Byte swapping.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_BYTE_SWAP
+#ifdef SHARED_COMMON_WANT_ALL
 
 uint16_t ByteSwap16(uint16_t x) {
 	return (x << 8) | (x >> 8);
@@ -1839,7 +1831,7 @@ uint32_t SwapBigEndian32(uint32_t x) {
 // C standard library.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_CSTDLIB
+#ifdef SHARED_COMMON_WANT_ALL
 
 void *EsCRTmemset(void *s, int c, size_t n) {
 	uint8_t *s8 = (uint8_t *) s;
@@ -2550,7 +2542,7 @@ int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format, va_list 
 // Memory buffers.
 /////////////////////////////////
 
-#ifdef SHARED_COMMON_WANT_BUFFERS
+#if defined(SHARED_COMMON_WANT_BUFFERS) || defined(SHARED_COMMON_WANT_ALL)
 
 const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) {
 	if (!readBytes && buffer->position == buffer->bytes) {

@@ -120,6 +120,7 @@ void KRegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, bool ne
 #define SHARED_DEFINITIONS_ONLY
 #endif
 
+#define SHARED_MATH_WANT_BASIC_UTILITIES
 #include <shared/unicode.cpp>
 #include <shared/math.cpp>
 #include <shared/linked_list.cpp>

@@ -1,9 +1,14 @@
 #define UI_IMPLEMENTATION
 #define ES_CRT_WITHOUT_PREFIX
+#define EsPainter _EsPainter
+#define EsPaintTarget _EsPaintTarget
 #include "luigi.h"
+#undef EsPaintTarget
+#undef EsPainter
 #ifndef OS_ESSENCE
 #include <stdio.h>
 #include <math.h>
+#include <limits.h>
 #endif
 #include "hsluv.h"
 
@@ -34,19 +39,58 @@
 #define ES_TEXT_ELLIPSIS (1 << 6)
 #define ES_TEXT_WRAP 	 (1 << 7)
 
-#define ES_FONT_SANS 		(0xFFFF)
-#define ES_FONT_SERIF 		(0xFFFE)
-#define ES_FONT_MONOSPACED 	(0xFFFD)
+#define ES_FONT_SANS 	   (0xFFFF)
+#define ES_FONT_SERIF 	   (0xFFFE)
+#define ES_FONT_MONOSPACED (0xFFFD)
 
+#define ES_FUNCTION_OPTIMISE_O2 __attribute__((optimize("-O2")))
+#define ES_FUNCTION_OPTIMISE_O3 __attribute__((optimize("-O3")))
+
+#define ES_INFINITY INFINITY
+
+#define EsAssert assert
+#define EsCRTacosf acosf
+#define EsCRTatan2f atan2f
+#define EsCRTceilf ceilf
+#define EsCRTcosf cosf
+#define EsCRTfabsf fabsf
+#define EsCRTfloorf floorf
+#define EsCRTfmodf fmodf
+#define EsCRTisnanf isnan
+#define EsCRTlog2f log2f
+#define EsCRTsinf sinf
+#define EsCRTsqrtf sqrtf
 #define EsHeap void
-#define EsHeapAllocate(a, b, c) calloc(1, (a))
-#define EsHeapFree(a, b, c) free((a))
-#define EsMemoryZero(a, b) memset((a), 0, (b))
 #define EsMemoryCopy memcpy
 #define EsMemoryCopyReverse memmove
+#define EsMemoryZero(a, b) memset((a), 0, (b))
 #define EsPanic(...) UI_ASSERT(false)
 
 #define ES_MEMORY_MOVE_BACKWARDS -
+
+#define SHARED_COMMON_WANT_BUFFERS
+
+struct EsRectangle { 
+	int32_t l, r, t, b; 
+};
+
+struct EsBuffer {
+	union { const uint8_t *in; uint8_t *out; };
+	size_t position, bytes;
+	bool error;
+	void *context;
+};
+
+void *EsHeapAllocate(size_t bytes, bool zero, EsHeap *heap = nullptr) {
+	(void) heap;
+	return zero ? calloc(1, bytes) : malloc(bytes);
+}
+
+void EsHeapFree(void *pointer, size_t bytes = 0, EsHeap *heap = nullptr) {
+	(void) heap;
+	(void) bytes;
+	free(pointer);
+}
 
 void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *) {
 	UI_ASSERT(!zeroNewSpace);
@@ -68,6 +112,17 @@ void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace
 }
 
 #endif
+
+struct EsPaintTarget {
+	void *bits;
+	uint32_t width, height, stride;
+	bool fullAlpha, readOnly;
+};
+
+struct EsPainter {
+	EsRectangle clip;
+	EsPaintTarget *target;
+};
 
 const char *cursorStrings[] = {
 	"Normal",
@@ -101,53 +156,19 @@ const char *cursorStrings[] = {
 	"Blank",
 };
 
-void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
-	if ((modified & 0xFF000000) == 0xFF000000) {
-		*destinationPixel = modified;
-	} else if ((modified & 0xFF000000) == 0x00000000) {
-	} else if ((*destinationPixel & 0xFF000000) != 0xFF000000 && fullAlpha) {
-		uint32_t original = *destinationPixel;
-		uint32_t alpha1 = (modified & 0xFF000000) >> 24;
-		uint32_t alpha2 = 255 - alpha1;
-		uint32_t alphaD = (original & 0xFF000000) >> 24;
-		uint32_t alphaD2 = alphaD * alpha2;
-		uint32_t alphaOut = alpha1 + (alphaD2 >> 8);
+#define IN_DESIGNER
+#define DESIGNER2
 
-		if (alphaOut) {
-			uint32_t m2 = alphaD2 / alphaOut;
-			uint32_t m1 = (alpha1 << 8) / alphaOut;
-			if (m2 == 0x100) m2--;
-			if (m1 == 0x100) m1--;
-			uint32_t r2 = m2 * ((original & 0x000000FF) >> 0);
-			uint32_t g2 = m2 * ((original & 0x0000FF00) >> 8);
-			uint32_t b2 = m2 * ((original & 0x00FF0000) >> 16);
-			uint32_t r1 = m1 * ((modified & 0x000000FF) >> 0);
-			uint32_t g1 = m1 * ((modified & 0x0000FF00) >> 8);
-			uint32_t b1 = m1 * ((modified & 0x00FF0000) >> 16);
-			uint32_t result = (alphaOut << 24) 
-				| (0x00FF0000 & ((b1 + b2) << 8)) 
-				| (0x0000FF00 & ((g1 + g2) << 0)) 
-				| (0x000000FF & ((r1 + r2) >> 8));
-			*destinationPixel = result;
-		}
-	} else {
-		uint32_t original = *destinationPixel;
-		uint32_t alpha1 = (modified & 0xFF000000) >> 24;
-		uint32_t alpha2 = 255 - alpha1;
-		uint32_t r2 = alpha2 * ((original & 0x000000FF) >> 0);
-		uint32_t g2 = alpha2 * ((original & 0x0000FF00) >> 8);
-		uint32_t b2 = alpha2 * ((original & 0x00FF0000) >> 16);
-		uint32_t r1 = alpha1 * ((modified & 0x000000FF) >> 0);
-		uint32_t g1 = alpha1 * ((modified & 0x0000FF00) >> 8);
-		uint32_t b1 = alpha1 * ((modified & 0x00FF0000) >> 16);
-		uint32_t result = 0xFF000000 | (0x00FF0000 & ((b1 + b2) << 8)) 
-			| (0x0000FF00 & ((g1 + g2) << 0)) 
-			| (0x000000FF & ((r1 + r2) >> 8));
-		*destinationPixel = result;
-	}
-}
+#define SHARED_COMMON_WANT_RECTANGLES
+#define SHARED_COMMON_WANT_RENDERING
+#include "../shared/common.cpp"
+#define SHARED_MATH_WANT_BASIC_UTILITIES
+#define SHARED_MATH_WANT_INTERPOLATION
+#include "../shared/math.cpp"
 
 #include "../shared/array.cpp"
+#include "../desktop/renderer.cpp"
+#include "../desktop/theme.cpp"
 
 //////////////////////////////////////////////////////////////
 
@@ -1210,10 +1231,10 @@ void InspectorPopulate() {
 				sprintf(cPropertyName, "layers_%d_mode", i);
 				UILabelCreate(0, 0, "Mode:", -1);
 				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
-				InspectorAddRadioSwitch(object, "Background", cPropertyName, 0);
-				InspectorAddRadioSwitch(object, "Shadow", cPropertyName, 1);
-				InspectorAddRadioSwitch(object, "Content", cPropertyName, 2);
-				InspectorAddRadioSwitch(object, "Overlay", cPropertyName, 3);
+				InspectorAddRadioSwitch(object, "Background", cPropertyName, THEME_LAYER_MODE_BACKGROUND);
+				InspectorAddRadioSwitch(object, "Shadow", cPropertyName, THEME_LAYER_MODE_SHADOW);
+				InspectorAddRadioSwitch(object, "Content", cPropertyName, THEME_LAYER_MODE_CONTENT);
+				InspectorAddRadioSwitch(object, "Overlay", cPropertyName, THEME_LAYER_MODE_OVERLAY);
 				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, cPropertyName, INSPECTOR_REMOVE_BUTTON);
 				UIParentPop();
 				UIParentPop();

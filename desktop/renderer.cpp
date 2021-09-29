@@ -1,7 +1,7 @@
 // TODO Fix glitches.
 // TODO RAST_REPEAT_NORMAL is wrong with negative values.
 
-#ifdef IN_DESIGNER
+#if defined(IN_DESIGNER) && !defined(DESIGNER2)
 #define RAST_ARRAY(x) x *
 #define RAST_ARRAY_ADD arrput
 #define RAST_ARRAY_CLEAR arrclear

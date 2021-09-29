@@ -1406,6 +1406,7 @@ void DoCommand(const char *l) {
 
 			while ((entry = readdir(directory))) {
 				if (0 == strcmp(entry->d_name, "nanosvg.h")) continue;
+				if (0 == strcmp(entry->d_name, "hsluv.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_ds.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_image.h")) continue;
 				if (0 == strcmp(entry->d_name, "stb_sprintf.h")) continue;
