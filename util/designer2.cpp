@@ -10,7 +10,6 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // Needed to replace the old designer:
-// TODO Layers containing arrays.
 // TODO Export.
 // TODO Proper rendering using theme.cpp.
 // TODO Implement remaining objects.
@@ -152,72 +151,6 @@ void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
 
 //////////////////////////////////////////////////////////////
 
-#define UI_SIZE_CHECKBOX_BOX (14)
-#define UI_SIZE_CHECKBOX_GAP (8)
-
-typedef struct UICheckbox {
-#define UI_CHECKBOX_ALLOW_INDETERMINATE (1 << 0)
-	UIElement e;
-#define UI_CHECK_UNCHECKED (0)
-#define UI_CHECK_CHECKED (1)
-#define UI_CHECK_INDETERMINATE (2)
-	uint8_t check;
-	char *label;
-	ptrdiff_t labelBytes;
-	void (*invoke)(void *cp);
-} UICheckbox;
-
-UICheckbox *UICheckboxCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
-
-int _UICheckboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
-	UICheckbox *box = (UICheckbox *) element;
-	
-	if (message == UI_MSG_GET_HEIGHT) {
-		return UI_SIZE_BUTTON_HEIGHT * element->window->scale;
-	} else if (message == UI_MSG_GET_WIDTH) {
-		int labelSize = UIMeasureStringWidth(box->label, box->labelBytes);
-		return (labelSize + UI_SIZE_CHECKBOX_BOX + UI_SIZE_CHECKBOX_GAP) * element->window->scale;
-	} else if (message == UI_MSG_PAINT) {
-		UIPainter *painter = (UIPainter *) dp;
-		uint32_t color, textColor;
-		_UIButtonCalculateColors(element, &color, &textColor);
-		int midY = (element->bounds.t + element->bounds.b) / 2;
-		UIRectangle boxBounds = UI_RECT_4(element->bounds.l, element->bounds.l + UI_SIZE_CHECKBOX_BOX, 
-				midY - UI_SIZE_CHECKBOX_BOX / 2, midY + UI_SIZE_CHECKBOX_BOX / 2);
-		UIDrawRectangle(painter, boxBounds, color, ui.theme.border, UI_RECT_1(1));
-		UIDrawString(painter, UIRectangleAdd(boxBounds, UI_RECT_4(1, 0, 0, 0)), 
-				box->check == UI_CHECK_CHECKED ? "*" : box->check == UI_CHECK_INDETERMINATE ? "-" : " ", -1, 
-				textColor, UI_ALIGN_CENTER, NULL);
-		UIDrawString(painter, UIRectangleAdd(element->bounds, UI_RECT_4(UI_SIZE_CHECKBOX_BOX + UI_SIZE_CHECKBOX_GAP, 0, 0, 0)), 
-				box->label, box->labelBytes, textColor, UI_ALIGN_LEFT, NULL);
-	} else if (message == UI_MSG_UPDATE) {
-		UIElementRepaint(element, NULL);
-	} else if (message == UI_MSG_DESTROY) {
-		UI_FREE(box->label);
-	} else if (message == UI_MSG_KEY_TYPED) {
-		UIKeyTyped *m = (UIKeyTyped *) dp;
-		
-		if (m->textBytes == 1 && m->text[0] == ' ') {
-			UIElementMessage(element, UI_MSG_CLICKED, 0, 0);
-			UIElementRepaint(element, NULL);
-		}
-	} else if (message == UI_MSG_CLICKED) {
-		box->check = (box->check + 1) % ((element->flags & UI_CHECKBOX_ALLOW_INDETERMINATE) ? 3 : 2);
-		UIElementRepaint(element, NULL);
-		if (box->invoke) box->invoke(element->cp);
-	}
-
-	return 0;
-}
-
-UICheckbox *UICheckboxCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes) {
-	UICheckbox *box = (UICheckbox *) UIElementCreate(sizeof(UICheckbox), parent, flags | UI_ELEMENT_TAB_STOP, _UICheckboxMessage, "Checkbox");
-	box->label = UIStringCopy(label, (box->labelBytes = labelBytes));
-	return box;
-}
-
-//////////////////////////////////////////////////////////////
-
 #ifdef OS_ESSENCE
 EsFileStore *fileStore;
 
@@ -278,10 +211,10 @@ enum ObjectType : uint8_t {
 	OBJ_LAYER_BOX = 0x80,
 	OBJ_LAYER_METRICS,
 	OBJ_LAYER_TEXT,
+	OBJ_LAYER_GROUP,
 	// OBJ_LAYER_PATH,
-	// OBJ_LAYER_GROUP,
-	// OBJ_LAYER_SEQUENCE,
 	// OBJ_LAYER_SELECTOR,
+	// OBJ_LAYER_SEQUENCE,
 
 	OBJ_MOD_COLOR = 0xC0,
 	OBJ_MOD_MULTIPLY,
@@ -312,6 +245,8 @@ enum StepApplyMode {
 
 struct Step {
 	StepType type;
+#define STEP_UPDATE_INSPECTOR (1 << 0)
+	uint32_t flags;
 	uint64_t objectID;
 
 	union {
@@ -490,7 +425,12 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		}
 
 		UIElementRepaint(canvas, nullptr);
-		InspectorAnnouncePropertyChanged(step.objectID, step.property.cName);
+
+		if (step.flags & STEP_UPDATE_INSPECTOR) {
+			InspectorPopulate();
+		} else {
+			InspectorAnnouncePropertyChanged(step.objectID, step.property.cName);
+		}
 	} else if (step.type == STEP_RENAME_OBJECT) {
 		Object *object = ObjectFind(step.objectID);
 		UI_ASSERT(object);
@@ -530,7 +470,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 	if (mode == STEP_APPLY_NORMAL || mode == STEP_APPLY_GROUPED) {
 		bool merge = false;
 
-		if (allowMerge && undoStack.Length() > 2 && !redoStack.Length()) {
+		if (allowMerge && undoStack.Length() > 2 && !redoStack.Length() && (~step.flags & STEP_UPDATE_INSPECTOR)) {
 			Step last = undoStack[undoStack.Length() - 2];
 
 			if (step.type == STEP_MODIFY_PROPERTY && last.type == STEP_MODIFY_PROPERTY 
@@ -596,6 +536,42 @@ void DocumentRedoStep(void *) {
 	undoStack.Add(marker);
 }
 
+void DocumentSwapPropertyPrefixes(Object *object, Step step, const char *cPrefix0, const char *cPrefix1, bool last, bool moveOnly) {
+	char cNewName[PROPERTY_NAME_SIZE];
+	Array<Step> steps = {};
+
+	for (uintptr_t i = 0; i < object->properties.Length(); i++) {
+		if (0 == memcmp(object->properties[i].cName, cPrefix0, strlen(cPrefix0))
+				|| 0 == memcmp(object->properties[i].cName, cPrefix1, strlen(cPrefix1))) {
+			strcpy(step.property.cName, object->properties[i].cName);
+			step.property.type = PROP_NONE;
+			steps.Add(step);
+		}
+	}
+
+	for (uintptr_t i = 0; i < object->properties.Length(); i++) {
+		if (!moveOnly && 0 == memcmp(object->properties[i].cName, cPrefix0, strlen(cPrefix0))) {
+			strcpy(cNewName, cPrefix1);
+			strcat(cNewName, object->properties[i].cName + strlen(cPrefix0));
+			step.property = object->properties[i];
+			strcpy(step.property.cName, cNewName);
+			steps.Add(step);
+		} else if (0 == memcmp(object->properties[i].cName, cPrefix1, strlen(cPrefix1))) {
+			strcpy(cNewName, cPrefix0);
+			strcat(cNewName, object->properties[i].cName + strlen(cPrefix1));
+			step.property = object->properties[i];
+			strcpy(step.property.cName, cNewName);
+			steps.Add(step);
+		}
+	}
+
+	for (uintptr_t i = 0; i < steps.Length(); i++) {
+		DocumentApplyStep(steps[i], (i == steps.Length() - 1 && last) ? STEP_APPLY_NORMAL : STEP_APPLY_GROUPED);
+	}
+
+	steps.Free();
+}
+
 //////////////////////////////////////////////////////////////
 
 enum InspectorElementType {
@@ -611,12 +587,15 @@ enum InspectorElementType {
 	INSPECTOR_BOOLEAN_TOGGLE,
 	INSPECTOR_RADIO_SWITCH,
 	INSPECTOR_CURSOR_DROP_DOWN,
+	INSPECTOR_ADD_ARRAY_ITEM,
+	INSPECTOR_SWAP_ARRAY_ITEMS,
+	INSPECTOR_DELETE_ARRAY_ITEM,
 };
 
 struct InspectorBindingData {
 	UIElement *element; 
 	uint64_t objectID; 
-	const char *cPropertyName; 
+	char cPropertyName[PROPERTY_NAME_SIZE];
 	const char *cEnablePropertyName;
 	InspectorElementType elementType;
 	int32_t radioValue;
@@ -645,6 +624,10 @@ void InspectorUpdateSingleElementEnable(InspectorBindingData *data) {
 }
 
 void InspectorUpdateSingleElement(InspectorBindingData *data) {
+	if (data->element->flags & UI_ELEMENT_DESTROY) {
+		return;
+	}
+
 	if (data->elementType == INSPECTOR_REMOVE_BUTTON || data->elementType == INSPECTOR_REMOVE_BUTTON_BROADCAST) {
 		UIButton *button = (UIButton *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName);
@@ -699,6 +682,8 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UI_FREE(button->label);
 		button->label = UIStringCopy(string, (button->labelBytes = -1));
 		UIElementRefresh(&button->e);
+	} else if (data->elementType == INSPECTOR_ADD_ARRAY_ITEM || data->elementType == INSPECTOR_SWAP_ARRAY_ITEMS 
+			|| data->elementType == INSPECTOR_DELETE_ARRAY_ITEM) {
 	} else {
 		UI_ASSERT(false);
 	}
@@ -845,6 +830,80 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 
 			inspectorMenuData = data;
 			UIMenuShow(menu);
+		} else if (data->elementType == INSPECTOR_ADD_ARRAY_ITEM) {
+			step.property.type = PROP_INT;
+			step.property.integer = 1 + PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
+			step.flags |= STEP_UPDATE_INSPECTOR;
+			DocumentApplyStep(step);
+		} else if (data->elementType == INSPECTOR_SWAP_ARRAY_ITEMS) {
+			char cPrefix0[PROPERTY_NAME_SIZE];
+			char cPrefix1[PROPERTY_NAME_SIZE];
+			Object *object = ObjectFind(data->objectID);
+
+			strcpy(cPrefix0, data->cPropertyName);
+			strcpy(cPrefix1, data->cPropertyName);
+
+			for (intptr_t i = strlen(cPrefix0) - 2; i >= 0; i--) {
+				if (cPrefix0[i] == '_') {
+					int32_t index = atoi(cPrefix0 + i + 1);
+					sprintf(cPrefix1 + i + 1, "%d_", index + 1);
+					break;
+				}
+			}
+
+			DocumentSwapPropertyPrefixes(object, step, cPrefix0, cPrefix1, true /* last */, false);
+		} else if (data->elementType == INSPECTOR_DELETE_ARRAY_ITEM) {
+			char cPrefix0[PROPERTY_NAME_SIZE];
+			char cPrefix1[PROPERTY_NAME_SIZE];
+			int32_t index = -1;
+			int32_t count = -1;
+			intptr_t offset = strlen(data->cPropertyName) - 2;
+			Object *object = ObjectFind(data->objectID);
+
+			for (; offset >= 0; offset--) {
+				if (data->cPropertyName[offset] == '_') {
+					index = atoi(data->cPropertyName + offset + 1);
+					break;
+				}
+			}
+
+			strcpy(cPrefix0, data->cPropertyName);
+			strcpy(cPrefix0 + offset + 1, "count");
+			count = PropertyReadInt32(ObjectFind(data->objectID), cPrefix0);
+
+			for (int32_t i = index; i < count - 1; i++) {
+				strcpy(cPrefix0, data->cPropertyName);
+				strcpy(cPrefix1, data->cPropertyName);
+				sprintf(cPrefix0 + offset + 1, "%d_", i + 0);
+				sprintf(cPrefix1 + offset + 1, "%d_", i + 1);
+				DocumentSwapPropertyPrefixes(object, step, cPrefix0, cPrefix1, false, true /* moveOnly */);
+			}
+
+			strcpy(cPrefix0, data->cPropertyName);
+			sprintf(cPrefix0 + offset + 1, "%d_", count - 1);
+
+			Array<Step> steps = {};
+
+			for (uintptr_t i = 0; i < object->properties.Length(); i++) {
+				if (0 == memcmp(object->properties[i].cName, cPrefix0, strlen(cPrefix0))) {
+					strcpy(step.property.cName, object->properties[i].cName);
+					step.property.type = PROP_NONE;
+					steps.Add(step);
+				}
+			}
+
+			for (uintptr_t i = 0; i < steps.Length(); i++) {
+				DocumentApplyStep(steps[i], STEP_APPLY_GROUPED);
+			}
+
+			steps.Free();
+
+			strcpy(step.property.cName, data->cPropertyName);
+			strcpy(step.property.cName + offset + 1, "count");
+			step.property.type = PROP_INT;
+			step.property.integer = count - 1;
+			step.flags |= STEP_UPDATE_INSPECTOR;
+			DocumentApplyStep(step);
 		}
 	} else if (message == UI_MSG_UPDATE) {
 		if (di == UI_UPDATE_FOCUSED && element->window->focused == element 
@@ -864,7 +923,7 @@ InspectorBindingData *InspectorBind(UIElement *element, uint64_t objectID, const
 	InspectorBindingData *data = (InspectorBindingData *) calloc(1, sizeof(InspectorBindingData));
 	data->element = element;
 	data->objectID = objectID;
-	data->cPropertyName = cPropertyName;
+	strcpy(data->cPropertyName, cPropertyName);
 	data->elementType = elementType;
 	data->radioValue = radioValue;
 	data->cEnablePropertyName = cEnablePropertyName;
@@ -965,8 +1024,12 @@ void InspectorAddInteger(Object *object, const char *cLabel, const char *cProper
 	UIParentPop();
 }
 
-void InspectorAddFourGroup(Object *object, const char *cLabel, const char *cPropertyName0, const char *cPropertyName1, 
-		const char *cPropertyName2, const char *cPropertyName3, const char *cEnablePropertyName = nullptr) {
+void InspectorAddFourGroup(Object *object, const char *cLabel, const char *cPropertyNamePrefix, 
+		const char *cEnablePropertyName = nullptr, bool defaultToIndividualTab = false) {
+	char cPropertyName0[PROPERTY_NAME_SIZE]; strcpy(cPropertyName0, cPropertyNamePrefix); strcat(cPropertyName0, "0");
+	char cPropertyName1[PROPERTY_NAME_SIZE]; strcpy(cPropertyName1, cPropertyNamePrefix); strcat(cPropertyName1, "1");
+	char cPropertyName2[PROPERTY_NAME_SIZE]; strcpy(cPropertyName2, cPropertyNamePrefix); strcat(cPropertyName2, "2");
+	char cPropertyName3[PROPERTY_NAME_SIZE]; strcpy(cPropertyName3, cPropertyNamePrefix); strcat(cPropertyName3, "3");
 	if (cLabel) UILabelCreate(0, 0, cLabel, -1);
 	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_H_FILL | UI_PANEL_HORIZONTAL);
 	UITabPane *tabPane = UITabPaneCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_H_FILL, "Single\tIndividual\tLink");
@@ -985,7 +1048,7 @@ void InspectorAddFourGroup(Object *object, const char *cLabel, const char *cProp
 	int32_t b2 = PropertyReadInt32(object, cPropertyName2);
 	int32_t b3 = PropertyReadInt32(object, cPropertyName3);
 	if (property && property->type == PROP_OBJECT) tabPane->active = 2;
-	else if (b0 != b1 || b1 != b2 || b2 != b3) tabPane->active = 1;
+	else if (defaultToIndividualTab || b0 != b1 || b1 != b2 || b2 != b3) tabPane->active = 1;
 	InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, cPropertyName0, INSPECTOR_REMOVE_BUTTON_BROADCAST);
 	UIParentPop();
 }
@@ -1015,10 +1078,12 @@ void InspectorPopulate() {
 			UIParentPop();
 
 			if (object->type != OBJ_VAR_COLOR && object->type != OBJ_VAR_INT
-					&& object->type != OBJ_MOD_COLOR && object->type != OBJ_MOD_MULTIPLY) {
+					&& object->type != OBJ_MOD_COLOR && object->type != OBJ_MOD_MULTIPLY
+					&& object->type != OBJ_LAYER_GROUP) {
 				InspectorAddLink(object, "Inherit from:", "_parent");
 			}
 		UIParentPop();
+
 		UISpacerCreate(0, 0, 0, 10);
 
 		if (object->type == OBJ_STYLE) {
@@ -1043,8 +1108,8 @@ void InspectorPopulate() {
 			InspectorAddBooleanToggle(object, "Ellipsis", "ellipsis");
 			UIParentPop();
 
-			InspectorAddFourGroup(object, "Insets:", "insets0", "insets1", "insets2", "insets3");
-			InspectorAddFourGroup(object, "Clip insets:", "clipInsets0", "clipInsets1", "clipInsets2", "clipInsets3", "clipEnabled");
+			InspectorAddFourGroup(object, "Insets:", "insets");
+			InspectorAddFourGroup(object, "Clip insets:", "clipInsets", "clipEnabled");
 
 			UILabelCreate(0, 0, "Preferred size:", -1);
 			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
@@ -1112,12 +1177,55 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Icon color:", "iconColor");
 			InspectorAddInteger(object, "Icon size:", "iconSize");
 		} else if (object->type == OBJ_LAYER_BOX) {
-			InspectorAddFourGroup(object, "Border sizes:", "borders0", "borders1", "borders2", "borders3");
+			InspectorAddFourGroup(object, "Border sizes:", "borders");
+			InspectorAddFourGroup(object, "Corner radii:", "corners");
 			InspectorAddLink(object, "Fill paint:", "mainPaint");
 			InspectorAddLink(object, "Border paint:", "borderPaint");
+
+			InspectorAddBooleanToggle(object, "Blurred", "isBlurred");
+			InspectorAddBooleanToggle(object, "Auto-corners", "autoCorners");
+			InspectorAddBooleanToggle(object, "Auto-borders", "autoBorders");
+			InspectorAddBooleanToggle(object, "Shadow hiding", "shadowHiding");
 		} else if (object->type == OBJ_LAYER_TEXT) {
 			InspectorAddLink(object, "Text color:", "color");
 			InspectorAddInteger(object, "Blur radius:", "blur");
+		} else if (object->type == OBJ_LAYER_GROUP) {
+			int32_t layerCount = PropertyReadInt32(object, "layers_count");
+			if (layerCount < 0) layerCount = 0;
+			if (layerCount > 100) layerCount = 100;
+
+			for (int32_t i = 0; i < layerCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
+				sprintf(cPropertyName, "layers_%d_", i);
+				UIPanel *row = UIPanelCreate(0, UI_PANEL_HORIZONTAL);
+				UISpacerCreate(&row->e, UI_ELEMENT_H_FILL, 0, 0);
+				InspectorBind(&UIButtonCreate(&row->e, UI_BUTTON_SMALL, "Delete", -1)->e, object->id, cPropertyName, INSPECTOR_DELETE_ARRAY_ITEM);
+				sprintf(cPropertyName, "layers_%d_layer", i);
+				InspectorAddLink(object, "Layer:", cPropertyName);
+				sprintf(cPropertyName, "layers_%d_offset", i);
+				InspectorAddFourGroup(object, "Offset (dpx):", cPropertyName, nullptr, true /* defaultToIndividualTab */);
+				sprintf(cPropertyName, "layers_%d_position", i);
+				InspectorAddFourGroup(object, "Position (%):", cPropertyName, nullptr, true /* defaultToIndividualTab */);
+				sprintf(cPropertyName, "layers_%d_mode", i);
+				UILabelCreate(0, 0, "Mode:", -1);
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+				InspectorAddRadioSwitch(object, "Background", cPropertyName, 0);
+				InspectorAddRadioSwitch(object, "Shadow", cPropertyName, 1);
+				InspectorAddRadioSwitch(object, "Content", cPropertyName, 2);
+				InspectorAddRadioSwitch(object, "Overlay", cPropertyName, 3);
+				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, cPropertyName, INSPECTOR_REMOVE_BUTTON);
+				UIParentPop();
+				UIParentPop();
+
+				if (i != layerCount - 1) {
+					sprintf(cPropertyName, "layers_%d_", i);
+					InspectorBind(&UIButtonCreate(&UIPanelCreate(0, 0)->e, UI_BUTTON_SMALL, "Swap", -1)->e, 
+							object->id, cPropertyName, INSPECTOR_SWAP_ARRAY_ITEMS);
+				}
+			}
+
+			InspectorBind(&UIButtonCreate(0, 0, "Add layer", -1)->e, object->id, "layers_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_PAINT_OVERWRITE) {
 			InspectorAddLink(object, "Color:", "color");
 		} else if (object->type == OBJ_MOD_COLOR) {
@@ -1254,6 +1362,71 @@ uint32_t CanvasGetColorFromPaint(Object *object, int depth = 0) {
 	}
 }
 
+void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
+	// TODO Proper rendering.
+
+	if (!object || depth == 10) {
+		return;
+	}
+
+	if (object->type == OBJ_LAYER_BOX) {
+		UIRectangle borders;
+		borders.l = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
+		borders.r = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
+		borders.t = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
+		borders.b = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
+
+		Property *mainPaintProperty = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
+		Object *mainPaint = ObjectFind(mainPaintProperty ? mainPaintProperty->object : 0);
+		uint32_t mainPaintColor = CanvasGetColorFromPaint(mainPaint);
+
+		Property *borderPaintProperty = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
+		Object *borderPaint = ObjectFind(borderPaintProperty ? borderPaintProperty->object : 0);
+		uint32_t borderPaintColor = CanvasGetColorFromPaint(borderPaint);
+
+		UIDrawRectangle(painter, bounds, mainPaintColor, borderPaintColor, borders);
+	} else if (object->type == OBJ_LAYER_GROUP) {
+		int32_t layerCount = PropertyReadInt32(object, "layers_count");
+		if (layerCount < 0) layerCount = 0;
+		if (layerCount > 100) layerCount = 100;
+
+		int32_t inWidth = UI_RECT_WIDTH(bounds);
+		int32_t inHeight = UI_RECT_HEIGHT(bounds);
+
+		for (int32_t i = 0; i < layerCount; i++) {
+			char cPropertyName[PROPERTY_NAME_SIZE];
+			sprintf(cPropertyName, "layers_%d_layer", i);
+			Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
+			Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+
+			sprintf(cPropertyName, "layers_%d_offset0", i);
+			int32_t offset0 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_offset1", i);
+			int32_t offset1 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_offset2", i);
+			int32_t offset2 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_offset3", i);
+			int32_t offset3 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_position0", i);
+			int32_t position0 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_position1", i);
+			int32_t position1 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_position2", i);
+			int32_t position2 = PropertyReadInt32(object, cPropertyName);
+			sprintf(cPropertyName, "layers_%d_position3", i);
+			int32_t position3 = PropertyReadInt32(object, cPropertyName);
+
+			UIRectangle outBounds;
+			outBounds.l = bounds.l + offset0 + position0 * inWidth  / 100;
+			outBounds.r = bounds.l + offset1 + position1 * inWidth  / 100;
+			outBounds.t = bounds.t + offset2 + position2 * inHeight / 100;
+			outBounds.b = bounds.t + offset3 + position3 * inHeight / 100;
+
+			CanvasDrawLayer(layerObject, outBounds, painter, depth + 1);
+		}
+	}
+}
+
 int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_PAINT) {
 		UIPainter *painter = (UIPainter *) dp;
@@ -1291,26 +1464,10 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			} else if (object->type == OBJ_VAR_TEXT_STYLE) {
 				// TODO Proper rendering.
 				UIDrawString(painter, bounds, "Text", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
-			} else if (object->type == OBJ_LAYER_BOX) {
-				// TODO Proper rendering.
-
-				UIRectangle borders;
-				borders.l = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
-				borders.r = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
-				borders.t = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
-				borders.b = CanvasGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
-
-				Property *mainPaintProperty = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
-				Object *mainPaint = ObjectFind(mainPaintProperty ? mainPaintProperty->object : 0);
-				uint32_t mainPaintColor = CanvasGetColorFromPaint(mainPaint);
-
-				Property *borderPaintProperty = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
-				Object *borderPaint = ObjectFind(borderPaintProperty ? borderPaintProperty->object : 0);
-				uint32_t borderPaintColor = CanvasGetColorFromPaint(borderPaint);
-				
-				UIDrawRectangle(painter, bounds, mainPaintColor, borderPaintColor, borders);
+			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP) {
+				CanvasDrawLayer(object, bounds, painter);
 			} else {
-				// TODO.
+				// TODO Preview for more object types.
 			}
 		}
 
@@ -1460,6 +1617,7 @@ void ObjectAddCommand(void *) {
 	UIMenuAddItem(menu, 0, "Overwrite paint", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
 	UIMenuAddItem(menu, 0, "Box layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_BOX);
 	UIMenuAddItem(menu, 0, "Text layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_TEXT);
+	UIMenuAddItem(menu, 0, "Layer group", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_GROUP);
 	UIMenuAddItem(menu, 0, "Modify color", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_MOD_COLOR);
 	UIMenuAddItem(menu, 0, "Modify integer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_MOD_MULTIPLY);
 	UIMenuShow(menu);
@@ -1500,7 +1658,7 @@ void ObjectDuplicateCommand(void *) {
 int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_WINDOW_CLOSE) {
 #ifndef OS_ESSENCE
-		if (documentModified) {
+		if (documentModified && !window->dialog) {
 			const char *dialog = "Document modified. Save changes?\n%f%b%b";
 			const char *result = UIDialogShow(window, 0, dialog, "Save", "Discard");
 
