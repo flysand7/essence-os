@@ -846,7 +846,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		}
 
 		EsMenuShow(menu);
-	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && (element->state & UI_STATE_HOVERED)) {
+	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && ((element->state & UI_STATE_HOVERED) || (tab->closeButton->state & UI_STATE_HOVERED))) {
 		WindowTabClose(tab);
 	} else if (message->type == ES_MSG_REORDER_ITEM_TEST) {
 	} else {

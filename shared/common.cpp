@@ -2102,6 +2102,22 @@ uint64_t EsCRTstrtoul(const char *nptr, char **endptr, int base) {
 	return value;
 }
 
+float EsCRTstrtof(const char *nptr, char **endptr) {
+	return EsDoubleParse(nptr, -1, endptr);
+}
+
+double EsCRTstrtod(const char *nptr, char **endptr) {
+	return EsDoubleParse(nptr, -1, endptr);
+}
+
+float EsCRTatof(const char *nptr) {
+	return EsDoubleParse(nptr, -1, nullptr);
+}
+
+double EsCRTatod(const char *nptr) {
+	return EsDoubleParse(nptr, -1, nullptr);
+}
+
 size_t EsCRTstrcspn(const char *s, const char *reject) {
 	size_t count = 0;
 

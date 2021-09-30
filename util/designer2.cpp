@@ -21,7 +21,6 @@
 // TODO Export.
 
 // Additional features:
-// TODO Selecting and moving multiple objects.
 // TODO Resizing objects?
 // TODO Find object in graph by name.
 // TODO Prototyping display. (Multiple instances of each object can be placed, resized and interacted with).

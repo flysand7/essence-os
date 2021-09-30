@@ -329,6 +329,8 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define atan2 EsCRTatan2
 #define atan2f EsCRTatan2f
 #define atanf EsCRTatanf
+#define atod EsCRTatod
+#define atof EsCRTatof
 #define atoi EsCRTatoi
 #define bsearch EsCRTbsearch
 #define calloc EsCRTcalloc
@@ -382,6 +384,8 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define strncpy EsCRTstrncpy
 #define strnlen EsCRTstrnlen
 #define strstr EsCRTstrstr
+#define strtod EsCRTstrtod
+#define strtof EsCRTstrtof
 #define strtol EsCRTstrtol
 #define strtoul EsCRTstrtoul
 #define tolower EsCRTtolower
