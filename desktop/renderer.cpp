@@ -408,16 +408,12 @@ void RastSurfaceFill(RastSurface surface, RastShape shape, RastPaint paint, bool
 					uint8_t c = (uint8_t) (a * paint.gradient.alpha[pi] * 255.0f);
 					if (c) BlendPixel(destination, (c << 24) | paint.gradient.color[pi], true);
 				} else if (paint.type == RAST_PAINT_RADIAL_GRADIENT) {
-					float p = EsCRTsqrtf(texturePX * texturePX + texturePY * texturePY);
-					if (p < 0) p = 0;
-					if (p > 1) p = 1;
+					float p = _RastRepeat(paint.gradient.repeatMode, EsCRTsqrtf(texturePX * texturePX + texturePY * texturePY));
 					int pi = (int) ((RAST_GRADIENT_COLORS - 1) * p);
 					uint8_t c = (uint8_t) (a * paint.gradient.alpha[pi] * 255.0f);
 					if (c) BlendPixel(destination, (c << 24) | paint.gradient.color[pi], true);
 				} else if (paint.type == RAST_PAINT_ANGULAR_GRADIENT) {
-					float p = EsCRTatan2f(texturePY, texturePX) * 0.159154943091f + 0.5f;
-					if (p < 0) p = 0;
-					if (p > 1) p = 1;
+					float p = _RastRepeat(paint.gradient.repeatMode, EsCRTatan2f(texturePY, texturePX) * 0.159154943091f + 0.5f);
 					int pi = (int) ((RAST_GRADIENT_COLORS - 1) * p);
 					uint8_t c = (uint8_t) (a * paint.gradient.alpha[pi] * 255.0f);
 					if (c) BlendPixel(destination, (c << 24) | paint.gradient.color[pi], true);

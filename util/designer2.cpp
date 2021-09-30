@@ -133,6 +133,11 @@ struct EsPainter {
 	EsPaintTarget *target;
 };
 
+void SetBit(uint32_t *value, uint32_t bit, bool on) {
+	if (on) *value = *value | bit;
+	else *value = *value & ~bit;
+}
+
 #define IN_DESIGNER
 #define DESIGNER2
 
@@ -407,6 +412,21 @@ Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, u
 	return nullptr;
 }
 
+int32_t PropertyFindOrInheritReadInt32(bool first, Object *object, const char *cName, int32_t defaultValue = 0) {
+	Property *property = PropertyFindOrInherit(first, object, cName, PROP_INT);
+	return property ? property->integer : defaultValue;
+}
+
+float PropertyFindOrInheritReadFloat(bool first, Object *object, const char *cName, float defaultValue = 0) {
+	Property *property = PropertyFindOrInherit(first, object, cName, PROP_FLOAT);
+	return property ? property->floating : defaultValue;
+}
+
+Object *PropertyFindOrInheritReadObject(bool first, Object *object, const char *cName) {
+	Property *property = PropertyFindOrInherit(first, object, cName, PROP_OBJECT);
+	return property ? ObjectFind(property->object) : nullptr;
+}
+
 void DocumentSave(void *) {
 #ifdef OS_ESSENCE
 	EsBuffer buffer = { .canGrow = 1 };
@@ -462,6 +482,7 @@ void DocumentLoad() {
 		fread(&propertyCount, 1, sizeof(uint32_t), f);
 		object.properties.InsertMany(0, propertyCount);
 		fread(object.properties.array, 1, sizeof(Property) * propertyCount, f);
+		object.flags &= ~OBJECT_IS_SELECTED;
 		objects.Add(object);
 	}
 
@@ -734,8 +755,7 @@ void InspectorPickTargetEnd() {
 void InspectorUpdateSingleElementEnable(InspectorBindingData *data) {
 	UI_ASSERT(data->cEnablePropertyName);
 	bool enabled = PropertyReadInt32(ObjectFind(data->objectID), data->cEnablePropertyName);
-	if (enabled) data->element->flags &= ~UI_ELEMENT_DISABLED;
-	else data->element->flags |= UI_ELEMENT_DISABLED;
+	SetBit(&data->element->flags, UI_ELEMENT_DISABLED, !enabled);
 	UIElementRefresh(data->element);
 }
 
@@ -747,8 +767,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 	if (data->elementType == INSPECTOR_REMOVE_BUTTON || data->elementType == INSPECTOR_REMOVE_BUTTON_BROADCAST) {
 		UIButton *button = (UIButton *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName);
-		if (property) button->e.flags &= ~UI_ELEMENT_DISABLED;
-		else button->e.flags |= UI_ELEMENT_DISABLED;
+		SetBit(&data->element->flags, UI_ELEMENT_DISABLED, !property);
 		button->label[0] = property ? 'X' : '-';
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_BOOLEAN_TOGGLE) {
@@ -763,8 +782,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 	} else if (data->elementType == INSPECTOR_RADIO_SWITCH) {
 		UIButton *button = (UIButton *) data->element;
 		int32_t value = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
-		if (value == data->choiceValue) button->e.flags |= UI_BUTTON_CHECKED;
-		else button->e.flags &= ~UI_BUTTON_CHECKED;
+		SetBit(&button->e.flags, UI_BUTTON_CHECKED, value == data->choiceValue);
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
 		UIButton *button = (UIButton *) data->element;
@@ -963,8 +981,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			UICheckbox *box = (UICheckbox *) element;
 			step.property.type = PROP_INT;
 			step.property.integer = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
-			if (box->check)	step.property.integer &= ~data->choiceValue;
-			else step.property.integer |= data->choiceValue;
+			SetBit((uint32_t *) &step.property.integer, data->choiceValue, box->check == UI_CHECK_UNCHECKED);
 			DocumentApplyStep(step);
 			return 1; // InspectorUpdateSingleElement will update the check.
 		} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
@@ -1278,8 +1295,7 @@ int InspectorPreviewPrimaryStateButtonMessage(UIElement *element, UIMessage mess
 		UIElementRefresh(canvas);
 
 		while (sibling) {
-			if (sibling == element) sibling->flags |= UI_BUTTON_CHECKED;
-			else sibling->flags &= ~UI_BUTTON_CHECKED;
+			SetBit(&sibling->flags, UI_BUTTON_CHECKED, sibling == element);
 			UIElementRefresh(sibling);
 			sibling = sibling->next;
 		}
@@ -1788,58 +1804,36 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 
 		return THEME_PAINT_SOLID;
 	} else if (object->type == OBJ_PAINT_OVERWRITE) {
-		Property *property = PropertyFindOrInherit(false, object, "color", PROP_OBJECT);
-		Object *object = ObjectFind(property ? property->object : 0);
-		ExportPaint(object, data, depth + 1);
+		ExportPaint(PropertyFindOrInheritReadObject(false, object, "color"), data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
 	} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
 		if (data) {
-			Property *transformX = PropertyFindOrInherit(false, object, "transformX", PROP_FLOAT);
-			Property *transformY = PropertyFindOrInherit(false, object, "transformY", PROP_FLOAT);
-			Property *transformStart = PropertyFindOrInherit(false, object, "transformStart", PROP_FLOAT);
-			Property *stopCount = PropertyFindOrInherit(false, object, "stops_count", PROP_INT);
-			Property *useGammaInterpolation = PropertyFindOrInherit(false, object, "useGammaInterpolation", PROP_INT);
-			Property *useSystemColor = PropertyFindOrInherit(false, object, "useSystemColor", PROP_INT);
-			Property *repeatMode = PropertyFindOrInherit(false, object, "repeatMode", PROP_INT);
-
 			ThemePaintLinearGradient paint = {};
-			paint.transform[0] = transformX ? transformX->floating : 0;
-			paint.transform[1] = transformY ? transformY->floating : 0;
-			paint.transform[2] = transformStart ? transformStart->floating : 0;
-			paint.stopCount = stopCount ? stopCount->integer : 0;
-			paint.useGammaInterpolation = useGammaInterpolation ? !!useGammaInterpolation->integer : false;
-			paint.useSystemColor = useSystemColor ? !!useSystemColor->integer : false;
-			paint.repeatMode = repeatMode ? repeatMode->integer : 0;
+			paint.transform[0] = PropertyFindOrInheritReadFloat(false, object, "transformX");
+			paint.transform[1] = PropertyFindOrInheritReadFloat(false, object, "transformY");
+			paint.transform[2] = PropertyFindOrInheritReadFloat(false, object, "transformStart");
+			paint.stopCount = PropertyFindOrInheritReadInt32(false, object, "stops_count");
+			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(false, object, "useGammaInterpolation");
+			paint.useSystemColor = !!PropertyFindOrInheritReadInt32(false, object, "useSystemColor");
+			paint.repeatMode = PropertyFindOrInheritReadInt32(false, object, "repeatMode");
 			EsBufferWrite(data, &paint, sizeof(paint));
-
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
 
 		return THEME_PAINT_LINEAR_GRADIENT;
 	} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 		if (data) {
-			Property *transform0 = PropertyFindOrInherit(false, object, "transform0", PROP_FLOAT);
-			Property *transform1 = PropertyFindOrInherit(false, object, "transform1", PROP_FLOAT);
-			Property *transform2 = PropertyFindOrInherit(false, object, "transform2", PROP_FLOAT);
-			Property *transform3 = PropertyFindOrInherit(false, object, "transform3", PROP_FLOAT);
-			Property *transform4 = PropertyFindOrInherit(false, object, "transform4", PROP_FLOAT);
-			Property *transform5 = PropertyFindOrInherit(false, object, "transform5", PROP_FLOAT);
-			Property *stopCount = PropertyFindOrInherit(false, object, "stops_count", PROP_INT);
-			Property *useGammaInterpolation = PropertyFindOrInherit(false, object, "useGammaInterpolation", PROP_INT);
-			Property *repeatMode = PropertyFindOrInherit(false, object, "repeatMode", PROP_INT);
-
 			ThemePaintRadialGradient paint = {};
-			paint.transform[0] = transform0 ? transform0->floating : 0;
-			paint.transform[1] = transform1 ? transform1->floating : 0;
-			paint.transform[2] = transform2 ? transform2->floating : 0;
-			paint.transform[3] = transform3 ? transform3->floating : 0;
-			paint.transform[4] = transform4 ? transform4->floating : 0;
-			paint.transform[5] = transform5 ? transform5->floating : 0;
-			paint.stopCount = stopCount ? stopCount->integer : 0;
-			paint.useGammaInterpolation = useGammaInterpolation ? !!useGammaInterpolation->integer : false;
-			paint.repeatMode = repeatMode ? repeatMode->integer : 0;
+			paint.transform[0] = PropertyFindOrInheritReadFloat(false, object, "transform0");
+			paint.transform[1] = PropertyFindOrInheritReadFloat(false, object, "transform1");
+			paint.transform[2] = PropertyFindOrInheritReadFloat(false, object, "transform2");
+			paint.transform[3] = PropertyFindOrInheritReadFloat(false, object, "transform3");
+			paint.transform[4] = PropertyFindOrInheritReadFloat(false, object, "transform4");
+			paint.transform[5] = PropertyFindOrInheritReadFloat(false, object, "transform5");
+			paint.stopCount = PropertyFindOrInheritReadInt32(false, object, "stops_count");
+			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(false, object, "useGammaInterpolation");
+			paint.repeatMode = PropertyFindOrInheritReadInt32(false, object, "repeatMode");
 			EsBufferWrite(data, &paint, sizeof(paint));
-
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
 
@@ -1888,25 +1882,16 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
 		float zero = 0.0f;
 		Property *property;
-
-		sprintf(cPropertyName, "points_%d_x0", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+#define LAYER_PATH_WRITE_POINT(x) \
+		sprintf(cPropertyName, "points_%d_" #x, (int32_t) i); \
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT); \
 		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
-		sprintf(cPropertyName, "points_%d_y0", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
-		sprintf(cPropertyName, "points_%d_x1", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
-		sprintf(cPropertyName, "points_%d_y1", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
-		sprintf(cPropertyName, "points_%d_x2", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
-		sprintf(cPropertyName, "points_%d_y2", (int32_t) i);
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		LAYER_PATH_WRITE_POINT(x0);
+		LAYER_PATH_WRITE_POINT(y0);
+		LAYER_PATH_WRITE_POINT(x1);
+		LAYER_PATH_WRITE_POINT(y1);
+		LAYER_PATH_WRITE_POINT(x2);
+		LAYER_PATH_WRITE_POINT(y2);
 	}
 
 	for (uintptr_t i = 0; i < path.fillCount; i++) {
@@ -2431,8 +2416,9 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIElementMove(controls, bounds, false);
 
 		Object *object = ObjectFind(selectedObjectID);
+		bool showHandles = canvas->showPrototype && selectedObjectID && object && (object->flags & OBJECT_IN_PROTOTYPE);
 
-		if (canvas->showPrototype && selectedObjectID && object && (object->flags & OBJECT_IN_PROTOTYPE)) {
+		if (showHandles) {
 			UIRectangle bounds = CanvasGetObjectBounds(object);
 			int cx = (bounds.l + bounds.r) / 2, cy = (bounds.t + bounds.b) / 2;
 			const int size = 3;
@@ -2440,16 +2426,12 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			UIElementMove(canvas->resizeHandles[1], UI_RECT_4(bounds.r - size - 1, bounds.r + size, cy - size, cy + size + 1), false);
 			UIElementMove(canvas->resizeHandles[2], UI_RECT_4(cx - size, cx + size + 1, bounds.t - size, bounds.t + size + 1), false);
 			UIElementMove(canvas->resizeHandles[3], UI_RECT_4(cx - size, cx + size + 1, bounds.b - size - 1, bounds.b + size), false);
-			canvas->resizeHandles[0]->flags &= ~UI_ELEMENT_HIDE;
-			canvas->resizeHandles[1]->flags &= ~UI_ELEMENT_HIDE;
-			canvas->resizeHandles[2]->flags &= ~UI_ELEMENT_HIDE;
-			canvas->resizeHandles[3]->flags &= ~UI_ELEMENT_HIDE;
-		} else {
-			canvas->resizeHandles[0]->flags |= UI_ELEMENT_HIDE;
-			canvas->resizeHandles[1]->flags |= UI_ELEMENT_HIDE;
-			canvas->resizeHandles[2]->flags |= UI_ELEMENT_HIDE;
-			canvas->resizeHandles[3]->flags |= UI_ELEMENT_HIDE;
 		}
+
+		SetBit(&canvas->resizeHandles[0]->flags, UI_ELEMENT_HIDE, !showHandles);
+		SetBit(&canvas->resizeHandles[1]->flags, UI_ELEMENT_HIDE, !showHandles);
+		SetBit(&canvas->resizeHandles[2]->flags, UI_ELEMENT_HIDE, !showHandles);
+		SetBit(&canvas->resizeHandles[3]->flags, UI_ELEMENT_HIDE, !showHandles);
 	}
 
 	return 0;
