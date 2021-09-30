@@ -15,15 +15,17 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Prototyping display: previewing state transitions.
 // 	Implement path layers, and test radial gradients with them.
+// 	Prototyping display: previewing state transitions.
 // 	Import and reorganize old theming data.
 // 	Export.
 
 // TODO Additional features:
-// 	Resizing objects?
+// 	Fix moving/resizing objects when zoomed in.
+// 	Resizing graph objects?
 // 	Find object in graph by name.
 // 	Auto-layout in the prototype display.
+// 	Importing SVGs and TTFs.
 		
 //////////////////////////////////////////////////////////////
 
@@ -180,19 +182,30 @@ const EsInstanceClassEditorSettings instanceClassEditorSettings = {
 #endif
 
 struct Canvas : UIElement {
+	bool showArrows;
+	bool showPrototype;
+
+	float zoom;
 	float panX, panY;
+
+	float swapZoom;
+	float swapPanX, swapPanY;
+
 	float lastPanPointX, lastPanPointY;
 	bool dragging, canDrag, selecting;
 	int32_t dragDeltaX, dragDeltaY;
 	int32_t selectX, selectY;
 	int32_t dragOffsetX, dragOffsetY;
 	int32_t leftDownX, leftDownY;
-	bool showArrows;
-	bool showPrototype;
+
 	UIRectangle originalBounds;
 	UIRectangle resizeOffsets;
 	bool resizing;
 	UIElement *resizeHandles[4];
+
+	int32_t previewPrimaryState;
+	int32_t previewStateBits;
+	bool previewStateActive;
 };
 
 struct Prototype : UIElement {
@@ -208,6 +221,7 @@ void InspectorAnnouncePropertyChanged(uint64_t objectID, const char *cPropertyNa
 void InspectorPopulate();
 void InspectorPickTargetEnd();
 void CanvasSelectObject(struct Object *object);
+void CanvasSwitchView(void *cp);
 
 //////////////////////////////////////////////////////////////
 
@@ -331,6 +345,11 @@ void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection
 		Object *object = ObjectFind(selectedObjectID);
 		if (object) object->flags |= OBJECT_IS_SELECTED;
 	}
+
+	if (!selectedObjectID) {
+		canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
+		canvas->previewStateBits = 0;
+	}
 }
 
 Property *PropertyFind(Object *object, const char *cName, uint8_t type = 0) {
@@ -355,21 +374,20 @@ int32_t PropertyReadInt32(Object *object, const char *cName, int32_t defaultValu
 }
 
 bool ObjectIsConditional(Object *object) {
-	return PropertyReadInt32(object, "_primaryState")
-		|| PropertyReadInt32(object, "_stateFocused")
-		|| PropertyReadInt32(object, "_stateChecked")
-		|| PropertyReadInt32(object, "_stateIndeterminate")
-		|| PropertyReadInt32(object, "_stateDefaultButton")
-		|| PropertyReadInt32(object, "_stateSelected")
-		|| PropertyReadInt32(object, "_stateFocusedItem")
-		|| PropertyReadInt32(object, "_stateListFocused")
-		|| PropertyReadInt32(object, "_stateBeforeEnter")
-		|| PropertyReadInt32(object, "_stateAfterExit");
+	return PropertyReadInt32(object, "_primaryState") || PropertyReadInt32(object, "_stateBits");
+}
+
+bool ObjectMatchesPreviewState(Object *object) {
+	int32_t primaryState = PropertyReadInt32(object, "_primaryState");
+	int32_t stateBits = PropertyReadInt32(object, "_stateBits");
+
+	return (primaryState == canvas->previewPrimaryState || !primaryState)
+		&& ((stateBits & canvas->previewStateBits) == stateBits);
 }
 
 Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, uint8_t type = 0) {
 	while (object) {
-		if (first || !ObjectIsConditional(object)) {
+		if (first || !ObjectIsConditional(object) || (canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
 			// Return the value if the object has this property.
 			Property *property = PropertyFind(object, cName);
 			if (property) return type && property->type != type ? nullptr : property;
@@ -681,6 +699,7 @@ enum InspectorElementType {
 	INSPECTOR_LINK,
 	INSPECTOR_LINK_BROADCAST,
 	INSPECTOR_BOOLEAN_TOGGLE,
+	INSPECTOR_MASK_BIT_TOGGLE,
 	INSPECTOR_RADIO_SWITCH,
 	INSPECTOR_CURSOR_DROP_DOWN,
 	INSPECTOR_ADD_ARRAY_ITEM,
@@ -694,7 +713,7 @@ struct InspectorBindingData {
 	char cPropertyName[PROPERTY_NAME_SIZE];
 	const char *cEnablePropertyName;
 	InspectorElementType elementType;
-	int32_t radioValue;
+	int32_t choiceValue;
 };
 
 Array<UIElement *> inspectorBoundElements;
@@ -734,10 +753,14 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		box->check = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName, 2);
 		if ((~box->e.flags & UI_CHECKBOX_ALLOW_INDETERMINATE)) box->check &= 1;
 		UIElementRefresh(&box->e);
+	} else if (data->elementType == INSPECTOR_MASK_BIT_TOGGLE) {
+		UICheckbox *box = (UICheckbox *) data->element;
+		box->check = (PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName) & data->choiceValue) ? UI_CHECK_CHECKED : UI_CHECK_UNCHECKED;
+		UIElementRefresh(&box->e);
 	} else if (data->elementType == INSPECTOR_RADIO_SWITCH) {
 		UIButton *button = (UIButton *) data->element;
 		int32_t value = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
-		if (value == data->radioValue) button->e.flags |= UI_BUTTON_CHECKED;
+		if (value == data->choiceValue) button->e.flags |= UI_BUTTON_CHECKED;
 		else button->e.flags &= ~UI_BUTTON_CHECKED;
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
@@ -925,12 +948,20 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			free(name);
 		} else if (data->elementType == INSPECTOR_RADIO_SWITCH) {
 			step.property.type = PROP_INT;
-			step.property.integer = data->radioValue;
+			step.property.integer = data->choiceValue;
 			DocumentApplyStep(step);
 		} else if (data->elementType == INSPECTOR_BOOLEAN_TOGGLE) {
 			UICheckbox *box = (UICheckbox *) element;
 			step.property.integer = (box->check + 1) % ((box->e.flags & UI_CHECKBOX_ALLOW_INDETERMINATE) ? 3 : 2);
 			step.property.type = step.property.integer == UI_CHECK_INDETERMINATE ? PROP_NONE : PROP_INT;
+			DocumentApplyStep(step);
+			return 1; // InspectorUpdateSingleElement will update the check.
+		} else if (data->elementType == INSPECTOR_MASK_BIT_TOGGLE) {
+			UICheckbox *box = (UICheckbox *) element;
+			step.property.type = PROP_INT;
+			step.property.integer = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
+			if (box->check)	step.property.integer &= ~data->choiceValue;
+			else step.property.integer |= data->choiceValue;
 			DocumentApplyStep(step);
 			return 1; // InspectorUpdateSingleElement will update the check.
 		} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
@@ -1032,13 +1063,13 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 }
 
 InspectorBindingData *InspectorBind(UIElement *element, uint64_t objectID, const char *cPropertyName, InspectorElementType elementType, 
-		int32_t radioValue = 0, const char *cEnablePropertyName = nullptr) {
+		int32_t choiceValue = 0, const char *cEnablePropertyName = nullptr) {
 	InspectorBindingData *data = (InspectorBindingData *) calloc(1, sizeof(InspectorBindingData));
 	data->element = element;
 	data->objectID = objectID;
 	strcpy(data->cPropertyName, cPropertyName);
 	data->elementType = elementType;
-	data->radioValue = radioValue;
+	data->choiceValue = choiceValue;
 	data->cEnablePropertyName = cEnablePropertyName;
 	element->cp = data;
 	element->messageUser = InspectorBoundMessage;
@@ -1077,18 +1108,7 @@ void InspectorAutoNameObject(void *) {
 	}
 
 	int32_t primaryState = PropertyReadInt32(object, "_primaryState");
-
-	int32_t stateBits[] = { 
-		PropertyReadInt32(object, "_stateFocused"),
-		PropertyReadInt32(object, "_stateChecked"),
-		PropertyReadInt32(object, "_stateIndeterminate"),
-		PropertyReadInt32(object, "_stateDefaultButton"),
-		PropertyReadInt32(object, "_stateSelected"),
-		PropertyReadInt32(object, "_stateFocusedItem"),
-		PropertyReadInt32(object, "_stateListFocused"),
-		PropertyReadInt32(object, "_stateBeforeEnter"),
-		PropertyReadInt32(object, "_stateAfterExit"),
-	};
+	int32_t stateBits = PropertyReadInt32(object, "_stateBits");
 
 	Step step = {};
 	step.type = STEP_RENAME_OBJECT;
@@ -1096,8 +1116,8 @@ void InspectorAutoNameObject(void *) {
 
 	snprintf(step.cName, sizeof(step.cName), "?%s", primaryState ? cPrimaryStateStrings[primaryState] : "");
 
-	for (uintptr_t i = 0; i < sizeof(stateBits) / sizeof(stateBits[0]); i++) {
-		if (stateBits[i]) {
+	for (uintptr_t i = 0; i < 16; i++) {
+		if (stateBits & (1 << (15 - i))) {
 			snprintf(step.cName + strlen(step.cName), sizeof(step.cName) - strlen(step.cName), "%s%s", i || primaryState ? "&" : "", cStateBitStrings[i]);
 		}
 	}
@@ -1236,13 +1256,52 @@ void InspectorAddFourGroup(Object *object, const char *cLabel, const char *cProp
 	UIParentPop();
 }
 
-void InspectorAddBooleanToggle(Object *object, const char *cLabel, const char *cPropertyName, bool allowIndeterminate = true) {
-	InspectorBind(&UICheckboxCreate(0, allowIndeterminate ? UI_CHECKBOX_ALLOW_INDETERMINATE : 0, cLabel, -1)->e, 
-			object->id, cPropertyName, INSPECTOR_BOOLEAN_TOGGLE);
+void InspectorAddBooleanToggle(Object *object, const char *cLabel, const char *cPropertyName) {
+	InspectorBind(&UICheckboxCreate(0, UI_CHECKBOX_ALLOW_INDETERMINATE, cLabel, -1)->e, object->id, cPropertyName, INSPECTOR_BOOLEAN_TOGGLE);
 }
 
-void InspectorAddRadioSwitch(Object *object, const char *cLabel, const char *cPropertyName, int32_t radioValue) {
-	InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, cLabel, -1)->e, object->id, cPropertyName, INSPECTOR_RADIO_SWITCH, radioValue);
+void InspectorAddRadioSwitch(Object *object, const char *cLabel, const char *cPropertyName, int32_t choiceValue) {
+	InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, cLabel, -1)->e, object->id, cPropertyName, INSPECTOR_RADIO_SWITCH, choiceValue);
+}
+
+void InspectorAddMaskBitToggle(Object *object, const char *cLabel, const char *cPropertyName, int32_t bit) {
+	InspectorBind(&UICheckboxCreate(0, 0, cLabel, -1)->e, object->id, cPropertyName, INSPECTOR_MASK_BIT_TOGGLE, bit);
+}
+
+int InspectorPreviewPrimaryStateButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	if (message == UI_MSG_CLICKED) {
+		UIElement *sibling = element->parent->children;
+		canvas->previewPrimaryState = (uintptr_t) element->cp;
+		UIElementRefresh(canvas);
+
+		while (sibling) {
+			if (sibling == element) sibling->flags |= UI_BUTTON_CHECKED;
+			else sibling->flags &= ~UI_BUTTON_CHECKED;
+			UIElementRefresh(sibling);
+			sibling = sibling->next;
+		}
+	}
+
+	return 0;
+}
+
+void InspectorAddPreviewPrimaryStateButton(const char *cLabel, int32_t value) {
+	UIButton *button = UIButtonCreate(0, UI_BUTTON_SMALL, cLabel, -1);
+	button->e.cp = (void *) (uintptr_t) value;
+	button->e.messageUser = InspectorPreviewPrimaryStateButtonMessage;
+	if (canvas->previewPrimaryState == value) button->e.flags |= UI_BUTTON_CHECKED;
+}
+
+void InspectorPreviewStateBitsCheckboxInvoke(void *cp) {
+	canvas->previewStateBits ^= (uintptr_t) cp;
+	UIElementRefresh(canvas);
+}
+
+void InspectorAddPreviewStateBitsCheckbox(const char *cLabel, int32_t bit) {
+	UICheckbox *box = UICheckboxCreate(0, 0, cLabel, -1);
+	box->e.cp = (void *) (uintptr_t) bit;
+	box->invoke = InspectorPreviewStateBitsCheckboxInvoke;
+	if (canvas->previewStateBits & bit) box->check = UI_CHECK_CHECKED;
 }
 
 void InspectorPopulate() {
@@ -1280,21 +1339,20 @@ void InspectorPopulate() {
 				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "_primaryState", INSPECTOR_REMOVE_BUTTON);
 				UIParentPop();
 
-				// TODO Change these to be stored internally as a mask of bits.
 				UILabelCreate(0, 0, "State bits:", -1);
 				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
 				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-				InspectorAddBooleanToggle(object, cStateBitStrings[0], "_stateFocused", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[1], "_stateChecked", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[2], "_stateIndeterminate", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[3], "_stateDefaultButton", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[4], "_stateSelected", false);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[0], "_stateBits", THEME_STATE_FOCUSED);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[1], "_stateBits", THEME_STATE_CHECKED);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[2], "_stateBits", THEME_STATE_INDETERMINATE);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[3], "_stateBits", THEME_STATE_DEFAULT_BUTTON);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[4], "_stateBits", THEME_STATE_SELECTED);
 				UIParentPop();
 				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-				InspectorAddBooleanToggle(object, cStateBitStrings[5], "_stateFocusedItem", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[6], "_stateListFocused", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[7], "_stateBeforeEnter", false);
-				InspectorAddBooleanToggle(object, cStateBitStrings[8], "_stateAfterExit", false);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[5], "_stateBits", THEME_STATE_FOCUSED_ITEM);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[6], "_stateBits", THEME_STATE_LIST_FOCUSED);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[7], "_stateBits", THEME_STATE_BEFORE_ENTER);
+				InspectorAddMaskBitToggle(object, cStateBitStrings[8], "_stateBits", THEME_STATE_AFTER_EXIT);
 				UIParentPop();
 				UIParentPop();
 
@@ -1544,25 +1602,25 @@ void InspectorPopulate() {
 
 		UILabelCreate(0, 0, "Preview state:", -1);
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
-		UIButtonCreate(0, UI_BUTTON_SMALL | UI_BUTTON_CHECKED, "Idle", -1);
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Hovered", -1);
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Pressed", -1);
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Disabled", -1);
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Inactive", -1);
+		InspectorAddPreviewPrimaryStateButton(cPrimaryStateStrings[1], THEME_PRIMARY_STATE_IDLE);
+		InspectorAddPreviewPrimaryStateButton(cPrimaryStateStrings[2], THEME_PRIMARY_STATE_HOVERED);
+		InspectorAddPreviewPrimaryStateButton(cPrimaryStateStrings[3], THEME_PRIMARY_STATE_PRESSED);
+		InspectorAddPreviewPrimaryStateButton(cPrimaryStateStrings[4], THEME_PRIMARY_STATE_DISABLED);
+		InspectorAddPreviewPrimaryStateButton(cPrimaryStateStrings[5], THEME_PRIMARY_STATE_INACTIVE);
 		UIParentPop();
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-		UICheckboxCreate(0, 0, cStateBitStrings[0], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[1], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[2], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[3], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[4], -1);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[0], 1 << 15);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[1], 1 << 14);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[2], 1 << 13);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[3], 1 << 12);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[4], 1 << 11);
 		UIParentPop();
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-		UICheckboxCreate(0, 0, cStateBitStrings[5], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[6], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[7], -1);
-		UICheckboxCreate(0, 0, cStateBitStrings[8], -1);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[5], 1 << 10);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[6], 1 <<  9);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[7], 1 <<  8);
+		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[8], 1 <<  7);
 		UIParentPop();
 		UIParentPop();
 	} else {
@@ -1767,10 +1825,10 @@ void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
 #define CANVAS_ALIGN (20)
 
 UIRectangle CanvasGetObjectBounds(Object *object) {
-	int32_t x = PropertyReadInt32(object, "_graphX") - canvas->panX + canvas->bounds.l;
-	int32_t y = PropertyReadInt32(object, "_graphY") - canvas->panY + canvas->bounds.t;
-	int32_t w = PropertyReadInt32(object, "_graphW");
-	int32_t h = PropertyReadInt32(object, "_graphH");
+	int32_t x = (PropertyReadInt32(object, "_graphX") - canvas->panX) * canvas->zoom + canvas->bounds.l;
+	int32_t y = (PropertyReadInt32(object, "_graphY") - canvas->panY) * canvas->zoom + canvas->bounds.t;
+	int32_t w = PropertyReadInt32(object, "_graphW") * canvas->zoom;
+	int32_t h = PropertyReadInt32(object, "_graphH") * canvas->zoom;
 
 	UIRectangle bounds = UI_RECT_4(x, x + w, y, y + h);
 
@@ -1792,11 +1850,11 @@ void CanvasSelectObject(Object *object) {
 		objects[i].flags &= ~OBJECT_IS_SELECTED;
 	}
 
+	if (canvas->showPrototype) CanvasSwitchView(nullptr);
 	UIRectangle bounds = CanvasGetObjectBounds(object);
 	canvas->panX += bounds.l - UI_RECT_WIDTH(canvas->bounds) / 2;
 	canvas->panY += bounds.t - UI_RECT_HEIGHT(canvas->bounds) / 2;
 	ObjectSetSelected(object->id);
-	canvas->showPrototype = false;
 	UIElementRefresh(canvas);
 	InspectorPopulate();
 }
@@ -1824,7 +1882,7 @@ void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer da
 	data.bytes = data.position;
 	data.position = 0;
 
-	ThemeDrawLayer(&themePainter, bounds, &data, 1 /* TODO preview scale */, UI_RECT_1(0) /* TODO opaqueRegion */);
+	ThemeDrawLayer(&themePainter, bounds, &data, canvas->zoom, UI_RECT_1(0) /* TODO opaqueRegion */);
 }
 
 void CanvasDrawColorSwatch(Object *object, UIRectangle bounds, UIPainter *painter) {
@@ -1935,7 +1993,7 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 		textStyle.font.family = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontFamily"));
 		textStyle.font.weight = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontWeight"));
 		textStyle.font.italic = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "isItalic"));
-		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "textSize"));
+		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "textSize")) * canvas->zoom;
 		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "textColor"));
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
 	} else if (object->type == OBJ_VAR_ICON_STYLE) {
@@ -2078,7 +2136,9 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				CanvasDrawStyle(object, bounds, painter);
 			} else if (object->type == OBJ_INSTANCE) {
 				Property *style = PropertyFind(object, "style", PROP_OBJECT);
+				canvas->previewStateActive = object->id == selectedObjectID;
 				CanvasDrawStyle(ObjectFind(style ? style->object : 0), bounds, painter);
+				canvas->previewStateActive = false;
 			} else {
 				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
 			}
@@ -2234,10 +2294,23 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	} else if (message == UI_MSG_MIDDLE_UP) {
 		_UIWindowSetCursor(element->window, UI_CURSOR_ARROW);
 	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 2) {
-		canvas->panX -= element->window->cursorX - canvas->lastPanPointX;
-		canvas->panY -= element->window->cursorY - canvas->lastPanPointY;
+		canvas->panX -= (element->window->cursorX - canvas->lastPanPointX) / canvas->zoom;
+		canvas->panY -= (element->window->cursorY - canvas->lastPanPointY) / canvas->zoom;
 		canvas->lastPanPointX = element->window->cursorX;
 		canvas->lastPanPointY = element->window->cursorY;
+		UIElementRefresh(canvas);
+	} else if (message == UI_MSG_MOUSE_WHEEL && element->window->ctrl) {
+		int divisions = -di / 72;
+		float factor = 1, perDivision = 1.2f;
+		while (divisions > 0) factor *= perDivision, divisions--;
+		while (divisions < 0) factor /= perDivision, divisions++;
+		if (canvas->zoom * factor > 4) factor = 4 / canvas->zoom;
+		if (canvas->zoom * factor < 1) factor = 1 / canvas->zoom;
+		int mx = element->window->cursorX - element->bounds.l;
+		int my = element->window->cursorY - element->bounds.t;
+		canvas->zoom *= factor;
+		canvas->panX -= mx / canvas->zoom * (1 - factor);
+		canvas->panY -= my / canvas->zoom * (1 - factor);
 		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_LAYOUT) {
 		UIElement *controls = canvas->showPrototype ? &prototypeControls->e : &graphControls->e;
@@ -2279,19 +2352,11 @@ void CanvasToggleArrows(void *) {
 }
 
 void CanvasSwitchView(void *) {
+	float z = canvas->swapZoom, x = canvas->swapPanX, y = canvas->swapPanY;
+	canvas->swapZoom = canvas->zoom, canvas->swapPanX = canvas->panX, canvas->swapPanY = canvas->panY;
+	canvas->zoom = z, canvas->panX = x, canvas->panY = y;
 	canvas->showPrototype = !canvas->showPrototype;
 	UIElementRefresh(canvas);
-}
-
-//////////////////////////////////////////////////////////////
-
-int PrototypeMessage(UIElement *element, UIMessage message, int di, void *dp) {
-	if (message == UI_MSG_PAINT) {
-		UIPainter *painter = (UIPainter *) dp;
-		UIDrawBlock(painter, element->bounds, 0xFFC0C0C0);
-	}
-
-	return 0;
 }
 
 //////////////////////////////////////////////////////////////
@@ -2493,6 +2558,8 @@ int main() {
 	canvas->resizeHandles[1]->cp = (void *) (uintptr_t) 1;
 	canvas->resizeHandles[2]->cp = (void *) (uintptr_t) 2;
 	canvas->resizeHandles[3]->cp = (void *) (uintptr_t) 3;
+	canvas->zoom = canvas->swapZoom = 1.0f;
+	canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
 
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Z'), 1 /* ctrl */, 0, 0, DocumentUndoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));

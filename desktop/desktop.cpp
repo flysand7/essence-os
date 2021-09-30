@@ -1803,8 +1803,6 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 			// Restart the installer.
 			ApplicationInstanceCreate(desktop.installer->id, nullptr, nullptr, true /* hidden */);
 		}
-
-		ApplicationTemporaryDestroy(application);
 	}
 
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {

@@ -585,11 +585,12 @@ void GraphicsDebugPutBlock32(uintptr_t x, uintptr_t y, bool toggle,
 void GraphicsDebugClearScreen32(unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer) {
 	for (uintptr_t i = 0; i < screenHeight; i++) {
 		for (uintptr_t j = 0; j < screenWidth * 4; j += 4) {
+
+#if 0
 			linearBuffer[i * stride + j + 2] = 0x18;
 			linearBuffer[i * stride + j + 1] = 0x7E;
 			linearBuffer[i * stride + j + 0] = 0xCF;
-
-#if 0
+#else
 			if (graphics.debuggerActive) {
 				linearBuffer[i * stride + j + 2] = 0x18;
 				linearBuffer[i * stride + j + 1] = 0x7E;
