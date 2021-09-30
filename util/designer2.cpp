@@ -120,7 +120,7 @@ bool EsColorIsLight(uint32_t color) {
 struct EsPaintTarget {
 	void *bits;
 	uint32_t width, height, stride;
-	bool fullAlpha, readOnly;
+	bool fullAlpha, readOnly, fromBitmap, forWindowManager;
 };
 
 struct EsPainter {
@@ -830,7 +830,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			memcpy(buffer, textbox->string, length);
 			buffer[length] = 0;
 			step.property.type = PROP_INT;
-			step.property.integer = (int32_t) strtol(buffer, nullptr, 0);
+			step.property.integer = (int32_t) strtol(buffer, nullptr, 10);
 			InspectorBroadcastStep(step, data);
 		} else if (data->elementType == INSPECTOR_FLOAT_TEXTBOX) {
 			UITextbox *textbox = (UITextbox *) element;
@@ -1516,6 +1516,16 @@ uint32_t GraphGetColor(Object *object, int depth = 0) {
 	}
 }
 
+uint32_t GraphGetColorFromProperty(Property *property) {
+	if (!property) {
+		return 0;
+	} else if (property->type == PROP_OBJECT) {
+		return GraphGetColor(ObjectFind(property->object));
+	} else {
+		return 0;
+	}
+}
+
 //////////////////////////////////////////////////////////////
 
 void ExportGradientStopArray(Object *object, EsBuffer *data, size_t stopCount) {
@@ -1725,6 +1735,28 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 		EsBufferWrite(&data, &layer, sizeof(layer));
 		ExportLayerBox(depth == 0, object, &data);
 		CanvasDrawLayerFromData(painter, bounds, data);
+	} else if (object->type == OBJ_LAYER_TEXT) {
+#ifdef OS_ESSENCE
+		EsPaintTarget paintTarget = {};
+		_EsPainter themePainter = {};
+		themePainter.target = (_EsPaintTarget *) &paintTarget;
+		themePainter.clip.l = painter->clip.l;
+		themePainter.clip.r = painter->clip.r;
+		themePainter.clip.t = painter->clip.t;
+		themePainter.clip.b = painter->clip.b;
+		paintTarget.bits = painter->bits;
+		paintTarget.width = painter->width;
+		paintTarget.height = painter->height;
+		paintTarget.stride = painter->width * 4;
+		EsTextStyle textStyle = {};
+		textStyle.font.family = ES_FONT_SANS;
+		textStyle.font.weight = 5;
+		textStyle.size = 10;
+		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "color"));
+		textStyle.blur = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "blur"));
+		if (textStyle.blur > 10) textStyle.blur = 10;
+		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
+#endif
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
 		if (layerCount < 0) layerCount = 0;
@@ -1764,6 +1796,49 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 
 			CanvasDrawLayer(layerObject, outBounds, painter, depth + 1);
 		}
+	}
+}
+
+void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int depth = 0) {
+	if (!object || depth == 100) {
+		return;
+	}
+
+#ifdef OS_ESSENCE
+	EsPaintTarget paintTarget = {};
+	_EsPainter themePainter = {};
+	themePainter.target = (_EsPaintTarget *) &paintTarget;
+	themePainter.clip.l = painter->clip.l;
+	themePainter.clip.r = painter->clip.r;
+	themePainter.clip.t = painter->clip.t;
+	themePainter.clip.b = painter->clip.b;
+	paintTarget.bits = painter->bits;
+	paintTarget.width = painter->width;
+	paintTarget.height = painter->height;
+	paintTarget.stride = painter->width * 4;
+
+	if (object->type == OBJ_VAR_TEXT_STYLE) {
+		EsTextStyle textStyle = {};
+		textStyle.font.family = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontFamily"));
+		textStyle.font.weight = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontWeight"));
+		textStyle.font.italic = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "isItalic"));
+		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "textSize"));
+		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "textColor"));
+		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
+	} else if (object->type == OBJ_VAR_ICON_STYLE) {
+		EsDrawStandardIcon((_EsPainter *) &themePainter, ES_ICON_GO_NEXT_SYMBOLIC, 
+				GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "iconSize")), bounds, 
+				GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "iconColor")));
+	}
+#endif
+
+	if (object->type == OBJ_STYLE) {
+		Property *appearance = PropertyFindOrInherit(false, object, "appearance");
+		Property *textStyle = PropertyFindOrInherit(false, object, "textStyle");
+		Property *iconStyle = PropertyFindOrInherit(false, object, "iconStyle");
+		if (appearance) CanvasDrawLayer(ObjectFind(appearance->object), bounds, painter, depth + 1);
+		if (textStyle) CanvasDrawStyle(ObjectFind(textStyle->object), bounds, painter, depth + 1);
+		else if (iconStyle) CanvasDrawStyle(ObjectFind(iconStyle->object), bounds, painter, depth + 1);
 	}
 }
 
@@ -1814,7 +1889,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				char buffer[32];
 				snprintf(buffer, sizeof(buffer), "%d", value);
 				UIDrawString(painter, bounds, buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
-			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP) {
+			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP || object->type == OBJ_LAYER_TEXT) {
 				CanvasDrawLayer(object, bounds, painter);
 			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 				CanvasDrawColorSwatch(object, bounds, painter);
@@ -1826,8 +1901,10 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				snprintf(buffer, sizeof(buffer), "%.8X", color);
 				UIRectangle area = UI_RECT_4(bounds.l, bounds.r, bounds.t, bounds.t + UIMeasureStringHeight());
 				UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
+			} else if (object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE || object->type == OBJ_STYLE) {
+				CanvasDrawStyle(object, bounds, painter);
 			} else {
-				// TODO Preview for more object types: style, text style, icon style, metrics layer, text layer.
+				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
 			}
 		}
 

@@ -106,15 +106,18 @@ void GlyphCacheFreeEntry() {
 }
 
 void RegisterGlyphCacheEntry(GlyphCacheKey key, GlyphCacheEntry *entry) {
+	// Free space in the glyph cache.
+	// Do this before adding the new glyph to the cache,
+	// in case the new glyph doesn't fit in the cache at all.
+	while (fontManagement.glyphCacheBytes > GLYPH_CACHE_MAX_SIZE) {
+		GlyphCacheFreeEntry();
+	}
+
 	entry->itemLRU.thisItem = entry;
 	entry->key = key;
 	*fontManagement.glyphCache.Put(&key) = entry;
 	fontManagement.glyphCacheLRU.InsertStart(&entry->itemLRU);
 	fontManagement.glyphCacheBytes += entry->dataBytes;
-
-	while (fontManagement.glyphCacheBytes > GLYPH_CACHE_MAX_SIZE) {
-		GlyphCacheFreeEntry();
-	}
 }
 
 GlyphCacheEntry *LookupGlyphCacheEntry(GlyphCacheKey key) {
@@ -310,6 +313,11 @@ bool FontRenderGlyph(bool mono, GlyphCacheKey key, GlyphCacheEntry *entry) {
 		height = bitmap->rows;
 		xoff = key.font.ft->glyph->bitmap_left;
 		yoff = -key.font.ft->glyph->bitmap_top;
+
+		if ((uint64_t) width * (uint64_t) height * 4 > 100000000) {
+			// Refuse to output glyphs more than 100MB.
+			return false;
+		}
 
 		entry->dataBytes = 1 + (width * height + 7) / 8;
 		output = (uint8_t *) EsHeapAllocate(entry->dataBytes, true);
@@ -2395,7 +2403,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		key.font = plan->font;
 		GlyphCacheEntry *entry = nullptr;
 
-		if (codepoint == 0xFFFFFFFF) {
+		if (codepoint == 0xFFFFFFFF || key.size > 2000) {
 			goto nextCharacter;
 		}
 
