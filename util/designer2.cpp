@@ -14,16 +14,16 @@
 
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
-// Needed to replace the old designer:
-// TODO Previewing state transitions.
-// TODO Implement path layers, and test radial gradients with them.
-// TODO Import and reorganize old theming data.
-// TODO Export.
+// TODO Needed to replace the old designer:
+// 	Prototyping display: previewing state transitions.
+// 	Implement path layers, and test radial gradients with them.
+// 	Import and reorganize old theming data.
+// 	Export.
 
-// Additional features:
-// TODO Resizing objects?
-// TODO Find object in graph by name.
-// TODO Prototyping display. (Multiple instances of each object can be placed, resized and interacted with).
+// TODO Additional features:
+// 	Resizing objects?
+// 	Find object in graph by name.
+// 	Auto-layout in the prototype display.
 		
 //////////////////////////////////////////////////////////////
 
@@ -179,13 +179,30 @@ const EsInstanceClassEditorSettings instanceClassEditorSettings = {
 };
 #endif
 
-UIWindow *window;
-UIElement *canvas;
-UIElement *inspector;
-UIElement *canvasControls;
-UILabel *labelMessage;
+struct Canvas : UIElement {
+	float panX, panY;
+	float lastPanPointX, lastPanPointY;
+	bool dragging, canDrag, selecting;
+	int32_t dragDeltaX, dragDeltaY;
+	int32_t selectX, selectY;
+	int32_t dragOffsetX, dragOffsetY;
+	int32_t leftDownX, leftDownY;
+	bool showArrows;
+	bool showPrototype;
+	UIRectangle originalBounds;
+	UIRectangle resizeOffsets;
+	bool resizing;
+	UIElement *resizeHandles[4];
+};
 
-uint64_t selectedObjectID;
+struct Prototype : UIElement {
+};
+
+UIWindow *window;
+UIElement *inspector;
+UIPanel *graphControls;
+UIPanel *prototypeControls;
+Canvas *canvas;
 
 void InspectorAnnouncePropertyChanged(uint64_t objectID, const char *cPropertyName);
 void InspectorPopulate();
@@ -219,6 +236,7 @@ enum ObjectType : uint8_t {
 
 	OBJ_STYLE,
 	OBJ_COMMENT,
+	OBJ_INSTANCE,
 
 	OBJ_VAR_COLOR = 0x40,
 	OBJ_VAR_INT,
@@ -244,6 +262,7 @@ struct Object {
 #define OBJECT_NAME_SIZE (46)
 	char cName[OBJECT_NAME_SIZE];
 #define OBJECT_IS_SELECTED (1 << 0)
+#define OBJECT_IN_PROTOTYPE (1 << 1)
 	uint8_t flags;
 	uint64_t id;
 	Array<Property> properties;
@@ -255,6 +274,7 @@ enum StepType : uint8_t {
 	STEP_RENAME_OBJECT,
 	STEP_ADD_OBJECT,
 	STEP_DELETE_OBJECT,
+	STEP_SET_OBJECT_DEPTH,
 };
 
 enum StepApplyMode {
@@ -274,12 +294,14 @@ struct Step {
 		Property property;
 		char cName[OBJECT_NAME_SIZE];
 		Object object;
+		uintptr_t depth;
 	};
 };
 
 Array<Step> undoStack;
 Array<Step> redoStack;
 bool documentModified;
+uint64_t selectedObjectID;
 
 // Document state:
 Array<Object> objects;
@@ -478,7 +500,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 			}
 		}
 
-		UIElementRepaint(canvas, nullptr);
+		UIElementRefresh(canvas);
 
 		if (step.flags & STEP_UPDATE_INSPECTOR) {
 			InspectorPopulate();
@@ -517,8 +539,25 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		}
 
 		step.object.flags = 0;
-		UIElementRepaint(canvas, nullptr);
+		UIElementRefresh(canvas);
 		InspectorPopulate();
+	} else if (step.type == STEP_SET_OBJECT_DEPTH) {
+		uintptr_t newDepth = step.depth;
+		bool found = false;
+
+		for (uintptr_t i = 0; i < objects.Length(); i++) {
+			if (objects[i].id == step.objectID) {
+				step.depth = i;
+				Object object = objects[i];
+				objects.Delete(i);
+				objects.Insert(object, newDepth);
+				found = true;
+				break;
+			}
+		}
+
+		UI_ASSERT(found);
+		UIElementRefresh(canvas);
 	} else {
 		UI_ASSERT(false);
 	}
@@ -666,8 +705,6 @@ InspectorBindingData *inspectorPickData;
 void InspectorPickTargetEnd() {
 	if (inspectorPickData) {
 		inspectorPickData = nullptr;
-		UILabelSetContent(labelMessage, "", -1);
-		UIElementRefresh(&labelMessage->e);
 		UIElementRepaint(canvas, nullptr);
 	}
 }
@@ -866,10 +903,12 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			if (0 == strcmp(result, "OK")) {
 				uint64_t id = 0;
 
-				for (uintptr_t i = 0; i < objects.Length(); i++) {
-					if (0 == strcmp(objects[i].cName, name)) {
-						id = objects[i].id;
-						break;
+				if (name && name[0]) {
+					for (uintptr_t i = 0; i < objects.Length(); i++) {
+						if (0 == strcmp(objects[i].cName, name)) {
+							id = objects[i].id;
+							break;
+						}
 					}
 				}
 
@@ -1073,8 +1112,6 @@ void InspectorPickTargetCommand(void *cp) {
 	}
 
 	inspectorPickData = (InspectorBindingData *) cp;
-	UILabelSetContent(labelMessage, "** Click an object to link it. **", -1);
-	UIElementRefresh(&labelMessage->e);
 	UIElementRepaint(canvas, nullptr);
 }
 
@@ -1088,6 +1125,33 @@ void InspectorFindTargetCommand(void *cp) {
 	} else {
 		UIDialogShow(window, 0, "Error: The object does not exist.\n%f%b", "OK");
 	}
+}
+
+void InspectorGoToInstanceStyle(void *) {
+	Property *property = PropertyFind(ObjectFind(selectedObjectID), "style", PROP_OBJECT);
+	Object *target = ObjectFind(property ? property->object : 0);
+
+	if (target) {
+		CanvasSelectObject(target);
+	} else {
+		UIDialogShow(window, 0, "Error: The object does not exist.\n%f%b", "OK");
+	}
+}
+
+void InspectorToFrontCommand(void *) {
+	Step step = {};
+	step.type = STEP_SET_OBJECT_DEPTH;
+	step.depth = objects.Length() - 1;
+	step.objectID = selectedObjectID;
+	DocumentApplyStep(step);
+}
+
+void InspectorToBackCommand(void *) {
+	Step step = {};
+	step.type = STEP_SET_OBJECT_DEPTH;
+	step.depth = 0;
+	step.objectID = selectedObjectID;
+	DocumentApplyStep(step);
 }
 
 int InspectorTabPaneMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -1187,7 +1251,7 @@ void InspectorPopulate() {
 
 	Object *object = ObjectFind(selectedObjectID);
 
-	if (object) {
+	if (object && object->type != OBJ_INSTANCE) {
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
 			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
 			char buffer[256];
@@ -1451,6 +1515,56 @@ void InspectorPopulate() {
 			UILabelCreate(0, 0, "Factor (%):", -1);
 			InspectorBind(&UITextboxCreate(0, UI_ELEMENT_H_FILL)->e, object->id, "factor", INSPECTOR_INTEGER_TEXTBOX);
 		}
+	} else if (object && object->type == OBJ_INSTANCE) {
+		Property *property = PropertyFind(object, "style", PROP_OBJECT);
+		Object *style = ObjectFind(property ? property->object : 0);
+		char buffer[128];
+
+		if (style) {
+			snprintf(buffer, sizeof(buffer), "Instance of style '%s'.", style->cName);
+		} else {
+			snprintf(buffer, sizeof(buffer), "Instance of deleted style.");
+		}
+
+		UILabelCreate(0, 0, buffer, -1);
+
+		if (style) {
+			UIButtonCreate(&UIPanelCreate(0, UI_PANEL_HORIZONTAL)->e, 0, "View in graph \x1A", -1)->invoke = InspectorGoToInstanceStyle;
+		}
+
+		UISpacerCreate(0, 0, 0, 10);
+
+		UILabelCreate(0, 0, "Depth:", -1);
+		UIPanelCreate(0, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
+		UIButtonCreate(0, 0, "To front", -1)->invoke = InspectorToFrontCommand;
+		UIButtonCreate(0, 0, "To back", -1)->invoke = InspectorToBackCommand;
+		UIParentPop();
+
+		UISpacerCreate(0, 0, 0, 10);
+
+		UILabelCreate(0, 0, "Preview state:", -1);
+		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+		UIButtonCreate(0, UI_BUTTON_SMALL | UI_BUTTON_CHECKED, "Idle", -1);
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Hovered", -1);
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Pressed", -1);
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Disabled", -1);
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Inactive", -1);
+		UIParentPop();
+		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
+		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+		UICheckboxCreate(0, 0, cStateBitStrings[0], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[1], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[2], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[3], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[4], -1);
+		UIParentPop();
+		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+		UICheckboxCreate(0, 0, cStateBitStrings[5], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[6], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[7], -1);
+		UICheckboxCreate(0, 0, cStateBitStrings[8], -1);
+		UIParentPop();
+		UIParentPop();
 	} else {
 		UILabelCreate(0, 0, "Select an object to inspect.", -1);
 	}
@@ -1652,27 +1766,25 @@ void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
 
 #define CANVAS_ALIGN (20)
 
-float canvasPanX, canvasPanY;
-float canvasLastPanPointX, canvasLastPanPointY;
-bool canvasDragging, canvasCanDrag, canvasSelecting;
-int32_t canvasDragDeltaX, canvasDragDeltaY;
-int32_t canvasSelectX, canvasSelectY;
-int32_t canvasDragOffsetX, canvasDragOffsetY;
-int32_t canvasLeftDownX, canvasLeftDownY;
-bool canvasShowArrows;
-
 UIRectangle CanvasGetObjectBounds(Object *object) {
-	int32_t x = PropertyReadInt32(object, "_graphX") - canvasPanX + canvas->bounds.l;
-	int32_t y = PropertyReadInt32(object, "_graphY") - canvasPanY + canvas->bounds.t;
+	int32_t x = PropertyReadInt32(object, "_graphX") - canvas->panX + canvas->bounds.l;
+	int32_t y = PropertyReadInt32(object, "_graphY") - canvas->panY + canvas->bounds.t;
 	int32_t w = PropertyReadInt32(object, "_graphW");
 	int32_t h = PropertyReadInt32(object, "_graphH");
 
-	if (object->flags & OBJECT_IS_SELECTED && canvasDragging) {
-		x += canvasDragDeltaX;
-		y += canvasDragDeltaY;
+	UIRectangle bounds = UI_RECT_4(x, x + w, y, y + h);
+
+	if (object->flags & OBJECT_IS_SELECTED) {
+		if (canvas->dragging) {
+			bounds = UIRectangleAdd(bounds, UI_RECT_2(canvas->dragDeltaX, canvas->dragDeltaY));
+		}
+
+		if (canvas->resizing) {
+			bounds = UIRectangleAdd(bounds, canvas->resizeOffsets);
+		}
 	}
 
-	return UI_RECT_4(x, x + w, y, y + h);
+	return bounds;
 }
 
 void CanvasSelectObject(Object *object) {
@@ -1681,10 +1793,11 @@ void CanvasSelectObject(Object *object) {
 	}
 
 	UIRectangle bounds = CanvasGetObjectBounds(object);
-	canvasPanX += bounds.l - UI_RECT_WIDTH(canvas->bounds) / 2;
-	canvasPanY += bounds.t - UI_RECT_HEIGHT(canvas->bounds) / 2;
+	canvas->panX += bounds.l - UI_RECT_WIDTH(canvas->bounds) / 2;
+	canvas->panY += bounds.t - UI_RECT_HEIGHT(canvas->bounds) / 2;
 	ObjectSetSelected(object->id);
-	UIElementRepaint(canvas, nullptr);
+	canvas->showPrototype = false;
+	UIElementRefresh(canvas);
 	InspectorPopulate();
 }
 
@@ -1842,19 +1955,69 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 }
 
+int ResizeHandleMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	uintptr_t side = (uintptr_t) element->cp;
+
+	if (message == UI_MSG_PAINT) {
+		UIDrawRectangle((UIPainter *) dp, element->bounds, 0xFFF8F8F8, 0xFF404040, UI_RECT_1(1));
+	} else if (message == UI_MSG_LEFT_DOWN) {
+		canvas->originalBounds = CanvasGetObjectBounds(ObjectFind(selectedObjectID));
+	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1) {
+		if (side == 0) canvas->resizeOffsets = UI_RECT_4(element->window->cursorX - canvas->originalBounds.l, 0, 0, 0);
+		if (side == 1) canvas->resizeOffsets = UI_RECT_4(0, element->window->cursorX - canvas->originalBounds.r, 0, 0);
+		if (side == 2) canvas->resizeOffsets = UI_RECT_4(0, 0, element->window->cursorY - canvas->originalBounds.t, 0);
+		if (side == 3) canvas->resizeOffsets = UI_RECT_4(0, 0, 0, element->window->cursorY - canvas->originalBounds.b);
+		canvas->resizing = true;
+		UIElementRefresh(canvas);
+	} else if (message == UI_MSG_LEFT_UP) {
+		Object *object = ObjectFind(selectedObjectID);
+		UIRectangle canvasOffset = UI_RECT_2((int32_t) canvas->panX - canvas->bounds.l, (int32_t) canvas->panY - canvas->bounds.t);
+		UIRectangle newBounds = UIRectangleAdd(CanvasGetObjectBounds(object), canvasOffset);
+		canvas->resizing = false;
+
+		if (object) {
+			Step step = {};
+			step.type = STEP_MODIFY_PROPERTY;
+			step.property.type = PROP_INT;
+			step.objectID = selectedObjectID;
+
+			strcpy(step.property.cName, "_graphX");
+			step.property.integer = newBounds.l;
+			DocumentApplyStep(step, STEP_APPLY_GROUPED);
+			strcpy(step.property.cName, "_graphY");
+			step.property.integer = newBounds.t;
+			DocumentApplyStep(step, STEP_APPLY_GROUPED);
+			strcpy(step.property.cName, "_graphW");
+			step.property.integer = UI_RECT_WIDTH(newBounds);
+			DocumentApplyStep(step, STEP_APPLY_GROUPED);
+			strcpy(step.property.cName, "_graphH");
+			step.property.integer = UI_RECT_HEIGHT(newBounds);
+			DocumentApplyStep(step);
+		}
+	} else if (message == UI_MSG_GET_CURSOR) {
+		if (side == 0) return UI_CURSOR_RESIZE_LEFT;
+		if (side == 1) return UI_CURSOR_RESIZE_RIGHT;
+		if (side == 2) return UI_CURSOR_RESIZE_UP;
+		if (side == 3) return UI_CURSOR_RESIZE_DOWN;
+	}
+
+	return 0;
+}
+
 int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_PAINT) {
 		UIPainter *painter = (UIPainter *) dp;
 		UIDrawBlock(painter, element->bounds, 0xFFC0C0C0);
-		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvasLeftDownX, canvasSelectX), MaximumInteger(canvasLeftDownX, canvasSelectX),
-				MinimumInteger(canvasLeftDownY, canvasSelectY), MaximumInteger(canvasLeftDownY, canvasSelectY));
+		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvas->leftDownX, canvas->selectX), MaximumInteger(canvas->leftDownX, canvas->selectX),
+				MinimumInteger(canvas->leftDownY, canvas->selectY), MaximumInteger(canvas->leftDownY, canvas->selectY));
 
-		if (canvasSelecting) {
+		if (canvas->selecting) {
 			UIDrawBlock(painter, selectionBounds, 0xFF99CCFF);
 		}
 
 		for (uintptr_t i = 0; i < objects.Length(); i++) {
 			Object *object = &objects[i];
+			if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
 			UIRectangle bounds = CanvasGetObjectBounds(object);
 
 			if (bounds.r < element->bounds.l || bounds.l > element->bounds.r
@@ -1863,26 +2026,36 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			}
 
 			UIRectangle selectionIntersection = UIRectangleIntersection(bounds, selectionBounds);
+			bool isSelected = (object->flags & OBJECT_IS_SELECTED) == (inspectorPickData == nullptr)
+				|| (canvas->selecting && UI_RECT_VALID(selectionIntersection));
 
-			if ((object->flags & OBJECT_IS_SELECTED) == (inspectorPickData == nullptr)
-					|| (canvasSelecting && UI_RECT_VALID(selectionIntersection))) {
-				UIDrawBorder(painter, UIRectangleAdd(bounds, UI_RECT_1I(-3)), 0xFF4092FF, UI_RECT_1(3));
-			} 
+			if (!canvas->showPrototype) {
+				if (isSelected) {
+					UIDrawBorder(painter, UIRectangleAdd(bounds, UI_RECT_1I(-3)), 0xFF4092FF, UI_RECT_1(3));
+				} 
 
-			UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
-					object->cName, -1, 0xFF000000, UI_ALIGN_LEFT, nullptr);
+				UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
+						object->cName, -1, 0xFF000000, UI_ALIGN_LEFT, nullptr);
 
-			UIDrawRectangle(painter, bounds, 0xFFE0E0E0, 0xFF404040, UI_RECT_1(1));
-			UIDrawBlock(painter, UI_RECT_4(bounds.l + 1, bounds.r + 1, bounds.b, bounds.b + 1), 0xFF404040);
-			UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
+				UIDrawRectangle(painter, bounds, 0xFFE0E0E0, 0xFF404040, UI_RECT_1(1));
+				UIDrawBlock(painter, UI_RECT_4(bounds.l + 1, bounds.r + 1, bounds.b, bounds.b + 1), 0xFF404040);
+				UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
 
-			if (ObjectIsConditional(object)) {
-				UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
-				UIDrawBlock(painter, indicator, 0xFFFFFF00);
-				UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
+				if (ObjectIsConditional(object)) {
+					UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
+					UIDrawBlock(painter, indicator, 0xFFFFFF00);
+					UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
+				}
+
+				bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
 			}
 
-			bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
+			if (selectedObjectID == object->id && canvas->resizing) {
+				char buffer[32];
+				snprintf(buffer, sizeof(buffer), "%dx%d", UI_RECT_WIDTH(bounds), UI_RECT_HEIGHT(bounds));
+				UIDrawString(painter, UI_RECT_4(bounds.l, bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
+						buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
+			}
 
 			if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
 				int32_t value = GraphGetInteger(object);
@@ -1903,17 +2076,21 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
 			} else if (object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE || object->type == OBJ_STYLE) {
 				CanvasDrawStyle(object, bounds, painter);
+			} else if (object->type == OBJ_INSTANCE) {
+				Property *style = PropertyFind(object, "style", PROP_OBJECT);
+				CanvasDrawStyle(ObjectFind(style ? style->object : 0), bounds, painter);
 			} else {
 				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
 			}
 		}
 
-		if (canvasShowArrows) {
+		if (canvas->showArrows && !canvas->showPrototype) {
 			// Draw object connections.
 			// TODO This will be awfully slow when there's many objects...
 
 			for (uintptr_t i = 0; i < objects.Length(); i++) {
 				Object *object = &objects[i];
+				if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
 				UIRectangle b1 = CanvasGetObjectBounds(object);
 
 				for (uintptr_t j = 0; j < object->properties.Length(); j++) {
@@ -1927,16 +2104,17 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			}
 		}
 	} else if (message == UI_MSG_LEFT_DOWN) {
-		canvasCanDrag = true;
+		canvas->canDrag = true;
 		bool foundObjectToSelect = false;
 
 		for (uintptr_t i = objects.Length(); i > 0; i--) {
 			Object *object = &objects[i - 1];
+			if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
 			UIRectangle bounds = CanvasGetObjectBounds(object);
 
 			if (UIRectangleContains(bounds, element->window->cursorX, element->window->cursorY)) {
 				if (inspectorPickData) {
-					canvasCanDrag = false;
+					canvas->canDrag = false;
 
 					Step step = {};
 					step.type = STEP_MODIFY_PROPERTY;
@@ -1954,8 +2132,8 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 					}
 
 					ObjectSetSelected(object->id, false /* do not clear selection flag from previous */);
-					canvasDragOffsetX = bounds.l - element->window->cursorX;
-					canvasDragOffsetY = bounds.t - element->window->cursorY;
+					canvas->dragOffsetX = bounds.l - element->window->cursorX;
+					canvas->dragOffsetY = bounds.t - element->window->cursorY;
 				}
 
 				foundObjectToSelect = true;
@@ -1971,66 +2149,69 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			}
 		}
 
-		canvasLeftDownX = element->window->cursorX;
-		canvasLeftDownY = element->window->cursorY;
+		canvas->leftDownX = element->window->cursorX;
+		canvas->leftDownY = element->window->cursorY;
 
-		UIElementRepaint(element, nullptr);
+		UIElementRefresh(element);
 		InspectorPopulate();
 		InspectorPickTargetEnd();
-	} else if (message == UI_MSG_LEFT_UP && canvasDragging) {
+	} else if (message == UI_MSG_LEFT_UP && canvas->dragging) {
 		Object *object = ObjectFind(selectedObjectID);
 		int32_t oldX = PropertyReadInt32(object, "_graphX");
 		int32_t oldY = PropertyReadInt32(object, "_graphY");
 
-		if ((canvasDragDeltaX || canvasDragDeltaY) && object) {
+		if ((canvas->dragDeltaX || canvas->dragDeltaY) && object) {
 			Step step = {};
 			step.type = STEP_MODIFY_PROPERTY;
 			step.property.type = PROP_INT;
 
 			for (uintptr_t i = 0; i < objects.Length(); i++) {
 				Object *object = &objects[i];
+				if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
 
 				if ((object->flags & OBJECT_IS_SELECTED) && object->id != selectedObjectID) {
 					step.objectID = object->id;
 					strcpy(step.property.cName, "_graphX");
-					step.property.integer = PropertyReadInt32(object, "_graphX") + canvasDragDeltaX;
+					step.property.integer = PropertyReadInt32(object, "_graphX") + canvas->dragDeltaX;
 					DocumentApplyStep(step, STEP_APPLY_GROUPED);
 					strcpy(step.property.cName, "_graphY");
-					step.property.integer = PropertyReadInt32(object, "_graphY") + canvasDragDeltaY;
+					step.property.integer = PropertyReadInt32(object, "_graphY") + canvas->dragDeltaY;
 					DocumentApplyStep(step, STEP_APPLY_GROUPED);
 				}
 			}
 
 			step.objectID = selectedObjectID;
 			strcpy(step.property.cName, "_graphX");
-			step.property.integer = oldX + canvasDragDeltaX;
+			step.property.integer = oldX + canvas->dragDeltaX;
 			DocumentApplyStep(step, STEP_APPLY_GROUPED);
 			strcpy(step.property.cName, "_graphY");
-			step.property.integer = oldY + canvasDragDeltaY;
+			step.property.integer = oldY + canvas->dragDeltaY;
 			DocumentApplyStep(step);
 		}
 
-		canvasDragging = false;
-		UIElementRepaint(element, nullptr);
-	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1 && selectedObjectID && canvasCanDrag) {
-		int32_t dx = canvasLeftDownX - element->window->cursorX;
-		int32_t dy = canvasLeftDownY - element->window->cursorY;
+		canvas->dragging = false;
+		UIElementRefresh(canvas);
+	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1 && selectedObjectID && canvas->canDrag) {
+		int32_t dx = canvas->leftDownX - element->window->cursorX;
+		int32_t dy = canvas->leftDownY - element->window->cursorY;
 
-		if (canvasDragging || dx * dx + dy * dy > 200) {
-			int32_t canvasDragNewX = element->window->cursorX + canvasPanX + canvasDragOffsetX - element->bounds.l;
-			int32_t canvasDragNewY = element->window->cursorY + canvasPanY + canvasDragOffsetY - element->bounds.t;
-			canvasDragNewX -= canvasDragNewX % CANVAS_ALIGN, canvasDragNewY -= canvasDragNewY % CANVAS_ALIGN;
-			canvasDragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphX");
-			canvasDragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphY");
-			canvasDragging = true;
-			UIElementRepaint(element, nullptr);
+		if (canvas->dragging || dx * dx + dy * dy > 200) {
+			int32_t canvasDragNewX = element->window->cursorX + canvas->panX + canvas->dragOffsetX - element->bounds.l;
+			int32_t canvasDragNewY = element->window->cursorY + canvas->panY + canvas->dragOffsetY - element->bounds.t;
+			if (!canvas->showPrototype) canvasDragNewX -= canvasDragNewX % CANVAS_ALIGN, canvasDragNewY -= canvasDragNewY % CANVAS_ALIGN;
+			canvas->dragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphX");
+			canvas->dragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphY");
+			canvas->dragging = true;
+			UIElementRefresh(canvas);
 		}
-	} else if (message == UI_MSG_LEFT_UP && canvasSelecting) {
-		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvasLeftDownX, canvasSelectX), MaximumInteger(canvasLeftDownX, canvasSelectX),
-				MinimumInteger(canvasLeftDownY, canvasSelectY), MaximumInteger(canvasLeftDownY, canvasSelectY));
+	} else if (message == UI_MSG_LEFT_UP && canvas->selecting) {
+		UIRectangle selectionBounds = UI_RECT_4(MinimumInteger(canvas->leftDownX, canvas->selectX), MaximumInteger(canvas->leftDownX, canvas->selectX),
+				MinimumInteger(canvas->leftDownY, canvas->selectY), MaximumInteger(canvas->leftDownY, canvas->selectY));
 
 		for (uintptr_t i = 0; i < objects.Length(); i++) {
 			Object *object = &objects[i];
+			if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
+
 			UIRectangle bounds = CanvasGetObjectBounds(object);
 			UIRectangle selectionIntersection = UIRectangleIntersection(bounds, selectionBounds);
 
@@ -2039,57 +2220,83 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			}
 		}
 
-		canvasSelecting = false;
-		UIElementRepaint(element, nullptr);
+		canvas->selecting = false;
+		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1 && !selectedObjectID) {
-		canvasSelectX = element->window->cursorX;
-		canvasSelectY = element->window->cursorY;
-		canvasSelecting = true;
-		UIElementRepaint(element, nullptr);
+		canvas->selectX = element->window->cursorX;
+		canvas->selectY = element->window->cursorY;
+		canvas->selecting = true;
+		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_MIDDLE_DOWN) {
-		canvasLastPanPointX = element->window->cursorX;
-		canvasLastPanPointY = element->window->cursorY;
+		canvas->lastPanPointX = element->window->cursorX;
+		canvas->lastPanPointY = element->window->cursorY;
 		_UIWindowSetCursor(element->window, UI_CURSOR_HAND);
 	} else if (message == UI_MSG_MIDDLE_UP) {
 		_UIWindowSetCursor(element->window, UI_CURSOR_ARROW);
 	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 2) {
-		canvasPanX -= element->window->cursorX - canvasLastPanPointX;
-		canvasPanY -= element->window->cursorY - canvasLastPanPointY;
-		canvasLastPanPointX = element->window->cursorX;
-		canvasLastPanPointY = element->window->cursorY;
-		UIElementRepaint(element, nullptr);
+		canvas->panX -= element->window->cursorX - canvas->lastPanPointX;
+		canvas->panY -= element->window->cursorY - canvas->lastPanPointY;
+		canvas->lastPanPointX = element->window->cursorX;
+		canvas->lastPanPointY = element->window->cursorY;
+		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_LAYOUT) {
-		int width = UIElementMessage(canvasControls, UI_MSG_GET_WIDTH, 0, 0);
-		int height = UIElementMessage(canvasControls, UI_MSG_GET_HEIGHT, 0, 0);
+		UIElement *controls = canvas->showPrototype ? &prototypeControls->e : &graphControls->e;
+		(canvas->showPrototype ? &graphControls->e : &prototypeControls->e)->flags |= UI_ELEMENT_HIDE;
+		controls->flags &= ~UI_ELEMENT_HIDE;
+		int width = UIElementMessage(controls, UI_MSG_GET_WIDTH, 0, 0);
+		int height = UIElementMessage(controls, UI_MSG_GET_HEIGHT, 0, 0);
 		UIRectangle bounds = UI_RECT_4(element->bounds.l + 10, element->bounds.l + 10 + width, element->bounds.b - 10 - height, element->bounds.b - 10);
-		UIElementMove(canvasControls, bounds, false);
+		UIElementMove(controls, bounds, false);
+
+		Object *object = ObjectFind(selectedObjectID);
+
+		if (canvas->showPrototype && selectedObjectID && object && (object->flags & OBJECT_IN_PROTOTYPE)) {
+			UIRectangle bounds = CanvasGetObjectBounds(object);
+			int cx = (bounds.l + bounds.r) / 2, cy = (bounds.t + bounds.b) / 2;
+			const int size = 3;
+			UIElementMove(canvas->resizeHandles[0], UI_RECT_4(bounds.l - size, bounds.l + size + 1, cy - size, cy + size + 1), false);
+			UIElementMove(canvas->resizeHandles[1], UI_RECT_4(bounds.r - size - 1, bounds.r + size, cy - size, cy + size + 1), false);
+			UIElementMove(canvas->resizeHandles[2], UI_RECT_4(cx - size, cx + size + 1, bounds.t - size, bounds.t + size + 1), false);
+			UIElementMove(canvas->resizeHandles[3], UI_RECT_4(cx - size, cx + size + 1, bounds.b - size - 1, bounds.b + size), false);
+			canvas->resizeHandles[0]->flags &= ~UI_ELEMENT_HIDE;
+			canvas->resizeHandles[1]->flags &= ~UI_ELEMENT_HIDE;
+			canvas->resizeHandles[2]->flags &= ~UI_ELEMENT_HIDE;
+			canvas->resizeHandles[3]->flags &= ~UI_ELEMENT_HIDE;
+		} else {
+			canvas->resizeHandles[0]->flags |= UI_ELEMENT_HIDE;
+			canvas->resizeHandles[1]->flags |= UI_ELEMENT_HIDE;
+			canvas->resizeHandles[2]->flags |= UI_ELEMENT_HIDE;
+			canvas->resizeHandles[3]->flags |= UI_ELEMENT_HIDE;
+		}
 	}
 
 	return 0;
 }
 
 void CanvasToggleArrows(void *) {
-	canvasShowArrows = !canvasShowArrows;
+	canvas->showArrows = !canvas->showArrows;
 	UIElementRepaint(canvas, nullptr);
+}
+
+void CanvasSwitchView(void *) {
+	canvas->showPrototype = !canvas->showPrototype;
+	UIElementRefresh(canvas);
 }
 
 //////////////////////////////////////////////////////////////
 
-void ObjectAddCommandInternal(void *cp) {
-	Object object = {};
-	object.type = (ObjectType) (uintptr_t) cp;
-	object.id = ++objectIDAllocator;
-	Property p;
-	int32_t x = canvasPanX + UI_RECT_WIDTH(canvas->bounds) / 2;
-	int32_t y = canvasPanY + UI_RECT_HEIGHT(canvas->bounds) / 2;
-	x -= x % CANVAS_ALIGN, y -= y % CANVAS_ALIGN;
-	int32_t w = object.type == OBJ_COMMENT ? 30 : 80;
-	int32_t h = object.type == OBJ_COMMENT ? 10 : 60;
-	p = { .type = PROP_INT, .integer = x }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = w }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
-	p = { .type = PROP_INT, .integer = h }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
-	
+int PrototypeMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	if (message == UI_MSG_PAINT) {
+		UIPainter *painter = (UIPainter *) dp;
+		UIDrawBlock(painter, element->bounds, 0xFFC0C0C0);
+	}
+
+	return 0;
+}
+
+//////////////////////////////////////////////////////////////
+
+void ObjectAddInternal(Object object) {
 	Step step = {};
 	step.type = STEP_ADD_OBJECT;
 	step.object = object;
@@ -2101,10 +2308,51 @@ void ObjectAddCommandInternal(void *cp) {
 
 	ObjectSetSelected(object.id);
 	InspectorPopulate();
+	UIElementRefresh(canvas);
+}
+
+void ObjectAddCommandInternal(void *cp) {
+	Object object = {};
+	object.type = (ObjectType) (uintptr_t) cp;
+	object.id = ++objectIDAllocator;
+	Property p;
+	int32_t x = canvas->panX + UI_RECT_WIDTH(canvas->bounds) / 2;
+	int32_t y = canvas->panY + UI_RECT_HEIGHT(canvas->bounds) / 2;
+	x -= x % CANVAS_ALIGN, y -= y % CANVAS_ALIGN;
+	int32_t w = object.type == OBJ_COMMENT ? 30 : 80;
+	int32_t h = object.type == OBJ_COMMENT ? 10 : 60;
+	p = { .type = PROP_INT, .integer = x }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = w }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = h }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
+	ObjectAddInternal(object);
+}
+
+void ObjectAddInstanceCommandInternal(void *cp) {
+	Object *style = (Object *) cp;
+	Property *metricsProperty = PropertyFind(style, "metrics", PROP_OBJECT);
+	Object *metrics = ObjectFind(metricsProperty ? metricsProperty->object : 0);
+	int32_t preferredWidth = PropertyReadInt32(metrics, "preferredWidth");
+	int32_t preferredHeight = PropertyReadInt32(metrics, "preferredHeight");
+	Object object = {};
+	object.type = OBJ_INSTANCE;
+	object.id = ++objectIDAllocator;
+	object.flags |= OBJECT_IN_PROTOTYPE;
+	Property p;
+	int32_t x = canvas->panX + UI_RECT_WIDTH(canvas->bounds) / 2;
+	int32_t y = canvas->panY + UI_RECT_HEIGHT(canvas->bounds) / 2;
+	int32_t w = preferredWidth ?: 100;
+	int32_t h = preferredHeight ?: 100;
+	p = { .type = PROP_INT, .integer = x }; strcpy(p.cName, "_graphX"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = w }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
+	p = { .type = PROP_INT, .integer = h }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
+	p = { .type = PROP_OBJECT, .object = style->id }; strcpy(p.cName, "style"); object.properties.Add(p);
+	ObjectAddInternal(object);
 }
 
 void ObjectAddCommand(void *) {
-	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL);
+	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | UI_MENU_PLACE_ABOVE);
 	UIMenuAddItem(menu, 0, "Style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_STYLE);
 	UIMenuAddItem(menu, 0, "Comment", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_COMMENT);
 	UIMenuAddItem(menu, 0, "Color variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_COLOR);
@@ -2123,11 +2371,24 @@ void ObjectAddCommand(void *) {
 	UIMenuShow(menu);
 }
 
+void ObjectAddInstanceCommand(void *) {
+	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | UI_MENU_PLACE_ABOVE);
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		if (objects[i].type == OBJ_STYLE) {
+			UIMenuAddItem(menu, 0, objects[i].cName, -1, ObjectAddInstanceCommandInternal, (void *) (uintptr_t) &objects[i]);
+		}
+	}
+
+	UIMenuShow(menu);
+}
+
 void ObjectDeleteCommand(void *) {
 	Array<uint64_t> list = {};
 
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		Object *object = &objects[i];
+		if (!!(object->flags & OBJECT_IN_PROTOTYPE) != canvas->showPrototype) continue;
 
 		if (object->flags & OBJECT_IS_SELECTED) {
 			list.Add(object->id);
@@ -2196,33 +2457,47 @@ int main() {
 	ui.theme = _uiThemeClassic;
 	window = UIWindowCreate(0, UI_ELEMENT_PARENT_PUSH | UI_WINDOW_MAXIMIZE, "Designer", 0, 0);
 	window->e.messageUser = WindowMessage;
-	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND);
 
-	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL | UI_PANEL_GRAY | UI_PANEL_SMALL_SPACING);
+	UISplitPaneCreate(0, UI_ELEMENT_PARENT_PUSH, 0.75f);
+	canvas = (Canvas *) UIElementCreate(sizeof(Canvas), 0, 0, CanvasMessage, "Canvas");
+	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND);
+	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL | UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING);
 #ifdef OS_ESSENCE
 		UIButtonCreate(0, UI_BUTTON_DROP_DOWN, "File", -1)->invoke = DocumentFileMenu;
 #else
 		UIButtonCreate(0, 0, "Save", -1)->invoke = DocumentSave;
 #endif
-		UIButtonCreate(0, 0, "Add object...", -1)->invoke = ObjectAddCommand;
-		UISpacerCreate(0, 0, 15, 0);
-		labelMessage = UILabelCreate(0, UI_ELEMENT_H_FILL, 0, 0);
+		UIButtonCreate(0, 0, "Switch view", -1)->invoke = CanvasSwitchView;
 	UIParentPop();
-
 	UISpacerCreate(0, UI_SPACER_LINE, 0, 1);
+	inspector = &UIPanelCreate(0, UI_ELEMENT_V_FILL | UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL | UI_PANEL_EXPAND)->e;
 
-	UISplitPaneCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_V_FILL, 0.75f);
-	canvas = UIElementCreate(sizeof(UIElement), 0, 0, CanvasMessage, "Canvas");
-	inspector = &UIPanelCreate(0, UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL | UI_PANEL_EXPAND)->e;
 	InspectorPopulate();
 
-	canvasControls = &UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH)->e;
-		UIButtonCreate(0, 0, "Toggle arrows", -1)->invoke = CanvasToggleArrows;
+	graphControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
+	graphControls->gap = -1;
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Toggle arrows", -1)->invoke = CanvasToggleArrows;
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Add object \x18", -1)->invoke = ObjectAddCommand;
 	UIParentPop();
+
+	prototypeControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
+	prototypeControls->gap = -1;
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Add instance \x18", -1)->invoke = ObjectAddInstanceCommand;
+	UIParentPop();
+
+	canvas->resizeHandles[0] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
+	canvas->resizeHandles[1] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
+	canvas->resizeHandles[2] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
+	canvas->resizeHandles[3] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
+	canvas->resizeHandles[0]->cp = (void *) (uintptr_t) 0;
+	canvas->resizeHandles[1]->cp = (void *) (uintptr_t) 1;
+	canvas->resizeHandles[2]->cp = (void *) (uintptr_t) 2;
+	canvas->resizeHandles[3]->cp = (void *) (uintptr_t) 3;
 
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Z'), 1 /* ctrl */, 0, 0, DocumentUndoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('D'), 1 /* ctrl */, 0, 0, ObjectDuplicateCommand, 0));
+	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(2), 0, 0, 0, CanvasSwitchView, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DELETE, 0, 0, 0, ObjectDeleteCommand, 0));
 
 #ifdef OS_ESSENCE
