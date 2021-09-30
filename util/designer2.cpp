@@ -9,19 +9,20 @@
 #include <stdio.h>
 #include <math.h>
 #include <limits.h>
+#include <assert.h>
 #endif
 #include "hsluv.h"
 
-// x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
+// x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Path layers: contours and dashed contours.
 // 	Prototyping display: previewing state transitions.
 // 	Import and reorganize old theming data.
 // 	Export.
 
 // TODO Additional features:
 // 	Fix moving/resizing objects when zoomed in.
+// 	Path layers: dashed contours.
 // 	Picking objects: only highlight objects with an applicable type.
 // 	Displaying radial gradients.
 // 	Resizing graph objects?
@@ -29,6 +30,9 @@
 // 	Auto-layout in the prototype display.
 // 	Importing SVGs and TTFs.
 // 	Schema-based verification of the document.
+// 	Get text rendering on non-Essence platforms.
+// 	Proper bezier path editor.
+// 	Path boolean operations.
 		
 //////////////////////////////////////////////////////////////
 
@@ -264,6 +268,7 @@ enum ObjectType : uint8_t {
 	OBJ_VAR_INT,
 	OBJ_VAR_TEXT_STYLE,
 	OBJ_VAR_ICON_STYLE,
+	OBJ_VAR_CONTOUR_STYLE,
 	
 	OBJ_PAINT_OVERWRITE = 0x60,
 	OBJ_PAINT_LINEAR_GRADIENT,
@@ -1342,7 +1347,8 @@ void InspectorPopulate() {
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE 
 				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
-				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT;
+				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
+				|| object->type == OBJ_VAR_CONTOUR_STYLE;
 			bool inheritWithoutAnimation = object->type == OBJ_STYLE || object->type == OBJ_LAYER_METRICS;
 
 			if (inheritWithAnimation || inheritWithoutAnimation) {
@@ -1474,6 +1480,26 @@ void InspectorPopulate() {
 		} else if (object->type == OBJ_VAR_ICON_STYLE) {
 			InspectorAddLink(object, "Icon color:", "iconColor");
 			InspectorAddInteger(object, "Icon size:", "iconSize");
+		} else if (object->type == OBJ_VAR_CONTOUR_STYLE) {
+			InspectorAddInteger(object, "Internal width:", "internalWidth");
+			InspectorAddInteger(object, "External width:", "externalWidth");
+			InspectorAddBooleanToggle(object, "When scaling, snap to integer widths", "integerWidthsOnly");
+			InspectorAddFloat(object, "Miter limit:", "miterLimit");
+
+			UILabelCreate(0, 0, "Join mode:", -1);
+			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+			InspectorAddRadioSwitch(object, "Miter", "joinMode", RAST_LINE_JOIN_MITER);
+			InspectorAddRadioSwitch(object, "Round", "joinMode", RAST_LINE_JOIN_ROUND);
+			InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "joinMode", INSPECTOR_REMOVE_BUTTON);
+			UIParentPop();
+
+			UILabelCreate(0, 0, "Cap mode:", -1);
+			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+			InspectorAddRadioSwitch(object, "Flat", "capMode", RAST_LINE_CAP_FLAT);
+			InspectorAddRadioSwitch(object, "Square", "capMode", RAST_LINE_CAP_SQUARE);
+			InspectorAddRadioSwitch(object, "Round", "capMode", RAST_LINE_CAP_ROUND);
+			InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "capMode", INSPECTOR_REMOVE_BUTTON);
+			UIParentPop();
 		} else if (object->type == OBJ_LAYER_BOX) {
 			InspectorAddFourGroup(object, "Border sizes:", "borders");
 			InspectorAddFourGroup(object, "Corner radii:", "corners");
@@ -1884,7 +1910,7 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 		Property *property;
 #define LAYER_PATH_WRITE_POINT(x) \
 		sprintf(cPropertyName, "points_%d_" #x, (int32_t) i); \
-		property = PropertyFind(object, cPropertyName, PROP_FLOAT); \
+		property = PropertyFindOrInherit(first, object, cPropertyName, PROP_FLOAT); \
 		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
 		LAYER_PATH_WRITE_POINT(x0);
 		LAYER_PATH_WRITE_POINT(y0);
@@ -1897,12 +1923,35 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 	for (uintptr_t i = 0; i < path.fillCount; i++) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
 		ThemeLayerPathFill fill = {};
-		fill.paintAndFillType |= THEME_PATH_FILL_SOLID; // TODO Contours and dashed contours.
+
 		sprintf(cPropertyName, "fills_%d_paint", (int32_t) i);
-		Property *paint = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		fill.paintAndFillType |= ExportPaint(ObjectFind(paint ? paint->object : 0), nullptr);
+		Object *paint = PropertyFindOrInheritReadObject(first, object, cPropertyName);
+		fill.paintAndFillType |= ExportPaint(paint, nullptr);
+
+		sprintf(cPropertyName, "fills_%d_mode", (int32_t) i);
+		Object *mode = PropertyFindOrInheritReadObject(first, object, cPropertyName);
+
+		// TODO Dashed contours.
+
+		if (mode && mode->type == OBJ_VAR_CONTOUR_STYLE) {
+			fill.paintAndFillType |= THEME_PATH_FILL_CONTOUR;
+		} else {
+			fill.paintAndFillType |= THEME_PATH_FILL_SOLID;
+		}
+
 		EsBufferWrite(data, &fill, sizeof(fill));
-		ExportPaint(ObjectFind(paint ? paint->object : 0), data);
+		ExportPaint(paint, data);
+
+		if (mode && mode->type == OBJ_VAR_CONTOUR_STYLE) {
+			ThemeLayerPathFillContour contour = {};
+			contour.miterLimit = PropertyFindOrInheritReadFloat(first, mode, "miterLimit");
+			contour.internalWidth = PropertyFindOrInheritReadInt32(first, mode, "internalWidth");
+			contour.externalWidth = PropertyFindOrInheritReadInt32(first, mode, "externalWidth");
+			contour.mode = PropertyFindOrInheritReadInt32(first, mode, "joinMode") 
+				| (PropertyFindOrInheritReadInt32(first, mode, "capMode") << 2)
+				| (PropertyFindOrInheritReadInt32(first, mode, "integerWidthsOnly") ? 0x80 : 0);
+			EsBufferWrite(data, &contour, sizeof(contour));
+		}
 	}
 }
 
@@ -2235,6 +2284,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				canvas->previewStateActive = false;
 			} else {
 				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
+				// TODO Preview for OBJ_VAR_CONTOUR_STYLE.
 			}
 		}
 
@@ -2515,6 +2565,7 @@ void ObjectAddCommand(void *) {
 	UIMenuAddItem(menu, 0, "Integer variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_INT);
 	UIMenuAddItem(menu, 0, "Text style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_TEXT_STYLE);
 	UIMenuAddItem(menu, 0, "Icon style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_ICON_STYLE);
+	UIMenuAddItem(menu, 0, "Contour style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_CONTOUR_STYLE);
 	UIMenuAddItem(menu, 0, "Metrics", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_METRICS);
 	UIMenuAddItem(menu, 0, "Overwrite paint", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
 	UIMenuAddItem(menu, 0, "Linear gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
