@@ -15,17 +15,20 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp  -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Implement path layers, and test radial gradients with them.
+// 	Path layers: contours and dashed contours.
 // 	Prototyping display: previewing state transitions.
 // 	Import and reorganize old theming data.
 // 	Export.
 
 // TODO Additional features:
 // 	Fix moving/resizing objects when zoomed in.
+// 	Picking objects: only highlight objects with an applicable type.
+// 	Displaying radial gradients.
 // 	Resizing graph objects?
 // 	Find object in graph by name.
 // 	Auto-layout in the prototype display.
 // 	Importing SVGs and TTFs.
+// 	Schema-based verification of the document.
 		
 //////////////////////////////////////////////////////////////
 
@@ -265,7 +268,7 @@ enum ObjectType : uint8_t {
 	OBJ_LAYER_METRICS,
 	OBJ_LAYER_TEXT,
 	OBJ_LAYER_GROUP,
-	// OBJ_LAYER_PATH,
+	OBJ_LAYER_PATH,
 
 	OBJ_MOD_COLOR = 0xC0,
 	OBJ_MOD_MULTIPLY,
@@ -796,7 +799,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UITextbox *textbox = (UITextbox *) data->element;
 		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_FLOAT);
 		char buffer[32] = "";
-		if (property) snprintf(buffer, sizeof(buffer), "%f", property->floating);
+		if (property) snprintf(buffer, sizeof(buffer), "%.2f", property->floating);
 		UITextboxClear(textbox, false);
 		UITextboxReplace(textbox, buffer, -1, false);
 		UIElementRefresh(&textbox->e);
@@ -1322,8 +1325,8 @@ void InspectorPopulate() {
 			UIParentPop();
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE 
-				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT
-				|| object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT;
+				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
+				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT;
 			bool inheritWithoutAnimation = object->type == OBJ_STYLE || object->type == OBJ_LAYER_METRICS;
 
 			if (inheritWithAnimation || inheritWithoutAnimation) {
@@ -1465,6 +1468,62 @@ void InspectorPopulate() {
 			InspectorAddBooleanToggle(object, "Auto-corners", "autoCorners");
 			InspectorAddBooleanToggle(object, "Auto-borders", "autoBorders");
 			InspectorAddBooleanToggle(object, "Shadow hiding", "shadowHiding");
+		} else if (object->type == OBJ_LAYER_PATH) {
+			InspectorAddBooleanToggle(object, "Use even-odd fill rule", "pathFillEvenOdd");
+			InspectorAddBooleanToggle(object, "Path is closed", "pathClosed");
+			InspectorAddIntegerTextbox(object, "Alpha", "alpha");
+
+			int32_t pointCount = PropertyReadInt32(object, "points_count");
+			if (pointCount < 0) pointCount = 0;
+			if (pointCount > 100) pointCount = 100;
+
+			for (int32_t i = 0; i < pointCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				UIPanelCreate(0, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
+				sprintf(cPropertyName, "points_%d_x0", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_y0", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_x1", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_y1", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_x2", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_y2", i);
+				InspectorAddFloat(object, nullptr, cPropertyName);
+				sprintf(cPropertyName, "points_%d_", i);
+				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "Delete", -1)->e, object->id, cPropertyName, INSPECTOR_DELETE_ARRAY_ITEM);
+				UIParentPop();
+			}
+
+			InspectorBind(&UIButtonCreate(0, 0, "Add point", -1)->e, object->id, "points_count", INSPECTOR_ADD_ARRAY_ITEM);
+
+			int32_t fillCount = PropertyReadInt32(object, "fills_count");
+			if (fillCount < 0) fillCount = 0;
+			if (fillCount > 100) fillCount = 100;
+
+			for (int32_t i = 0; i < fillCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
+				sprintf(cPropertyName, "fills_%d_", i);
+				UIPanel *row = UIPanelCreate(0, UI_PANEL_HORIZONTAL);
+				UISpacerCreate(&row->e, UI_ELEMENT_H_FILL, 0, 0);
+				InspectorBind(&UIButtonCreate(&row->e, UI_BUTTON_SMALL, "Delete", -1)->e, object->id, cPropertyName, INSPECTOR_DELETE_ARRAY_ITEM);
+				sprintf(cPropertyName, "fills_%d_paint", i);
+				InspectorAddLink(object, "Paint:", cPropertyName);
+				sprintf(cPropertyName, "fills_%d_mode", i);
+				InspectorAddLink(object, "Mode:", cPropertyName);
+				UIParentPop();
+
+				if (i != fillCount - 1) {
+					sprintf(cPropertyName, "fills_%d_", i);
+					InspectorBind(&UIButtonCreate(&UIPanelCreate(0, 0)->e, UI_BUTTON_SMALL, "Swap", -1)->e, 
+							object->id, cPropertyName, INSPECTOR_SWAP_ARRAY_ITEMS);
+				}
+			}
+
+			InspectorBind(&UIButtonCreate(0, 0, "Add fill", -1)->e, object->id, "fills_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_LAYER_TEXT) {
 			InspectorAddLink(object, "Text color:", "color");
 			InspectorAddInteger(object, "Blur radius:", "blur");
@@ -1813,6 +1872,55 @@ void ExportLayerBox(bool first, Object *object, EsBuffer *data) {
 	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
 }
 
+void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
+	Property *pointCount = PropertyFindOrInherit(false, object, "points_count", PROP_INT);
+	Property *fillCount = PropertyFindOrInherit(false, object, "fills_count", PROP_INT);
+
+	ThemeLayerPath path = {};
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "pathFillEvenOdd"))) path.flags |= THEME_LAYER_PATH_FILL_EVEN_ODD;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "pathClosed"))) path.flags |= THEME_LAYER_PATH_CLOSED;
+	path.alpha = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "alpha"));
+	path.pointCount = pointCount ? pointCount->integer : 0;
+	path.fillCount = fillCount ? fillCount->integer : 0;
+	EsBufferWrite(data, &path, sizeof(path));
+
+	for (uintptr_t i = 0; i < path.pointCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		float zero = 0.0f;
+		Property *property;
+
+		sprintf(cPropertyName, "points_%d_x0", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		sprintf(cPropertyName, "points_%d_y0", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		sprintf(cPropertyName, "points_%d_x1", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		sprintf(cPropertyName, "points_%d_y1", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		sprintf(cPropertyName, "points_%d_x2", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		sprintf(cPropertyName, "points_%d_y2", (int32_t) i);
+		property = PropertyFind(object, cPropertyName, PROP_FLOAT);
+		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+	}
+
+	for (uintptr_t i = 0; i < path.fillCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		ThemeLayerPathFill fill = {};
+		fill.paintAndFillType |= THEME_PATH_FILL_SOLID; // TODO Contours and dashed contours.
+		sprintf(cPropertyName, "fills_%d_paint", (int32_t) i);
+		Property *paint = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		fill.paintAndFillType |= ExportPaint(ObjectFind(paint ? paint->object : 0), nullptr);
+		EsBufferWrite(data, &fill, sizeof(fill));
+		ExportPaint(ObjectFind(paint ? paint->object : 0), data);
+	}
+}
+
 void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
 	ThemeLayerBox box = {};
 	box.mainPaintType = ExportPaint(object, nullptr);
@@ -1928,6 +2036,13 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 		if (textStyle.blur > 10) textStyle.blur = 10;
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
 #endif
+	} else if (object->type == OBJ_LAYER_PATH) {
+		uint8_t buffer[4096];
+		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_PATH };
+		EsBufferWrite(&data, &layer, sizeof(layer));
+		ExportLayerPath(depth == 0, object, &data);
+		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
 		if (layerCount < 0) layerCount = 0;
@@ -1942,22 +2057,15 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 			Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
 			Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
 
-			sprintf(cPropertyName, "layers_%d_offset0", i);
-			int32_t offset0 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_offset1", i);
-			int32_t offset1 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_offset2", i);
-			int32_t offset2 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_offset3", i);
-			int32_t offset3 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_position0", i);
-			int32_t position0 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_position1", i);
-			int32_t position1 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_position2", i);
-			int32_t position2 = PropertyReadInt32(object, cPropertyName);
-			sprintf(cPropertyName, "layers_%d_position3", i);
-			int32_t position3 = PropertyReadInt32(object, cPropertyName);
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int32_t x = PropertyReadInt32(object, cPropertyName)
+			LAYER_READ_INT32(offset0);
+			LAYER_READ_INT32(offset1);
+			LAYER_READ_INT32(offset2);
+			LAYER_READ_INT32(offset3);
+			LAYER_READ_INT32(position0);
+			LAYER_READ_INT32(position1);
+			LAYER_READ_INT32(position2);
+			LAYER_READ_INT32(position3);
 
 			UIRectangle outBounds;
 			outBounds.l = bounds.l + offset0 + position0 * inWidth  / 100;
@@ -2120,7 +2228,8 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				char buffer[32];
 				snprintf(buffer, sizeof(buffer), "%d", value);
 				UIDrawString(painter, bounds, buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
-			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP || object->type == OBJ_LAYER_TEXT) {
+			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP 
+					|| object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH) {
 				CanvasDrawLayer(object, bounds, painter);
 			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 				CanvasDrawColorSwatch(object, bounds, painter);
@@ -2429,6 +2538,7 @@ void ObjectAddCommand(void *) {
 	UIMenuAddItem(menu, 0, "Linear gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
 	UIMenuAddItem(menu, 0, "Radial gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_RADIAL_GRADIENT);
 	UIMenuAddItem(menu, 0, "Box layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_BOX);
+	UIMenuAddItem(menu, 0, "Path layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_PATH);
 	UIMenuAddItem(menu, 0, "Text layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_TEXT);
 	UIMenuAddItem(menu, 0, "Layer group", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_GROUP);
 	UIMenuAddItem(menu, 0, "Modify color", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_MOD_COLOR);
