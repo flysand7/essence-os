@@ -16,9 +16,9 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Prototyping display: previewing state transitions.
 // 	Import and reorganize old theming data.
 // 	Export.
+// 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
 // 	Fix moving/resizing objects when zoomed in.
@@ -1510,6 +1510,8 @@ void InspectorPopulate() {
 			InspectorAddBooleanToggle(object, "Auto-corners", "autoCorners");
 			InspectorAddBooleanToggle(object, "Auto-borders", "autoBorders");
 			InspectorAddBooleanToggle(object, "Shadow hiding", "shadowHiding");
+
+			InspectorAddFourGroup(object, "Offset (dpx):", "offset", nullptr, true);
 		} else if (object->type == OBJ_LAYER_PATH) {
 			InspectorAddBooleanToggle(object, "Use even-odd fill rule", "pathFillEvenOdd");
 			InspectorAddBooleanToggle(object, "Path is closed", "pathClosed");
@@ -2042,6 +2044,11 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 
 	if (object->type == OBJ_LAYER_BOX) {
+		bounds.l += PropertyFindOrInheritReadInt32(depth == 0, object, "offset0") * canvas->zoom;
+		bounds.r += PropertyFindOrInheritReadInt32(depth == 0, object, "offset1") * canvas->zoom;
+		bounds.t += PropertyFindOrInheritReadInt32(depth == 0, object, "offset2") * canvas->zoom;
+		bounds.b += PropertyFindOrInheritReadInt32(depth == 0, object, "offset3") * canvas->zoom;
+
 		uint8_t buffer[4096];
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
@@ -2102,10 +2109,10 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 			LAYER_READ_INT32(position3);
 
 			UIRectangle outBounds;
-			outBounds.l = bounds.l + offset0 + position0 * inWidth  / 100;
-			outBounds.r = bounds.l + offset1 + position1 * inWidth  / 100;
-			outBounds.t = bounds.t + offset2 + position2 * inHeight / 100;
-			outBounds.b = bounds.t + offset3 + position3 * inHeight / 100;
+			outBounds.l = bounds.l + offset0 * canvas->zoom + position0 * inWidth  / 100;
+			outBounds.r = bounds.l + offset1 * canvas->zoom + position1 * inWidth  / 100;
+			outBounds.t = bounds.t + offset2 * canvas->zoom + position2 * inHeight / 100;
+			outBounds.b = bounds.t + offset3 * canvas->zoom + position3 * inHeight / 100;
 
 			CanvasDrawLayer(layerObject, outBounds, painter, depth + 1);
 		}
