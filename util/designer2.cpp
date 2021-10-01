@@ -16,12 +16,13 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Import and reorganize old theming data.
+// 	Import old theming data.
 // 	Export.
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
-// 	Scrollbars?
+// 	In a conditional layer, properties from conditional linked objects (such as a gradient paint) should show if their conditions match.
+// 	Scrollbars on the canvas?
 // 	Icons for different object types (especially color overwrite objects).
 // 	Fix moving/resizing objects when zoomed in.
 // 	Path layers: dashed contours.
@@ -35,6 +36,9 @@
 // 	Get text rendering on non-Essence platforms.
 // 	Proper bezier path editor.
 // 	Path boolean operations.
+// 	Timeline editor for applying a given state change, with rows for possibly many different layers.
+
+// TODO Reorganize old theming data!
 		
 //////////////////////////////////////////////////////////////
 
@@ -271,7 +275,6 @@ enum ObjectType : uint8_t {
 	OBJ_VAR_COLOR = 0x40,
 	OBJ_VAR_INT,
 	OBJ_VAR_TEXT_STYLE,
-	OBJ_VAR_ICON_STYLE,
 	OBJ_VAR_CONTOUR_STYLE,
 	
 	OBJ_PAINT_OVERWRITE = 0x60,
@@ -409,11 +412,11 @@ bool ObjectMatchesPreviewState(Object *object) {
 		&& ((stateBits & canvas->previewStateBits) == stateBits);
 }
 
-Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, uint8_t type = 0) {
+Property *PropertyFindOrInherit(Object *object, const char *cName, uint8_t type = 0) {
 	uintptr_t depth = 0;
 
 	while (object && (depth++ < 100)) {
-		if (first || !ObjectIsConditional(object) || (canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
+		if (!ObjectIsConditional(object) || (canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
 			// Return the value if the object has this property.
 			Property *property = PropertyFind(object, cName);
 			if (property) return type && property->type != type ? nullptr : property;
@@ -424,24 +427,23 @@ Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, u
 		// Go to the inheritance parent object.
 		Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
 		object = ObjectFind(property ? property->object : 0);
-		first = false;
 	}
 
 	return nullptr;
 }
 
-int32_t PropertyFindOrInheritReadInt32(bool first, Object *object, const char *cName, int32_t defaultValue = 0) {
-	Property *property = PropertyFindOrInherit(first, object, cName, PROP_INT);
+int32_t PropertyFindOrInheritReadInt32(Object *object, const char *cName, int32_t defaultValue = 0) {
+	Property *property = PropertyFindOrInherit(object, cName, PROP_INT);
 	return property ? property->integer : defaultValue;
 }
 
-float PropertyFindOrInheritReadFloat(bool first, Object *object, const char *cName, float defaultValue = 0) {
-	Property *property = PropertyFindOrInherit(first, object, cName, PROP_FLOAT);
+float PropertyFindOrInheritReadFloat(Object *object, const char *cName, float defaultValue = 0) {
+	Property *property = PropertyFindOrInherit(object, cName, PROP_FLOAT);
 	return property ? property->floating : defaultValue;
 }
 
-Object *PropertyFindOrInheritReadObject(bool first, Object *object, const char *cName) {
-	Property *property = PropertyFindOrInherit(first, object, cName, PROP_OBJECT);
+Object *PropertyFindOrInheritReadObject(Object *object, const char *cName) {
+	Property *property = PropertyFindOrInherit(object, cName, PROP_OBJECT);
 	return property ? ObjectFind(property->object) : nullptr;
 }
 
@@ -1372,7 +1374,7 @@ void InspectorPopulate() {
 			UIButtonCreate(0, UI_BUTTON_SMALL, "Rename", -1)->invoke = InspectorRenameObject;
 			UIParentPop();
 
-			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE 
+			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE
 				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
 				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
 				|| object->type == OBJ_VAR_CONTOUR_STYLE;
@@ -1421,7 +1423,6 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Appearance:", "appearance");
 			InspectorAddLink(object, "Metrics:", "metrics");
 			InspectorAddLink(object, "Text style:", "textStyle");
-			InspectorAddLink(object, "Icon style:", "iconStyle");
 			InspectorAddBooleanToggle(object, "Public style", "isPublic");
 		} else if (object->type == OBJ_VAR_COLOR) {
 			InspectorBind(&UIColorPickerCreate(&UIPanelCreate(0, 0)->e, UI_COLOR_PICKER_HAS_OPACITY)->e, object->id, "color", INSPECTOR_COLOR_PICKER);
@@ -1504,7 +1505,7 @@ void InspectorPopulate() {
 			InspectorAddRadioSwitch(object, "Monospaced", "fontFamily", ES_FONT_MONOSPACED);
 			InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "fontFamily", INSPECTOR_REMOVE_BUTTON);
 			UIParentPop();
-		} else if (object->type == OBJ_VAR_ICON_STYLE) {
+
 			InspectorAddLink(object, "Icon color:", "iconColor");
 			InspectorAddInteger(object, "Icon size:", "iconSize");
 		} else if (object->type == OBJ_VAR_CONTOUR_STYLE) {
@@ -1833,14 +1834,11 @@ uint32_t GraphGetColorFromProperty(Property *property) {
 void ExportGradientStopArray(Object *object, EsBuffer *data, size_t stopCount) {
 	for (uintptr_t i = 0; i < stopCount; i++) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
-		sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
-		Property *color = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
-		Property *position = PropertyFind(object, cPropertyName, PROP_OBJECT);
-
 		ThemeGradientStop stop = {};
-		stop.color = GraphGetColor(ObjectFind(color ? color->object : 0));
-		stop.position = GraphGetIntegerFromProperty(position);
+		sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
+		stop.color = GraphGetColor(PropertyFindOrInheritReadObject(object, cPropertyName));
+		sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
+		stop.position = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, cPropertyName, PROP_INT));
 		EsBufferWrite(data, &stop, sizeof(stop));
 	}
 }
@@ -1859,18 +1857,18 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 
 		return THEME_PAINT_SOLID;
 	} else if (object->type == OBJ_PAINT_OVERWRITE) {
-		ExportPaint(PropertyFindOrInheritReadObject(false, object, "color"), data, depth + 1);
+		ExportPaint(PropertyFindOrInheritReadObject(object, "color"), data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
 	} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
 		if (data) {
 			ThemePaintLinearGradient paint = {};
-			paint.transform[0] = PropertyFindOrInheritReadFloat(false, object, "transformX");
-			paint.transform[1] = PropertyFindOrInheritReadFloat(false, object, "transformY");
-			paint.transform[2] = PropertyFindOrInheritReadFloat(false, object, "transformStart");
-			paint.stopCount = PropertyFindOrInheritReadInt32(false, object, "stops_count");
-			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(false, object, "useGammaInterpolation");
-			paint.useSystemColor = !!PropertyFindOrInheritReadInt32(false, object, "useSystemColor");
-			paint.repeatMode = PropertyFindOrInheritReadInt32(false, object, "repeatMode");
+			paint.transform[0] = PropertyFindOrInheritReadFloat(object, "transformX");
+			paint.transform[1] = PropertyFindOrInheritReadFloat(object, "transformY");
+			paint.transform[2] = PropertyFindOrInheritReadFloat(object, "transformStart");
+			paint.stopCount = PropertyFindOrInheritReadInt32(object, "stops_count");
+			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(object, "useGammaInterpolation");
+			paint.useSystemColor = !!PropertyFindOrInheritReadInt32(object, "useSystemColor");
+			paint.repeatMode = PropertyFindOrInheritReadInt32(object, "repeatMode");
 			EsBufferWrite(data, &paint, sizeof(paint));
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
@@ -1879,15 +1877,15 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 		if (data) {
 			ThemePaintRadialGradient paint = {};
-			paint.transform[0] = PropertyFindOrInheritReadFloat(false, object, "transform0");
-			paint.transform[1] = PropertyFindOrInheritReadFloat(false, object, "transform1");
-			paint.transform[2] = PropertyFindOrInheritReadFloat(false, object, "transform2");
-			paint.transform[3] = PropertyFindOrInheritReadFloat(false, object, "transform3");
-			paint.transform[4] = PropertyFindOrInheritReadFloat(false, object, "transform4");
-			paint.transform[5] = PropertyFindOrInheritReadFloat(false, object, "transform5");
-			paint.stopCount = PropertyFindOrInheritReadInt32(false, object, "stops_count");
-			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(false, object, "useGammaInterpolation");
-			paint.repeatMode = PropertyFindOrInheritReadInt32(false, object, "repeatMode");
+			paint.transform[0] = PropertyFindOrInheritReadFloat(object, "transform0");
+			paint.transform[1] = PropertyFindOrInheritReadFloat(object, "transform1");
+			paint.transform[2] = PropertyFindOrInheritReadFloat(object, "transform2");
+			paint.transform[3] = PropertyFindOrInheritReadFloat(object, "transform3");
+			paint.transform[4] = PropertyFindOrInheritReadFloat(object, "transform4");
+			paint.transform[5] = PropertyFindOrInheritReadFloat(object, "transform5");
+			paint.stopCount = PropertyFindOrInheritReadInt32(object, "stops_count");
+			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(object, "useGammaInterpolation");
+			paint.repeatMode = PropertyFindOrInheritReadInt32(object, "repeatMode");
 			EsBufferWrite(data, &paint, sizeof(paint));
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
@@ -1898,37 +1896,37 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	}
 }
 
-void ExportLayerBox(bool first, Object *object, EsBuffer *data) {
-	Property *mainPaint = PropertyFindOrInherit(first, object, "mainPaint", PROP_OBJECT);
-	Property *borderPaint = PropertyFindOrInherit(first, object, "borderPaint", PROP_OBJECT);
+void ExportLayerBox(Object *object, EsBuffer *data) {
+	Property *mainPaint = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
+	Property *borderPaint = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
 	ThemeLayerBox box = {};
 	box.mainPaintType = ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), nullptr);
 	box.borderPaintType = ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), nullptr);
-	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders0"));
-	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders1"));
-	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders2"));
-	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "borders3"));
-	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners0"));
-	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners1"));
-	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners2"));
-	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "corners3"));
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
+	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
+	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
+	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
+	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
+	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners0"));
+	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners1"));
+	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners2"));
+	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners3"));
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
 	EsBufferWrite(data, &box, sizeof(box));
 	ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), data);
 	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
 }
 
-void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
-	Property *pointCount = PropertyFindOrInherit(false, object, "points_count", PROP_INT);
-	Property *fillCount = PropertyFindOrInherit(false, object, "fills_count", PROP_INT);
+void ExportLayerPath(Object *object, EsBuffer *data) {
+	Property *pointCount = PropertyFindOrInherit(object, "points_count", PROP_INT);
+	Property *fillCount = PropertyFindOrInherit(object, "fills_count", PROP_INT);
 
 	ThemeLayerPath path = {};
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "pathFillEvenOdd"))) path.flags |= THEME_LAYER_PATH_FILL_EVEN_ODD;
-	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "pathClosed"))) path.flags |= THEME_LAYER_PATH_CLOSED;
-	path.alpha = GraphGetIntegerFromProperty(PropertyFindOrInherit(first, object, "alpha"));
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "pathFillEvenOdd"))) path.flags |= THEME_LAYER_PATH_FILL_EVEN_ODD;
+	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "pathClosed"))) path.flags |= THEME_LAYER_PATH_CLOSED;
+	path.alpha = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "alpha"));
 	path.pointCount = pointCount ? pointCount->integer : 0;
 	path.fillCount = fillCount ? fillCount->integer : 0;
 	EsBufferWrite(data, &path, sizeof(path));
@@ -1939,7 +1937,7 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 		Property *property;
 #define LAYER_PATH_WRITE_POINT(x) \
 		sprintf(cPropertyName, "points_%d_" #x, (int32_t) i); \
-		property = PropertyFindOrInherit(first, object, cPropertyName, PROP_FLOAT); \
+		property = PropertyFindOrInherit(object, cPropertyName, PROP_FLOAT); \
 		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
 		LAYER_PATH_WRITE_POINT(x0);
 		LAYER_PATH_WRITE_POINT(y0);
@@ -1954,11 +1952,11 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 		ThemeLayerPathFill fill = {};
 
 		sprintf(cPropertyName, "fills_%d_paint", (int32_t) i);
-		Object *paint = PropertyFindOrInheritReadObject(first, object, cPropertyName);
+		Object *paint = PropertyFindOrInheritReadObject(object, cPropertyName);
 		fill.paintAndFillType |= ExportPaint(paint, nullptr);
 
 		sprintf(cPropertyName, "fills_%d_mode", (int32_t) i);
-		Object *mode = PropertyFindOrInheritReadObject(first, object, cPropertyName);
+		Object *mode = PropertyFindOrInheritReadObject(object, cPropertyName);
 
 		// TODO Dashed contours.
 
@@ -1973,12 +1971,12 @@ void ExportLayerPath(bool first, Object *object, EsBuffer *data) {
 
 		if (mode && mode->type == OBJ_VAR_CONTOUR_STYLE) {
 			ThemeLayerPathFillContour contour = {};
-			contour.miterLimit = PropertyFindOrInheritReadFloat(first, mode, "miterLimit");
-			contour.internalWidth = PropertyFindOrInheritReadInt32(first, mode, "internalWidth");
-			contour.externalWidth = PropertyFindOrInheritReadInt32(first, mode, "externalWidth");
-			contour.mode = PropertyFindOrInheritReadInt32(first, mode, "joinMode") 
-				| (PropertyFindOrInheritReadInt32(first, mode, "capMode") << 2)
-				| (PropertyFindOrInheritReadInt32(first, mode, "integerWidthsOnly") ? 0x80 : 0);
+			contour.miterLimit = PropertyFindOrInheritReadFloat(mode, "miterLimit");
+			contour.internalWidth = PropertyFindOrInheritReadInt32(mode, "internalWidth");
+			contour.externalWidth = PropertyFindOrInheritReadInt32(mode, "externalWidth");
+			contour.mode = PropertyFindOrInheritReadInt32(mode, "joinMode") 
+				| (PropertyFindOrInheritReadInt32(mode, "capMode") << 2)
+				| (PropertyFindOrInheritReadInt32(mode, "integerWidthsOnly") ? 0x80 : 0);
 			EsBufferWrite(data, &contour, sizeof(contour));
 		}
 	}
@@ -2077,16 +2075,16 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 
 	if (object->type == OBJ_LAYER_BOX) {
-		bounds.l += PropertyFindOrInheritReadInt32(depth == 0, object, "offset0") * canvas->zoom;
-		bounds.r += PropertyFindOrInheritReadInt32(depth == 0, object, "offset1") * canvas->zoom;
-		bounds.t += PropertyFindOrInheritReadInt32(depth == 0, object, "offset2") * canvas->zoom;
-		bounds.b += PropertyFindOrInheritReadInt32(depth == 0, object, "offset3") * canvas->zoom;
+		bounds.l += PropertyFindOrInheritReadInt32(object, "offset0") * canvas->zoom;
+		bounds.r += PropertyFindOrInheritReadInt32(object, "offset1") * canvas->zoom;
+		bounds.t += PropertyFindOrInheritReadInt32(object, "offset2") * canvas->zoom;
+		bounds.b += PropertyFindOrInheritReadInt32(object, "offset3") * canvas->zoom;
 
 		uint8_t buffer[4096];
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
 		EsBufferWrite(&data, &layer, sizeof(layer));
-		ExportLayerBox(depth == 0, object, &data);
+		ExportLayerBox(object, &data);
 		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_TEXT) {
 #ifdef OS_ESSENCE
@@ -2115,7 +2113,7 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_PATH };
 		EsBufferWrite(&data, &layer, sizeof(layer));
-		ExportLayerPath(depth == 0, object, &data);
+		ExportLayerPath(object, &data);
 		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
@@ -2178,20 +2176,19 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "textSize")) * canvas->zoom;
 		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "textColor"));
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
-	} else if (object->type == OBJ_VAR_ICON_STYLE) {
+#if 0
 		EsDrawStandardIcon((_EsPainter *) &themePainter, ES_ICON_GO_NEXT_SYMBOLIC, 
 				GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "iconSize")), bounds, 
 				GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "iconColor")));
+#endif
 	}
 #endif
 
 	if (object->type == OBJ_STYLE) {
-		Property *appearance = PropertyFindOrInherit(false, object, "appearance");
-		Property *textStyle = PropertyFindOrInherit(false, object, "textStyle");
-		Property *iconStyle = PropertyFindOrInherit(false, object, "iconStyle");
+		Property *appearance = PropertyFindOrInherit(object, "appearance");
+		Property *textStyle = PropertyFindOrInherit(object, "textStyle");
 		if (appearance) CanvasDrawLayer(ObjectFind(appearance->object), bounds, painter, depth + 1);
 		if (textStyle) CanvasDrawStyle(ObjectFind(textStyle->object), bounds, painter, depth + 1);
-		else if (iconStyle) CanvasDrawStyle(ObjectFind(iconStyle->object), bounds, painter, depth + 1);
 	}
 }
 
@@ -2268,6 +2265,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			UIRectangle selectionIntersection = UIRectangleIntersection(bounds, selectionBounds);
 			bool isSelected = (object->flags & OBJECT_IS_SELECTED) == (inspectorPickData == nullptr)
 				|| (canvas->selecting && UI_RECT_VALID(selectionIntersection));
+			bool isConditional = ObjectIsConditional(object);
 
 			if (!canvas->showPrototype) {
 				if (isSelected) {
@@ -2281,7 +2279,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				UIDrawBlock(painter, UI_RECT_4(bounds.l + 1, bounds.r + 1, bounds.b, bounds.b + 1), 0xFF404040);
 				UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
 
-				if (ObjectIsConditional(object)) {
+				if (isConditional) {
 					UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
 					UIDrawBlock(painter, indicator, 0xFFFFFF00);
 					UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
@@ -2295,6 +2293,12 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				snprintf(buffer, sizeof(buffer), "%dx%d", UI_RECT_WIDTH(bounds), UI_RECT_HEIGHT(bounds));
 				UIDrawString(painter, UI_RECT_4(bounds.l, bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
 						buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
+			}
+
+			if (isConditional) {
+				canvas->previewStateActive = true;
+				canvas->previewPrimaryState = PropertyReadInt32(object, "_primaryState");
+				canvas->previewStateBits = PropertyReadInt32(object, "_stateBits");
 			}
 
 			if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
@@ -2315,16 +2319,22 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				snprintf(buffer, sizeof(buffer), "%.8X", color);
 				UIRectangle area = UI_RECT_4(bounds.l, bounds.r, bounds.t, bounds.t + UIMeasureStringHeight());
 				UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
-			} else if (object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_VAR_ICON_STYLE || object->type == OBJ_STYLE) {
+			} else if (object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_STYLE) {
 				CanvasDrawStyle(object, bounds, painter);
 			} else if (object->type == OBJ_INSTANCE) {
 				Property *style = PropertyFind(object, "style", PROP_OBJECT);
 				canvas->previewStateActive = object->id == selectedObjectID;
 				CanvasDrawStyle(ObjectFind(style ? style->object : 0), bounds, painter);
-				canvas->previewStateActive = false;
 			} else {
 				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
 				// TODO Preview for OBJ_VAR_CONTOUR_STYLE.
+			}
+
+			canvas->previewStateActive = false;
+
+			if (!canvas->showPrototype) {
+				canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
+				canvas->previewStateBits = 0;
 			}
 		}
 
@@ -2615,7 +2625,6 @@ void ObjectAddCommand(void *) {
 	UIMenuAddItem(menu, 0, "Color variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_COLOR);
 	UIMenuAddItem(menu, 0, "Integer variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_INT);
 	UIMenuAddItem(menu, 0, "Text style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_TEXT_STYLE);
-	UIMenuAddItem(menu, 0, "Icon style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_ICON_STYLE);
 	UIMenuAddItem(menu, 0, "Contour style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_CONTOUR_STYLE);
 	UIMenuAddItem(menu, 0, "Metrics", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_METRICS);
 	UIMenuAddItem(menu, 0, "Overwrite paint", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);

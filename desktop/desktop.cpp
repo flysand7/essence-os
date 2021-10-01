@@ -740,7 +740,6 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				instance->title, instance->titleBytes, instance->iconID);
 	} else if (message->type == ES_MSG_ANIMATE) {
 		message->animate.complete = ReorderItemAnimate(tab, message->animate.deltaMs, "windowTabEntranceDuration");
-	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 		EsElementSetDisabled(band->GetChild(0), true);
 
@@ -847,6 +846,13 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 
 		EsMenuShow(menu);
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && ((element->state & UI_STATE_HOVERED) || (tab->closeButton->state & UI_STATE_HOVERED))) {
+		if (EsButtonGetCheck(tab->closeButton) == ES_CHECK_CHECKED) {
+			// The tab contains a modified document, so it will probably popup a dialog after it receives the close request.
+			// Therefore, we should switch to that tab.
+			tab->BringToFront();
+			WindowTabActivate(tab);
+		}
+
 		WindowTabClose(tab);
 	} else if (message->type == ES_MSG_REORDER_ITEM_TEST) {
 	} else {

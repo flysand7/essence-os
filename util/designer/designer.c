@@ -1664,7 +1664,6 @@ enum ObjectType {
 	OBJ_VAR_COLOR = 0x40,
 	OBJ_VAR_INT,
 	OBJ_VAR_TEXT_STYLE,
-	OBJ_VAR_ICON_STYLE,
 	OBJ_VAR_CONTOUR_STYLE,
 	
 	OBJ_PAINT_OVERWRITE = 0x60,
@@ -1724,7 +1723,7 @@ void ObjectAddObjectProperty(Object2 *object, const char *cName, uint64_t value)
 	arrput(object->properties, property);
 }
 
-uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *idAllocator) {
+uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *idAllocator, Layer *layer) {
 	char cPropertyName[PROPERTY_NAME_SIZE];
 
 	if (!paint->tag) {
@@ -1768,6 +1767,67 @@ uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *
 
 		*x += 100;
 		arrput(*objects, object);
+
+		if (layer) {
+			for (uintptr_t i = 0; i < arrlenu(layer->sequences); i++) {
+				Sequence *s = layer->sequences[i];
+				assert(arrlenu(s->keyframes) == 1);
+				Keyframe *keyframe = s->keyframes[0];
+
+				uint32_t stateBits = 0;
+				if (s->flagFocused) stateBits |= THEME_STATE_FOCUSED;
+				if (s->flagChecked) stateBits |= THEME_STATE_CHECKED;
+				if (s->flagIndeterminate) stateBits |= THEME_STATE_INDETERMINATE;
+				if (s->flagDefault) stateBits |= THEME_STATE_DEFAULT_BUTTON;
+				if (s->flagItemFocus) stateBits |= THEME_STATE_FOCUSED_ITEM;
+				if (s->flagListFocus) stateBits |= THEME_STATE_LIST_FOCUSED;
+				if (s->flagBeforeEnter) stateBits |= THEME_STATE_BEFORE_ENTER;
+				if (s->flagAfterExit) stateBits |= THEME_STATE_AFTER_EXIT;
+				if (s->flagSelected) stateBits |= THEME_STATE_SELECTED;
+
+				Object2 override = { .type = object.type, .id = ++(*idAllocator) };
+				ObjectAddIntegerProperty(&override, "_graphX", *x);
+				ObjectAddIntegerProperty(&override, "_graphY", y);
+				ObjectAddIntegerProperty(&override, "_graphW", 80);
+				ObjectAddIntegerProperty(&override, "_graphH", 60);
+				ObjectAddObjectProperty(&override, "_parent", object.id);
+				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
+				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
+				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+
+				bool addObject = false;
+
+				for (uintptr_t i = 0; i < arrlenu(keyframe->properties); i++) {
+					Property *property = &keyframe->properties[i];
+
+					if (layer->base.tag == LayerBase_box + 1 && property->path[0] == (uint32_t) -2 && property->path[1] == 8 
+							&& property->path[2] == 0 && property->path[3] == 2 && property->path[4] == 2) {
+						assert(property->path[5] == 2 && property->path[7] == 0);
+						RfGrowableBuffer state = { 0 };
+						state.s.op = RF_OP_LOAD;
+						state.s.access = RfReadGrowableBuffer;
+						state.data = property->data;
+						RfItem item = GradientStop_Type.fields[GradientStop_color].item;
+						uint32_t value; item.type->op(&state.s, &item, &value);
+						char cPropertyName[PROPERTY_NAME_SIZE];
+						snprintf(cPropertyName, sizeof(cPropertyName), "stops_%d_color", property->path[6]);
+						ObjectAddObjectProperty(&override, cPropertyName, ColorLookupPointer(value)->object2ID);
+						addObject = true;
+					} else {
+						continue;
+					}
+				}
+
+				if (addObject) {
+					arrput(*objects, override);
+					object.id = override.id;
+					*x += 100;
+				} else {
+					arrfree(override.properties);
+				}
+			}	
+		}
+
 		return object.id;
 	} else if (paint->tag == Paint_radialGradient + 1) {
 		Object2 object = { .type = OBJ_PAINT_RADIAL_GRADIENT, .id = ++(*idAllocator) };
@@ -1805,6 +1865,63 @@ uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *
 		ObjectAddObjectProperty(&object, "color", ColorLookupPointer(paint->overwrite.color)->object2ID);
 		*x += 100;
 		arrput(*objects, object);
+
+		if (layer) {
+			for (uintptr_t i = 0; i < arrlenu(layer->sequences); i++) {
+				Sequence *s = layer->sequences[i];
+				assert(arrlenu(s->keyframes) == 1);
+				Keyframe *keyframe = s->keyframes[0];
+
+				uint32_t stateBits = 0;
+				if (s->flagFocused) stateBits |= THEME_STATE_FOCUSED;
+				if (s->flagChecked) stateBits |= THEME_STATE_CHECKED;
+				if (s->flagIndeterminate) stateBits |= THEME_STATE_INDETERMINATE;
+				if (s->flagDefault) stateBits |= THEME_STATE_DEFAULT_BUTTON;
+				if (s->flagItemFocus) stateBits |= THEME_STATE_FOCUSED_ITEM;
+				if (s->flagListFocus) stateBits |= THEME_STATE_LIST_FOCUSED;
+				if (s->flagBeforeEnter) stateBits |= THEME_STATE_BEFORE_ENTER;
+				if (s->flagAfterExit) stateBits |= THEME_STATE_AFTER_EXIT;
+				if (s->flagSelected) stateBits |= THEME_STATE_SELECTED;
+
+				Object2 override = { .type = object.type, .id = ++(*idAllocator) };
+				ObjectAddIntegerProperty(&override, "_graphX", *x);
+				ObjectAddIntegerProperty(&override, "_graphY", y);
+				ObjectAddIntegerProperty(&override, "_graphW", 80);
+				ObjectAddIntegerProperty(&override, "_graphH", 60);
+				ObjectAddObjectProperty(&override, "_parent", object.id);
+				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
+				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
+				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+
+				bool addObject = false;
+
+				for (uintptr_t i = 0; i < arrlenu(keyframe->properties); i++) {
+					Property *property = &keyframe->properties[i];
+
+					if (layer->base.tag == LayerBase_box + 1 && property->path[0] == (uint32_t) -2 && property->path[1] == 8 
+							&& property->path[2] == 0 && property->path[3] == 2 && property->path[4] == 3) {
+						assert(property->path[5] == 0);
+						RfGrowableBuffer state = { 0 };
+						state.s.op = RF_OP_LOAD;
+						state.s.access = RfReadGrowableBuffer;
+						state.data = property->data;
+						RfItem item = PaintOverwrite_Type.fields[PaintOverwrite_color].item;
+						uint32_t value; item.type->op(&state.s, &item, &value);
+						ObjectAddObjectProperty(&override, "color", ColorLookupPointer(value)->object2ID);
+						addObject = true;
+					} else {
+						continue;
+					}
+				}
+
+				if (addObject) {
+					arrput(*objects, override);
+					object.id = override.id;
+					*x += 100;
+				}
+			}	
+		}
+
 		return object.id;
 	} else {
 		assert(false);
@@ -1837,10 +1954,137 @@ uint64_t ExportFillMode2(PathFillMode *fill, int *x, int y, Object2 **objects, u
 	}
 }
 
+void ExportProperty2(Layer *layer, Property *property, Object2 *override) {
+	bool unhandled = false;
+
+	RfGrowableBuffer state = { 0 };
+	state.s.op = RF_OP_LOAD;
+	state.s.access = RfReadGrowableBuffer;
+	state.data = property->data;
+
+	if (property->path[0] == (uint32_t) -2 && property->path[1] == 8 && property->path[2] == 0) {
+		if (layer->base.tag == LayerBase_box + 1) {
+			if (property->path[3] == LayerBox_borders && property->path[4] == Rectangle8_l) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_l].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "borders0", value);
+			} else if (property->path[3] == LayerBox_borders && property->path[4] == Rectangle8_r) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_r].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "borders1", value);
+			} else if (property->path[3] == LayerBox_borders && property->path[4] == Rectangle8_t) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_t].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "borders2", value);
+			} else if (property->path[3] == LayerBox_borders && property->path[4] == Rectangle8_b) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_b].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "borders3", value);
+			} else if (property->path[3] == LayerBox_corners && property->path[4] == Corners8_tl) {
+				RfItem item = Corners8_Type.fields[Corners8_tl].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "corners0", value);
+			} else if (property->path[3] == LayerBox_corners && property->path[4] == Corners8_tr) {
+				RfItem item = Corners8_Type.fields[Corners8_tr].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "corners1", value);
+			} else if (property->path[3] == LayerBox_corners && property->path[4] == Corners8_bl) {
+				RfItem item = Corners8_Type.fields[Corners8_bl].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "corners2", value);
+			} else if (property->path[3] == LayerBox_corners && property->path[4] == Corners8_br) {
+				RfItem item = Corners8_Type.fields[Corners8_br].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "corners3", value);
+			} else if (property->path[3] == LayerBox_mainPaint && property->path[4] == Paint_solid && property->path[5] == PaintSolid_color) {
+				RfItem item = PaintSolid_Type.fields[PaintSolid_color].item;
+				uint32_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddObjectProperty(override, "mainPaint", ColorLookupPointer(value)->object2ID);
+			} else if (property->path[3] == LayerBox_borderPaint && property->path[4] == Paint_solid && property->path[5] == PaintSolid_color) {
+				RfItem item = PaintSolid_Type.fields[PaintSolid_color].item;
+				uint32_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddObjectProperty(override, "borderPaint", ColorLookupPointer(value)->object2ID);
+			} else if (property->path[3] == LayerBox_mainPaint && property->path[4] == Paint_overwrite && property->path[5] == PaintOverwrite_color) {
+				fprintf(stderr, "\t>>\n");
+			} else {
+				unhandled = true;
+			}
+		} else if (layer->base.tag == LayerBase_metrics + 1) {
+			if (property->path[3] == LayerMetrics_textSize || property->path[3] == LayerMetrics_selectedText) {
+				// Ignore.
+			} else if (property->path[3] == LayerMetrics_textColor) {
+				RfItem item = LayerMetrics_Type.fields[LayerMetrics_textColor].item;
+				uint32_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddObjectProperty(override, "textColor", ColorLookupPointer(value)->object2ID);
+			} else if (property->path[3] == LayerMetrics_iconColor) {
+				RfItem item = LayerMetrics_Type.fields[LayerMetrics_iconColor].item;
+				uint32_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddObjectProperty(override, "iconColor", ColorLookupPointer(value)->object2ID);
+			} else {
+				unhandled = true;
+			}
+		} else if (layer->base.tag == LayerBase_path + 1) {
+			if (property->path[3] == LayerPath_alpha) {
+				RfItem item = LayerPath_Type.fields[LayerPath_alpha].item;
+				int16_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "alpha", value);
+			} else if (property->path[3] == LayerPath_fills && property->path[4] == 0 && property->path[5] == PathFill_paint
+					&& property->path[6] == Paint_solid && property->path[7] == PaintSolid_color) {
+				RfItem item = PaintSolid_Type.fields[PaintSolid_color].item;
+				uint32_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddObjectProperty(override, "fills_0_paint", ColorLookupPointer(value)->object2ID);
+				ObjectAddIntegerProperty(override, "fills_count", 1);
+			} else {
+				unhandled = true;
+			}
+		} else {
+			unhandled = true;
+		}
+	} else if (property->path[0] == (uint32_t) -2 && property->path[1] == 5) {
+		if (layer->base.tag == LayerBase_box + 1) {
+			if (property->path[2] == Rectangle8_l) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_l].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "offset0", value - layer->offset.l);
+			} else if (property->path[2] == Rectangle8_r) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_r].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "offset1", value - layer->offset.r);
+			} else if (property->path[2] == Rectangle8_t) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_t].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "offset2", value - layer->offset.t);
+			} else if (property->path[2] == Rectangle8_b) {
+				RfItem item = Rectangle8_Type.fields[Rectangle8_b].item;
+				int8_t value; item.type->op(&state.s, &item, &value);
+				ObjectAddIntegerProperty(override, "offset3", value - layer->offset.b);
+			}
+		} else {
+			unhandled = true;
+		}
+	} else {
+		unhandled = true;
+	}
+
+	assert(!unhandled);
+
+#if 0
+	if (unhandled) {
+		fprintf(stderr, "\tunhandled on %s: ", LayerBase_Type.fields[layer->base.tag - 1].cName);
+
+		for (uintptr_t i = 0; property->path[i] != RF_PATH_TERMINATOR; i++) {
+			fprintf(stderr, "%d, ", property->path[i]);
+		}
+
+		fprintf(stderr, "\n");
+	}
+#endif
+}
+
 void ActionExportDesigner2(void *cp) {
-	// TODO Exporting sequences.
 	// TODO Inherited text styles.
 	// TODO Merging identical layers and styles.
+	// TODO Auto-name override layers.
 
 	Object2 *objects = NULL;
 	uint64_t objectIDAllocator = 0;
@@ -1896,12 +2140,12 @@ void ActionExportDesigner2(void *cp) {
 		Style *style = styleSet.styles[i];
 		
 		Object2 layerGroup = { .type = OBJ_LAYER_GROUP, .id = ++objectIDAllocator };
-		Object2 metrics = { 0 }, textStyle = { 0 }, iconStyle = { 0 };
+		Object2 metrics = { 0 }, textStyle = { 0 };
 		int32_t layerCount = 0;
 
 		for (uintptr_t i = 0; i < arrlenu(style->layers); i++) {
 			Layer *layer = LayerLookup(style->layers[i]);
-			bool addToLayerGroup = false, addToObjects = false;
+			bool addToLayerGroup = false;
 			Object2 object = { 0 };
 
 			if (layer->base.tag == LayerBase_box + 1) {
@@ -1919,16 +2163,14 @@ void ActionExportDesigner2(void *cp) {
 				ObjectAddIntegerProperty(&object, "autoCorners", box->autoCorners);
 				ObjectAddIntegerProperty(&object, "autoBorders", box->autoBorders);
 				ObjectAddIntegerProperty(&object, "shadowHiding", box->shadowHiding);
-				ObjectAddObjectProperty(&object, "mainPaint", ExportPaint2(&box->mainPaint, &x, y, &objects, &objectIDAllocator));
-				ObjectAddObjectProperty(&object, "borderPaint", ExportPaint2(&box->borderPaint, &x, y, &objects, &objectIDAllocator));
+				ObjectAddObjectProperty(&object, "mainPaint", ExportPaint2(&box->mainPaint, &x, y, &objects, &objectIDAllocator, layer));
+				ObjectAddObjectProperty(&object, "borderPaint", ExportPaint2(&box->borderPaint, &x, y, &objects, &objectIDAllocator, NULL));
 				addToLayerGroup = true;
-				addToObjects = true;
 			} else if (layer->base.tag == LayerBase_text + 1) {
 				object.type = OBJ_LAYER_TEXT, object.id = ++objectIDAllocator;
 				ObjectAddObjectProperty(&object, "color", ColorLookupPointer(layer->base.text.color)->object2ID);
 				ObjectAddIntegerProperty(&object, "blur", layer->base.text.blur);
 				addToLayerGroup = true;
-				addToObjects = true;
 			} else if (layer->base.tag == LayerBase_path + 1) {
 				object.type = OBJ_LAYER_PATH, object.id = ++objectIDAllocator;
 				LayerPath *path = &layer->base.path;
@@ -1955,72 +2197,138 @@ void ActionExportDesigner2(void *cp) {
 
 				for (uintptr_t i = 0; i < arrlenu(path->fills); i++) {
 					sprintf(cPropertyName, "fills_%d_paint", (int) i);
-					ObjectAddObjectProperty(&object, cPropertyName, ExportPaint2(&path->fills[i].paint, &x, y, &objects, &objectIDAllocator));
+					ObjectAddObjectProperty(&object, cPropertyName, ExportPaint2(&path->fills[i].paint, &x, y, &objects, &objectIDAllocator, NULL));
 					sprintf(cPropertyName, "fills_%d_mode", (int) i);
 					ObjectAddObjectProperty(&object, cPropertyName, ExportFillMode2(&path->fills[i].mode, &x, y, &objects, &objectIDAllocator));
 				}
 
 				addToLayerGroup = true;
-				addToObjects = true;
-			} else {
-				object.type = OBJ_LAYER_METRICS, object.id = ++objectIDAllocator;
+			} else if (layer->base.tag == LayerBase_metrics + 1) {
 				LayerMetrics *m = &layer->base.metrics;
-				ObjectAddIntegerProperty(&object, "clipEnabled", m->clipEnabled);
-				ObjectAddIntegerProperty(&object, "wrapText", m->wrapText);
-				ObjectAddIntegerProperty(&object, "ellipsis", m->ellipsis);
-				ObjectAddIntegerProperty(&object, "insets0", m->insets.l);
-				ObjectAddIntegerProperty(&object, "insets1", m->insets.r);
-				ObjectAddIntegerProperty(&object, "insets2", m->insets.t);
-				ObjectAddIntegerProperty(&object, "insets3", m->insets.b);
-				ObjectAddIntegerProperty(&object, "clipInsets0", m->clipInsets.l);
-				ObjectAddIntegerProperty(&object, "clipInsets1", m->clipInsets.r);
-				ObjectAddIntegerProperty(&object, "clipInsets2", m->clipInsets.t);
-				ObjectAddIntegerProperty(&object, "clipInsets3", m->clipInsets.b);
-				ObjectAddIntegerProperty(&object, "preferredWidth", m->preferredSize.width);
-				ObjectAddIntegerProperty(&object, "preferredHeight", m->preferredSize.height);
-				ObjectAddIntegerProperty(&object, "minimumWidth", m->minimumSize.width);
-				ObjectAddIntegerProperty(&object, "minimumHeight", m->minimumSize.height);
-				ObjectAddIntegerProperty(&object, "maximumWidth", m->maximumSize.width);
-				ObjectAddIntegerProperty(&object, "maximumHeight", m->maximumSize.height);
-				ObjectAddIntegerProperty(&object, "gapMajor", m->gaps.major);
-				ObjectAddIntegerProperty(&object, "gapMinor", m->gaps.minor);
-				ObjectAddIntegerProperty(&object, "gapWrap", m->gaps.wrap);
-				ObjectAddIntegerProperty(&object, "cursor", m->cursor);
-				ObjectAddIntegerProperty(&object, "horizontalTextAlign", m->textHorizontalAlign + 1);
-				ObjectAddIntegerProperty(&object, "verticalTextAlign", m->textVerticalAlign + 1);
 				assert(!m->globalOffset.l && !m->globalOffset.r && !m->globalOffset.t && !m->globalOffset.b);
-				addToObjects = true;
-				metrics = object;
 
-				textStyle.type = OBJ_VAR_TEXT_STYLE, textStyle.id = ++objectIDAllocator;
-				ObjectAddIntegerProperty(&textStyle, "_graphX", x);
-				ObjectAddIntegerProperty(&textStyle, "_graphY", y);
-				ObjectAddIntegerProperty(&textStyle, "_graphW", 80);
-				ObjectAddIntegerProperty(&textStyle, "_graphH", 60);
-				ObjectAddObjectProperty(&textStyle, "textColor", ColorLookupPointer(m->textColor)->object2ID);
-				ObjectAddObjectProperty(&textStyle, "selectedBackground", ColorLookupPointer(m->selectedBackground)->object2ID);
-				ObjectAddObjectProperty(&textStyle, "selectedText", ColorLookupPointer(m->selectedText)->object2ID);
-				ObjectAddIntegerProperty(&textStyle, "textSize", m->textSize);
-				ObjectAddIntegerProperty(&textStyle, "fontWeight", m->fontWeight);
-				ObjectAddIntegerProperty(&textStyle, "isItalic", m->italic);
-				ObjectAddIntegerProperty(&textStyle, "fontFamily", m->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
-				arrput(objects, textStyle);
-				x += 100;
+				object.type = OBJ_VAR_TEXT_STYLE, object.id = ++objectIDAllocator;
+				ObjectAddObjectProperty(&object, "textColor", ColorLookupPointer(m->textColor)->object2ID);
+				ObjectAddObjectProperty(&object, "selectedBackground", ColorLookupPointer(m->selectedBackground)->object2ID);
+				ObjectAddObjectProperty(&object, "selectedText", ColorLookupPointer(m->selectedText)->object2ID);
+				ObjectAddIntegerProperty(&object, "textSize", m->textSize);
+				ObjectAddIntegerProperty(&object, "fontWeight", m->fontWeight);
+				ObjectAddIntegerProperty(&object, "isItalic", m->italic);
+				ObjectAddIntegerProperty(&object, "fontFamily", m->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
+				ObjectAddIntegerProperty(&object, "iconSize", m->iconSize);
+				ObjectAddObjectProperty(&object, "iconColor", ColorLookupPointer(m->iconColor)->object2ID);
+				textStyle = object;
 
-				iconStyle.type = OBJ_VAR_ICON_STYLE, iconStyle.id = ++objectIDAllocator;
-				ObjectAddIntegerProperty(&iconStyle, "_graphX", x);
-				ObjectAddIntegerProperty(&iconStyle, "_graphY", y);
-				ObjectAddIntegerProperty(&iconStyle, "_graphW", 80);
-				ObjectAddIntegerProperty(&iconStyle, "_graphH", 60);
-				ObjectAddIntegerProperty(&iconStyle, "iconSize", m->iconSize);
-				ObjectAddObjectProperty(&iconStyle, "iconColor", ColorLookupPointer(m->iconColor)->object2ID);
-				arrput(objects, iconStyle);
+				metrics.type = OBJ_LAYER_METRICS, metrics.id = ++objectIDAllocator;
+				ObjectAddIntegerProperty(&metrics, "clipEnabled", m->clipEnabled);
+				ObjectAddIntegerProperty(&metrics, "wrapText", m->wrapText);
+				ObjectAddIntegerProperty(&metrics, "ellipsis", m->ellipsis);
+				ObjectAddIntegerProperty(&metrics, "insets0", m->insets.l);
+				ObjectAddIntegerProperty(&metrics, "insets1", m->insets.r);
+				ObjectAddIntegerProperty(&metrics, "insets2", m->insets.t);
+				ObjectAddIntegerProperty(&metrics, "insets3", m->insets.b);
+				ObjectAddIntegerProperty(&metrics, "clipInsets0", m->clipInsets.l);
+				ObjectAddIntegerProperty(&metrics, "clipInsets1", m->clipInsets.r);
+				ObjectAddIntegerProperty(&metrics, "clipInsets2", m->clipInsets.t);
+				ObjectAddIntegerProperty(&metrics, "clipInsets3", m->clipInsets.b);
+				ObjectAddIntegerProperty(&metrics, "preferredWidth", m->preferredSize.width);
+				ObjectAddIntegerProperty(&metrics, "preferredHeight", m->preferredSize.height);
+				ObjectAddIntegerProperty(&metrics, "minimumWidth", m->minimumSize.width);
+				ObjectAddIntegerProperty(&metrics, "minimumHeight", m->minimumSize.height);
+				ObjectAddIntegerProperty(&metrics, "maximumWidth", m->maximumSize.width);
+				ObjectAddIntegerProperty(&metrics, "maximumHeight", m->maximumSize.height);
+				ObjectAddIntegerProperty(&metrics, "gapMajor", m->gaps.major);
+				ObjectAddIntegerProperty(&metrics, "gapMinor", m->gaps.minor);
+				ObjectAddIntegerProperty(&metrics, "gapWrap", m->gaps.wrap);
+				ObjectAddIntegerProperty(&metrics, "cursor", m->cursor);
+				ObjectAddIntegerProperty(&metrics, "horizontalTextAlign", m->textHorizontalAlign + 1);
+				ObjectAddIntegerProperty(&metrics, "verticalTextAlign", m->textVerticalAlign + 1);
+				ObjectAddIntegerProperty(&metrics, "_graphX", x);
+				ObjectAddIntegerProperty(&metrics, "_graphY", y);
+				ObjectAddIntegerProperty(&metrics, "_graphW", 80);
+				ObjectAddIntegerProperty(&metrics, "_graphH", 60);
+				arrput(objects, metrics);
 				x += 100;
+			} else {
+				assert(false);
 			}
+
+			ObjectAddIntegerProperty(&object, "_graphX", x);
+			ObjectAddIntegerProperty(&object, "_graphY", y);
+			ObjectAddIntegerProperty(&object, "_graphW", 80);
+			ObjectAddIntegerProperty(&object, "_graphH", 60);
+			arrput(objects, object);
+			x += 100;
+
+			uint64_t previousOverrideID = object.id;
+
+			for (uintptr_t i = 0; i < arrlenu(layer->sequences); i++) {
+				Sequence *s = layer->sequences[i];
+				assert(arrlenu(s->keyframes) == 1);
+				Keyframe *keyframe = s->keyframes[0];
+
+				char buffer[256];
+				snprintf(buffer, sizeof(buffer), "%s%s%s%s%s%s%s%s%s%s", 
+						((StringOption *) PrimaryState_Type.fields[s->primaryState].item.options)->string,
+						s->flagFocused ? " (focused)" : "",
+						s->flagChecked ? " (checked)" : "",
+						s->flagIndeterminate ? " (indeterminate)" : "",
+						s->flagDefault ? " (default)" : "",
+						s->flagItemFocus ? " (list item focus)" : "",
+						s->flagListFocus ? " (list focus)" : "",
+						s->flagBeforeEnter ? " (before enter)" : "",
+						s->flagAfterExit ? " (after exit)" : "",
+						s->flagSelected ? " (selected)" : "");
+				fprintf(stderr, "%.*s:%.*s:%s:%d\n", (int) style->name.byteCount, (char *) style->name.buffer,
+						(int) layer->name.byteCount, (char *) layer->name.buffer, buffer, s->duration);
+
+				uint32_t stateBits = 0;
+				if (s->flagFocused) stateBits |= THEME_STATE_FOCUSED;
+				if (s->flagChecked) stateBits |= THEME_STATE_CHECKED;
+				if (s->flagIndeterminate) stateBits |= THEME_STATE_INDETERMINATE;
+				if (s->flagDefault) stateBits |= THEME_STATE_DEFAULT_BUTTON;
+				if (s->flagItemFocus) stateBits |= THEME_STATE_FOCUSED_ITEM;
+				if (s->flagListFocus) stateBits |= THEME_STATE_LIST_FOCUSED;
+				if (s->flagBeforeEnter) stateBits |= THEME_STATE_BEFORE_ENTER;
+				if (s->flagAfterExit) stateBits |= THEME_STATE_AFTER_EXIT;
+				if (s->flagSelected) stateBits |= THEME_STATE_SELECTED;
+
+				Object2 override = { .type = object.type, .id = ++objectIDAllocator };
+				ObjectAddIntegerProperty(&override, "_graphX", x);
+				ObjectAddIntegerProperty(&override, "_graphY", y);
+				ObjectAddIntegerProperty(&override, "_graphW", 80);
+				ObjectAddIntegerProperty(&override, "_graphH", 60);
+				ObjectAddObjectProperty(&override, "_parent", previousOverrideID);
+				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
+				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
+				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+
+				bool addObject = false;
+
+				for (uintptr_t i = 0; i < arrlenu(keyframe->properties); i++) {
+					Property *property = &keyframe->properties[i];
+
+					if (layer->base.tag == LayerBase_box + 1 && property->path[0] == (uint32_t) -2 && property->path[1] == 8 && property->path[2] == 0
+							&& property->path[3] == 2 && (property->path[4] == 2 || property->path[4] == 3)) {
+						continue;
+					}
+
+					ExportProperty2(layer, property, &override);
+					addObject = true;
+				}
+
+				if (addObject) {
+					arrput(objects, override);
+					previousOverrideID = override.id;
+					x += 100;
+				} else {
+					arrfree(override.properties);
+				}
+			}	
 
 			if (addToLayerGroup) {
 				sprintf(cPropertyName, "layers_%d_layer", layerCount);
-				ObjectAddObjectProperty(&layerGroup, cPropertyName, object.id);
+				ObjectAddObjectProperty(&layerGroup, cPropertyName, previousOverrideID);
 				sprintf(cPropertyName, "layers_%d_offset0", layerCount);
 				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->offset.l);
 				sprintf(cPropertyName, "layers_%d_offset1", layerCount);
@@ -2040,15 +2348,6 @@ void ActionExportDesigner2(void *cp) {
 				sprintf(cPropertyName, "layers_%d_mode", layerCount);
 				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->mode);
 				layerCount++;
-			}
-
-			if (addToObjects) {
-				ObjectAddIntegerProperty(&object, "_graphX", x);
-				ObjectAddIntegerProperty(&object, "_graphY", y);
-				ObjectAddIntegerProperty(&object, "_graphW", 80);
-				ObjectAddIntegerProperty(&object, "_graphH", 60);
-				arrput(objects, object);
-				x += 100;
 			}
 		}
 
@@ -2074,7 +2373,6 @@ void ActionExportDesigner2(void *cp) {
 			ObjectAddObjectProperty(&object, "appearance", layerGroup.id);
 			ObjectAddObjectProperty(&object, "metrics", metrics.id);
 			ObjectAddObjectProperty(&object, "textStyle", textStyle.id);
-			ObjectAddObjectProperty(&object, "iconStyle", iconStyle.id);
 			arrput(objects, object);
 			x += 100;
 		}
