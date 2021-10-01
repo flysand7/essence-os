@@ -853,7 +853,7 @@ void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float sc
 	if (borders.l + borders.r > width) { float p = (float) borders.l / (borders.l + borders.r); borders.l = p * width; borders.r = (1 - p) * width; }
 	if (borders.t + borders.b > height) { float p = (float) borders.t / (borders.t + borders.b); borders.t = p * height; borders.b = (1 - p) * height; }
 
-	if (isBlurred && !borders.l) {
+	if (isBlurred && (!borders.l || !borders.r || !borders.t || !borders.b)) {
 		return;
 	}
 

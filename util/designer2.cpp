@@ -21,6 +21,8 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
+// 	Scrollbars?
+// 	Icons for different object types (especially color overwrite objects).
 // 	Fix moving/resizing objects when zoomed in.
 // 	Path layers: dashed contours.
 // 	Picking objects: only highlight objects with an applicable type.
@@ -71,6 +73,7 @@
 #define EsHeap void
 #define EsMemoryCopy memcpy
 #define EsMemoryCopyReverse memmove
+#define EsMemoryCompare memcmp
 #define EsMemoryZero(a, b) memset((a), 0, (b))
 #define EsPanic(...) UI_ASSERT(false)
 #define EsRectangle UIRectangle
@@ -153,6 +156,7 @@ void SetBit(uint32_t *value, uint32_t bit, bool on) {
 #include "../shared/math.cpp"
 
 #include "../shared/array.cpp"
+#include "../shared/hash_table.cpp"
 #include "../desktop/renderer.cpp"
 #include "../desktop/theme.cpp"
 
@@ -329,14 +333,14 @@ Array<Step> undoStack;
 Array<Step> redoStack;
 bool documentModified;
 uint64_t selectedObjectID;
+HashStore<uint64_t, uintptr_t> objectLookup;
 
 // Document state:
 Array<Object> objects;
 uint64_t objectIDAllocator;
 
 Object *ObjectFind(uint64_t id) {
-	// TODO Use a hash table.
-
+#if 0
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		if (objects[i].id == id) {
 			return &objects[i];
@@ -344,6 +348,13 @@ Object *ObjectFind(uint64_t id) {
 	}
 
 	return nullptr;
+#else
+	if (!id) return nullptr;
+	uint64_t *index = objectLookup.Get(&id);
+	Object *object = index ? &objects[*index] : nullptr;
+	if (object) assert(object->id == id);
+	return object;
+#endif
 }
 
 void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection = true) {
@@ -399,7 +410,9 @@ bool ObjectMatchesPreviewState(Object *object) {
 }
 
 Property *PropertyFindOrInherit(bool first, Object *object, const char *cName, uint8_t type = 0) {
-	while (object) {
+	uintptr_t depth = 0;
+
+	while (object && (depth++ < 100)) {
 		if (first || !ObjectIsConditional(object) || (canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
 			// Return the value if the object has this property.
 			Property *property = PropertyFind(object, cName);
@@ -430,6 +443,14 @@ float PropertyFindOrInheritReadFloat(bool first, Object *object, const char *cNa
 Object *PropertyFindOrInheritReadObject(bool first, Object *object, const char *cName) {
 	Property *property = PropertyFindOrInherit(first, object, cName, PROP_OBJECT);
 	return property ? ObjectFind(property->object) : nullptr;
+}
+
+void ObjectLookupRebuild() {
+	objectLookup.Free();
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		*objectLookup.Put(&objects[i].id) = i;
+	}
 }
 
 void DocumentSave(void *) {
@@ -491,6 +512,8 @@ void DocumentLoad() {
 		objects.Add(object);
 	}
 
+	ObjectLookupRebuild();
+
 #ifdef OS_ESSENCE
 	EsHeapFree(buffer.out);
 #else
@@ -506,6 +529,7 @@ void DocumentFree() {
 	objects.Free();
 	undoStack.Free();
 	redoStack.Free();
+	ObjectLookupRebuild();
 }
 
 void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
@@ -567,6 +591,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		InspectorPopulate();
 	} else if (step.type == STEP_ADD_OBJECT) {
 		objects.Add(step.object);
+		ObjectLookupRebuild();
 		UIElementRepaint(canvas, nullptr);
 		step.objectID = step.object.id;
 		step.type = STEP_DELETE_OBJECT;
@@ -585,6 +610,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 			}
 		}
 
+		ObjectLookupRebuild();
 		step.object.flags = 0;
 		UIElementRefresh(canvas);
 		InspectorPopulate();
@@ -604,6 +630,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		}
 
 		UI_ASSERT(found);
+		ObjectLookupRebuild();
 		UIElementRefresh(canvas);
 	} else {
 		UI_ASSERT(false);
@@ -2030,6 +2057,12 @@ void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer da
 }
 
 void CanvasDrawColorSwatch(Object *object, UIRectangle bounds, UIPainter *painter) {
+	for (int32_t y = bounds.t, y0 = 0; y < bounds.b; y += 15, y0++) {
+		for (int32_t x = bounds.l, x0 = 0; x < bounds.r; x += 15, x0++) {
+			UIDrawBlock(painter, UIRectangleIntersection(UI_RECT_4(x, x + 15, y, y + 15), bounds), ((x0 ^ y0) & 1) ? 0xFF808080 : 0xFFC0C0C0);
+		}
+	}
+
 	uint8_t buffer[4096];
 	EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
 	ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
@@ -2450,13 +2483,16 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		canvas->lastPanPointX = element->window->cursorX;
 		canvas->lastPanPointY = element->window->cursorY;
 		UIElementRefresh(canvas);
+	} else if (message == UI_MSG_MOUSE_WHEEL && !element->window->ctrl) {
+		canvas->panY += di / canvas->zoom;
+		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_MOUSE_WHEEL && element->window->ctrl) {
 		int divisions = -di / 72;
 		float factor = 1, perDivision = 1.2f;
 		while (divisions > 0) factor *= perDivision, divisions--;
 		while (divisions < 0) factor /= perDivision, divisions++;
 		if (canvas->zoom * factor > 4) factor = 4 / canvas->zoom;
-		if (canvas->zoom * factor < 1) factor = 1 / canvas->zoom;
+		if (canvas->zoom * factor < 0.1) factor = 0.1 / canvas->zoom;
 		int mx = element->window->cursorX - element->bounds.l;
 		int my = element->window->cursorY - element->bounds.t;
 		canvas->zoom *= factor;
@@ -2504,6 +2540,14 @@ void CanvasSwitchView(void *) {
 	canvas->swapZoom = canvas->zoom, canvas->swapPanX = canvas->panX, canvas->swapPanY = canvas->panY;
 	canvas->zoom = z, canvas->panX = x, canvas->panY = y;
 	canvas->showPrototype = !canvas->showPrototype;
+	UIElementRefresh(canvas);
+}
+
+void CanvasZoom100(void *) {
+	float factor = 1.0f / canvas->zoom;
+	canvas->zoom *= factor;
+	canvas->panX -= UI_RECT_WIDTH(canvas->bounds) / 2 / canvas->zoom * (1 - factor);
+	canvas->panY -= UI_RECT_HEIGHT(canvas->bounds) / 2 / canvas->zoom * (1 - factor);
 	UIElementRefresh(canvas);
 }
 
@@ -2587,7 +2631,7 @@ void ObjectAddCommand(void *) {
 }
 
 void ObjectAddInstanceCommand(void *) {
-	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | UI_MENU_PLACE_ABOVE);
+	UIMenu *menu = UIMenuCreate(window->pressed, 0);
 
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		if (objects[i].type == OBJ_STYLE) {
@@ -2700,14 +2744,11 @@ int main() {
 		UIButtonCreate(0, UI_BUTTON_SMALL, "Add instance \x18", -1)->invoke = ObjectAddInstanceCommand;
 	UIParentPop();
 
-	canvas->resizeHandles[0] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
-	canvas->resizeHandles[1] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
-	canvas->resizeHandles[2] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
-	canvas->resizeHandles[3] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
-	canvas->resizeHandles[0]->cp = (void *) (uintptr_t) 0;
-	canvas->resizeHandles[1]->cp = (void *) (uintptr_t) 1;
-	canvas->resizeHandles[2]->cp = (void *) (uintptr_t) 2;
-	canvas->resizeHandles[3]->cp = (void *) (uintptr_t) 3;
+	for (uintptr_t i = 0; i < 4; i++) {
+		canvas->resizeHandles[i] = UIElementCreate(sizeof(UIElement), canvas, 0, ResizeHandleMessage, "Resize handle");
+		canvas->resizeHandles[i]->cp = (void *) (uintptr_t) i;
+	}
+
 	canvas->zoom = canvas->swapZoom = 1.0f;
 	canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
 
@@ -2715,6 +2756,7 @@ int main() {
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('D'), 1 /* ctrl */, 0, 0, ObjectDuplicateCommand, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(2), 0, 0, 0, CanvasSwitchView, 0));
+	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(1), 0, 0, 0, CanvasZoom100, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DELETE, 0, 0, 0, ObjectDeleteCommand, 0));
 
 #ifdef OS_ESSENCE

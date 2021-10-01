@@ -1133,9 +1133,10 @@ bool UIDrawLine(UIPainter *painter, int x0, int y0, int x1, int y1, uint32_t col
 	// Apply the clip.
 
 	UIRectangle c = painter->clip;
+	if (!UI_RECT_VALID(c)) return false;
 	int dx = x1 - x0, dy = y1 - y0;
 	const int p[4] = { -dx, dx, -dy, dy };
-	const int q[4] = { x0 - c.l, c.r - x0, y0 - c.t, c.b - y0 };
+	const int q[4] = { x0 - c.l, c.r - 1 - x0, y0 - c.t, c.b - 1 - y0 };
 	float t0 = 0.0f, t1 = 1.0f; // How far along the line the points end up.
 
 	for (int i = 0; i < 4; i++) {

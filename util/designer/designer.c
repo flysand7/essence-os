@@ -1632,6 +1632,480 @@ void ActionExport(void *_unused) {
 	}
 }
 
+// ------------------- Exporting to Designer2 -------------------
+
+enum PropertyType {
+	PROP_NONE,
+	PROP_COLOR,
+	PROP_INT,
+	PROP_OBJECT,
+	PROP_FLOAT,
+};
+
+typedef struct Property2 {
+	uint8_t type;
+#define PROPERTY_NAME_SIZE (31)
+	char cName[PROPERTY_NAME_SIZE];
+
+	union {
+		int32_t integer;
+		uint64_t object;
+		float floating;
+	};
+} Property2;
+
+enum ObjectType {
+	OBJ_NONE,
+
+	OBJ_STYLE,
+	OBJ_COMMENT,
+	OBJ_INSTANCE,
+
+	OBJ_VAR_COLOR = 0x40,
+	OBJ_VAR_INT,
+	OBJ_VAR_TEXT_STYLE,
+	OBJ_VAR_ICON_STYLE,
+	OBJ_VAR_CONTOUR_STYLE,
+	
+	OBJ_PAINT_OVERWRITE = 0x60,
+	OBJ_PAINT_LINEAR_GRADIENT,
+	OBJ_PAINT_RADIAL_GRADIENT,
+
+	OBJ_LAYER_BOX = 0x80,
+	OBJ_LAYER_METRICS,
+	OBJ_LAYER_TEXT,
+	OBJ_LAYER_GROUP,
+	OBJ_LAYER_PATH,
+
+	OBJ_MOD_COLOR = 0xC0,
+	OBJ_MOD_MULTIPLY,
+};
+
+typedef struct Object2 {
+	uint8_t type;
+#define OBJECT_NAME_SIZE (46)
+	char cName[OBJECT_NAME_SIZE];
+#define OBJECT_IS_SELECTED (1 << 0)
+#define OBJECT_IN_PROTOTYPE (1 << 1)
+	uint8_t flags;
+	uint64_t id;
+	Property2 *properties;
+} Object2;
+
+void ObjectAddIntegerProperty(Object2 *object, const char *cName, int32_t value) {
+	Property2 property = { 0 };
+	property.type = PROP_INT;
+	strcpy(property.cName, cName);
+	property.integer = value;
+	arrput(object->properties, property);
+}
+
+void ObjectAddColorProperty(Object2 *object, const char *cName, uint32_t value) {
+	Property2 property = { 0 };
+	property.type = PROP_COLOR;
+	strcpy(property.cName, cName);
+	property.integer = value;
+	arrput(object->properties, property);
+}
+
+void ObjectAddFloatProperty(Object2 *object, const char *cName, float value) {
+	Property2 property = { 0 };
+	property.type = PROP_FLOAT;
+	strcpy(property.cName, cName);
+	property.floating = value;
+	arrput(object->properties, property);
+}
+
+void ObjectAddObjectProperty(Object2 *object, const char *cName, uint64_t value) {
+	Property2 property = { 0 };
+	property.type = PROP_OBJECT;
+	strcpy(property.cName, cName);
+	property.object = value;
+	arrput(object->properties, property);
+}
+
+uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *idAllocator) {
+	char cPropertyName[PROPERTY_NAME_SIZE];
+
+	if (!paint->tag) {
+		return 0;
+	} else if (paint->tag == Paint_solid + 1) {
+		return ColorLookupPointer(paint->solid.color)->object2ID;
+	} else if (paint->tag == Paint_linearGradient + 1) {
+		bool constantColor = true;
+
+		for (uintptr_t i = 1; i < arrlenu(paint->linearGradient.stops); i++) {
+			if (paint->linearGradient.stops[i].color != paint->linearGradient.stops[0].color) {
+				constantColor = false;
+				break;
+			}
+		}
+
+		if (constantColor) {
+			return ColorLookupPointer(paint->linearGradient.stops[0].color)->object2ID;
+		}
+
+		Object2 object = { .type = OBJ_PAINT_LINEAR_GRADIENT, .id = ++(*idAllocator) };
+
+		ObjectAddIntegerProperty(&object, "_graphX", *x);
+		ObjectAddIntegerProperty(&object, "_graphY", y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		ObjectAddFloatProperty(&object, "transformX", paint->linearGradient.transformX);
+		ObjectAddFloatProperty(&object, "transformY", paint->linearGradient.transformY);
+		ObjectAddFloatProperty(&object, "transformStart", paint->linearGradient.transformStart);
+		ObjectAddIntegerProperty(&object, "repeatMode", paint->linearGradient.repeat);
+		ObjectAddIntegerProperty(&object, "useGammaInterpolation", paint->linearGradient.useGammaInterpolation);
+		ObjectAddIntegerProperty(&object, "useSystemColor", paint->linearGradient.useSystemHue);
+		ObjectAddIntegerProperty(&object, "stops_count", arrlenu(paint->linearGradient.stops));
+
+		for (uintptr_t i = 0; i < arrlenu(paint->linearGradient.stops); i++) {
+			sprintf(cPropertyName, "stops_%d_position", (int) i);
+			ObjectAddIntegerProperty(&object, cPropertyName, paint->linearGradient.stops[i].position);
+			sprintf(cPropertyName, "stops_%d_color", (int) i);
+			ObjectAddObjectProperty(&object, cPropertyName, ColorLookupPointer(paint->linearGradient.stops[i].color)->object2ID);
+		}
+
+		*x += 100;
+		arrput(*objects, object);
+		return object.id;
+	} else if (paint->tag == Paint_radialGradient + 1) {
+		Object2 object = { .type = OBJ_PAINT_RADIAL_GRADIENT, .id = ++(*idAllocator) };
+
+		ObjectAddIntegerProperty(&object, "_graphX", *x);
+		ObjectAddIntegerProperty(&object, "_graphY", y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		ObjectAddFloatProperty(&object, "transform0", paint->radialGradient.transform0);
+		ObjectAddFloatProperty(&object, "transform1", paint->radialGradient.transform1);
+		ObjectAddFloatProperty(&object, "transform2", paint->radialGradient.transform2);
+		ObjectAddFloatProperty(&object, "transform3", paint->radialGradient.transform3);
+		ObjectAddFloatProperty(&object, "transform4", paint->radialGradient.transform4);
+		ObjectAddFloatProperty(&object, "transform5", paint->radialGradient.transform5);
+		ObjectAddIntegerProperty(&object, "repeatMode", paint->radialGradient.repeat);
+		ObjectAddIntegerProperty(&object, "useGammaInterpolation", paint->radialGradient.useGammaInterpolation);
+		ObjectAddIntegerProperty(&object, "stops_count", arrlenu(paint->radialGradient.stops));
+
+		for (uintptr_t i = 0; i < arrlenu(paint->radialGradient.stops); i++) {
+			sprintf(cPropertyName, "stops_%d_position", (int) i);
+			ObjectAddIntegerProperty(&object, cPropertyName, paint->radialGradient.stops[i].position);
+			sprintf(cPropertyName, "stops_%d_color", (int) i);
+			ObjectAddObjectProperty(&object, cPropertyName, ColorLookupPointer(paint->radialGradient.stops[i].color)->object2ID);
+		}
+
+		*x += 100;
+		arrput(*objects, object);
+		return object.id;
+	} else if (paint->tag == Paint_overwrite + 1) {
+		Object2 object = { .type = OBJ_PAINT_OVERWRITE, .id = ++(*idAllocator) };
+		ObjectAddIntegerProperty(&object, "_graphX", *x);
+		ObjectAddIntegerProperty(&object, "_graphY", y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		ObjectAddObjectProperty(&object, "color", ColorLookupPointer(paint->overwrite.color)->object2ID);
+		*x += 100;
+		arrput(*objects, object);
+		return object.id;
+	} else {
+		assert(false);
+		return 0;
+	}
+}
+
+uint64_t ExportFillMode2(PathFillMode *fill, int *x, int y, Object2 **objects, uint64_t *idAllocator) {
+	if (fill->tag == PathFillMode_solid + 1) {
+		return 0;
+	} else if (fill->tag == PathFillMode_contour + 1) {
+		Object2 object = { .type = OBJ_VAR_CONTOUR_STYLE, .id = ++(*idAllocator) };
+		ObjectAddIntegerProperty(&object, "_graphX", *x);
+		ObjectAddIntegerProperty(&object, "_graphY", y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		ObjectAddIntegerProperty(&object, "internalWidth", fill->contour.internalWidth);
+		ObjectAddIntegerProperty(&object, "externalWidth", fill->contour.externalWidth);
+		ObjectAddIntegerProperty(&object, "integerWidthsOnly", fill->contour.integerWidthsOnly);
+		ObjectAddIntegerProperty(&object, "joinMode", fill->contour.joinMode == JOIN_MODE_ROUND ? RAST_LINE_JOIN_ROUND : RAST_LINE_JOIN_MITER);
+		ObjectAddIntegerProperty(&object, "capMode", fill->contour.capMode == CAP_MODE_FLAT ? RAST_LINE_CAP_FLAT 
+				: fill->contour.capMode == CAP_MODE_ROUND ? RAST_LINE_CAP_ROUND : RAST_LINE_CAP_SQUARE);
+		ObjectAddFloatProperty(&object, "miterLimit", fill->contour.joinMode == JOIN_MODE_BEVEL ? 0.0f : fill->contour.miterLimit);
+		*x += 100;
+		arrput(*objects, object);
+		return object.id;
+	} else {
+		assert(false);
+		return 0;
+	}
+}
+
+void ActionExportDesigner2(void *cp) {
+	// TODO Exporting sequences.
+	// TODO Inherited text styles.
+	// TODO Merging identical layers and styles.
+
+	Object2 *objects = NULL;
+	uint64_t objectIDAllocator = 0;
+	char cPropertyName[PROPERTY_NAME_SIZE];
+
+	int y = 0;
+
+	// Colors.
+
+	for (uintptr_t i = 0; i < arrlenu(styleSet.colors); i++) {
+		Object2 object = { .type = OBJ_VAR_COLOR, .id = ++objectIDAllocator };
+		snprintf(object.cName, sizeof(object.cName), "%.*s", (int) styleSet.colors[i]->key.byteCount, (const char *) styleSet.colors[i]->key.buffer);
+		ObjectAddIntegerProperty(&object, "_graphX", (i % 10) * 180);
+		ObjectAddIntegerProperty(&object, "_graphY", (i / 10) * 100 + y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		ObjectAddColorProperty(&object, "color", styleSet.colors[i]->value);
+		ObjectAddIntegerProperty(&object, "isExported", 0);
+		arrput(objects, object);
+		styleSet.colors[i]->object2ID = object.id;
+	}
+
+	y += (arrlenu(styleSet.colors) / 10) * 100 + 200;
+
+	// Constants.
+
+	for (uintptr_t i = 0; i < arrlenu(styleSet.constants); i++) {
+		char value[64];
+		snprintf(value, sizeof(value), "%.*s", (int) styleSet.constants[i]->value.byteCount, (const char *) styleSet.constants[i]->value.buffer);
+		bool isColor = value[0] == '0' && value[1] == 'x';
+		Object2 object = { .type = isColor ? OBJ_VAR_COLOR : OBJ_VAR_INT, .id = ++objectIDAllocator };
+		snprintf(object.cName, sizeof(object.cName), "%.*s", (int) styleSet.constants[i]->key.byteCount, (const char *) styleSet.constants[i]->key.buffer);
+		ObjectAddIntegerProperty(&object, "_graphX", (i % 5) * 360);
+		ObjectAddIntegerProperty(&object, "_graphY", (i / 5) * 100 + y);
+		ObjectAddIntegerProperty(&object, "_graphW", 80);
+		ObjectAddIntegerProperty(&object, "_graphH", 60);
+		if (isColor) ObjectAddColorProperty(&object, "color", strtol(value, NULL, 0));
+		else ObjectAddIntegerProperty(&object, "value", strtol(value, NULL, 0));
+		ObjectAddIntegerProperty(&object, "isScaled", styleSet.constants[i]->scale);
+		ObjectAddIntegerProperty(&object, "isExported", 1);
+		arrput(objects, object);
+	}
+
+	y += (arrlenu(styleSet.constants) / 5) * 100 + 200;
+
+	// Styles.
+
+	int x0 = 180 * 10 + 200;
+	y = 0;
+
+	for (uintptr_t i = 0; i < arrlenu(styleSet.styles); i++) {
+		int x = x0;
+		Style *style = styleSet.styles[i];
+		
+		Object2 layerGroup = { .type = OBJ_LAYER_GROUP, .id = ++objectIDAllocator };
+		Object2 metrics = { 0 }, textStyle = { 0 }, iconStyle = { 0 };
+		int32_t layerCount = 0;
+
+		for (uintptr_t i = 0; i < arrlenu(style->layers); i++) {
+			Layer *layer = LayerLookup(style->layers[i]);
+			bool addToLayerGroup = false, addToObjects = false;
+			Object2 object = { 0 };
+
+			if (layer->base.tag == LayerBase_box + 1) {
+				object.type = OBJ_LAYER_BOX, object.id = ++objectIDAllocator;
+				LayerBox *box = &layer->base.box;
+				ObjectAddIntegerProperty(&object, "borders0", box->borders.l);
+				ObjectAddIntegerProperty(&object, "borders1", box->borders.r);
+				ObjectAddIntegerProperty(&object, "borders2", box->borders.t);
+				ObjectAddIntegerProperty(&object, "borders3", box->borders.b);
+				ObjectAddIntegerProperty(&object, "corners0", box->corners.tl);
+				ObjectAddIntegerProperty(&object, "corners1", box->corners.tr);
+				ObjectAddIntegerProperty(&object, "corners2", box->corners.bl);
+				ObjectAddIntegerProperty(&object, "corners3", box->corners.br);
+				ObjectAddIntegerProperty(&object, "isBlurred", box->blurred);
+				ObjectAddIntegerProperty(&object, "autoCorners", box->autoCorners);
+				ObjectAddIntegerProperty(&object, "autoBorders", box->autoBorders);
+				ObjectAddIntegerProperty(&object, "shadowHiding", box->shadowHiding);
+				ObjectAddObjectProperty(&object, "mainPaint", ExportPaint2(&box->mainPaint, &x, y, &objects, &objectIDAllocator));
+				ObjectAddObjectProperty(&object, "borderPaint", ExportPaint2(&box->borderPaint, &x, y, &objects, &objectIDAllocator));
+				addToLayerGroup = true;
+				addToObjects = true;
+			} else if (layer->base.tag == LayerBase_text + 1) {
+				object.type = OBJ_LAYER_TEXT, object.id = ++objectIDAllocator;
+				ObjectAddObjectProperty(&object, "color", ColorLookupPointer(layer->base.text.color)->object2ID);
+				ObjectAddIntegerProperty(&object, "blur", layer->base.text.blur);
+				addToLayerGroup = true;
+				addToObjects = true;
+			} else if (layer->base.tag == LayerBase_path + 1) {
+				object.type = OBJ_LAYER_PATH, object.id = ++objectIDAllocator;
+				LayerPath *path = &layer->base.path;
+				ObjectAddIntegerProperty(&object, "pathFillEvenOdd", path->evenOdd);
+				ObjectAddIntegerProperty(&object, "pathClosed", path->closed);
+				ObjectAddIntegerProperty(&object, "alpha", path->alpha);
+				ObjectAddIntegerProperty(&object, "points_count", arrlenu(path->points));
+				ObjectAddIntegerProperty(&object, "fills_count", arrlenu(path->fills));
+
+				for (uintptr_t i = 0; i < arrlenu(path->points); i++) {
+					sprintf(cPropertyName, "points_%d_x0", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].x0);
+					sprintf(cPropertyName, "points_%d_y0", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].y0);
+					sprintf(cPropertyName, "points_%d_x1", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].x1);
+					sprintf(cPropertyName, "points_%d_y1", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].y1);
+					sprintf(cPropertyName, "points_%d_x2", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].x2);
+					sprintf(cPropertyName, "points_%d_y2", (int) i);
+					ObjectAddFloatProperty(&object, cPropertyName, path->points[i].y2);
+				}
+
+				for (uintptr_t i = 0; i < arrlenu(path->fills); i++) {
+					sprintf(cPropertyName, "fills_%d_paint", (int) i);
+					ObjectAddObjectProperty(&object, cPropertyName, ExportPaint2(&path->fills[i].paint, &x, y, &objects, &objectIDAllocator));
+					sprintf(cPropertyName, "fills_%d_mode", (int) i);
+					ObjectAddObjectProperty(&object, cPropertyName, ExportFillMode2(&path->fills[i].mode, &x, y, &objects, &objectIDAllocator));
+				}
+
+				addToLayerGroup = true;
+				addToObjects = true;
+			} else {
+				object.type = OBJ_LAYER_METRICS, object.id = ++objectIDAllocator;
+				LayerMetrics *m = &layer->base.metrics;
+				ObjectAddIntegerProperty(&object, "clipEnabled", m->clipEnabled);
+				ObjectAddIntegerProperty(&object, "wrapText", m->wrapText);
+				ObjectAddIntegerProperty(&object, "ellipsis", m->ellipsis);
+				ObjectAddIntegerProperty(&object, "insets0", m->insets.l);
+				ObjectAddIntegerProperty(&object, "insets1", m->insets.r);
+				ObjectAddIntegerProperty(&object, "insets2", m->insets.t);
+				ObjectAddIntegerProperty(&object, "insets3", m->insets.b);
+				ObjectAddIntegerProperty(&object, "clipInsets0", m->clipInsets.l);
+				ObjectAddIntegerProperty(&object, "clipInsets1", m->clipInsets.r);
+				ObjectAddIntegerProperty(&object, "clipInsets2", m->clipInsets.t);
+				ObjectAddIntegerProperty(&object, "clipInsets3", m->clipInsets.b);
+				ObjectAddIntegerProperty(&object, "preferredWidth", m->preferredSize.width);
+				ObjectAddIntegerProperty(&object, "preferredHeight", m->preferredSize.height);
+				ObjectAddIntegerProperty(&object, "minimumWidth", m->minimumSize.width);
+				ObjectAddIntegerProperty(&object, "minimumHeight", m->minimumSize.height);
+				ObjectAddIntegerProperty(&object, "maximumWidth", m->maximumSize.width);
+				ObjectAddIntegerProperty(&object, "maximumHeight", m->maximumSize.height);
+				ObjectAddIntegerProperty(&object, "gapMajor", m->gaps.major);
+				ObjectAddIntegerProperty(&object, "gapMinor", m->gaps.minor);
+				ObjectAddIntegerProperty(&object, "gapWrap", m->gaps.wrap);
+				ObjectAddIntegerProperty(&object, "cursor", m->cursor);
+				ObjectAddIntegerProperty(&object, "horizontalTextAlign", m->textHorizontalAlign + 1);
+				ObjectAddIntegerProperty(&object, "verticalTextAlign", m->textVerticalAlign + 1);
+				assert(!m->globalOffset.l && !m->globalOffset.r && !m->globalOffset.t && !m->globalOffset.b);
+				addToObjects = true;
+				metrics = object;
+
+				textStyle.type = OBJ_VAR_TEXT_STYLE, textStyle.id = ++objectIDAllocator;
+				ObjectAddIntegerProperty(&textStyle, "_graphX", x);
+				ObjectAddIntegerProperty(&textStyle, "_graphY", y);
+				ObjectAddIntegerProperty(&textStyle, "_graphW", 80);
+				ObjectAddIntegerProperty(&textStyle, "_graphH", 60);
+				ObjectAddObjectProperty(&textStyle, "textColor", ColorLookupPointer(m->textColor)->object2ID);
+				ObjectAddObjectProperty(&textStyle, "selectedBackground", ColorLookupPointer(m->selectedBackground)->object2ID);
+				ObjectAddObjectProperty(&textStyle, "selectedText", ColorLookupPointer(m->selectedText)->object2ID);
+				ObjectAddIntegerProperty(&textStyle, "textSize", m->textSize);
+				ObjectAddIntegerProperty(&textStyle, "fontWeight", m->fontWeight);
+				ObjectAddIntegerProperty(&textStyle, "isItalic", m->italic);
+				ObjectAddIntegerProperty(&textStyle, "fontFamily", m->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
+				arrput(objects, textStyle);
+				x += 100;
+
+				iconStyle.type = OBJ_VAR_ICON_STYLE, iconStyle.id = ++objectIDAllocator;
+				ObjectAddIntegerProperty(&iconStyle, "_graphX", x);
+				ObjectAddIntegerProperty(&iconStyle, "_graphY", y);
+				ObjectAddIntegerProperty(&iconStyle, "_graphW", 80);
+				ObjectAddIntegerProperty(&iconStyle, "_graphH", 60);
+				ObjectAddIntegerProperty(&iconStyle, "iconSize", m->iconSize);
+				ObjectAddObjectProperty(&iconStyle, "iconColor", ColorLookupPointer(m->iconColor)->object2ID);
+				arrput(objects, iconStyle);
+				x += 100;
+			}
+
+			if (addToLayerGroup) {
+				sprintf(cPropertyName, "layers_%d_layer", layerCount);
+				ObjectAddObjectProperty(&layerGroup, cPropertyName, object.id);
+				sprintf(cPropertyName, "layers_%d_offset0", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->offset.l);
+				sprintf(cPropertyName, "layers_%d_offset1", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->offset.r);
+				sprintf(cPropertyName, "layers_%d_offset2", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->offset.t);
+				sprintf(cPropertyName, "layers_%d_offset3", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->offset.b);
+				sprintf(cPropertyName, "layers_%d_position0", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->position.l);
+				sprintf(cPropertyName, "layers_%d_position1", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->position.r);
+				sprintf(cPropertyName, "layers_%d_position2", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->position.t);
+				sprintf(cPropertyName, "layers_%d_position3", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->position.b);
+				sprintf(cPropertyName, "layers_%d_mode", layerCount);
+				ObjectAddIntegerProperty(&layerGroup, cPropertyName, layer->mode);
+				layerCount++;
+			}
+
+			if (addToObjects) {
+				ObjectAddIntegerProperty(&object, "_graphX", x);
+				ObjectAddIntegerProperty(&object, "_graphY", y);
+				ObjectAddIntegerProperty(&object, "_graphW", 80);
+				ObjectAddIntegerProperty(&object, "_graphH", 60);
+				arrput(objects, object);
+				x += 100;
+			}
+		}
+
+		{
+			Object2 object = layerGroup;
+			ObjectAddIntegerProperty(&object, "_graphX", x);
+			ObjectAddIntegerProperty(&object, "_graphY", y);
+			ObjectAddIntegerProperty(&object, "_graphW", 80);
+			ObjectAddIntegerProperty(&object, "_graphH", 60);
+			ObjectAddIntegerProperty(&object, "layers_count", layerCount);
+			arrput(objects, object);
+			x += 100;
+		}
+
+		{
+			Object2 object = { .type = OBJ_STYLE, .id = ++objectIDAllocator };
+			snprintf(object.cName, sizeof(object.cName), "%.*s", (int) style->name.byteCount, (const char *) style->name.buffer);
+			ObjectAddIntegerProperty(&object, "_graphX", x);
+			ObjectAddIntegerProperty(&object, "_graphY", y);
+			ObjectAddIntegerProperty(&object, "_graphW", 80);
+			ObjectAddIntegerProperty(&object, "_graphH", 60);
+			ObjectAddIntegerProperty(&object, "isPublic", style->publicStyle);
+			ObjectAddObjectProperty(&object, "appearance", layerGroup.id);
+			ObjectAddObjectProperty(&object, "metrics", metrics.id);
+			ObjectAddObjectProperty(&object, "textStyle", textStyle.id);
+			ObjectAddObjectProperty(&object, "iconStyle", iconStyle.id);
+			arrput(objects, object);
+			x += 100;
+		}
+
+		y += 200;
+	}
+
+	// Saving.
+
+	FILE *f = fopen("bin/designer2.dat", "wb");
+	uint32_t version = 1;
+	fwrite(&version, 1, sizeof(uint32_t), f);
+	uint32_t objectCount = arrlenu(objects);
+	fwrite(&objectCount, 1, sizeof(uint32_t), f);
+	fwrite(&objectIDAllocator, 1, sizeof(uint64_t), f);
+
+	for (uintptr_t i = 0; i < arrlenu(objects); i++) {
+		Object2 copy = objects[i];
+		uint32_t propertyCount = arrlenu(copy.properties);
+		copy.properties = NULL;
+		fwrite(&copy, 1, sizeof(Object2), f);
+		fwrite(&propertyCount, 1, sizeof(uint32_t), f);
+		fwrite(objects[i].properties, 1, sizeof(Property2) * propertyCount, f);
+		arrfree(objects[i].properties);
+		assert(objects[i].id);
+	}
+
+	fclose(f);
+	arrfree(objects);
+}
+
 // ------------------- Preview canvas -------------------
 
 float Smooth(float x) {
@@ -5334,6 +5808,7 @@ int main(int argc, char **argv)
 		UIButtonCreate(0, 0, "Save", -1)->invoke = ActionSave;
 		UIButtonCreate(0, 0, "Load", -1)->invoke = ActionLoad;
 		UIButtonCreate(0, 0, "Export", -1)->invoke = ActionExport;
+		UIButtonCreate(0, 0, "Export for Designer2", -1)->invoke = ActionExportDesigner2;
 		UIButtonCreate(0, 0, "Import font", -1)->invoke = ActionImportFont;
 	UIParentPop();
 

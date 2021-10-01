@@ -1,20 +1,5 @@
 // TODO Test deleting values in hash stores with variable length keys.
 
-#include <stdint.h>
-#include <stddef.h>
-
-#ifndef OS_ESSENCE
-#include <stdlib.h>
-#include <assert.h>
-#include <string.h>
-#define EsHeapAllocate(a, b) ((b) ? calloc(1, (a)) : malloc((a)))
-#define EsHeapReallocate(a, b, c) ((c) ? (assert(false), nullptr) : realloc((a), (b)))
-#define EsHeapFree free
-#define EsMemoryCopy memcpy
-#define EsMemoryCompare memcmp
-#define EsAssert assert
-#endif
-
 //////////////////////////////////////////
 
 struct HashTableKey {
@@ -221,6 +206,7 @@ void HashTableFree(HashTable *table, bool freeLongKeys) {
 	table->itemCount = 0;
 	table->slotCount = 0;
 	table->slots = nullptr;
+	table->storage = nullptr;
 }
 
 //////////////////////////////////////////
@@ -288,10 +274,12 @@ void *HashStorePut(HashTable *table, HashStoreOptions *options, const void *key,
 		size_t storageAllocated = ((size_t *) table->storage)[-1];
 
 		if (table->itemCount == storageAllocated) {
-			uint8_t *newStorage = (uint8_t *) EsHeapReallocate(table->storage - sizeof(size_t),
-					(options->keyBytes + options->valueBytes) * storageAllocated * 2 + sizeof(size_t), true);
+			size_t oldSize = (options->keyBytes + options->valueBytes) * storageAllocated;
+			size_t newSize = oldSize * 2;
+			uint8_t *newStorage = (uint8_t *) EsHeapReallocate(table->storage - sizeof(size_t), newSize + sizeof(size_t), false, nullptr);
 			if (!newStorage) return nullptr;
 			newStorage += sizeof(size_t);
+			EsMemoryZero(newStorage + oldSize, newSize - oldSize);
 
 			if (newStorage != table->storage) {
 				for (uintptr_t i = 0; i < table->slotCount; i++) {
@@ -400,7 +388,7 @@ struct HashStore {
 
 //////////////////////////////////////////
 
-#ifndef OS_ESSENCE
+#if 0
 
 #include <stdio.h>
 #include "stb_ds.h"

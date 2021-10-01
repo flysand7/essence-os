@@ -350,6 +350,7 @@ struct Color Color_Type RfStructOp {
 	rfData RfData key;
 	rfU32 uint32_t value;
 	rfU32 uint32_t id;
+	rfNone uint64_t object2ID;
 };
 
 struct StyleSet StyleSet_Type StyleSetOp {
