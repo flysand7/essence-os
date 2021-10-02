@@ -14,10 +14,6 @@
 #define THEME_LAYER_MODE_CONTENT    (2)
 #define THEME_LAYER_MODE_OVERLAY    (3)
 
-#define THEME_FONT_FAMILY_SANS  (0)
-#define THEME_FONT_FAMILY_SERIF (1)
-#define THEME_FONT_FAMILY_MONO  (2)
-
 #define THEME_OVERRIDE_I8    (1)
 #define THEME_OVERRIDE_I16   (2)
 #define THEME_OVERRIDE_F32   (3)
@@ -159,12 +155,6 @@ typedef struct ThemeLayerIcon {
 	Rectangle16 image;
 } ThemeLayerIcon;
 
-typedef struct ThemeLayerImage {
-	uint16_t alpha;
-	uint16_t _unused0;
-	Rectangle16 image, contentRegion;
-} ThemeLayerImage;
-
 typedef struct ThemeLayerPathFillContour {
 	float miterLimit;
 	uint8_t internalWidth, externalWidth;
@@ -200,9 +190,8 @@ typedef struct ThemeLayer {
 
 typedef struct ThemeMetrics {
 	Rectangle16 insets, clipInsets;
-	Rectangle16 globalOffset;
 	uint8_t clipEnabled, cursor;
-	uint16_t fontFamily;
+	uint16_t fontFamily; // TODO This needs to be validated when loading.
 	int16_t preferredWidth, preferredHeight;
 	int16_t minimumWidth, minimumHeight;
 	int16_t maximumWidth, maximumHeight;
@@ -210,7 +199,7 @@ typedef struct ThemeMetrics {
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
 	int8_t textAlign, fontWeight;
 	int16_t textSize, iconSize;
-	bool isItalic, ellipsis, layoutVertical;
+	bool isItalic, layoutVertical;
 } ThemeMetrics;
 
 typedef union ThemeVariant {
@@ -236,7 +225,10 @@ typedef struct ThemeSequenceHeader {
 } ThemeSequenceHeader;
 
 typedef struct ThemeStyle {
-	uint32_t layerListOffset; // A list of uint32_t, giving offsets to ThemeLayer. First is the metrics layer.
+	// A list of uint32_t, giving offsets to ThemeLayer. First is the metrics layer.
+	// **This must be the first field in the structure; see the end of Export in util/designer2.cpp.**
+	uint32_t layerListOffset; 
+
 	uint16_t id;
 	uint8_t layerCount;
 	uint8_t _unused1;
@@ -245,17 +237,14 @@ typedef struct ThemeStyle {
 
 typedef struct ThemeConstant {
 	uint64_t hash;
-	uint32_t valueOffset;
-	uint32_t valueByteCount;
+	char cValue[12];
 	bool scale;
 } ThemeConstant;
 
 typedef struct ThemeHeader {
 	uint32_t signature;
 	uint32_t styleCount, constantCount;
-	uint32_t bitmapBytes;
 	// Followed by array of ThemeStyles and then an array of ThemeConstants.
-	// The bitmap is at the end of the theme file.
 } ThemeHeader;
 
 typedef struct BasicFontKerningEntry {
@@ -1253,17 +1242,19 @@ const void *GetConstant(const char *cKey, size_t *byteCount, bool *scale) {
 		}
 
 		if (constant->hash == hash) {
-			data.position = constant->valueOffset;
-			const void *value = EsBufferRead(&data, (constant->valueByteCount + 3) & ~3);
+			size_t _byteCount = 0;
 
-			if (!value) {
-				EsPrint("Broken theme constant value.\n");
-				return 0;
+			for (uintptr_t i = 0; i < sizeof(constant->cValue); i++) {
+				if (constant->cValue[i] == 0) {
+					break;
+				} else {
+					_byteCount++;
+				}
 			}
 
-			*byteCount = constant->valueByteCount;
+			*byteCount = _byteCount;
 			*scale = constant->scale;
-			return value;
+			return constant->cValue;
 		}
 	}
 
@@ -1280,30 +1271,6 @@ int GetConstantNumber(const char *cKey) {
 	return integer;
 }
 
-EsRectangle GetConstantRectangle(const char *cKey) {
-	size_t byteCount;
-	bool scale = false;
-	char *value = (char *) GetConstant(cKey, &byteCount, &scale);
-	if (!value) return {};
-	EsRectangle rectangle;
-	rectangle.l = EsCRTstrtol(value, &value, 10);
-	if (*value == ',') value++;
-	rectangle.r = EsCRTstrtol(value, &value, 10);
-	if (*value == ',') value++;
-	rectangle.t = EsCRTstrtol(value, &value, 10);
-	if (*value == ',') value++;
-	rectangle.b = EsCRTstrtol(value, &value, 10);
-
-	if (scale) {
-		rectangle.l *= theming.scale;
-		rectangle.r *= theming.scale;
-		rectangle.t *= theming.scale;
-		rectangle.b *= theming.scale;
-	}
-
-	return rectangle;
-}
-
 const char *GetConstantString(const char *cKey) {
 	size_t byteCount;
 	bool scale;
@@ -1317,9 +1284,7 @@ bool ThemeInitialise() {
 
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
 
-	if (!header || header->signature != THEME_HEADER_SIGNATURE 
-			|| !header->styleCount || !EsBufferRead(&data, sizeof(ThemeStyle))
-			|| data.bytes < header->bitmapBytes) {
+	if (!header || header->signature != THEME_HEADER_SIGNATURE || !header->styleCount || !EsBufferRead(&data, sizeof(ThemeStyle))) {
 		return false;
 	}
 
@@ -1550,7 +1515,6 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 #define ES_RECTANGLE_TO_RECTANGLE_8(x) { (int8_t) (x).l, (int8_t) (x).r, (int8_t) (x).t, (int8_t) (x).b }
 		if (customMetrics->mask & ES_THEME_METRICS_INSETS) style->metrics->insets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->insets);
 		if (customMetrics->mask & ES_THEME_METRICS_CLIP_INSETS) style->metrics->clipInsets = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->clipInsets);
-		if (customMetrics->mask & ES_THEME_METRICS_GLOBAL_OFFSET) style->metrics->globalOffset = ES_RECTANGLE_TO_RECTANGLE_8(customMetrics->globalOffset);
 		if (customMetrics->mask & ES_THEME_METRICS_CLIP_ENABLED) style->metrics->clipEnabled = customMetrics->clipEnabled;
 		if (customMetrics->mask & ES_THEME_METRICS_CURSOR) style->metrics->cursor = customMetrics->cursor;
 		if (customMetrics->mask & ES_THEME_METRICS_PREFERRED_WIDTH) style->metrics->preferredWidth = customMetrics->preferredWidth;
@@ -1572,7 +1536,6 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 		if (customMetrics->mask & ES_THEME_METRICS_FONT_WEIGHT) style->metrics->fontWeight = customMetrics->fontWeight;
 		if (customMetrics->mask & ES_THEME_METRICS_ICON_SIZE) style->metrics->iconSize = customMetrics->iconSize;
 		if (customMetrics->mask & ES_THEME_METRICS_IS_ITALIC) style->metrics->isItalic = customMetrics->isItalic;
-		if (customMetrics->mask & ES_THEME_METRICS_ELLIPSIS) style->metrics->ellipsis = customMetrics->ellipsis;
 		if (customMetrics->mask & ES_THEME_METRICS_LAYOUT_VERTICAL) style->metrics->layoutVertical = customMetrics->layoutVertical;
 	}
 
@@ -1585,7 +1548,6 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 	int16_t *scale16[] = {
 		&style->metrics->insets.l, &style->metrics->insets.r, &style->metrics->insets.t, &style->metrics->insets.b,
 		&style->metrics->clipInsets.l, &style->metrics->clipInsets.r, &style->metrics->clipInsets.t, &style->metrics->clipInsets.b,
-		&style->metrics->globalOffset.l, &style->metrics->globalOffset.r, &style->metrics->globalOffset.t, &style->metrics->globalOffset.b,
 		&style->metrics->gapMajor, &style->metrics->gapMinor, &style->metrics->gapWrap,
 		&style->metrics->preferredWidth, &style->metrics->preferredHeight,
 		&style->metrics->minimumWidth, &style->metrics->minimumHeight,
@@ -1689,7 +1651,7 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 		}
 
 		if (layer->dataByteCount < sizeof(ThemeLayer)) {
-			EsPrint("Broken layer data byte count.\n");
+			EsPrint("Broken layer data byte count (%d; %d).\n", layer->dataByteCount, *offset);
 			return nullptr;
 		}
 
@@ -1933,7 +1895,7 @@ void UIStyle::PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle 
 
 void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rectangle, 
 		const char *text, size_t textBytes, uint32_t iconID, uint32_t flags, EsTextSelection *selectionProperties) {
-	EsRectangle bounds = EsRectangleAdd(Translate(EsRectangleAddBorder(rectangle, insets), painter->offsetX, painter->offsetY), RECT16_TO_RECT(metrics->globalOffset));
+	EsRectangle bounds = Translate(EsRectangleAddBorder(rectangle, insets), painter->offsetX, painter->offsetY);
 	EsRectangle textBounds = bounds;
 	EsRectangle oldClip = painter->clip;
 	EsRectangleClip(painter->clip, bounds, &painter->clip);
@@ -2055,10 +2017,10 @@ void UIStyle::PaintLayers(EsPainter *painter, EsRectangle location, int childTyp
 		}
 
 		EsRectangle bounds;
-		bounds.l = _bounds.l + (int) (scale * layer->offset.l) + THEME_RECT_WIDTH(_bounds)  * layer->position.l / 100 + metrics->globalOffset.l;
-		bounds.r = _bounds.l + (int) (scale * layer->offset.r) + THEME_RECT_WIDTH(_bounds)  * layer->position.r / 100 + metrics->globalOffset.r;
-		bounds.t = _bounds.t + (int) (scale * layer->offset.t) + THEME_RECT_HEIGHT(_bounds) * layer->position.t / 100 + metrics->globalOffset.t;
-		bounds.b = _bounds.t + (int) (scale * layer->offset.b) + THEME_RECT_HEIGHT(_bounds) * layer->position.b / 100 + metrics->globalOffset.b;
+		bounds.l = _bounds.l + (int) (scale * layer->offset.l) + THEME_RECT_WIDTH(_bounds)  * layer->position.l / 100;
+		bounds.r = _bounds.l + (int) (scale * layer->offset.r) + THEME_RECT_WIDTH(_bounds)  * layer->position.r / 100;
+		bounds.t = _bounds.t + (int) (scale * layer->offset.t) + THEME_RECT_HEIGHT(_bounds) * layer->position.t / 100;
+		bounds.b = _bounds.t + (int) (scale * layer->offset.b) + THEME_RECT_HEIGHT(_bounds) * layer->position.b / 100;
 
 		if (layer->mode == whichLayers && THEME_RECT_WIDTH(bounds) > 0 && THEME_RECT_HEIGHT(bounds) > 0
 				&& THEME_RECT_VALID(EsRectangleIntersection(bounds, painter->clip))) {

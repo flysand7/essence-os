@@ -239,7 +239,7 @@ ModContext selected = MOD_CONTEXT(NULL, NULL, NULL, NULL);
 
 char temporaryOverride[4096];
 
-char *filePath, *exportPath, *embedBitmapPath, *stylesPath;
+char *filePath, *exportPath, *stylesPath;
 
 void ModApply(ModData *mod);
 
@@ -1286,7 +1286,6 @@ void LayerMetricsOp(RfState *state, RfItem *item, void *pointer) {
 		metrics.gapMajor = layer->gaps.major;
 		metrics.gapMinor = layer->gaps.minor;
 		metrics.gapWrap = layer->gaps.wrap;
-		EXPORT_RECTANGLE16_FIELD(LayerMetrics, layer, ThemeMetrics, metrics, globalOffset, globalOffset);
 
 		int fontFamily = inherit ? inherit->fontFamily : layer->fontFamily;
 		metrics.fontFamily = fontFamily == FONT_FAMILY_SANS ? 0xFFFF : fontFamily == FONT_FAMILY_SERIF ? 0xFFFE : 0xFFFD;
@@ -1359,27 +1358,12 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 		ExportState *export = (ExportState *) state;
 		StyleSet *styleSet = (StyleSet *) pointer;
 
-		// Load the cursors image.
-
-		size_t bitmapBytes = 0;
-		char *bitmap = NULL;
-
-		if (embedBitmapPath) {
-			bitmap = LoadFile(embedBitmapPath, &bitmapBytes);
-
-			if (!bitmap) {
-				printf("Error: Could not load the embedded bitmap!\n");
-				return;
-			}
-		}
-
 		// Write the header.
 
 		ThemeHeader header = { 0 };
 		header.signature = THEME_HEADER_SIGNATURE;
 		header.styleCount = arrlenu(styleSet->styles);
 		header.constantCount = arrlenu(styleSet->constants);
-		header.bitmapBytes = bitmapBytes;
 		state->access(state, &header, sizeof(header));
 		assert((export->buffer.data.byteCount & 3) == 0);
 
@@ -1433,27 +1417,15 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 
 		// Write the list of constants.
 
-		uint32_t constantListOffset = export->buffer.data.byteCount;
-
 		for (uintptr_t i = 0; i < header.constantCount; i++) {
 			Constant *constant = styleSet->constants[i];
 			ThemeConstant entry = { 0 };
+			assert(constant->value.byteCount + 1 < sizeof(entry.cValue));
 			entry.hash = CalculateCRC64(constant->key.buffer, constant->key.byteCount, 0);
+			entry.scale = constant->scale;
+			memcpy(entry.cValue, constant->value.buffer, constant->value.byteCount);
+			entry.cValue[constant->value.byteCount] = 0;
 			state->access(state, &entry, sizeof(entry));
-			assert((export->buffer.data.byteCount & 3) == 0);
-		}
-
-		for (uintptr_t i = 0; i < header.constantCount; i++) {
-			Constant *constant = styleSet->constants[i];
-			ThemeConstant *entry = (ThemeConstant *) ((uint8_t *) export->buffer.data.buffer + constantListOffset) + i;
-			entry->valueOffset = export->buffer.data.byteCount;
-			entry->valueByteCount = constant->value.byteCount + 1;
-			entry->scale = constant->scale;
-			state->access(state, constant->value.buffer, constant->value.byteCount);
-			uint8_t terminate = 0;
-			state->access(state, &terminate, 1);
-			uint32_t pad = 0;
-			state->access(state, &pad, 4 - ((constant->value.byteCount + 1) & 3));
 			assert((export->buffer.data.byteCount & 3) == 0);
 		}
 
@@ -1571,11 +1543,6 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 			ThemeStyle *entry = (ThemeStyle *) ((uint8_t *) export->buffer.data.buffer + styleListOffset) + i;
 			entry->layerListOffset = layerListOffset;
 		}
-
-		// Write out the bitmap.
-		state->access(state, bitmap, bitmapBytes);
-
-		free(bitmap);
 	} else {
 		RfStructOp(state, item, pointer);
 	}
@@ -1723,6 +1690,25 @@ void ObjectAddObjectProperty(Object2 *object, const char *cName, uint64_t value)
 	arrput(object->properties, property);
 }
 
+void AutoNameOverrideObject(Object2 *override, uint32_t primaryState, uint32_t stateBits) {
+	const char *cPrimaryStateStrings[] = {
+		"Any", "Idle", "Hovered", "Pressed", "Disabled", "Inactive",
+	};
+
+	const char *cStateBitStrings[] = {
+		"Focus", "Check", "Indtm", "DefBtn", "Sel", "FcItem", "ListFc", "BfEnt", "AfExt",
+	};
+
+	snprintf(override->cName, sizeof(override->cName), "?%s", primaryState ? cPrimaryStateStrings[primaryState] : "");
+
+	for (uintptr_t i = 0; i < 16; i++) {
+		if (stateBits & (1 << (15 - i))) {
+			snprintf(override->cName + strlen(override->cName), sizeof(override->cName) - strlen(override->cName), 
+					"%s%s", i || primaryState ? "&" : "", cStateBitStrings[i]);
+		}
+	}
+}
+
 uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *idAllocator, Layer *layer) {
 	char cPropertyName[PROPERTY_NAME_SIZE];
 
@@ -1731,19 +1717,6 @@ uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *
 	} else if (paint->tag == Paint_solid + 1) {
 		return ColorLookupPointer(paint->solid.color)->object2ID;
 	} else if (paint->tag == Paint_linearGradient + 1) {
-		bool constantColor = true;
-
-		for (uintptr_t i = 1; i < arrlenu(paint->linearGradient.stops); i++) {
-			if (paint->linearGradient.stops[i].color != paint->linearGradient.stops[0].color) {
-				constantColor = false;
-				break;
-			}
-		}
-
-		if (constantColor) {
-			return ColorLookupPointer(paint->linearGradient.stops[0].color)->object2ID;
-		}
-
 		Object2 object = { .type = OBJ_PAINT_LINEAR_GRADIENT, .id = ++(*idAllocator) };
 
 		ObjectAddIntegerProperty(&object, "_graphX", *x);
@@ -1794,6 +1767,7 @@ uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *
 				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
 				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
 				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+				AutoNameOverrideObject(&override, s->primaryState, stateBits);
 
 				bool addObject = false;
 
@@ -1892,6 +1866,7 @@ uint64_t ExportPaint2(Paint *paint, int *x, int y, Object2 **objects, uint64_t *
 				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
 				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
 				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+				AutoNameOverrideObject(&override, s->primaryState, stateBits);
 
 				bool addObject = false;
 
@@ -2004,8 +1979,6 @@ void ExportProperty2(Layer *layer, Property *property, Object2 *override) {
 				RfItem item = PaintSolid_Type.fields[PaintSolid_color].item;
 				uint32_t value; item.type->op(&state.s, &item, &value);
 				ObjectAddObjectProperty(override, "borderPaint", ColorLookupPointer(value)->object2ID);
-			} else if (property->path[3] == LayerBox_mainPaint && property->path[4] == Paint_overwrite && property->path[5] == PaintOverwrite_color) {
-				fprintf(stderr, "\t>>\n");
 			} else {
 				unhandled = true;
 			}
@@ -2082,9 +2055,7 @@ void ExportProperty2(Layer *layer, Property *property, Object2 *override) {
 }
 
 void ActionExportDesigner2(void *cp) {
-	// TODO Inherited text styles.
 	// TODO Merging identical layers and styles.
-	// TODO Auto-name override layers.
 
 	Object2 *objects = NULL;
 	uint64_t objectIDAllocator = 0;
@@ -2138,6 +2109,8 @@ void ActionExportDesigner2(void *cp) {
 	for (uintptr_t i = 0; i < arrlenu(styleSet.styles); i++) {
 		int x = x0;
 		Style *style = styleSet.styles[i];
+
+		fprintf(stderr, "style: %.*s\n", (int) style->name.byteCount, (const char *) style->name.buffer);
 		
 		Object2 layerGroup = { .type = OBJ_LAYER_GROUP, .id = ++objectIDAllocator };
 		Object2 metrics = { 0 }, textStyle = { 0 };
@@ -2206,15 +2179,39 @@ void ActionExportDesigner2(void *cp) {
 			} else if (layer->base.tag == LayerBase_metrics + 1) {
 				LayerMetrics *m = &layer->base.metrics;
 				assert(!m->globalOffset.l && !m->globalOffset.r && !m->globalOffset.t && !m->globalOffset.b);
-
+				LayerMetrics *inherit = NULL;
 				object.type = OBJ_VAR_TEXT_STYLE, object.id = ++objectIDAllocator;
-				ObjectAddObjectProperty(&object, "textColor", ColorLookupPointer(m->textColor)->object2ID);
-				ObjectAddObjectProperty(&object, "selectedBackground", ColorLookupPointer(m->selectedBackground)->object2ID);
-				ObjectAddObjectProperty(&object, "selectedText", ColorLookupPointer(m->selectedText)->object2ID);
-				ObjectAddIntegerProperty(&object, "textSize", m->textSize);
-				ObjectAddIntegerProperty(&object, "fontWeight", m->fontWeight);
-				ObjectAddIntegerProperty(&object, "isItalic", m->italic);
-				ObjectAddIntegerProperty(&object, "fontFamily", m->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
+
+				if (m->inheritText.byteCount) {
+					for (uintptr_t i = 0; i < arrlenu(styleSet.styles); i++) {
+						Style *style = styleSet.styles[i];
+
+						if (m->inheritText.byteCount == style->name.byteCount 
+								&& 0 == memcmp(m->inheritText.buffer, style->name.buffer, style->name.byteCount)) {
+							inherit = &LayerLookup(style->layers[0])->base.metrics;
+							break;
+						}
+					}
+				}
+
+				if (inherit) {
+					ObjectAddObjectProperty(&object, "textColor", ColorLookupPointer(inherit->textColor)->object2ID);
+					ObjectAddObjectProperty(&object, "selectedBackground", ColorLookupPointer(inherit->selectedBackground)->object2ID);
+					ObjectAddObjectProperty(&object, "selectedText", ColorLookupPointer(inherit->selectedText)->object2ID);
+					ObjectAddIntegerProperty(&object, "textSize", inherit->textSize);
+					ObjectAddIntegerProperty(&object, "fontWeight", inherit->fontWeight);
+					ObjectAddIntegerProperty(&object, "isItalic", inherit->italic);
+					ObjectAddIntegerProperty(&object, "fontFamily", inherit->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
+				} else {
+					ObjectAddObjectProperty(&object, "textColor", ColorLookupPointer(m->textColor)->object2ID);
+					ObjectAddObjectProperty(&object, "selectedBackground", ColorLookupPointer(m->selectedBackground)->object2ID);
+					ObjectAddObjectProperty(&object, "selectedText", ColorLookupPointer(m->selectedText)->object2ID);
+					ObjectAddIntegerProperty(&object, "textSize", m->textSize);
+					ObjectAddIntegerProperty(&object, "fontWeight", m->fontWeight);
+					ObjectAddIntegerProperty(&object, "isItalic", m->italic);
+					ObjectAddIntegerProperty(&object, "fontFamily", m->fontFamily == FONT_FAMILY_MONO ? 0xFFFD : 0xFFFF);
+				}
+
 				ObjectAddIntegerProperty(&object, "iconSize", m->iconSize);
 				ObjectAddObjectProperty(&object, "iconColor", ColorLookupPointer(m->iconColor)->object2ID);
 				textStyle = object;
@@ -2267,6 +2264,7 @@ void ActionExportDesigner2(void *cp) {
 				assert(arrlenu(s->keyframes) == 1);
 				Keyframe *keyframe = s->keyframes[0];
 
+#if 0
 				char buffer[256];
 				snprintf(buffer, sizeof(buffer), "%s%s%s%s%s%s%s%s%s%s", 
 						((StringOption *) PrimaryState_Type.fields[s->primaryState].item.options)->string,
@@ -2281,6 +2279,7 @@ void ActionExportDesigner2(void *cp) {
 						s->flagSelected ? " (selected)" : "");
 				fprintf(stderr, "%.*s:%.*s:%s:%d\n", (int) style->name.byteCount, (char *) style->name.buffer,
 						(int) layer->name.byteCount, (char *) layer->name.buffer, buffer, s->duration);
+#endif
 
 				uint32_t stateBits = 0;
 				if (s->flagFocused) stateBits |= THEME_STATE_FOCUSED;
@@ -2302,6 +2301,7 @@ void ActionExportDesigner2(void *cp) {
 				ObjectAddIntegerProperty(&override, "_primaryState", s->primaryState);
 				ObjectAddIntegerProperty(&override, "_stateBits", stateBits);
 				ObjectAddIntegerProperty(&override, "_duration", s->duration);
+				AutoNameOverrideObject(&override, s->primaryState, stateBits);
 
 				bool addObject = false;
 
@@ -2351,7 +2351,7 @@ void ActionExportDesigner2(void *cp) {
 			}
 		}
 
-		{
+		if (layerCount) {
 			Object2 object = layerGroup;
 			ObjectAddIntegerProperty(&object, "_graphX", x);
 			ObjectAddIntegerProperty(&object, "_graphY", y);
@@ -2360,6 +2360,9 @@ void ActionExportDesigner2(void *cp) {
 			ObjectAddIntegerProperty(&object, "layers_count", layerCount);
 			arrput(objects, object);
 			x += 100;
+		} else {
+			arrfree(layerGroup.properties);
+			layerGroup.id = 0;
 		}
 
 		{
@@ -2370,6 +2373,7 @@ void ActionExportDesigner2(void *cp) {
 			ObjectAddIntegerProperty(&object, "_graphW", 80);
 			ObjectAddIntegerProperty(&object, "_graphH", 60);
 			ObjectAddIntegerProperty(&object, "isPublic", style->publicStyle);
+			ObjectAddIntegerProperty(&object, "headerID", style->id);
 			ObjectAddObjectProperty(&object, "appearance", layerGroup.id);
 			ObjectAddObjectProperty(&object, "metrics", metrics.id);
 			ObjectAddObjectProperty(&object, "textStyle", textStyle.id);
@@ -2593,11 +2597,10 @@ void DrawStyle(UIPainter *painter, UIRectangle generalBounds, UIRectangle *globa
 			ThemeDrawLayer(&themePainter, bounds2, &themeData, scale, *(EsRectangle *) opaqueRegion);
 		} else {
 			EsBufferRead(&themeData, sizeof(ThemeLayer));
-			const ThemeMetrics *metrics = (const ThemeMetrics *) EsBufferRead(&themeData, sizeof(ThemeMetrics));
-			globalOffset->l = metrics->globalOffset.l * scale;
-			globalOffset->r = metrics->globalOffset.r * scale;
-			globalOffset->t = metrics->globalOffset.t * scale;
-			globalOffset->b = metrics->globalOffset.b * scale;
+			globalOffset->l = 0;
+			globalOffset->r = 0;
+			globalOffset->t = 0;
+			globalOffset->b = 0;
 		}
 
 		free(dataBuffer);
@@ -6086,8 +6089,7 @@ int main(int argc, char **argv)
 
 	filePath = argv[1];
 	exportPath = argv[2];
-	embedBitmapPath = argc >= 4 ? argv[3] : NULL;
-	stylesPath = argc >= 5 ? argv[4] : NULL;
+	stylesPath = argc >= 4 ? argv[3] : NULL;
 
 	UIInitialise();
 

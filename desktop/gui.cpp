@@ -6177,7 +6177,6 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 #define RECTANGLE_8_TO_ES_RECTANGLE(x) { (int32_t) (x).l, (int32_t) (x).r, (int32_t) (x).t, (int32_t) (x).b }
 	m.insets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->insets);
 	m.clipInsets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->clipInsets);
-	m.globalOffset = RECTANGLE_8_TO_ES_RECTANGLE(metrics->globalOffset);
 	m.clipEnabled = metrics->clipEnabled;
 	m.cursor = metrics->cursor;
 	m.preferredWidth = metrics->preferredWidth;
@@ -6199,7 +6198,6 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	m.fontWeight = metrics->fontWeight;
 	m.iconSize = metrics->iconSize;
 	m.isItalic = metrics->isItalic;
-	m.ellipsis = metrics->ellipsis;
 	return m;
 }
 

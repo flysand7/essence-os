@@ -16,8 +16,8 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Import old theming data.
-// 	Export.
+// 	Exporting sequences.
+// 	Calculating additional metric rectangles (paintOutsets, opaqueInsets and approximateBorders).
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
@@ -37,6 +37,7 @@
 // 	Proper bezier path editor.
 // 	Path boolean operations.
 // 	Timeline editor for applying a given state change, with rows for possibly many different layers.
+// 	Metrics: layoutVertical.
 
 // TODO Reorganize old theming data!
 		
@@ -160,6 +161,7 @@ void SetBit(uint32_t *value, uint32_t bit, bool on) {
 #include "../shared/math.cpp"
 
 #include "../shared/array.cpp"
+#include "../shared/hash.cpp"
 #include "../shared/hash_table.cpp"
 #include "../desktop/renderer.cpp"
 #include "../desktop/theme.cpp"
@@ -332,11 +334,18 @@ struct Step {
 	};
 };
 
+struct ExportOffset {
+	uint64_t objectID;
+	uintptr_t offset;
+	char cPropertyName[PROPERTY_NAME_SIZE];
+};
+
 Array<Step> undoStack;
 Array<Step> redoStack;
 bool documentModified;
 uint64_t selectedObjectID;
 HashStore<uint64_t, uintptr_t> objectLookup;
+Array<ExportOffset> exportOffsets;
 
 // Document state:
 Array<Object> objects;
@@ -358,6 +367,16 @@ Object *ObjectFind(uint64_t id) {
 	if (object) assert(object->id == id);
 	return object;
 #endif
+}
+
+ExportOffset *ExportOffsetFindObject(uint64_t id) {
+	for (uintptr_t i = 0; i < exportOffsets.Length(); i++) {
+		if (exportOffsets[i].objectID == id) {
+			return &exportOffsets[i];
+		}
+	}
+
+	return nullptr;
 }
 
 void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection = true) {
@@ -416,7 +435,7 @@ Property *PropertyFindOrInherit(Object *object, const char *cName, uint8_t type 
 	uintptr_t depth = 0;
 
 	while (object && (depth++ < 100)) {
-		if (!ObjectIsConditional(object) || (canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
+		if (!ObjectIsConditional(object) || (canvas && canvas->previewStateActive && ObjectMatchesPreviewState(object))) {
 			// Return the value if the object has this property.
 			Property *property = PropertyFind(object, cName);
 			if (property) return type && property->type != type ? nullptr : property;
@@ -488,6 +507,8 @@ void DocumentSave(void *) {
 }
 
 void DocumentLoad() {
+	// TODO Check names are zero-terminated.
+
 #ifdef OS_ESSENCE
 	EsBuffer buffer = {};
 	buffer.out = (uint8_t *) EsFileStoreReadAll(fileStore, &buffer.bytes);
@@ -1424,6 +1445,10 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Metrics:", "metrics");
 			InspectorAddLink(object, "Text style:", "textStyle");
 			InspectorAddBooleanToggle(object, "Public style", "isPublic");
+
+			char buffer[128];
+			snprintf(buffer, sizeof(buffer), "Header ID: %d", PropertyReadInt32(object, "headerID"));
+			UILabelCreate(0, 0, buffer, -1);
 		} else if (object->type == OBJ_VAR_COLOR) {
 			InspectorBind(&UIColorPickerCreate(&UIPanelCreate(0, 0)->e, UI_COLOR_PICKER_HAS_OPACITY)->e, object->id, "color", INSPECTOR_COLOR_PICKER);
 			InspectorBind(&UITextboxCreate(0, 0)->e, object->id, "color", INSPECTOR_COLOR_TEXTBOX);
@@ -2075,10 +2100,10 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 
 	if (object->type == OBJ_LAYER_BOX) {
-		bounds.l += PropertyFindOrInheritReadInt32(object, "offset0") * canvas->zoom;
-		bounds.r += PropertyFindOrInheritReadInt32(object, "offset1") * canvas->zoom;
-		bounds.t += PropertyFindOrInheritReadInt32(object, "offset2") * canvas->zoom;
-		bounds.b += PropertyFindOrInheritReadInt32(object, "offset3") * canvas->zoom;
+		bounds.l += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset0")) * canvas->zoom;
+		bounds.r += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset1")) * canvas->zoom;
+		bounds.t += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset2")) * canvas->zoom;
+		bounds.b += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset3")) * canvas->zoom;
 
 		uint8_t buffer[4096];
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
@@ -2103,8 +2128,8 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 		textStyle.font.family = ES_FONT_SANS;
 		textStyle.font.weight = 5;
 		textStyle.size = 10;
-		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "color"));
-		textStyle.blur = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "blur"));
+		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(object, "color"));
+		textStyle.blur = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "blur"));
 		if (textStyle.blur > 10) textStyle.blur = 10;
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
 #endif
@@ -2138,6 +2163,7 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 			LAYER_READ_INT32(position1);
 			LAYER_READ_INT32(position2);
 			LAYER_READ_INT32(position3);
+#undef LAYER_READ_INT32
 
 			UIRectangle outBounds;
 			outBounds.l = bounds.l + offset0 * canvas->zoom + position0 * inWidth  / 100;
@@ -2170,17 +2196,21 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 
 	if (object->type == OBJ_VAR_TEXT_STYLE) {
 		EsTextStyle textStyle = {};
-		textStyle.font.family = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontFamily"));
-		textStyle.font.weight = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "fontWeight"));
-		textStyle.font.italic = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "isItalic"));
-		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "textSize")) * canvas->zoom;
-		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "textColor"));
+		textStyle.font.family = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "fontFamily"));
+		textStyle.font.weight = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "fontWeight"));
+		textStyle.font.italic = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isItalic"));
+		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "textSize")) * canvas->zoom;
+		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(object, "textColor"));
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
 #if 0
 		EsDrawStandardIcon((_EsPainter *) &themePainter, ES_ICON_GO_NEXT_SYMBOLIC, 
 				GraphGetIntegerFromProperty(PropertyFindOrInherit(false, object, "iconSize")), bounds, 
 				GraphGetColorFromProperty(PropertyFindOrInherit(false, object, "iconColor")));
 #endif
+	}
+#else
+	if (object->type == OBJ_VAR_TEXT_STYLE && depth == 0) {
+		UIDrawString(painter, bounds, "TxtStyle", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 	}
 #endif
 
@@ -2325,8 +2355,10 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				Property *style = PropertyFind(object, "style", PROP_OBJECT);
 				canvas->previewStateActive = object->id == selectedObjectID;
 				CanvasDrawStyle(ObjectFind(style ? style->object : 0), bounds, painter);
+			} else if (object->type == OBJ_LAYER_METRICS) {
+				// TODO Visually show the preferred size, insets and gaps?
+				UIDrawString(painter, bounds, "Metrics", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 			} else {
-				// TODO Preview for the metrics layer. Show the preferred size, insets and gaps?
 				// TODO Preview for OBJ_VAR_CONTOUR_STYLE.
 			}
 
@@ -2340,7 +2372,6 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 
 		if (canvas->showArrows && !canvas->showPrototype) {
 			// Draw object connections.
-			// TODO This will be awfully slow when there's many objects...
 
 			for (uintptr_t i = 0; i < objects.Length(); i++) {
 				Object *object = &objects[i];
@@ -2592,6 +2623,39 @@ void ObjectAddCommandInternal(void *cp) {
 	p = { .type = PROP_INT, .integer = y }; strcpy(p.cName, "_graphY"); object.properties.Add(p);
 	p = { .type = PROP_INT, .integer = w }; strcpy(p.cName, "_graphW"); object.properties.Add(p);
 	p = { .type = PROP_INT, .integer = h }; strcpy(p.cName, "_graphH"); object.properties.Add(p);
+
+	if (object.type == OBJ_STYLE) {
+		// TODO Prevent taking IDs of style objects in the clipboard?
+
+		uint8_t allocatedIDs[32768 / 8] = {};
+
+		for (uintptr_t i = 0; i < objects.Length(); i++) {
+			if (objects[i].type == OBJ_STYLE) {
+				int32_t id = PropertyReadInt32(&objects[i], "headerID");
+
+				if (id > 0 && id < 32768) {
+					allocatedIDs[id / 8] |= 1 << (id % 8);
+				}
+			}
+		}
+
+		bool foundID = false;
+
+		for (int32_t i = 1; i < 32768; i++) {
+			if (!(allocatedIDs[i / 8] & (1 << (i % 8)))) {
+				p = { .type = PROP_INT, .integer = i }; strcpy(p.cName, "headerID"); object.properties.Add(p);
+				foundID = true;
+				break;
+			}
+		}
+
+		if (!foundID) {
+			UIDialogShow(window, 0, "Error: No free header IDs.\n%f%b", "OK");
+			object.properties.Free();
+			return;
+		}
+	}
+
 	ObjectAddInternal(object);
 }
 
@@ -2697,6 +2761,325 @@ void ObjectDuplicateCommand(void *) {
 
 //////////////////////////////////////////////////////////////
 
+Rectangle8 ExportCalculatePaintOutsets(Object *object) {
+	return {}; // TODO;
+}
+
+Rectangle8 ExportCalculateOpaqueInsets(Object *object) {
+	return {}; // TODO;
+}
+
+Rectangle8 ExportCalculateApproximateBorders(Object *object) {
+	return {}; // TODO;
+}
+
+#ifndef OS_ESSENCE
+void Export() {
+	DocumentLoad();
+
+	// TODO Output the new styles.header.
+	// TODO Export conditional objects into sequences.
+	
+	// TODO Exporting modified integers and colors.
+	// TODO Recursively exporting nested groups.
+	// TODO Handling styles that don't have metrics/textStyle.
+
+	// Create the list of styles.
+
+	FILE *output = fopen("desktop/styles.header", "wb");
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if (object->type == OBJ_STYLE) {
+			bool isPublic = PropertyReadInt32(object, "isPublic");
+			int32_t headerID = PropertyReadInt32(object, "headerID");
+
+			if (!headerID) {
+				continue;
+			}
+
+			fprintf(output, "%sdefine ES_STYLE_", !isPublic ? "private " : "");
+
+			bool dot = false;
+
+			for (uintptr_t j = 0; object->cName[j]; j++) {
+				char c = object->cName[j];
+
+				if (c == '.') {
+					fprintf(output, "_");
+					dot = true;
+				} else if (c >= 'A' && c <= 'Z' && j && !dot) {
+					fprintf(output, "_%c", c);
+				} else if (c >= 'a' && c <= 'z') {
+					fprintf(output, "%c", c - 'a' + 'A');
+					dot = false;
+				} else {
+					fprintf(output, "%c", c);
+					dot = false;
+				}
+			}
+
+			fprintf(output, " (ES_STYLE_CAST(%d))\n", (headerID << 1) | 1);
+		}
+	}
+
+	fclose(output);
+
+	output = fopen("res/Theme.dat", "wb");
+
+	// Write the header.
+
+	ThemeHeader header = { 0 };
+	header.signature = THEME_HEADER_SIGNATURE;
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		if (objects[i].type == OBJ_STYLE) {
+			header.styleCount++;
+		} else if ((objects[i].type == OBJ_VAR_COLOR || objects[i].type == OBJ_VAR_INT) && PropertyReadInt32(&objects[i], "isExported")) {
+			header.constantCount++;
+		}
+	}
+
+	fwrite(&header, 1, sizeof(header), output);
+
+	// Write the list of styles.
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if (object->type != OBJ_STYLE) {
+			continue;
+		}
+		
+		int32_t headerID = PropertyReadInt32(object, "headerID");
+		ThemeStyle entry = {};
+		entry.id = (headerID << 1) | 1;
+		entry.layerCount = 1;
+
+		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
+
+		if (appearance && appearance->type == OBJ_LAYER_GROUP) {
+			entry.layerCount += PropertyReadInt32(appearance, "layers_count");
+			entry.paintOutsets = ExportCalculatePaintOutsets(appearance);
+			entry.opaqueInsets = ExportCalculateOpaqueInsets(appearance);
+			entry.approximateBorders = ExportCalculateApproximateBorders(appearance);
+		}
+
+		fwrite(&entry, 1, sizeof(entry), output);
+	}
+
+	// Write the list of constants.
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if ((object->type != OBJ_VAR_COLOR && object->type != OBJ_VAR_INT) || !PropertyReadInt32(object, "isExported")) {
+			continue;
+		}
+
+		ThemeConstant constant = {};
+		constant.scale = PropertyReadInt32(object, "isScaled");
+		constant.hash = CalculateCRC64(object->cName, strlen(object->cName), 0);
+
+		if (object->type == OBJ_VAR_COLOR) {
+			snprintf(constant.cValue, sizeof(constant.cValue), "0x%.8X", (uint32_t) PropertyReadInt32(object, "color"));
+		} else if (object->type == OBJ_VAR_INT) {
+			snprintf(constant.cValue, sizeof(constant.cValue), "%d", (int32_t) PropertyReadInt32(object, "value"));
+		}
+
+		fwrite(&constant, 1, sizeof(constant), output);
+	}
+
+	// Write out all layers.
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if (object->type != OBJ_STYLE) {
+			continue;
+		}
+		
+		Object *metrics = PropertyFindOrInheritReadObject(object, "metrics");
+		Object *textStyle = PropertyFindOrInheritReadObject(object, "textStyle");
+		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
+
+		if (metrics && textStyle) {
+			ExportOffset exportOffset = {};
+			exportOffset.objectID = textStyle->id;
+			exportOffset.offset = ftell(output);
+			exportOffsets.Add(exportOffset);
+
+			ThemeLayer layer = {};
+			layer.type = THEME_LAYER_METRICS;
+			layer.dataByteCount = sizeof(ThemeLayer) + sizeof(ThemeMetrics);
+
+			ThemeMetrics _metrics = {};
+
+			_metrics.insets.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "insets0"));
+			_metrics.insets.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "insets1"));
+			_metrics.insets.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "insets2"));
+			_metrics.insets.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "insets3"));
+			_metrics.clipInsets.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "clipInsets0"));
+			_metrics.clipInsets.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "clipInsets1"));
+			_metrics.clipInsets.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "clipInsets2"));
+			_metrics.clipInsets.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "clipInsets3"));
+			_metrics.clipEnabled = PropertyFindOrInheritReadInt32(metrics, "clipEnabled");
+			_metrics.cursor = PropertyFindOrInheritReadInt32(metrics, "cursor");
+			_metrics.preferredWidth = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "preferredWidth"));
+			_metrics.preferredHeight = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "preferredHeight"));
+			_metrics.minimumWidth = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "minimumWidth"));
+			_metrics.minimumHeight = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "minimumHeight"));
+			_metrics.maximumWidth = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "maximumWidth"));
+			_metrics.maximumHeight = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "maximumHeight"));
+			_metrics.gapMajor = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "gapMajor"));
+			_metrics.gapMinor = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "gapMinor"));
+			_metrics.gapWrap = GraphGetIntegerFromProperty(PropertyFindOrInherit(metrics, "gapWrap"));
+
+			int32_t horizontalTextAlign = PropertyFindOrInheritReadInt32(metrics, "horizontalTextAlign");
+			int32_t verticalTextAlign = PropertyFindOrInheritReadInt32(metrics, "verticalTextAlign");
+			int32_t wrapText = PropertyFindOrInheritReadInt32(metrics, "wrapText");
+			int32_t ellipsis = PropertyFindOrInheritReadInt32(metrics, "ellipsis");
+			_metrics.textAlign = (wrapText ? ES_TEXT_WRAP : 0) | (ellipsis ? ES_TEXT_ELLIPSIS : 0)
+				| (horizontalTextAlign == 1 ? ES_TEXT_H_LEFT : horizontalTextAlign == 3 ? ES_TEXT_H_RIGHT : ES_TEXT_H_CENTER)
+				| (verticalTextAlign == 1 ? ES_TEXT_V_TOP : verticalTextAlign == 3 ? ES_TEXT_V_BOTTOM : ES_TEXT_V_CENTER);
+
+			_metrics.fontFamily = PropertyFindOrInheritReadInt32(textStyle, "fontFamily");
+			_metrics.fontWeight = GraphGetIntegerFromProperty(PropertyFind(textStyle, "fontWeight"));
+			_metrics.textSize = GraphGetIntegerFromProperty(PropertyFindOrInherit(textStyle, "textSize"));
+			_metrics.iconSize = GraphGetIntegerFromProperty(PropertyFindOrInherit(textStyle, "iconSize"));
+			_metrics.isItalic = PropertyFindOrInheritReadInt32(textStyle, "isItalic");
+			_metrics.textColor = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "textColor"));
+			_metrics.selectedBackground = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "selectedBackground"));
+			_metrics.selectedText = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "selectedText"));
+			_metrics.iconColor = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "iconColor"));
+
+			fwrite(&layer, 1, sizeof(layer), output);
+			fwrite(&_metrics, 1, sizeof(_metrics), output);
+		} else {
+			assert(false); // TODO.
+		}
+
+		if (appearance && appearance->type == OBJ_LAYER_GROUP) {
+			int32_t layerCount = PropertyReadInt32(appearance, "layers_count");
+			if (layerCount < 0) layerCount = 0;
+			if (layerCount > 100) layerCount = 100;
+
+			for (int32_t i = 0; i < layerCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				sprintf(cPropertyName, "layers_%d_layer", i);
+				Property *layerProperty = PropertyFind(appearance, cPropertyName, PROP_OBJECT);
+				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+				if (!layerObject) continue;
+
+				ExportOffset exportOffset = {};
+				exportOffset.objectID = layerObject->id;
+				exportOffset.offset = ftell(output);
+				exportOffsets.Add(exportOffset);
+
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(appearance, cPropertyName)
+				LAYER_READ_INT32(offset0);
+				LAYER_READ_INT32(offset1);
+				LAYER_READ_INT32(offset2);
+				LAYER_READ_INT32(offset3);
+				LAYER_READ_INT32(position0);
+				LAYER_READ_INT32(position1);
+				LAYER_READ_INT32(position2);
+				LAYER_READ_INT32(position3);
+#undef LAYER_READ_INT32
+
+				uint8_t buffer[4096];
+				EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+				ThemeLayer layer = {};
+				layer.position = { position0, position1, position2, position3 };
+				layer.offset = { offset0, offset1, offset2, offset3 };
+
+				if (layerObject->type == OBJ_LAYER_PATH) {
+					layer.type = THEME_LAYER_PATH;
+					ExportLayerPath(layerObject, &data);
+				} else if (layerObject->type == OBJ_LAYER_BOX) {
+					layer.type = THEME_LAYER_BOX;
+					layer.offset.l += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset0"));
+					layer.offset.r += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset1"));
+					layer.offset.t += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset2"));
+					layer.offset.b += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset3"));
+					ExportLayerBox(layerObject, &data);
+				} else if (layerObject->type == OBJ_LAYER_TEXT) {
+					layer.type = THEME_LAYER_TEXT;
+					ThemeLayerText text = {};
+					text.blur = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "blur"));
+					text.color = GraphGetColorFromProperty(PropertyFindOrInherit(object, "color"));
+					EsBufferWrite(&data, &text, sizeof(text));
+				} else {
+					assert(false);
+				}
+
+				layer.dataByteCount = data.position + sizeof(layer);
+				fwrite(&layer, 1, sizeof(layer), output);
+				fwrite(data.out, 1, data.position, output);
+				assert(!data.error);
+			}
+		}
+	}
+
+	// Write out layer lists for styles.
+	
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+
+		if (object->type != OBJ_STYLE) {
+			continue;
+		}
+
+		{
+			ExportOffset exportOffset = {};
+			exportOffset.objectID = object->id;
+			exportOffset.offset = ftell(output);
+			exportOffsets.Add(exportOffset);
+		}
+		
+		{
+			Object *textStyle = PropertyFindOrInheritReadObject(object, "textStyle");
+			uint32_t exportOffset = ExportOffsetFindObject(textStyle->id)->offset;
+			fwrite(&exportOffset, 1, sizeof(exportOffset), output);
+		}
+
+		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
+
+		if (appearance && appearance->type == OBJ_LAYER_GROUP) {
+			int32_t layerCount = PropertyReadInt32(appearance, "layers_count");
+			if (layerCount < 0) layerCount = 0;
+			if (layerCount > 100) layerCount = 100;
+
+			for (int32_t i = 0; i < layerCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				sprintf(cPropertyName, "layers_%d_layer", i);
+				Property *layerProperty = PropertyFind(appearance, cPropertyName, PROP_OBJECT);
+				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+				if (!layerObject) continue;
+				uint32_t exportOffset = ExportOffsetFindObject(layerObject->id)->offset;
+				fwrite(&exportOffset, 1, sizeof(exportOffset), output);
+			}
+		}
+	}
+
+	// Update the style list to point to the layer lists.
+
+	uintptr_t writeOffset = sizeof(ThemeHeader);
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+		if (object->type != OBJ_STYLE) continue;
+		uint32_t exportOffset = ExportOffsetFindObject(object->id)->offset;
+		fseek(output, writeOffset, SEEK_SET);
+		fwrite(&exportOffset, 1, sizeof(exportOffset), output);
+		writeOffset += sizeof(ThemeStyle);
+	}
+}
+#endif
+
+//////////////////////////////////////////////////////////////
+
 int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_WINDOW_CLOSE) {
 #ifndef OS_ESSENCE
@@ -2720,7 +3103,20 @@ void DocumentFileMenu(void *) {
 }
 #endif
 
-int main() {
+int main(int argc, char **argv) {
+#ifndef OS_ESSENCE
+	if (argc == 2) {
+		if (0 == strcmp(argv[1], "export")) {
+			Export();
+		} else {
+			fprintf(stderr, "Error: Unknown action '%s'.\n", argv[1]);
+			return 1;
+		}
+
+		return 0;
+	}
+#endif
+
 	UIInitialise();
 	ui.theme = _uiThemeClassic;
 	window = UIWindowCreate(0, UI_ELEMENT_PARENT_PUSH | UI_WINDOW_MAXIMIZE, "Designer", 0, 0);
@@ -2802,6 +3198,6 @@ void _UIMessageProcess(EsMessage *message) {
 
 void _start() {
 	_init();
-	main();
+	main(0, nullptr);
 }
 #endif

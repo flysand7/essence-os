@@ -2397,10 +2397,11 @@ void DesktopSetup() {
 	// Load the theme bitmap.
 
 	if (!desktop.setupDesktopUIComplete) {
+		size_t cursorsBitmapBytes;
+		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
 		EsHandle handle = EsMemoryOpen(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, EsLiteral(ES_THEME_CURSORS_NAME), ES_FLAGS_DEFAULT); 
 		void *destination = EsObjectMap(handle, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MAP_OBJECT_READ_WRITE);
-		LoadImage(theming.system.in + theming.system.bytes - theming.header->bitmapBytes, theming.header->bitmapBytes, 
-				destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
+		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
 		EsObjectUnmap(destination);
 		EsHandleClose(handle);
 	}

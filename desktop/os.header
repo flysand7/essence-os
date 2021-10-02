@@ -593,35 +593,29 @@ define ES_CELL_V_CENTER  (ES_CELL_V_TOP | ES_CELL_V_BOTTOM)
 // Mask bits for EsThemeMetrics:
 define ES_THEME_METRICS_INSETS (1 << 0)
 define ES_THEME_METRICS_CLIP_INSETS (1 << 1)
-define ES_THEME_METRICS_GLOBAL_OFFSET (1 << 2)	
-define ES_THEME_METRICS_CLIP_ENABLED (1 << 3)
-define ES_THEME_METRICS_CURSOR (1 << 4)
-define ES_THEME_METRICS_ENTRANCE_TRANSITION (1 << 5)
-define ES_THEME_METRICS_EXIT_TRANSITION (1 << 6)
-define ES_THEME_METRICS_ENTRANCE_DURATION (1 << 7)
-define ES_THEME_METRICS_EXIT_DURATION (1 << 8)
-define ES_THEME_METRICS_PREFERRED_WIDTH (1 << 9)
-define ES_THEME_METRICS_PREFERRED_HEIGHT (1 << 10)
-define ES_THEME_METRICS_MINIMUM_WIDTH (1 << 11)
-define ES_THEME_METRICS_MINIMUM_HEIGHT (1 << 12)
-define ES_THEME_METRICS_MAXIMUM_WIDTH (1 << 13)
-define ES_THEME_METRICS_MAXIMUM_HEIGHT (1 << 14)
-define ES_THEME_METRICS_GAP_MAJOR (1 << 15)
-define ES_THEME_METRICS_GAP_MINOR (1 << 16)
-define ES_THEME_METRICS_GAP_WRAP (1 << 17)
+define ES_THEME_METRICS_CLIP_ENABLED (1 << 2)
+define ES_THEME_METRICS_CURSOR (1 << 3)
+define ES_THEME_METRICS_PREFERRED_WIDTH (1 << 4)
+define ES_THEME_METRICS_PREFERRED_HEIGHT (1 << 5)
+define ES_THEME_METRICS_MINIMUM_WIDTH (1 << 6)
+define ES_THEME_METRICS_MINIMUM_HEIGHT (1 << 7)
+define ES_THEME_METRICS_MAXIMUM_WIDTH (1 << 8)
+define ES_THEME_METRICS_MAXIMUM_HEIGHT (1 << 9)
+define ES_THEME_METRICS_GAP_MAJOR (1 << 10)
+define ES_THEME_METRICS_GAP_MINOR (1 << 11)
+define ES_THEME_METRICS_GAP_WRAP (1 << 12)
 define ES_THEME_METRICS_GAP_ALL (ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR | ES_THEME_METRICS_GAP_WRAP)
-define ES_THEME_METRICS_TEXT_COLOR (1 << 18)
-define ES_THEME_METRICS_SELECTED_BACKGROUND (1 << 19)
-define ES_THEME_METRICS_SELECTED_TEXT (1 << 20)
-define ES_THEME_METRICS_ICON_COLOR (1 << 21)
-define ES_THEME_METRICS_TEXT_ALIGN (1 << 22)
-define ES_THEME_METRICS_TEXT_SIZE (1 << 23)
-define ES_THEME_METRICS_FONT_FAMILY (1 << 24)
-define ES_THEME_METRICS_FONT_WEIGHT (1 << 25)
-define ES_THEME_METRICS_ICON_SIZE (1 << 26)
-define ES_THEME_METRICS_IS_ITALIC (1 << 27)
-define ES_THEME_METRICS_ELLIPSIS (1 << 28)
-define ES_THEME_METRICS_LAYOUT_VERTICAL (1 << 29)
+define ES_THEME_METRICS_TEXT_COLOR (1 << 13)
+define ES_THEME_METRICS_SELECTED_BACKGROUND (1 << 14)
+define ES_THEME_METRICS_SELECTED_TEXT (1 << 15)
+define ES_THEME_METRICS_ICON_COLOR (1 << 16)
+define ES_THEME_METRICS_TEXT_ALIGN (1 << 17)
+define ES_THEME_METRICS_TEXT_SIZE (1 << 18)
+define ES_THEME_METRICS_FONT_FAMILY (1 << 19)
+define ES_THEME_METRICS_FONT_WEIGHT (1 << 20)
+define ES_THEME_METRICS_ICON_SIZE (1 << 21)
+define ES_THEME_METRICS_IS_ITALIC (1 << 22)
+define ES_THEME_METRICS_LAYOUT_VERTICAL (1 << 23)
 
 define ES_WINDOW_MOVE_MAXIMISED (1 << 0)
 define ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN (1 << 1)
@@ -1310,7 +1304,6 @@ struct EsPanelBand {
 struct EsThemeMetrics {
 	uint64_t mask;
 	EsRectangle insets, clipInsets;
-	EsRectangle globalOffset;
 	int clipEnabled, cursor;
 	int preferredWidth, preferredHeight;
 	int minimumWidth, minimumHeight;
@@ -1318,7 +1311,7 @@ struct EsThemeMetrics {
 	int gapMajor, gapMinor, gapWrap;
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
 	int textAlign, textSize, fontFamily, fontWeight, iconSize;
-	bool isItalic, ellipsis, layoutVertical;
+	bool isItalic, layoutVertical;
 };
 
 struct EsThemeAppearance {

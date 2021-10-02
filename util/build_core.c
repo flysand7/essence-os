@@ -575,9 +575,10 @@ void BuildDesktop(Application *application) {
 		}
 	}
 
-	ADD_BUNDLE_INPUT("res/Themes/Theme.dat", "Theme.dat", 16);
-	ADD_BUNDLE_INPUT("res/Themes/elementary Icons.dat", "Icons.dat", 16);
-	ADD_BUNDLE_INPUT("res/Themes/elementary Icons License.txt", "Icons License.txt", 16);
+	ADD_BUNDLE_INPUT("res/Theme.dat", "Theme.dat", 16);
+	ADD_BUNDLE_INPUT("res/elementary Icons.dat", "Icons.dat", 16);
+	ADD_BUNDLE_INPUT("res/elementary Icons License.txt", "Icons License.txt", 16);
+	ADD_BUNDLE_INPUT("res/Cursors.png", "Cursors.png", 16);
 	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000);
 
 	MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);

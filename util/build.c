@@ -1191,7 +1191,7 @@ void DoCommand(const char *l) {
 		CallSystem("bin/config_editor");
 	} else if (0 == strcmp(l, "designer")) {
 		BuildUtilities();
-		CallSystem("bin/designer \"res/Theme Source.dat\" \"res/Themes/Theme.dat\" \"res/Cursors.png\" \"desktop/styles.header\"");
+		CallSystem("bin/designer \"res/Theme Source.dat\" \"res/Theme.dat\" \"desktop/styles.header\"");
 	} else if (0 == strcmp(l, "designer2")) {
 		BuildUtilities();
 		CallSystem("bin/designer2");
