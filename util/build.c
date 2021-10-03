@@ -331,29 +331,9 @@ void BuildUtilities() {
 
 	BUILD_UTILITY("render_svg", "-lm", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
+
 #ifndef __APPLE__ // Luigi doesn't support macOS.
 	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
-#endif
-#ifndef __APPLE__ // Luigi doesn't support macOS.
-	BUILD_UTILITY("reflect_gen", "", "designer/");
-
-	if (CheckDependencies("Utilities.DesignerHeader")) {
-		if (!CallSystem("bin/reflect_gen util/designer/designer.rf > bin/designer.h")) {
-			FILE *f = fopen("bin/designer_header.d", "wb");
-			fprintf(f, ": util/designer/designer.rf bin/reflect_gen\n");
-			fclose(f);
-			ParseDependencies("bin/designer_header.d", "Utilities.DesignerHeader", false);
-		}
-	}
-
-	if (CheckDependencies("Utilities.OldDesigner1") || CheckDependencies("Utilities.OldDesigner2")) {
-		if (!CallSystem("gcc -MMD -o bin/designer.o -c util/designer/designer.c -g -std=c2x -fsanitize=address " WARNING_FLAGS_C)
-					&& !CallSystem("gcc -MMD -o bin/designer_luigi.o -c util/designer/designer_luigi.c -g -std=c2x " WARNING_FLAGS_C)
-					&& !CallSystem("gcc -o bin/designer -g bin/designer.o bin/designer_luigi.o -lX11 -lm -fsanitize=address ")) {
-			ParseDependencies("bin/designer.d", "Utilities.Designer1", false);
-			ParseDependencies("bin/designer_luigi.d", "Utilities.Designer2", false);
-		}
-	}
 
 	if (CheckDependencies("Utilities.Designer")) {
 		if (!CallSystem("g++ -MMD -D UI_LINUX util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
@@ -1396,7 +1376,7 @@ void DoCommand(const char *l) {
 		LineCountFile("", "start.sh");
 
 		const char *folders[] = {
-			"desktop/", "boot/x86/", "drivers/", "kernel/", "apps/", "apps/file_manager/", "shared/", "util/", "util/designer/"
+			"desktop/", "boot/x86/", "drivers/", "kernel/", "apps/", "apps/file_manager/", "shared/", "util/"
 		};
 
 		for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
