@@ -1441,11 +1441,14 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 			LayerOp(state, &item, layer);
 			ThemeLayer *entry = (ThemeLayer *) ((uint8_t *) export->buffer.data.buffer + layer->exportOffset);
 			entry->dataByteCount = export->buffer.data.byteCount - layer->exportOffset;
+#if 0
 			entry->sequenceDataOffset = arrlenu(layer->sequences) ? export->buffer.data.byteCount : 0;
+#endif
 
 			Layer *previousLayer = selected.layer;
 			selected.layer = layer; // HACK!
 
+#if 0
 			// Write out the sequences.
 
 			for (uintptr_t j = 0; j < arrlenu(layer->sequences); j++) {
@@ -1521,6 +1524,7 @@ void StyleSetOp(RfState *state, RfItem *item, void *pointer) {
 				ThemeSequenceHeader *header = (ThemeSequenceHeader *) ((uint8_t *) export->buffer.data.buffer + headerOffset);
 				header->overrideCount = overrideCount;
 			}
+#endif
 
 			selected.layer = previousLayer;
 
@@ -2132,6 +2136,10 @@ void ActionExportDesigner2(void *cp) {
 				ObjectAddIntegerProperty(&object, "corners1", box->corners.tr);
 				ObjectAddIntegerProperty(&object, "corners2", box->corners.bl);
 				ObjectAddIntegerProperty(&object, "corners3", box->corners.br);
+				ObjectAddIntegerProperty(&object, "offset0", 0);
+				ObjectAddIntegerProperty(&object, "offset1", 0);
+				ObjectAddIntegerProperty(&object, "offset2", 0);
+				ObjectAddIntegerProperty(&object, "offset3", 0);
 				ObjectAddIntegerProperty(&object, "isBlurred", box->blurred);
 				ObjectAddIntegerProperty(&object, "autoCorners", box->autoCorners);
 				ObjectAddIntegerProperty(&object, "autoBorders", box->autoBorders);
@@ -2217,7 +2225,7 @@ void ActionExportDesigner2(void *cp) {
 				textStyle = object;
 
 				metrics.type = OBJ_LAYER_METRICS, metrics.id = ++objectIDAllocator;
-				ObjectAddIntegerProperty(&metrics, "clipEnabled", m->clipEnabled);
+				ObjectAddIntegerProperty(&metrics, "clipEnabled", m->clipEnabled == CLIP_MODE_ENABLED);
 				ObjectAddIntegerProperty(&metrics, "wrapText", m->wrapText);
 				ObjectAddIntegerProperty(&metrics, "ellipsis", m->ellipsis);
 				ObjectAddIntegerProperty(&metrics, "insets0", m->insets.l);
@@ -2325,6 +2333,10 @@ void ActionExportDesigner2(void *cp) {
 					arrfree(override.properties);
 				}
 			}	
+
+			if (object.type == OBJ_VAR_TEXT_STYLE) {
+				textStyle.id = previousOverrideID;
+			}
 
 			if (addToLayerGroup) {
 				sprintf(cPropertyName, "layers_%d_layer", layerCount);

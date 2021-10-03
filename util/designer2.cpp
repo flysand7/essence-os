@@ -16,8 +16,7 @@
 // x86_64-w64-mingw32-gcc -O3 -o bin/designer2.exe -D UI_WINDOWS util/designer2.cpp -DUNICODE -lgdi32 -luser32 -lkernel32 -Wl,--subsystem,windows -fno-exceptions -fno-rtti
 
 // TODO Needed to replace the old designer:
-// 	Exporting sequences.
-// 	Calculating additional metric rectangles (paintOutsets, opaqueInsets and approximateBorders).
+// 	Calculating opaqueInsets.
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
@@ -338,6 +337,35 @@ struct ExportOffset {
 	uint64_t objectID;
 	uintptr_t offset;
 	char cPropertyName[PROPERTY_NAME_SIZE];
+	uint8_t overrideType;
+};
+
+struct ObjectTypeString {
+	ObjectType type;
+	const char *string;
+};
+
+ObjectTypeString cObjectTypeStrings[] = {
+#define ADD_STRING(x) { x, #x }
+	ADD_STRING(OBJ_NONE),
+	ADD_STRING(OBJ_STYLE),
+	ADD_STRING(OBJ_COMMENT),
+	ADD_STRING(OBJ_INSTANCE),
+	ADD_STRING(OBJ_VAR_COLOR),
+	ADD_STRING(OBJ_VAR_INT),
+	ADD_STRING(OBJ_VAR_TEXT_STYLE),
+	ADD_STRING(OBJ_VAR_CONTOUR_STYLE),
+	ADD_STRING(OBJ_PAINT_OVERWRITE),
+	ADD_STRING(OBJ_PAINT_LINEAR_GRADIENT),
+	ADD_STRING(OBJ_PAINT_RADIAL_GRADIENT),
+	ADD_STRING(OBJ_LAYER_BOX),
+	ADD_STRING(OBJ_LAYER_METRICS),
+	ADD_STRING(OBJ_LAYER_TEXT),
+	ADD_STRING(OBJ_LAYER_GROUP),
+	ADD_STRING(OBJ_LAYER_PATH),
+	ADD_STRING(OBJ_MOD_COLOR),
+	ADD_STRING(OBJ_MOD_MULTIPLY),
+#undef ADD_STRING
 };
 
 Array<Step> undoStack;
@@ -372,6 +400,17 @@ Object *ObjectFind(uint64_t id) {
 ExportOffset *ExportOffsetFindObject(uint64_t id) {
 	for (uintptr_t i = 0; i < exportOffsets.Length(); i++) {
 		if (exportOffsets[i].objectID == id) {
+			return &exportOffsets[i];
+		}
+	}
+
+	return nullptr;
+}
+
+ExportOffset *ExportOffsetFindProperty(uint64_t objectID, const char *cPropertyName) {
+	for (uintptr_t i = 0; i < exportOffsets.Length(); i++) {
+		if (exportOffsets[i].objectID == objectID
+				&& 0 == strcmp(exportOffsets[i].cPropertyName, cPropertyName)) {
 			return &exportOffsets[i];
 		}
 	}
@@ -507,8 +546,6 @@ void DocumentSave(void *) {
 }
 
 void DocumentLoad() {
-	// TODO Check names are zero-terminated.
-
 #ifdef OS_ESSENCE
 	EsBuffer buffer = {};
 	buffer.out = (uint8_t *) EsFileStoreReadAll(fileStore, &buffer.bytes);
@@ -527,11 +564,17 @@ void DocumentLoad() {
 	for (uintptr_t i = 0; i < objectCount; i++) {
 		Object object = {};
 		fread(&object, 1, sizeof(Object), f);
+		object.cName[OBJECT_NAME_SIZE - 1] = 0;
 		uint32_t propertyCount = 0;
 		fread(&propertyCount, 1, sizeof(uint32_t), f);
 		object.properties.InsertMany(0, propertyCount);
 		fread(object.properties.array, 1, sizeof(Property) * propertyCount, f);
 		object.flags &= ~OBJECT_IS_SELECTED;
+
+		for (uintptr_t i = 0; i < propertyCount; i++) {
+			object.properties[i].cName[PROPERTY_NAME_SIZE - 1] = 0;
+		}
+
 		objects.Add(object);
 	}
 
@@ -1404,34 +1447,34 @@ void InspectorPopulate() {
 			if (inheritWithAnimation || inheritWithoutAnimation) {
 				InspectorAddLink(object, "Inherit from:", "_parent");
 
-				UILabelCreate(0, 0, "Primary state:", -1);
-				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
-				InspectorAddRadioSwitch(object, "Idle", "_primaryState", THEME_PRIMARY_STATE_IDLE);
-				InspectorAddRadioSwitch(object, "Hovered", "_primaryState", THEME_PRIMARY_STATE_HOVERED);
-				InspectorAddRadioSwitch(object, "Pressed", "_primaryState", THEME_PRIMARY_STATE_PRESSED);
-				InspectorAddRadioSwitch(object, "Disabled", "_primaryState", THEME_PRIMARY_STATE_DISABLED);
-				InspectorAddRadioSwitch(object, "Inactive", "_primaryState", THEME_PRIMARY_STATE_INACTIVE);
-				InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "_primaryState", INSPECTOR_REMOVE_BUTTON);
-				UIParentPop();
-
-				UILabelCreate(0, 0, "State bits:", -1);
-				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
-				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-				InspectorAddMaskBitToggle(object, cStateBitStrings[0], "_stateBits", THEME_STATE_FOCUSED);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[1], "_stateBits", THEME_STATE_CHECKED);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[2], "_stateBits", THEME_STATE_INDETERMINATE);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[3], "_stateBits", THEME_STATE_DEFAULT_BUTTON);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[4], "_stateBits", THEME_STATE_SELECTED);
-				UIParentPop();
-				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
-				InspectorAddMaskBitToggle(object, cStateBitStrings[5], "_stateBits", THEME_STATE_FOCUSED_ITEM);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[6], "_stateBits", THEME_STATE_LIST_FOCUSED);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[7], "_stateBits", THEME_STATE_BEFORE_ENTER);
-				InspectorAddMaskBitToggle(object, cStateBitStrings[8], "_stateBits", THEME_STATE_AFTER_EXIT);
-				UIParentPop();
-				UIParentPop();
-
 				if (inheritWithAnimation) {
+					UILabelCreate(0, 0, "Primary state:", -1);
+					UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
+					InspectorAddRadioSwitch(object, "Idle", "_primaryState", THEME_PRIMARY_STATE_IDLE);
+					InspectorAddRadioSwitch(object, "Hovered", "_primaryState", THEME_PRIMARY_STATE_HOVERED);
+					InspectorAddRadioSwitch(object, "Pressed", "_primaryState", THEME_PRIMARY_STATE_PRESSED);
+					InspectorAddRadioSwitch(object, "Disabled", "_primaryState", THEME_PRIMARY_STATE_DISABLED);
+					InspectorAddRadioSwitch(object, "Inactive", "_primaryState", THEME_PRIMARY_STATE_INACTIVE);
+					InspectorBind(&UIButtonCreate(0, UI_BUTTON_SMALL, "X", 1)->e, object->id, "_primaryState", INSPECTOR_REMOVE_BUTTON);
+					UIParentPop();
+
+					UILabelCreate(0, 0, "State bits:", -1);
+					UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND)->gap = -5;
+					UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+					InspectorAddMaskBitToggle(object, cStateBitStrings[0], "_stateBits", THEME_STATE_FOCUSED);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[1], "_stateBits", THEME_STATE_CHECKED);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[2], "_stateBits", THEME_STATE_INDETERMINATE);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[3], "_stateBits", THEME_STATE_DEFAULT_BUTTON);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[4], "_stateBits", THEME_STATE_SELECTED);
+					UIParentPop();
+					UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL)->gap = 8;
+					InspectorAddMaskBitToggle(object, cStateBitStrings[5], "_stateBits", THEME_STATE_FOCUSED_ITEM);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[6], "_stateBits", THEME_STATE_LIST_FOCUSED);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[7], "_stateBits", THEME_STATE_BEFORE_ENTER);
+					InspectorAddMaskBitToggle(object, cStateBitStrings[8], "_stateBits", THEME_STATE_AFTER_EXIT);
+					UIParentPop();
+					UIParentPop();
+
 					UILabelCreate(0, 0, "Transition duration:", -1);
 					InspectorAddInteger(object, nullptr, "_duration");
 				}
@@ -1856,19 +1899,101 @@ uint32_t GraphGetColorFromProperty(Property *property) {
 
 //////////////////////////////////////////////////////////////
 
-void ExportGradientStopArray(Object *object, EsBuffer *data, size_t stopCount) {
+struct ExportContext {
+	EsBuffer *baseData;
+	EsBuffer *overrideData;
+	uintptr_t overrideOffset;
+};
+
+ThemeVariant PropertyToThemeVariant(Property *property, uint8_t type) {
+	ThemeVariant value = {};
+
+	if (type == THEME_OVERRIDE_COLOR) {
+		value.u32 = GraphGetColorFromProperty(property);
+	} else if (type == THEME_OVERRIDE_I8) {
+		value.i8 = GraphGetIntegerFromProperty(property);
+	} else if (type == THEME_OVERRIDE_I16) {
+		value.i16 = GraphGetIntegerFromProperty(property);
+	} else if (type == THEME_OVERRIDE_F32) {
+		value.f32 = property && property->type == PROP_FLOAT ? property->floating : 0;
+	} else {
+		assert(false);
+	}
+
+	return value;
+}
+
+ThemeVariant ExportValue(ExportContext *data, uintptr_t additionalOffset, Object *object, const char *cPropertyName, uint8_t type) {
+	uintptr_t depth = 0;
+	ThemeVariant value = {};
+
+	if (data->overrideData) {
+		Array<ThemeOverride> themeOverrides = {};
+
+		while (object && (depth++ < 100)) {
+			Property *property = PropertyFind(object, cPropertyName);
+
+			if (property) {
+				uint16_t state = PropertyReadInt32(object, "_primaryState") | PropertyReadInt32(object, "_stateBits");
+				value = PropertyToThemeVariant(property, type);
+
+				if (state) {
+					ThemeOverride themeOverride = {};
+					themeOverride.state = state;
+					themeOverride.duration = GraphGetIntegerFromProperty(PropertyFind(object, "_duration"));
+					themeOverride.offset = data->overrideOffset + (data->baseData ? data->baseData->position : 0) + additionalOffset;
+					themeOverride.type = type;
+					themeOverride.data = value;
+					themeOverrides.Insert(themeOverride, 0);
+				} else {
+					break;
+				}
+			}
+
+			// Go to the inheritance parent object.
+			property = PropertyFind(object, "_parent", PROP_OBJECT);
+			object = ObjectFind(property ? property->object : 0);
+		}
+
+		EsBufferWrite(data->overrideData, &themeOverrides[0], themeOverrides.Length() * sizeof(ThemeOverride));
+		themeOverrides.Free();
+	} else {
+		value = PropertyToThemeVariant(PropertyFindOrInherit(object, cPropertyName), type);
+	}
+
+	return value;
+}
+
+#define ExportColor(data, structure, field, object, cPropertyName) \
+	structure.field = ExportValue(data, ((uint8_t *) &structure.field - (uint8_t *) &structure), object, cPropertyName, THEME_OVERRIDE_COLOR).u32
+#define ExportI8(data, structure, field, object, cPropertyName) \
+	structure.field = ExportValue(data, ((uint8_t *) &structure.field - (uint8_t *) &structure), object, cPropertyName, THEME_OVERRIDE_I8).i8
+#define ExportI16(data, structure, field, object, cPropertyName) \
+	structure.field = ExportValue(data, ((uint8_t *) &structure.field - (uint8_t *) &structure), object, cPropertyName, THEME_OVERRIDE_I16).i16
+#define ExportF32(data, structure, field, object, cPropertyName) \
+	structure.field = ExportValue(data, ((uint8_t *) &structure.field - (uint8_t *) &structure), object, cPropertyName, THEME_OVERRIDE_F32).f32
+
+void ExportWrite(ExportContext *context, const void *buffer, size_t bytes) {
+	if (context->baseData) {
+		EsBufferWrite(context->baseData, buffer, bytes);
+	}
+}
+
+void ExportGradientStopArray(Object *object, ExportContext *data, size_t stopCount) {
 	for (uintptr_t i = 0; i < stopCount; i++) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
 		ThemeGradientStop stop = {};
 		sprintf(cPropertyName, "stops_%d_color", (int32_t) i);
-		stop.color = GraphGetColor(PropertyFindOrInheritReadObject(object, cPropertyName));
+		ExportColor(data, stop, color, object, cPropertyName);
 		sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
-		stop.position = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, cPropertyName, PROP_INT));
-		EsBufferWrite(data, &stop, sizeof(stop));
+		ExportI8(data, stop, position, object, cPropertyName);
+		ExportWrite(data, &stop, sizeof(stop));
 	}
 }
 
-int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
+int8_t ExportPaint(Object *parentObject, const char *cPropertyNameInParent, ExportContext *data, int depth = 0) {
+	Object *object = PropertyFindOrInheritReadObject(parentObject, cPropertyNameInParent);
+
 	if (!object || depth == 100) {
 		return 0;
 	}
@@ -1876,25 +2001,25 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
 		if (data) {
 			ThemePaintSolid solid = {};
-			solid.color = GraphGetColor(object);
-			EsBufferWrite(data, &solid, sizeof(solid));
+			ExportColor(data, solid, color, parentObject, cPropertyNameInParent);
+			ExportWrite(data, &solid, sizeof(solid));
 		}
 
 		return THEME_PAINT_SOLID;
 	} else if (object->type == OBJ_PAINT_OVERWRITE) {
-		ExportPaint(PropertyFindOrInheritReadObject(object, "color"), data, depth + 1);
+		ExportPaint(object, "color", data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
 	} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
 		if (data) {
 			ThemePaintLinearGradient paint = {};
-			paint.transform[0] = PropertyFindOrInheritReadFloat(object, "transformX");
-			paint.transform[1] = PropertyFindOrInheritReadFloat(object, "transformY");
-			paint.transform[2] = PropertyFindOrInheritReadFloat(object, "transformStart");
+			ExportF32(data, paint, transform[0], object, "transformX");
+			ExportF32(data, paint, transform[1], object, "transformY");
+			ExportF32(data, paint, transform[2], object, "transformStart");
 			paint.stopCount = PropertyFindOrInheritReadInt32(object, "stops_count");
 			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(object, "useGammaInterpolation");
 			paint.useSystemColor = !!PropertyFindOrInheritReadInt32(object, "useSystemColor");
 			paint.repeatMode = PropertyFindOrInheritReadInt32(object, "repeatMode");
-			EsBufferWrite(data, &paint, sizeof(paint));
+			ExportWrite(data, &paint, sizeof(paint));
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
 
@@ -1902,16 +2027,16 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	} else if (object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 		if (data) {
 			ThemePaintRadialGradient paint = {};
-			paint.transform[0] = PropertyFindOrInheritReadFloat(object, "transform0");
-			paint.transform[1] = PropertyFindOrInheritReadFloat(object, "transform1");
-			paint.transform[2] = PropertyFindOrInheritReadFloat(object, "transform2");
-			paint.transform[3] = PropertyFindOrInheritReadFloat(object, "transform3");
-			paint.transform[4] = PropertyFindOrInheritReadFloat(object, "transform4");
-			paint.transform[5] = PropertyFindOrInheritReadFloat(object, "transform5");
+			ExportF32(data, paint, transform[0], object, "transform0");
+			ExportF32(data, paint, transform[1], object, "transform1");
+			ExportF32(data, paint, transform[2], object, "transform2");
+			ExportF32(data, paint, transform[3], object, "transform3");
+			ExportF32(data, paint, transform[4], object, "transform4");
+			ExportF32(data, paint, transform[5], object, "transform5");
 			paint.stopCount = PropertyFindOrInheritReadInt32(object, "stops_count");
 			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(object, "useGammaInterpolation");
 			paint.repeatMode = PropertyFindOrInheritReadInt32(object, "repeatMode");
-			EsBufferWrite(data, &paint, sizeof(paint));
+			ExportWrite(data, &paint, sizeof(paint));
 			ExportGradientStopArray(object, data, paint.stopCount);
 		}
 
@@ -1921,49 +2046,50 @@ int8_t ExportPaint(Object *object, EsBuffer *data, int depth = 0) {
 	}
 }
 
-void ExportLayerBox(Object *object, EsBuffer *data) {
-	Property *mainPaint = PropertyFindOrInherit(object, "mainPaint", PROP_OBJECT);
-	Property *borderPaint = PropertyFindOrInherit(object, "borderPaint", PROP_OBJECT);
+void ExportLayerBox(Object *object, ExportContext *data) {
 	ThemeLayerBox box = {};
-	box.mainPaintType = ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), nullptr);
-	box.borderPaintType = ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), nullptr);
-	box.borders.l = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders0"));
-	box.borders.r = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders1"));
-	box.borders.t = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders2"));
-	box.borders.b = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "borders3"));
-	box.corners.tl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners0"));
-	box.corners.tr = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners1"));
-	box.corners.bl = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners2"));
-	box.corners.br = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "corners3"));
+	box.mainPaintType = ExportPaint(object, "mainPaint", nullptr);
+	box.borderPaintType = ExportPaint(object, "borderPaint", nullptr);
+	ExportI8(data, box, borders.l, object, "borders0");
+	ExportI8(data, box, borders.r, object, "borders1");
+	ExportI8(data, box, borders.t, object, "borders2");
+	ExportI8(data, box, borders.b, object, "borders3");
+	ExportI8(data, box, corners.tl, object, "corners0");
+	ExportI8(data, box, corners.tr, object, "corners1");
+	ExportI8(data, box, corners.bl, object, "corners2");
+	ExportI8(data, box, corners.br, object, "corners3");
+	ExportI8(data, box, offset.l, object, "offset0");
+	ExportI8(data, box, offset.r, object, "offset1");
+	ExportI8(data, box, offset.t, object, "offset2");
+	ExportI8(data, box, offset.b, object, "offset3");
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isBlurred"   ))) box.flags |= THEME_LAYER_BOX_IS_BLURRED;
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoCorners" ))) box.flags |= THEME_LAYER_BOX_AUTO_CORNERS;
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "autoBorders" ))) box.flags |= THEME_LAYER_BOX_AUTO_BORDERS;
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "shadowHiding"))) box.flags |= THEME_LAYER_BOX_SHADOW_HIDING;
-	EsBufferWrite(data, &box, sizeof(box));
-	ExportPaint(ObjectFind(mainPaint ? mainPaint->object : 0), data);
-	ExportPaint(ObjectFind(borderPaint ? borderPaint->object : 0), data);
+	ExportWrite(data, &box, sizeof(box));
+	ExportPaint(object, "mainPaint", data);
+	ExportPaint(object, "borderPaint", data);
 }
 
-void ExportLayerPath(Object *object, EsBuffer *data) {
+void ExportLayerPath(Object *object, ExportContext *data) {
 	Property *pointCount = PropertyFindOrInherit(object, "points_count", PROP_INT);
 	Property *fillCount = PropertyFindOrInherit(object, "fills_count", PROP_INT);
 
 	ThemeLayerPath path = {};
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "pathFillEvenOdd"))) path.flags |= THEME_LAYER_PATH_FILL_EVEN_ODD;
 	if (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "pathClosed"))) path.flags |= THEME_LAYER_PATH_CLOSED;
-	path.alpha = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "alpha"));
+	ExportI16(data, path, alpha, object, "alpha");
 	path.pointCount = pointCount ? pointCount->integer : 0;
 	path.fillCount = fillCount ? fillCount->integer : 0;
-	EsBufferWrite(data, &path, sizeof(path));
+	ExportWrite(data, &path, sizeof(path));
 
 	for (uintptr_t i = 0; i < path.pointCount; i++) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
-		float zero = 0.0f;
-		Property *property;
+		ThemeVariant value;
 #define LAYER_PATH_WRITE_POINT(x) \
 		sprintf(cPropertyName, "points_%d_" #x, (int32_t) i); \
-		property = PropertyFindOrInherit(object, cPropertyName, PROP_FLOAT); \
-		EsBufferWrite(data, property ? &property->floating : &zero, sizeof(float));
+		value = ExportValue(data, 0, object, cPropertyName, THEME_OVERRIDE_F32); \
+		ExportWrite(data, &value.f32, sizeof(float));
 		LAYER_PATH_WRITE_POINT(x0);
 		LAYER_PATH_WRITE_POINT(y0);
 		LAYER_PATH_WRITE_POINT(x1);
@@ -1977,8 +2103,7 @@ void ExportLayerPath(Object *object, EsBuffer *data) {
 		ThemeLayerPathFill fill = {};
 
 		sprintf(cPropertyName, "fills_%d_paint", (int32_t) i);
-		Object *paint = PropertyFindOrInheritReadObject(object, cPropertyName);
-		fill.paintAndFillType |= ExportPaint(paint, nullptr);
+		fill.paintAndFillType |= ExportPaint(object, cPropertyName, nullptr);
 
 		sprintf(cPropertyName, "fills_%d_mode", (int32_t) i);
 		Object *mode = PropertyFindOrInheritReadObject(object, cPropertyName);
@@ -1991,27 +2116,36 @@ void ExportLayerPath(Object *object, EsBuffer *data) {
 			fill.paintAndFillType |= THEME_PATH_FILL_SOLID;
 		}
 
-		EsBufferWrite(data, &fill, sizeof(fill));
-		ExportPaint(paint, data);
+		ExportWrite(data, &fill, sizeof(fill));
+
+		sprintf(cPropertyName, "fills_%d_paint", (int32_t) i);
+		ExportPaint(object, cPropertyName, data);
 
 		if (mode && mode->type == OBJ_VAR_CONTOUR_STYLE) {
 			ThemeLayerPathFillContour contour = {};
-			contour.miterLimit = PropertyFindOrInheritReadFloat(mode, "miterLimit");
-			contour.internalWidth = PropertyFindOrInheritReadInt32(mode, "internalWidth");
-			contour.externalWidth = PropertyFindOrInheritReadInt32(mode, "externalWidth");
+			ExportF32(data, contour, miterLimit, mode, "miterLimit");
+			ExportI8(data, contour, internalWidth, mode, "internalWidth");
+			ExportI8(data, contour, externalWidth, mode, "externalWidth");
 			contour.mode = PropertyFindOrInheritReadInt32(mode, "joinMode") 
 				| (PropertyFindOrInheritReadInt32(mode, "capMode") << 2)
 				| (PropertyFindOrInheritReadInt32(mode, "integerWidthsOnly") ? 0x80 : 0);
-			EsBufferWrite(data, &contour, sizeof(contour));
+			ExportWrite(data, &contour, sizeof(contour));
 		}
 	}
 }
 
-void ExportPaintAsLayerBox(Object *object, EsBuffer *data) {
+void ExportPaintAsLayerBox(Object *object, ExportContext *data) {
+	Object parentObject = {};
+	Property property = {};
+	property.type = PROP_OBJECT;
+	property.cName[0] = '.';
+	property.object = object->id;
+	parentObject.properties.Add(property);
 	ThemeLayerBox box = {};
-	box.mainPaintType = ExportPaint(object, nullptr);
-	EsBufferWrite(data, &box, sizeof(box));
-	ExportPaint(object, data);
+	box.mainPaintType = ExportPaint(&parentObject, ".", nullptr);
+	ExportWrite(data, &box, sizeof(box));
+	ExportPaint(&parentObject, ".", data);
+	parentObject.properties.Free();
 }
 
 //////////////////////////////////////////////////////////////
@@ -2076,7 +2210,7 @@ void CanvasDrawLayerFromData(UIPainter *painter, UIRectangle bounds, EsBuffer da
 	data.bytes = data.position;
 	data.position = 0;
 
-	ThemeDrawLayer(&themePainter, bounds, &data, canvas->zoom, UI_RECT_1(0) /* TODO opaqueRegion */);
+	ThemeDrawLayer(&themePainter, bounds, &data, canvas->zoom, UI_RECT_1(0));
 }
 
 void CanvasDrawColorSwatch(Object *object, UIRectangle bounds, UIPainter *painter) {
@@ -2088,9 +2222,10 @@ void CanvasDrawColorSwatch(Object *object, UIRectangle bounds, UIPainter *painte
 
 	uint8_t buffer[4096];
 	EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+	ExportContext context = { .baseData = &data };
 	ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
-	EsBufferWrite(&data, &layer, sizeof(layer));
-	ExportPaintAsLayerBox(object, &data);
+	ExportWrite(&context, &layer, sizeof(layer));
+	ExportPaintAsLayerBox(object, &context);
 	CanvasDrawLayerFromData(painter, bounds, data);
 }
 
@@ -2100,16 +2235,12 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	}
 
 	if (object->type == OBJ_LAYER_BOX) {
-		bounds.l += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset0")) * canvas->zoom;
-		bounds.r += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset1")) * canvas->zoom;
-		bounds.t += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset2")) * canvas->zoom;
-		bounds.b += GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "offset3")) * canvas->zoom;
-
 		uint8_t buffer[4096];
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+		ExportContext context = { .baseData = &data };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_BOX };
-		EsBufferWrite(&data, &layer, sizeof(layer));
-		ExportLayerBox(object, &data);
+		ExportWrite(&context, &layer, sizeof(layer));
+		ExportLayerBox(object, &context);
 		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_TEXT) {
 #ifdef OS_ESSENCE
@@ -2136,9 +2267,10 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 	} else if (object->type == OBJ_LAYER_PATH) {
 		uint8_t buffer[4096];
 		EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+		ExportContext context = { .baseData = &data };
 		ThemeLayer layer = { .position = { .r = 100, .b = 100 }, .type = THEME_LAYER_PATH };
-		EsBufferWrite(&data, &layer, sizeof(layer));
-		ExportLayerPath(object, &data);
+		ExportWrite(&context, &layer, sizeof(layer));
+		ExportLayerPath(object, &context);
 		CanvasDrawLayerFromData(painter, bounds, data);
 	} else if (object->type == OBJ_LAYER_GROUP) {
 		int32_t layerCount = PropertyReadInt32(object, "layers_count");
@@ -2315,7 +2447,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 					UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 				}
 
-				bounds = UIRectangleAdd(bounds, UI_RECT_1I(3));
+				bounds = UIRectangleAdd(bounds, UI_RECT_1I(5));
 			}
 
 			if (selectedObjectID == object->id && canvas->resizing) {
@@ -2762,25 +2894,101 @@ void ObjectDuplicateCommand(void *) {
 //////////////////////////////////////////////////////////////
 
 Rectangle8 ExportCalculatePaintOutsets(Object *object) {
-	return {}; // TODO;
+	Rectangle8 paintOutsets = {};
+
+	int32_t layerCount = PropertyReadInt32(object, "layers_count");
+	if (layerCount < 0) layerCount = 0;
+	if (layerCount > 100) layerCount = 100;
+
+	for (int32_t i = 0; i < layerCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		sprintf(cPropertyName, "layers_%d_layer", i);
+		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		if (!layerObject) continue;
+
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
+		LAYER_READ_INT32(offset0);
+		LAYER_READ_INT32(offset1);
+		LAYER_READ_INT32(offset2);
+		LAYER_READ_INT32(offset3);
+		LAYER_READ_INT32(position0);
+		LAYER_READ_INT32(position1);
+		LAYER_READ_INT32(position2);
+		LAYER_READ_INT32(position3);
+#undef LAYER_READ_INT32
+
+		if (layerObject->type == OBJ_LAYER_BOX) {
+			Object *object = layerObject;
+			int depth = 0;
+
+			while (object && (depth++ < 100)) {
+				int32_t boxOffset0 = PropertyReadInt32(object, "offset0");
+				int32_t boxOffset1 = PropertyReadInt32(object, "offset1");
+				int32_t boxOffset2 = PropertyReadInt32(object, "offset2");
+				int32_t boxOffset3 = PropertyReadInt32(object, "offset3");
+				if (boxOffset0 < offset0) offset0 = boxOffset0;
+				if (boxOffset1 > offset1) offset1 = boxOffset1;
+				if (boxOffset2 < offset2) offset2 = boxOffset2;
+				if (boxOffset3 > offset3) offset3 = boxOffset3;
+				Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
+				object = ObjectFind(property ? property->object : 0);
+			}
+		}
+
+		if (position0 ==   0 && -offset0 > paintOutsets.l) paintOutsets.l = -offset0;
+		if (position1 == 100 &&  offset1 > paintOutsets.r) paintOutsets.r =  offset1;
+		if (position2 ==   0 && -offset2 > paintOutsets.t) paintOutsets.t = -offset2;
+		if (position3 == 100 &&  offset3 > paintOutsets.b) paintOutsets.b =  offset3;
+	}
+
+	return paintOutsets;
 }
 
 Rectangle8 ExportCalculateOpaqueInsets(Object *object) {
-	return {}; // TODO;
+	return { 0x7F, 0x7F, 0x7F, 0x7F }; // TODO;
 }
 
 Rectangle8 ExportCalculateApproximateBorders(Object *object) {
-	return {}; // TODO;
+	int32_t layerCount = PropertyReadInt32(object, "layers_count");
+	if (layerCount < 0) layerCount = 0;
+	if (layerCount > 100) layerCount = 100;
+
+	for (int32_t i = 0; i < layerCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		sprintf(cPropertyName, "layers_%d_layer", i);
+		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		if (!layerObject) continue;
+
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
+		LAYER_READ_INT32(position0);
+		LAYER_READ_INT32(position1);
+		LAYER_READ_INT32(position2);
+		LAYER_READ_INT32(position3);
+		LAYER_READ_INT32(mode);
+#undef LAYER_READ_INT32
+
+		if (layerObject->type == OBJ_LAYER_BOX && position0 == 0 && position1 == 100 && position2 == 0 && position3 == 100
+				&& !PropertyReadInt32(layerObject, "shadowHiding") && !PropertyReadInt32(layerObject, "isBlurred")
+				&& mode == THEME_LAYER_MODE_BACKGROUND && PropertyFind(layerObject, "borderPaint")) {
+			return { 
+				(int8_t) PropertyReadInt32(layerObject, "borders0"),
+				(int8_t) PropertyReadInt32(layerObject, "borders1"),
+				(int8_t) PropertyReadInt32(layerObject, "borders2"),
+				(int8_t) PropertyReadInt32(layerObject, "borders3"),
+			};
+		}
+	}
+
+	return {};
 }
 
 #ifndef OS_ESSENCE
 void Export() {
 	DocumentLoad();
 
-	// TODO Output the new styles.header.
-	// TODO Export conditional objects into sequences.
-	
-	// TODO Exporting modified integers and colors.
+	// TODO Exporting modified integers and colors as constants.
 	// TODO Recursively exporting nested groups.
 	// TODO Handling styles that don't have metrics/textStyle.
 
@@ -2910,9 +3118,9 @@ void Export() {
 			exportOffset.offset = ftell(output);
 			exportOffsets.Add(exportOffset);
 
-			ThemeLayer layer = {};
-			layer.type = THEME_LAYER_METRICS;
-			layer.dataByteCount = sizeof(ThemeLayer) + sizeof(ThemeMetrics);
+			uint8_t overrideDataBuffer[4096];
+			EsBuffer overrideData = { .out = overrideDataBuffer, .bytes = sizeof(overrideDataBuffer) };
+			ExportContext context = { .overrideData = &overrideData, .overrideOffset = sizeof(ThemeLayer) };
 
 			ThemeMetrics _metrics = {};
 
@@ -2945,17 +3153,33 @@ void Export() {
 				| (verticalTextAlign == 1 ? ES_TEXT_V_TOP : verticalTextAlign == 3 ? ES_TEXT_V_BOTTOM : ES_TEXT_V_CENTER);
 
 			_metrics.fontFamily = PropertyFindOrInheritReadInt32(textStyle, "fontFamily");
-			_metrics.fontWeight = GraphGetIntegerFromProperty(PropertyFind(textStyle, "fontWeight"));
-			_metrics.textSize = GraphGetIntegerFromProperty(PropertyFindOrInherit(textStyle, "textSize"));
-			_metrics.iconSize = GraphGetIntegerFromProperty(PropertyFindOrInherit(textStyle, "iconSize"));
 			_metrics.isItalic = PropertyFindOrInheritReadInt32(textStyle, "isItalic");
-			_metrics.textColor = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "textColor"));
-			_metrics.selectedBackground = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "selectedBackground"));
-			_metrics.selectedText = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "selectedText"));
-			_metrics.iconColor = GraphGetColorFromProperty(PropertyFindOrInherit(textStyle, "iconColor"));
+			ExportI8(&context, _metrics, fontWeight, textStyle, "fontWeight");
+			ExportI16(&context, _metrics, textSize, textStyle, "textSize");
+			ExportI16(&context, _metrics, iconSize, textStyle, "iconSize");
+			ExportColor(&context, _metrics, textColor, textStyle, "textColor");
+			ExportColor(&context, _metrics, selectedBackground, textStyle, "selectedBackground");
+			ExportColor(&context, _metrics, selectedText, textStyle, "selectedText");
+			ExportColor(&context, _metrics, iconColor, textStyle, "iconColor");
 
+			ThemeLayer layer = {};
+			layer.type = THEME_LAYER_METRICS;
+			layer.dataByteCount = sizeof(ThemeLayer) + sizeof(ThemeMetrics);
+			layer.overrideCount = overrideData.position / sizeof(ThemeOverride);
+			layer.overrideListOffset = layer.dataByteCount + ftell(output);
 			fwrite(&layer, 1, sizeof(layer), output);
+
+#if 0
+			for (uintptr_t i = 0; i < objects.Length(); i++) {
+				if (objects[i].type == OBJ_STYLE && PropertyFindOrInheritReadObject(&objects[i], "textStyle") == textStyle) {
+					fprintf(stderr, "%s %d %d\n", objects[i].cName, layer.overrideCount, layer.overrideListOffset);
+				}
+			}
+#endif
+
 			fwrite(&_metrics, 1, sizeof(_metrics), output);
+			fwrite(overrideData.out, 1, overrideData.position, output);
+			assert(!overrideData.error);
 		} else {
 			assert(false); // TODO.
 		}
@@ -2988,36 +3212,39 @@ void Export() {
 				LAYER_READ_INT32(position3);
 #undef LAYER_READ_INT32
 
-				uint8_t buffer[4096];
-				EsBuffer data = { .out = buffer, .bytes = sizeof(buffer) };
+				uint8_t baseDataBuffer[4096];
+				uint8_t overrideDataBuffer[4096];
+				EsBuffer baseData = { .out = baseDataBuffer, .bytes = sizeof(baseDataBuffer) };
+				EsBuffer overrideData = { .out = overrideDataBuffer, .bytes = sizeof(overrideDataBuffer) };
+				ExportContext context = { .baseData = &baseData, .overrideData = &overrideData, .overrideOffset = sizeof(ThemeLayer) };
 				ThemeLayer layer = {};
 				layer.position = { position0, position1, position2, position3 };
 				layer.offset = { offset0, offset1, offset2, offset3 };
 
 				if (layerObject->type == OBJ_LAYER_PATH) {
 					layer.type = THEME_LAYER_PATH;
-					ExportLayerPath(layerObject, &data);
+					ExportLayerPath(layerObject, &context);
 				} else if (layerObject->type == OBJ_LAYER_BOX) {
 					layer.type = THEME_LAYER_BOX;
-					layer.offset.l += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset0"));
-					layer.offset.r += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset1"));
-					layer.offset.t += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset2"));
-					layer.offset.b += GraphGetIntegerFromProperty(PropertyFindOrInherit(layerObject, "offset3"));
-					ExportLayerBox(layerObject, &data);
+					ExportLayerBox(layerObject, &context);
 				} else if (layerObject->type == OBJ_LAYER_TEXT) {
 					layer.type = THEME_LAYER_TEXT;
 					ThemeLayerText text = {};
-					text.blur = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "blur"));
-					text.color = GraphGetColorFromProperty(PropertyFindOrInherit(object, "color"));
-					EsBufferWrite(&data, &text, sizeof(text));
+					ExportI8(&context, text, blur, object, "blur");
+					ExportColor(&context, text, color, object, "color");
+					ExportWrite(&context, &text, sizeof(text));
 				} else {
 					assert(false);
 				}
 
-				layer.dataByteCount = data.position + sizeof(layer);
+				layer.dataByteCount = baseData.position + sizeof(layer);
+				layer.overrideCount = overrideData.position / sizeof(ThemeOverride);
+				layer.overrideListOffset = layer.dataByteCount + ftell(output);
 				fwrite(&layer, 1, sizeof(layer), output);
-				fwrite(data.out, 1, data.position, output);
-				assert(!data.error);
+				fwrite(baseData.out, 1, baseData.position, output);
+				fwrite(overrideData.out, 1, overrideData.position, output);
+				assert(!baseData.error);
+				assert(!overrideData.error);
 			}
 		}
 	}
@@ -3075,6 +3302,47 @@ void Export() {
 		fwrite(&exportOffset, 1, sizeof(exportOffset), output);
 		writeOffset += sizeof(ThemeStyle);
 	}
+
+	DocumentFree();
+	fclose(output);
+	exportOffsets.Free();
+}
+
+void ExportJSON() {
+	DocumentLoad();
+	FILE *f = fopen("bin/designer2.json", "wb");
+	fprintf(f, "{\n\t\"version\": 1,\n\t\"objectIDAllocator\": %ld,\n", objectIDAllocator);
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *object = &objects[i];
+		const char *type = "??";
+
+		for (uintptr_t i = 0; i < sizeof(cObjectTypeStrings) / sizeof(cObjectTypeStrings[0]); i++) {
+			if (cObjectTypeStrings[i].type == object->type) {
+				type = cObjectTypeStrings[i].string;
+				break;
+			}
+		}
+
+		fprintf(f, "\t\"%ld\": {\n\t\t\"Flags\": %d,\n\t\t\"Type\": \"%s\",\n\t\t\"Name\": \"%s\",\n", 
+				object->id, object->flags, type, object->cName);
+
+		for (uintptr_t i = 0; i < object->properties.Length(); i++) {
+			Property *property = &object->properties[i];
+			fprintf(f, "\t\t\"%s\": ", property->cName);
+			if (property->type == PROP_COLOR) fprintf(f, "\"#%.8X\"", (uint32_t) property->integer);
+			if (property->type == PROP_INT) fprintf(f, "%d", property->integer);
+			if (property->type == PROP_OBJECT) fprintf(f, "\"@%ld\"", property->object);
+			if (property->type == PROP_FLOAT) fprintf(f, "%f", property->floating);
+			fprintf(f, "%s\n", i < object->properties.Length() - 1 ? "," : "");
+		}
+
+		fprintf(f, "\t}%s\n", i < objects.Length() - 1 ? "," : "");
+	}
+
+	fprintf(f, "}\n");
+	fclose(f);
+	DocumentFree();
 }
 #endif
 
@@ -3108,6 +3376,8 @@ int main(int argc, char **argv) {
 	if (argc == 2) {
 		if (0 == strcmp(argv[1], "export")) {
 			Export();
+		} else if (0 == strcmp(argv[1], "json")) {
+			ExportJSON();
 		} else {
 			fprintf(stderr, "Error: Unknown action '%s'.\n", argv[1]);
 			return 1;
@@ -3161,7 +3431,7 @@ int main(int argc, char **argv) {
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('D'), 1 /* ctrl */, 0, 0, ObjectDuplicateCommand, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(2), 0, 0, 0, CanvasSwitchView, 0));
-	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(1), 0, 0, 0, CanvasZoom100, 0));
+	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DIGIT('1'), 1 /* ctrl */, 0, 0, CanvasZoom100, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DELETE, 0, 0, 0, ObjectDeleteCommand, 0));
 
 #ifdef OS_ESSENCE

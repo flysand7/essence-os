@@ -133,7 +133,7 @@ typedef struct ThemePaintCustom {
 #endif
 
 typedef struct ThemeLayerBox {
-	Rectangle8 borders;
+	Rectangle8 borders, offset;
 	Corners8 corners;
 	int8_t flags, mainPaintType, borderPaintType;
 	uint8_t _unused0;
@@ -180,7 +180,9 @@ typedef struct ThemeLayerPath {
 } ThemeLayerPath;
 
 typedef struct ThemeLayer {
-	uint32_t sequenceDataOffset;
+	uint32_t overrideListOffset;
+	uint16_t overrideCount;
+	uint16_t _unused;
 	Rectangle8 offset; // (dpx)
 	Rectangle8 position; // (percent)
 	int8_t mode, type;
@@ -210,19 +212,11 @@ typedef union ThemeVariant {
 } ThemeVariant;
 
 typedef struct ThemeOverride {
+	uint16_t state, duration;
 	uint16_t offset;
-	uint8_t type, layer;
+	uint8_t type, _unused;
 	ThemeVariant data;
 } ThemeOverride;
-
-typedef struct ThemeSequenceHeader {
-	uint16_t state; // Low 4 bits are the primary state.
-	uint16_t overrideCount;
-	uint16_t duration;
-	uint8_t isLastSequence;
-	uint8_t _unused;
-	// Followed by overrides.
-} ThemeSequenceHeader;
 
 typedef struct ThemeStyle {
 	// A list of uint32_t, giving offsets to ThemeLayer. First is the metrics layer.
@@ -714,24 +708,24 @@ void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gr
 
 void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float scale, 
 		const ThemeLayer *layer, EsRectangle opaqueRegion, int childType) {
-	int width = THEME_RECT_WIDTH(rect), height = THEME_RECT_HEIGHT(rect);
-	if (width <= 0 || height <= 0) return;
-
 	const ThemeLayerBox *box = (const ThemeLayerBox *) EsBufferRead(data, sizeof(ThemeLayerBox));
 	if (!box) return;
 
-	if ((box->flags & THEME_LAYER_BOX_SHADOW_HIDING) && layer->offset.l == 0 && layer->offset.r == 0 && layer->offset.t == 0 && layer->offset.b == 0) {
+	if ((box->flags & THEME_LAYER_BOX_SHADOW_HIDING) && layer->offset.l == 0 && layer->offset.r == 0 && layer->offset.t == 0 && layer->offset.b == 0
+			&& box->offset.l == 0 && box->offset.r == 0 && box->offset.t == 0 && box->offset.b == 0
+			&& THEME_RECT_VALID(opaqueRegion)) {
 		return;
 	}
 
-	bool isBlurred = box->flags & THEME_LAYER_BOX_IS_BLURRED;
+	rect.l += box->offset.l * scale;
+	rect.r += box->offset.r * scale;
+	rect.t += box->offset.t * scale;
+	rect.b += box->offset.b * scale;
 
-#if 0
-	if (scale == 1 && isBlurred) {
-		width--, rect.r--;
-		height--, rect.b--;
-	}
-#endif
+	int width = THEME_RECT_WIDTH(rect), height = THEME_RECT_HEIGHT(rect);
+	if (width <= 0 || height <= 0) return;
+
+	bool isBlurred = box->flags & THEME_LAYER_BOX_IS_BLURRED;
 
 	ThemePaintData mainPaint, borderPaint;
 	GradientCache mainGradient, borderGradient;
@@ -1409,72 +1403,65 @@ void _ThemeAnimationBuildAddProperties(ThemeAnimation *animation, UIStyle *style
 		const ThemeLayer *layer = (const ThemeLayer *) (theming.system.in + layerList[i]);
 
 		EsBuffer layerData = theming.system;
-		layerData.position = layer->sequenceDataOffset;
+		layerData.position = layer->overrideListOffset;
 
-		while (layerData.position) {
-			const ThemeSequenceHeader *sequenceHeader = (const ThemeSequenceHeader *) EsBufferRead(&layerData, sizeof(ThemeSequenceHeader));
+		for (uintptr_t i = 0; i < layer->overrideCount; i++) {
+			const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
 
-			if (THEME_STATE_CHECK(sequenceHeader->state, stateFlags) && sequenceHeader->duration) {
-				for (uintptr_t j = 0; j < sequenceHeader->overrideCount; j++) {
-					const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
-					uintptr_t key = themeOverride->offset + layerCumulativeDataOffset;
-					EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(ThemeVariant));
-
-					uintptr_t point;
-					bool alreadyInList;
-
-					// Find where the property is/should be in the animation list.
-
-					ES_MACRO_SEARCH(animation->properties.Length(), { 
-						uintptr_t item = animation->properties[index].offset;
-						result = key < item ? -1 : key > item ? 1 : 0;
-					}, point, alreadyInList);
-
-					bool beforeEnter = (sequenceHeader->state & THEME_STATE_BEFORE_ENTER) != 0;
-
-					if (alreadyInList) {
-						// Update the duration, if the property is already in the list.
-						// Prioritise before enter sequence durations.
-
-						if (!animation->properties[point].beforeEnter || beforeEnter) {
-							animation->properties[point].duration = sequenceHeader->duration * api.global->animationTimeMultiplier;
-							animation->properties[point].beforeEnter = beforeEnter;
-						}
-					} else {
-						// Add the property to the list.
-
-						if (point < animation->properties.Length()) EsAssert(key < animation->properties[point].offset);
-						if (point > 0) EsAssert(key > animation->properties[point - 1].offset);
-
-						ThemeAnimatingProperty property = {};
-						property.offset = key;
-						property.type = themeOverride->type;
-						property.duration = sequenceHeader->duration * api.global->animationTimeMultiplier;
-						property.beforeEnter = beforeEnter;
-
-						if (themeOverride->type == THEME_OVERRIDE_I8) {
-							EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 1);
-							property.from.i8 = *(int8_t *) (oldLayerData + key);
-						} else if (themeOverride->type == THEME_OVERRIDE_I16) {
-							EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 2);
-							property.from.i16 = *(int16_t *) (oldLayerData + key);
-						} else if (themeOverride->type == THEME_OVERRIDE_F32) {
-							EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 4);
-							property.from.f32 = *(float *) (oldLayerData + key);
-						} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
-							EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 4);
-							property.from.u32 = *(uint32_t *) (oldLayerData + key);
-						}
-
-						animation->properties.Insert(property, point);
-					}
-				}
-			} else {
-				EsBufferRead(&layerData, sizeof(ThemeOverride) * sequenceHeader->overrideCount);
+			if (!THEME_STATE_CHECK(themeOverride->state, stateFlags) || !themeOverride->duration) {
+				continue;
 			}
 
-			if (sequenceHeader->isLastSequence) {
-				break;
+			uintptr_t key = themeOverride->offset + layerCumulativeDataOffset;
+			EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(ThemeVariant));
+
+			uintptr_t point;
+			bool alreadyInList;
+
+			// Find where the property is/should be in the animation list.
+
+			ES_MACRO_SEARCH(animation->properties.Length(), { 
+				uintptr_t item = animation->properties[index].offset;
+				result = key < item ? -1 : key > item ? 1 : 0;
+			}, point, alreadyInList);
+
+			bool beforeEnter = (themeOverride->state & THEME_STATE_BEFORE_ENTER) != 0;
+
+			if (alreadyInList) {
+				// Update the duration, if the property is already in the list.
+				// Prioritise before enter sequence durations.
+
+				if (!animation->properties[point].beforeEnter || beforeEnter) {
+					animation->properties[point].duration = themeOverride->duration * api.global->animationTimeMultiplier;
+					animation->properties[point].beforeEnter = beforeEnter;
+				}
+			} else {
+				// Add the property to the list.
+
+				if (point < animation->properties.Length()) EsAssert(key < animation->properties[point].offset);
+				if (point > 0) EsAssert(key > animation->properties[point - 1].offset);
+
+				ThemeAnimatingProperty property = {};
+				property.offset = key;
+				property.type = themeOverride->type;
+				property.duration = themeOverride->duration * api.global->animationTimeMultiplier;
+				property.beforeEnter = beforeEnter;
+
+				if (themeOverride->type == THEME_OVERRIDE_I8) {
+					EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 1);
+					property.from.i8 = *(int8_t *) (oldLayerData + key);
+				} else if (themeOverride->type == THEME_OVERRIDE_I16) {
+					EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 2);
+					property.from.i16 = *(int16_t *) (oldLayerData + key);
+				} else if (themeOverride->type == THEME_OVERRIDE_F32) {
+					EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 4);
+					property.from.f32 = *(float *) (oldLayerData + key);
+				} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
+					EsAssert(themeOverride->offset <= (uintptr_t) layer->dataByteCount - 4);
+					property.from.u32 = *(uint32_t *) (oldLayerData + key);
+				}
+
+				animation->properties.Insert(property, point);
 			}
 		}
 
@@ -1683,59 +1670,43 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 			}
 		}
 
-		layerData.position = layer->sequenceDataOffset;
+		layerData.position = layer->overrideListOffset;
 
-		while (layerData.position) {
-			const ThemeSequenceHeader *sequenceHeader = (const ThemeSequenceHeader *) EsBufferRead(&layerData, sizeof(ThemeSequenceHeader));
+		for (uintptr_t i = 0; i < layer->overrideCount; i++) {
+			const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
 
-			if (!sequenceHeader) {
-				EsPrint("Broken sequence list.\n");
+			if (!themeOverride) {
+				EsPrint("Broken override list.\n");
 				return nullptr;
 			}
 
-			if (THEME_STATE_CHECK(sequenceHeader->state, key.stateFlags)) {
-				for (uintptr_t j = 0; j < sequenceHeader->overrideCount; j++) {
-					const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
-
-					if (!themeOverride) {
-						EsPrint("Broken override list.\n");
-						return nullptr;
-					}
-
-					if (themeOverride->offset >= layer->dataByteCount) {
-						EsPrint("Broken override list.\n");
-						return nullptr;
-					}
-
-					bool valid;
-
-					if (themeOverride->type == THEME_OVERRIDE_I8) {
-						valid = themeOverride->offset + 1 <= layer->dataByteCount;
-					} else if (themeOverride->type == THEME_OVERRIDE_I16) {
-						valid = themeOverride->offset + 2 <= layer->dataByteCount;
-					} else if (themeOverride->type == THEME_OVERRIDE_F32) {
-						valid = themeOverride->offset + 4 <= layer->dataByteCount;
-					} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
-						valid = themeOverride->offset + 4 <= layer->dataByteCount;
-					} else {
-						EsPrint("Unsupported override type.\n");
-						return nullptr;
-					}
-
-					if (!valid) {
-						EsPrint("Broken override list.\n");
-						return nullptr;
-					}
-				}
-			} else {
-				if (!EsBufferRead(&layerData, sizeof(ThemeOverride) * sequenceHeader->overrideCount)) {
-					EsPrint("Broken sequence list.\n");
-					return nullptr;
-				}
+			if (!THEME_STATE_CHECK(themeOverride->state, key.stateFlags)) {
+				continue;
 			}
 
-			if (sequenceHeader->isLastSequence) {
-				break;
+			if (themeOverride->offset >= layer->dataByteCount) {
+				EsPrint("Broken override list.\n");
+				return nullptr;
+			}
+
+			bool valid;
+
+			if (themeOverride->type == THEME_OVERRIDE_I8) {
+				valid = themeOverride->offset + 1 <= layer->dataByteCount;
+			} else if (themeOverride->type == THEME_OVERRIDE_I16) {
+				valid = themeOverride->offset + 2 <= layer->dataByteCount;
+			} else if (themeOverride->type == THEME_OVERRIDE_F32) {
+				valid = themeOverride->offset + 4 <= layer->dataByteCount;
+			} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
+				valid = themeOverride->offset + 4 <= layer->dataByteCount;
+			} else {
+				EsPrint("Unsupported override type.\n");
+				return nullptr;
+			}
+
+			if (!valid) {
+				EsPrint("Broken override list.\n");
+				return nullptr;
 			}
 		}
 	}
@@ -1768,38 +1739,30 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 		layerData.position = *offset;
 		const uint8_t *data = (const uint8_t *) EsBufferRead(&layerData, layer->dataByteCount);
 		EsMemoryCopy(baseData + layerDataByteCount, data, layer->dataByteCount);
-		layerData.position = layer->sequenceDataOffset;
+		layerData.position = layer->overrideListOffset;
 
-		while (layerData.position) {
-			const ThemeSequenceHeader *sequenceHeader = (const ThemeSequenceHeader *) EsBufferRead(&layerData, sizeof(ThemeSequenceHeader));
+		for (uintptr_t i = 0; i < layer->overrideCount; i++) {
+			const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
 
-			style->observedStyleStateMask |= 0x10000 << (sequenceHeader->state & THEME_PRIMARY_STATE_MASK);
-			style->observedStyleStateMask |= sequenceHeader->state & ~THEME_PRIMARY_STATE_MASK;
+			style->observedStyleStateMask |= 0x10000 << (themeOverride->state & THEME_PRIMARY_STATE_MASK);
+			style->observedStyleStateMask |= themeOverride->state & ~THEME_PRIMARY_STATE_MASK;
 
-			if (THEME_STATE_CHECK(sequenceHeader->state, key.stateFlags)) {
-				for (uintptr_t j = 0; j < sequenceHeader->overrideCount; j++) {
-					const ThemeOverride *themeOverride = (const ThemeOverride *) EsBufferRead(&layerData, sizeof(ThemeOverride));
-
-					ThemeVariant overrideValue = themeOverride->data;
-
-					if (themeOverride->type == THEME_OVERRIDE_I8) {
-						*(int8_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.i8;
-					} else if (themeOverride->type == THEME_OVERRIDE_I16) {
-						*(int16_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.i16;
-					} else if (themeOverride->type == THEME_OVERRIDE_F32) {
-						*(float *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.f32;
-					} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
-						*(uint32_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.u32;
-					} else {
-						EsAssert(false);
-					}
-				}
-			} else {
-				EsBufferRead(&layerData, sizeof(ThemeOverride) * sequenceHeader->overrideCount);
+			if (!THEME_STATE_CHECK(themeOverride->state, key.stateFlags)) {
+				continue;
 			}
 
-			if (sequenceHeader->isLastSequence) {
-				break;
+			ThemeVariant overrideValue = themeOverride->data;
+
+			if (themeOverride->type == THEME_OVERRIDE_I8) {
+				*(int8_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.i8;
+			} else if (themeOverride->type == THEME_OVERRIDE_I16) {
+				*(int16_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.i16;
+			} else if (themeOverride->type == THEME_OVERRIDE_F32) {
+				*(float *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.f32;
+			} else if (themeOverride->type == THEME_OVERRIDE_COLOR) {
+				*(uint32_t *) (baseData + layerDataByteCount + themeOverride->offset) = overrideValue.u32;
+			} else {
+				EsAssert(false);
 			}
 		}
 
