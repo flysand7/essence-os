@@ -554,14 +554,14 @@ void WindowSnap(EsWindow *window, bool restored, bool dragging, uint8_t edge) {
 	}
 }
 
-void WindowRestore(EsWindow *window) {
+void WindowRestore(EsWindow *window, bool dynamic = true) {
 	if (!window->restoreOnNextMove) {
 		return;
 	}
 
 	window->isMaximised = false;
 	window->restoreOnNextMove = false;
-	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &window->beforeMaximiseBounds, 0, ES_WINDOW_MOVE_DYNAMIC);
+	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &window->beforeMaximiseBounds, 0, dynamic ? ES_WINDOW_MOVE_DYNAMIC : ES_FLAGS_DEFAULT);
 }
 
 void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *originalY, EsWindow *window, 

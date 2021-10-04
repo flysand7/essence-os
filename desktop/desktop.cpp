@@ -821,16 +821,35 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		EsElementSetDisabled(band->GetChild(0), false);
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(tab, ES_FLAGS_DEFAULT);
+		uint64_t disableIfOnlyTab = tab->container->tabBand->items.Length() == 1 ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT;
 
 		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopCloseTab), [] (EsMenu *, EsGeneric context) {
 			WindowTabClose((WindowTab *) context.p);
 		}, tab);
 
-		if (tab->container->tabBand->items.Length() > 1) {
-			EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopMoveTabToNewWindow), [] (EsMenu *, EsGeneric context) {
-				WindowTabMoveToNewContainer((WindowTab *) context.p, nullptr, 0, 0);
-			}, tab);
-		}
+		EsMenuAddItem(menu, disableIfOnlyTab, INTERFACE_STRING(DesktopMoveTabToNewWindow), [] (EsMenu *, EsGeneric context) {
+			WindowTabMoveToNewContainer((WindowTab *) context.p, nullptr, 0, 0);
+		}, tab);
+
+		EsMenuAddItem(menu, disableIfOnlyTab, INTERFACE_STRING(DesktopMoveTabToNewWindowSplitLeft), [] (EsMenu *, EsGeneric context) {
+			WindowTab *oldTab = (WindowTab *) context.p;
+			EsWindow *oldWindow = oldTab->window;
+			WindowTab *newTab = WindowTabMoveToNewContainer(oldTab, nullptr, 0, 0);
+			if (!newTab) return;
+			if (oldWindow->isMaximised) WindowRestore(oldWindow, false);
+			WindowSnap(oldWindow, false, false, SNAP_EDGE_RIGHT);
+			WindowSnap(newTab->window, false, false, SNAP_EDGE_LEFT);
+		}, tab);
+
+		EsMenuAddItem(menu, disableIfOnlyTab, INTERFACE_STRING(DesktopMoveTabToNewWindowSplitRight), [] (EsMenu *, EsGeneric context) {
+			WindowTab *oldTab = (WindowTab *) context.p;
+			EsWindow *oldWindow = oldTab->window;
+			WindowTab *newTab = WindowTabMoveToNewContainer(oldTab, nullptr, 0, 0);
+			if (!newTab) return;
+			if (oldWindow->isMaximised) WindowRestore(oldWindow, false /* we immediately move the window after this */);
+			WindowSnap(oldWindow, false, false, SNAP_EDGE_LEFT);
+			WindowSnap(newTab->window, false, false, SNAP_EDGE_RIGHT);
+		}, tab);
 
 		if (EsKeyboardIsShiftHeld()) {
 			EsMenuAddSeparator(menu);

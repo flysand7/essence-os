@@ -97,7 +97,9 @@ DEFINE_INTERFACE_STRING(DesktopNotResponding, "The application is not responding
 DEFINE_INTERFACE_STRING(DesktopConfirmShutdown, "Are you sure you want to turn off your computer? All applications will be closed.");
 
 DEFINE_INTERFACE_STRING(DesktopCloseTab, "Close tab");
-DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindow, "Move to new window");
+DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindow, "Move tab to new window");
+DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindowSplitLeft, "Move tab to left of screen");
+DEFINE_INTERFACE_STRING(DesktopMoveTabToNewWindowSplitRight, "Move tab to right of screen");
 DEFINE_INTERFACE_STRING(DesktopInspectUI, "Inspect UI");
 DEFINE_INTERFACE_STRING(DesktopCloseWindow, "Close window");
 DEFINE_INTERFACE_STRING(DesktopCloseAllTabs, "Close all tabs");
