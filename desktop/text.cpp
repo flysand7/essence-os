@@ -2594,7 +2594,14 @@ void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds
 	EsTextRun textRuns[2] = {};
 	textRuns[0].style = style;
 	textRuns[1].offset = stringBytes == -1 ? EsCStringLength(string) : stringBytes;
+	if (!textRuns[1].offset) return;
 	EsDrawText(painter, EsTextPlanCreate(element, &properties, bounds, string, textRuns, 1), bounds); 
+}
+
+void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, const EsStyle *style, uint32_t flags) {
+	EsTextStyle textStyle;
+	GetStyle(MakeStyleKey(style, 0), true)->GetTextStyle(&textStyle);
+	EsDrawTextSimple(painter, element, bounds, string, stringBytes, textStyle, flags); 
 }
 
 #elif defined(TEXT_ELEMENTS)

@@ -293,13 +293,17 @@ struct MeasurementCache {
 struct EsButton : EsElement {
 	char *label;
 	size_t labelBytes;
-	EsGeneric menuItemContext;
 	uint32_t iconID;
 	MeasurementCache measurementCache;
 	EsCommand *command;
 	EsCommandCallback onCommand;
 	EsElement *checkBuddy;
 	EsImageDisplay *imageDisplay;
+};
+
+struct MenuItem : EsButton {
+	// This shares the EsButton structure so that it can be used with EsButtonOnCommand.
+	EsGeneric menuItemContext;
 };
 
 struct EsImageDisplay : EsElement {
@@ -3688,7 +3692,7 @@ EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes
 	return dialog;
 }
 
-EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, EsStyle *style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
+EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
 	EsButton *button = EsButtonCreate(dialog->buttonArea, flags, style, label, labelBytes);
 
 	if (button) {
@@ -4154,31 +4158,125 @@ void EsButtonSetCheck(EsButton *button, EsCheckState checkState, bool sendUpdate
 	button->MaybeRefreshStyle();
 }
 
-void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsMenuCallback callback, EsGeneric context) {
-	EsButton *button = (EsButton *) EsButtonCreate(menu, 
-		ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_MENU_ITEM | ES_CELL_H_FILL | flags, 0,
-		label, labelBytes != -1 ? labelBytes : EsCStringLength(label));
-	if (!button) return;
-	button->userData = (void *) callback;
+void MenuItemGetKeyboardShortcutString(EsCommand *command, EsBuffer *buffer) {
+	if (!command) {
+		return;
+	}
 
-	button->messageUser = [] (EsElement *element, EsMessage *message) {
-		if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
-			EsMenuCallback callback = (EsMenuCallback) element->userData.p;
-			if (callback) callback((EsMenu *) element->window, ((EsButton *) element)->menuItemContext);
+	const char *input = command->cKeyboardShortcut;
+
+	if (!input) {
+		return;
+	}
+
+	while (true) {
+		if (input[0] == 'C' && input[1] == 't' && input[2] == 'r' && input[3] == 'l' && input[4] == '+') {
+			EsBufferFormat(buffer, "%c", 0x2303);
+			input += 5;
+		} else if (input[0] == 'S' && input[1] == 'h' && input[2] == 'i' && input[3] == 'f' && input[4] == 't' && input[5] == '+') {
+			EsBufferFormat(buffer, "%c", 0x21E7);
+			input += 6;
+		} else if (input[0] == 'A' && input[1] == 'l' && input[2] == 't' && input[3] == '+') {
+			EsBufferFormat(buffer, "%c", 0x2325);
+			input += 4;
+		} else {
+			break;
 		}
+	}
 
+	while (*input != 0 && *input != '|') {
+		EsBufferWrite(buffer, input++, 1);
+	}
+}
+
+int ProcessMenuItemMessage(EsElement *element, EsMessage *message) {
+	MenuItem *button = (MenuItem *) element;
+
+	if (message->type == ES_MSG_PAINT) {
+		// Draw the label.
+
+		EsDrawContent(message->painter, element, 
+			ES_RECT_2S(message->painter->width, message->painter->height), 
+			button->label, button->labelBytes, 0, ES_FLAGS_DEFAULT);
+
+		// Draw the keyboard shortcut.
+		// TODO If activated by the keyboard, show access keys instead.
+
+		uint8_t _buffer[64];
+		EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+		MenuItemGetKeyboardShortcutString(button->command, &buffer);
+
+		EsDrawContent(message->painter, element, 
+			ES_RECT_2S(message->painter->width, message->painter->height), 
+			(const char *) _buffer, buffer.position, 0, ES_DRAW_CONTENT_CHANGE_ALIGNMENT | ES_TEXT_H_RIGHT | ES_TEXT_V_CENTER);
+	} else if (message->type == ES_MSG_GET_WIDTH) {
+		uint8_t _buffer[64];
+		EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+		MenuItemGetKeyboardShortcutString(button->command, &buffer);
+
+		EsTextStyle textStyle;
+		button->currentStyle->GetTextStyle(&textStyle);
+
+		int stringWidth = TextGetStringWidth(button, &textStyle, button->label, button->labelBytes);
+		int keyboardShortcutWidth = TextGetStringWidth(button, &textStyle, (const char *) _buffer, buffer.position);
+		int contentWidth = stringWidth + button->currentStyle->insets.l + button->currentStyle->insets.r 
+			+ (keyboardShortcutWidth ? (keyboardShortcutWidth + button->currentStyle->gapMinor) : 0);
+		message->measure.width = MaximumInteger(GetConstantNumber("menuItemMinimumReportedWidth"), contentWidth);
+	} else if (message->type == ES_MSG_DESTROY) {
+		EsHeapFree(button->label);
+
+		if (button->command) {
+			Array<EsElement *> elements = { button->command->elements };
+			elements.FindAndDeleteSwap(button, true);
+			button->command->elements = elements.array;
+		}
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+	} else if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
+		if (~element->flags & ES_ELEMENT_DISABLED) {
+			EsMenuCallback callback = (EsMenuCallback) element->userData.p;
+
+			if (button->onCommand) {
+				button->onCommand(button->instance, button, button->command);
+			} else if (callback) {
+				callback((EsMenu *) element->window, button->menuItemContext);
+			}
+
+			EsAssert(button->window->windowStyle == ES_WINDOW_MENU);
+			EsMenuClose((EsMenu *) button->window);
+		}
+	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
+		EsBufferFormat(message->getContent.buffer, "'%s'", button->labelBytes, button->label);
+	} else {
 		return 0;
-	};
+	}
 
+	return ES_HANDLED;
+}
+
+MenuItem *MenuItemCreate(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes) {
+	MenuItem *button = (MenuItem *) EsHeapAllocate(sizeof(MenuItem), true);
+	if (!button) return nullptr;
+	const EsStyle *style = (flags & ES_MENU_ITEM_HEADER) ? ES_STYLE_MENU_ITEM_HEADER : ES_STYLE_MENU_ITEM_NORMAL;
+	if (flags & ES_MENU_ITEM_HEADER) flags |= ES_ELEMENT_DISABLED;
+	button->Initialise(menu, flags | ES_CELL_H_FILL, ProcessMenuItemMessage, style);
+	button->cName = "menu item";
+	if (labelBytes == -1) labelBytes = EsCStringLength(label);
+	HeapDuplicate((void **) &button->label, &button->labelBytes, label, labelBytes);
+	return button;
+}
+
+void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsMenuCallback callback, EsGeneric context) {
+	MenuItem *button = MenuItemCreate(menu, flags, label, labelBytes);
+	if (!button) return;
+	EsButtonSetCheck(button, (EsCheckState) (flags & 3), false);
+	button->MaybeRefreshStyle();
+	button->userData = (void *) callback;
 	button->menuItemContext = context;
 }
 
 void EsMenuAddCommand(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsCommand *command) {
-	EsButton *button = (EsButton *) EsButtonCreate(menu, 
-			ES_BUTTON_NOT_FOCUSABLE | ES_BUTTON_MENU_ITEM | ES_CELL_H_FILL | flags, 
-			0, label, labelBytes);
-	if (!button) return;
-	EsCommandAddButton(command, button);
+	MenuItem *button = MenuItemCreate(menu, flags, label, labelBytes);
+	if (button) EsCommandAddButton(command, button);
 }
 
 // --------------------------------- Color wells and pickers.

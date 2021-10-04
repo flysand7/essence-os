@@ -1900,7 +1900,7 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 
 	if (textBytes) {
 		EsTextPlanProperties properties = {};
-		properties.flags = textAlign;
+		properties.flags = (flags & ES_DRAW_CONTENT_CHANGE_ALIGNMENT) ? (flags & 0xFF) : textAlign;
 
 		EsTextRun textRun[2] = {};
 		textRun[1].offset = textBytes;

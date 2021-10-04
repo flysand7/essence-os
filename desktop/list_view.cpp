@@ -1778,15 +1778,8 @@ struct EsListView : EsElement {
 
 			message->zOrder.child = nullptr;
 		} else if (message->type == ES_MSG_PAINT && !totalItemCount && emptyMessageBytes) {
-			UIStyle *style = GetStyle(MakeStyleKey(ES_STYLE_TEXT_LABEL_SECONDARY, 0), true);
-			EsTextPlanProperties properties = {};
-			properties.flags = ES_TEXT_H_CENTER | ES_TEXT_V_CENTER | ES_TEXT_WRAP | ES_TEXT_PLAN_SINGLE_USE;
-			EsTextRun textRun[2] = {};
-			style->GetTextStyle(&textRun[0].style);
-			textRun[1].offset = emptyMessageBytes;
-			EsRectangle bounds = EsPainterBoundsInset(message->painter); 
-			EsTextPlan *plan = EsTextPlanCreate(this, &properties, bounds, emptyMessage, textRun, 1);
-			EsDrawText(message->painter, plan, bounds); 
+			EsDrawTextThemed(message->painter, this, EsPainterBoundsInset(message->painter), emptyMessage, emptyMessageBytes, 
+					ES_STYLE_TEXT_LABEL_SECONDARY, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER | ES_TEXT_WRAP);
 		} else if (message->type == ES_MSG_ANIMATE) {
 			if (scroll.dragScrolling && (flags & ES_LIST_VIEW_CHOICE_SELECT)) {
 				DragSelect();
