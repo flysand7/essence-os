@@ -858,6 +858,9 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 		if (window->windowStyle == ES_WINDOW_MENU) {
 			EsAssert(window->state & UI_STATE_MENU_EXITING);
 		}
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_MIDDLE_DOWN || message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
+		// Make sure that something can be dragged, otherwise elements will get mouse dragged messages when the mouse moves over them.
+		response = ES_HANDLED;
 	}
 
 	return response;

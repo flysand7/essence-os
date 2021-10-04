@@ -967,12 +967,16 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 
 		EsMenuAddItem(menu, ES_FLAGS_DEFAULT,
 				INTERFACE_STRING(DesktopSnapWindowLeft), [] (EsMenu *, EsGeneric context) {
-			WindowSnap((EsWindow *) context.p, false, false, SNAP_EDGE_LEFT);
+			EsWindow *window = (EsWindow *) context.p;
+			if (window->isMaximised) WindowRestore(window, false /* we immediately move the window after this */);
+			WindowSnap(window, false, false, SNAP_EDGE_LEFT);
 		}, band->window);
 
 		EsMenuAddItem(menu, ES_FLAGS_DEFAULT,
 				INTERFACE_STRING(DesktopSnapWindowRight), [] (EsMenu *, EsGeneric context) {
-			WindowSnap((EsWindow *) context.p, false, false, SNAP_EDGE_RIGHT);
+			EsWindow *window = (EsWindow *) context.p;
+			if (window->isMaximised) WindowRestore(window, false /* we immediately move the window after this */);
+			WindowSnap(window, false, false, SNAP_EDGE_RIGHT);
 		}, band->window);
 
 		EsMenuShow(menu);
