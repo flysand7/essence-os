@@ -51,15 +51,16 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_RUN_TEMPORARY_APPLICATION (7)
 #define DESKTOP_MSG_REQUEST_SHUTDOWN          (8)
 #define DESKTOP_MSG_START_APPLICATION         (9)
-#define DESKTOP_MSG_CREATE_CLIPBOARD_FILE     (10)
-#define DESKTOP_MSG_CLIPBOARD_PUT             (11)
-#define DESKTOP_MSG_CLIPBOARD_GET             (12)
-#define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET  (13)
-#define DESKTOP_MSG_FILE_TYPES_GET            (14)
-#define DESKTOP_MSG_START_USER_TASK           (16)
-#define DESKTOP_MSG_SET_PROGRESS              (17)
-#define DESKTOP_MSG_RENAME                    (18)
-#define DESKTOP_MSG_SET_MODIFIED              (19)
+#define DESKTOP_MSG_CREATE_CLIPBOARD_FILE    (10)
+#define DESKTOP_MSG_CLIPBOARD_PUT            (11)
+#define DESKTOP_MSG_CLIPBOARD_GET            (12)
+#define DESKTOP_MSG_SYSTEM_CONFIGURATION_GET (13)
+#define DESKTOP_MSG_FILE_TYPES_GET           (14)
+#define DESKTOP_MSG_START_USER_TASK          (16)
+#define DESKTOP_MSG_SET_PROGRESS             (17)
+#define DESKTOP_MSG_RENAME                   (18)
+#define DESKTOP_MSG_SET_MODIFIED             (19)
+#define DESKTOP_MSG_QUERY_OPEN_DOCUMENT      (20)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -616,6 +617,19 @@ void _EsPathAnnouncePathMoved(const char *oldPath, ptrdiff_t oldPathBytes, const
 		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
 		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
 		MessageDesktop(buffer, bufferBytes);
+		EsHeapFree(buffer);
+	}
+}
+
+void EsOpenDocumentQueryInformation(const char *path, ptrdiff_t pathBytes, EsOpenDocumentInformation *information) {
+	if (pathBytes == -1) pathBytes = EsCStringLength(path);
+	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
+
+	if (buffer) {
+		buffer[0] = DESKTOP_MSG_QUERY_OPEN_DOCUMENT;
+		EsMemoryCopy(buffer + 1, path, pathBytes);
+		EsBuffer response = { .out = (uint8_t *) information, .bytes = sizeof(EsOpenDocumentInformation) };
+		MessageDesktop(buffer, pathBytes + 1, ES_INVALID_HANDLE, &response);
 		EsHeapFree(buffer);
 	}
 }

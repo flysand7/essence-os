@@ -504,7 +504,7 @@ define ES_BUTTON_CHECKBOX			(1 << 10)
 define ES_BUTTON_RADIOBOX			(1 << 11)
 define ES_BUTTON_CANCEL				(1 << 12)
 define ES_BUTTON_PUSH				(1 << 13)
-define ES_MENU_ITEM_CHECKED			(1 << 14)
+define ES_MENU_ITEM_CHECKED			(ES_CHECK_CHECKED)
 
 define ES_COLOR_WELL_HAS_OPACITY		(1 << 0)
 
@@ -1896,6 +1896,12 @@ struct EsBlockDeviceInformation {
 	char model[64];
 };
 
+struct EsOpenDocumentInformation {
+	bool isOpen, isModified;
+	uint8_t applicationNameBytes;
+	char applicationName[128];
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -1980,10 +1986,11 @@ function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t data
 function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
 function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags);
 
-// Requires permission_all_files.
+// These calls require permission_all_files.
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
 function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
+function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
 
 function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
 function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq);

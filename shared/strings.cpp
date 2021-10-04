@@ -306,6 +306,7 @@ DEFINE_INTERFACE_STRING(FileManagerMoveTask, "Moving" ELLIPSIS);
 DEFINE_INTERFACE_STRING(FileManagerGoBack, "Go back");
 DEFINE_INTERFACE_STRING(FileManagerGoForwards, "Go forwards");
 DEFINE_INTERFACE_STRING(FileManagerGoUp, "Go to containing folder");
+DEFINE_INTERFACE_STRING(FileManagerFileOpenIn, "File is open in " OPEN_SPEECH "%s" CLOSE_SPEECH);
 
 // 2048.
 

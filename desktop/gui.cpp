@@ -4171,10 +4171,6 @@ void EsMenuAddItem(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t la
 	};
 
 	button->menuItemContext = context;
-
-	if (flags & ES_MENU_ITEM_CHECKED) {
-		EsButtonSetCheck(button, ES_CHECK_CHECKED);
-	}
 }
 
 void EsMenuAddCommand(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes, EsCommand *command) {

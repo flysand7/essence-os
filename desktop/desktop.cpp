@@ -2691,6 +2691,42 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 
 		desktop.allOngoingUserTasks.Add(instance);
 		TaskBarTasksButtonUpdate();
+	} else if (buffer[0] == DESKTOP_MSG_QUERY_OPEN_DOCUMENT) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+			EsObjectID id = 0;
+
+			for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+				OpenDocument *document = &desktop.openDocuments[i];
+
+				if (0 == EsStringCompare(document->path, document->pathBytes, (char *) buffer + 1, message->desktop.bytes - 1)) {
+					id = document->id;
+					break;
+				}
+			}
+
+			EsOpenDocumentInformation information;
+			EsMemoryZero(&information, sizeof(information));
+
+			if (id) {
+				information.isOpen = true;
+
+				for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+					ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+					if (instance->documentID == id) {
+						information.isModified = instance->tab && (instance->tab->closeButton->customStyleState & THEME_STATE_CHECKED);
+						information.applicationNameBytes = MinimumInteger(EsCStringLength(instance->application->cName), 
+								sizeof(information.applicationName));
+						EsMemoryCopy(information.applicationName, instance->application->cName, information.applicationNameBytes);
+						break;
+					}
+				}
+			}
+
+			EsBufferWrite(pipe, &information, sizeof(information));
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |

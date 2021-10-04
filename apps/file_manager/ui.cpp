@@ -823,6 +823,20 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		ListItemCreated(element, message->createItem.index, false);
 	} else if (message->type == ES_MSG_LIST_VIEW_CONTEXT_MENU) {
 		EsMenu *menu = EsMenuCreate(element, ES_MENU_AT_CURSOR);
+		EsOpenDocumentInformation information;
+		ListEntry *entry = &instance->listContents[message->selectItem.index];
+		String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry->entry);
+		EsOpenDocumentQueryInformation(STRING(path), &information);
+		StringDestroy(&path);
+
+		if (information.isOpen) {
+			char buffer[256];
+			size_t bytes = EsStringFormat(buffer, sizeof(buffer), interfaceString_FileManagerFileOpenIn, 
+					(size_t) information.applicationNameBytes, (const char *) information.applicationName);
+			EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, buffer, bytes);
+			EsMenuAddSeparator(menu);
+		}
+
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCut), EsCommandByID(instance, ES_COMMAND_CUT));
 		EsMenuAddCommand(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(instance, ES_COMMAND_COPY));
 		EsMenuAddSeparator(menu);
