@@ -1520,6 +1520,8 @@ int main(int _argc, char **_argv) {
 		acceptedLicense = true;
 	}
 
+	SaveConfig();
+
 	if (argc >= 2) {
 		char buffer[4096];
 		buffer[0] = 0;
