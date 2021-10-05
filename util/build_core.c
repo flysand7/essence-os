@@ -1218,6 +1218,7 @@ int main(int argc, char **argv) {
 	bool skipCompile = false;
 	bool skipHeaderGeneration = false;
 	bool minimalRebuild = false;
+	bool withoutKernel = false;
 
 #ifdef PARALLEL_BUILD
 	size_t threadCount = 1;
@@ -1345,6 +1346,8 @@ int main(int argc, char **argv) {
 					if (threadCount < 1) threadCount = 1;
 					if (threadCount > 100) threadCount = 100;
 #endif
+				} else if (0 == strcmp(s.key, "without_kernel")) {
+					withoutKernel = atoi(s.value);
 				}
 			} else if (0 == strcmp(s.section, "install")) {
 				if (0 == strcmp(s.key, "file")) {
@@ -1496,7 +1499,7 @@ int main(int argc, char **argv) {
 			ParseApplicationManifest(applicationManifests[i]);
 		}
 
-		if (systemBuild) {
+		if (systemBuild && !withoutKernel) {
 			ParseKernelConfiguration();
 
 			Application application = {};
@@ -1614,7 +1617,10 @@ int main(int argc, char **argv) {
 		}
 
 		if (systemBuild) {
-			LinkKernel();
+			if (!withoutKernel) {
+				LinkKernel();
+			}
+
 			OutputSystemConfiguration();
 		}
 	}

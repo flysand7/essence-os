@@ -34,6 +34,10 @@ cp ports/gcc/changes/gcc_gcc_config_host_darwin.c bin/gcc-src/gcc/config/host-da
 cp ports/gcc/changes/gcc_libgcc_config.host bin/gcc-src/libgcc/config.host
 cp ports/gcc/changes/gcc_libstdc++-v3_configure bin/gcc-src/libstdc++-v3/configure
 
+if [ "$1" == "download-only" ]; then
+	exit 0
+fi
+
 export ac_cv_func_calloc_0_nonnull="yes"
 export ac_cv_func_chown_works="yes"
 export ac_cv_func_getgroups_works="yes"

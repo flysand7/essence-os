@@ -204,6 +204,27 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 	}
 	
 	fprintf(f, "\n");
+}
+
+void BuildUtilities();
+
+#define COMPILE_SKIP_COMPILE         (1 << 1)
+#define COMPILE_DO_BUILD             (1 << 2)
+#define COMPILE_FOR_EMULATOR         (1 << 3)
+#define OPTIMISE_OFF                 (1 << 4)
+#define OPTIMISE_ON                  (1 << 5)
+#define OPTIMISE_FULL                (1 << 6)
+
+void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
+	buildStartTimeStamp = time(NULL);
+	BuildUtilities();
+	BuildAPIDependencies();
+
+	LoadOptions();
+
+	FILE *f = fopen("bin/build.ini", "wb");
+
+	OutputStartOfBuildINI(f, flags & OPTIMISE_FULL);
 
 	{
 		size_t kernelConfigBytes;
@@ -240,27 +261,7 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 
 		free(kernelConfig);
 	}
-}
 
-void BuildUtilities();
-
-#define COMPILE_SKIP_COMPILE         (1 << 1)
-#define COMPILE_DO_BUILD             (1 << 2)
-#define COMPILE_FOR_EMULATOR         (1 << 3)
-#define OPTIMISE_OFF                 (1 << 4)
-#define OPTIMISE_ON                  (1 << 5)
-#define OPTIMISE_FULL                (1 << 6)
-
-void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
-	buildStartTimeStamp = time(NULL);
-	BuildUtilities();
-	BuildAPIDependencies();
-
-	LoadOptions();
-
-	FILE *f = fopen("bin/build.ini", "wb");
-
-	OutputStartOfBuildINI(f, flags & OPTIMISE_FULL);
 	fprintf(f, "[general]\nfor_emulator=%d\noptimise=%d\nskip_compile=%d\n\n", 
 			!!(flags & COMPILE_FOR_EMULATOR), (flags & OPTIMISE_ON) || (flags & OPTIMISE_FULL), !!(flags & COMPILE_SKIP_COMPILE));
 
@@ -522,54 +523,6 @@ void Run(int emulator, int log, int debug) {
 	}
 }
 
-bool DownloadGCC() {
-	printf("\nDownloading and extracting sources...\n");
-
-	FILE *test = fopen("bin/binutils-" BINUTILS_VERSION ".tar.xz", "r");
-	if (test) fclose(test);
-	else {
-		printf("Downloading Binutils source...\n");
-		if (CallSystem("curl ftp://ftp.gnu.org/gnu/binutils/binutils-" BINUTILS_VERSION ".tar.xz > bin/binutils-" BINUTILS_VERSION ".tar.xz")) goto fail;
-	}
-	printf("Extracting Binutils source...\n");
-	if (CallSystem("tar -xJf bin/binutils-" BINUTILS_VERSION ".tar.xz")) goto fail;
-	if (CallSystem("mv binutils-" BINUTILS_VERSION " bin")) goto fail;
-
-	test = fopen("bin/gcc-" GCC_VERSION ".tar.xz", "r");
-	if (test) fclose(test);
-	else {
-		printf("Downloading GCC source...\n");
-		if (CallSystem("curl ftp://ftp.gnu.org/gnu/gcc/gcc-" GCC_VERSION "/gcc-" GCC_VERSION ".tar.xz > bin/gcc-" GCC_VERSION ".tar.xz")) goto fail;
-	}
-	printf("Extracting GCC source...\n");
-	if (CallSystem("tar -xJf bin/gcc-" GCC_VERSION ".tar.xz")) goto fail;
-	if (CallSystem("mv gcc-" GCC_VERSION " bin")) goto fail;
-
-	return true;
-	fail: return false;
-}
-
-bool PatchGCC() {
-	// See ports/gcc/notes.txt for how these patches are made.
-	// Keep in sync with ports/gcc/port.sh.
-
-	if (CallSystem("cp ports/gcc/changes/binutils_bfd_config.bfd bin/binutils-" BINUTILS_VERSION "/bfd/config.bfd")) return false; 
-	if (CallSystem("cp ports/gcc/changes/binutils_config.sub bin/binutils-" BINUTILS_VERSION "/config.sub")) return false; 
-	if (CallSystem("cp ports/gcc/changes/binutils_gas_configure.tgt bin/binutils-" BINUTILS_VERSION "/gas/configure.tgt")) return false; 
-	if (CallSystem("cp ports/gcc/changes/binutils_ld_configure.tgt bin/binutils-" BINUTILS_VERSION "/ld/configure.tgt")) return false; 
-
-	if (CallSystem("cp ports/gcc/changes/gcc_config.sub bin/gcc-" GCC_VERSION "/config.sub")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_fixincludes_mkfixinc.sh bin/gcc-" GCC_VERSION "/fixincludes/mkfixinc.sh")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_essence.h bin/gcc-" GCC_VERSION "/gcc/config/essence.h")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_i386_t-x86_64-essence bin/gcc-" GCC_VERSION "/gcc/config/i386/t-x86_64-essence")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config.gcc bin/gcc-" GCC_VERSION "/gcc/config.gcc")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_gcc_config_host_darwin.c bin/gcc-" GCC_VERSION "/gcc/config/host-darwin.c")) return false;
-	if (CallSystem("cp ports/gcc/changes/gcc_libgcc_config.host bin/gcc-" GCC_VERSION "/libgcc/config.host")) return false; 
-	if (CallSystem("cp ports/gcc/changes/gcc_libstdc++-v3_configure bin/gcc-" GCC_VERSION "/libstdc++-v3/configure")) return false; 
-
-	return true;
-}
-
 void BuildCrossCompiler() {
 	if (!CallSystem("whoami | grep root")) {
 		printf("Error: Build should not be run as root.\n");
@@ -674,10 +627,13 @@ void BuildCrossCompiler() {
 			CallSystem("ports/musl/build.sh >> bin/build_cross.log 2>&1");
 		}
 
-		if (!DownloadGCC()) goto fail;
-		if (!PatchGCC()) goto fail;
+		printf("Downloading and extracting source...\n");
 
-		printf("Starting build...\n");
+		if (CallSystem("ports/gcc/port.sh download-only")) {
+			goto fail;
+		}
+
+		printf("Building GCC...\n");
 		StartSpinner();
 
 		{
@@ -685,12 +641,12 @@ void BuildCrossCompiler() {
 			if (CallSystem("mkdir bin/build-binutils")) goto fail;
 			if (CallSystem("mkdir bin/build-gcc")) goto fail;
 			if (chdir("bin/build-binutils")) goto fail;
-			if (CallSystemF("../binutils-" BINUTILS_VERSION "/configure --target=x86_64-essence --prefix=\"%s\" --with-sysroot=%s --disable-nls --disable-werror >> ../build_cross.log 2>&1", 
+			if (CallSystemF("../binutils-src/configure --target=x86_64-essence --prefix=\"%s\" --with-sysroot=%s --disable-nls --disable-werror >> ../build_cross.log 2>&1", 
 						installationFolder, sysrootFolder)) goto fail;
 			if (chdir("../..")) goto fail;
 			if (chdir("bin/build-gcc")) goto fail;
 			// Add --without-headers for a x86_64-elf build.
-			if (CallSystemF("../gcc-" GCC_VERSION "/configure --target=x86_64-essence --prefix=\"%s\" --enable-languages=c,c++ --with-sysroot=%s --disable-nls >> ../build_cross.log 2>&1", 
+			if (CallSystemF("../gcc-src/configure --target=x86_64-essence --prefix=\"%s\" --enable-languages=c,c++ --with-sysroot=%s --disable-nls >> ../build_cross.log 2>&1", 
 						installationFolder, sysrootFolder)) goto fail;
 			if (chdir("../..")) goto fail;
 		}
@@ -741,6 +697,7 @@ void BuildCrossCompiler() {
 			BuildAPIDependencies();
 			FILE *f = fopen("bin/build.ini", "wb");
 			OutputStartOfBuildINI(f, false);
+			fprintf(f, "[general]\nwithout_kernel=1\n");
 			fclose(f);
 			if (CallSystem("bin/build_core standard bin/build.ini")) goto fail;
 		}
@@ -756,13 +713,8 @@ void BuildCrossCompiler() {
 
 		{
 			CallSystem("echo Cleaning up... >> bin/build_cross.log");
-			// printf("\nType 'yes' to remove intermediate build files (recommended).\n");
-			// if (GetYes()) {
-				CallSystem("rm -rf bin/binutils-" BINUTILS_VERSION "/");
-				CallSystem("rm -rf bin/gcc-" GCC_VERSION "/");
-				CallSystem("rm -rf bin/build-binutils");
-				CallSystem("rm -rf bin/build-gcc");
-			// }
+			CallSystem("rm -rf bin/binutils-src bin/gcc-src bin/gmp-src bin/mpc-src bin/mpfr-src");
+			CallSystem("rm -rf bin/build-binutils bin/build-gcc");
 			CallSystem("rm bin/running_makefiles");
 		}
 
@@ -1456,7 +1408,7 @@ void DoCommand(const char *l) {
 			exit(1);
 		}
 
-		if (CallSystemF("tar -vx%cf %s", decompressFlag, name)) exit(1);
+		if (CallSystemF("tar -x%cf %s", decompressFlag, name)) exit(1);
 		if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
 	} else if (0 == strcmp(l, "make-crash-report")) {
 		system("rm crash-report.tar.gz");
@@ -1519,14 +1471,11 @@ int main(int _argc, char **_argv) {
 	}
 
 	sh_new_strdup(applicationDependencies);
-
 	unlink("bin/dependencies.ini");
 
 	coloredOutput = isatty(STDERR_FILENO);
 
-	char *prev = NULL;
-
-	if (argc != 2) {
+	if (argc == 1) {
 		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\n");
 	}
 
@@ -1571,16 +1520,6 @@ int main(int _argc, char **_argv) {
 		acceptedLicense = true;
 	}
 
-	const char *runFirstCommand = NULL;
-
-	if (CallSystem("x86_64-essence-gcc --version > /dev/null 2>&1 ")) {
-		BuildCrossCompiler();
-		runFirstCommand = "b";
-		foundValidCrossCompiler = true;
-	}
-
-	SaveConfig();
-
 	if (argc >= 2) {
 		char buffer[4096];
 		buffer[0] = 0;
@@ -1596,6 +1535,16 @@ int main(int _argc, char **_argv) {
 	} else {
 		interactiveMode = true;
 	}
+
+	const char *runFirstCommand = NULL;
+
+	if (CallSystem("x86_64-essence-gcc --version > /dev/null 2>&1 ")) {
+		BuildCrossCompiler();
+		runFirstCommand = "b";
+		foundValidCrossCompiler = true;
+	}
+
+	SaveConfig();
 
 	if (runFirstCommand) {
 		DoCommand(runFirstCommand);
@@ -1622,6 +1571,7 @@ int main(int _argc, char **_argv) {
 	}
 
 	printf("Enter 'help' to get a list of commands.\n");
+	char *prev = NULL;
 
 	while (true) {
 		char *l = NULL;
