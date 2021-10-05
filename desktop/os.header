@@ -14,6 +14,7 @@ opaque_type EsImageDisplay     EsElement;
 opaque_type EsListDisplay      EsElement;
 opaque_type EsCanvasPane       EsElement;
 opaque_type EsSlider           EsElement;
+opaque_type EsScrollView       EsElement;
 opaque_type EsTextPlan         none;
 opaque_type EsPaintTarget      none;
 opaque_type EsUndoManager      none;
@@ -734,6 +735,16 @@ define ES_PATH_MOVE_ALLOW_COPY_AND_DELETE (1 << 0) // Copy and delete the file i
 define ES_CLIPBOARD_ADD_LAZY_CUT (1 << 0) // Only perform the deletion after pasting; often implemented as a move.
 
 define ES_SCROLL_WHEEL_NOTCH (0x100)
+
+// Scroll view modes.
+define ES_SCROLL_MODE_NONE   (0) // No scrolling takes place on this axis.
+define ES_SCROLL_MODE_HIDDEN (1) // Scrolling takes place, but there is no visible scrollbar.
+define ES_SCROLL_MODE_FIXED  (2) // The scrollbar is always visible.
+define ES_SCROLL_MODE_AUTO   (3) // The scrollbar is only visible if the content is larger than the viewport.
+// Scroll view flags.
+define SCROLL_X_DRAG (1 << 0)
+define SCROLL_Y_DRAG (1 << 1)
+private define SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
 
 include desktop/icons.header
 
@@ -2378,7 +2389,19 @@ function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style);
 function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = true);
 function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
 
+// TODO Rename these functions?
 function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+
+function void EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages.
+function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
+function void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool sendMovedMessage = true);
+function void EsScrollViewRefresh(EsScrollView *view);
+function int64_t EsScrollViewGetPosition(EsScrollView *view, int axis);
+function int64_t EsScrollViewGetLimit(EsScrollView *view, int axis);
+function void EsScrollViewSetFixedViewport(EsScrollView *view, int axis, int32_t value);
+function bool EsScrollViewIsBarEnabled(EsScrollView *view, int axis);
+function bool EsScrollViewIsInDragScroll(EsScrollView *view);
 
 // Windows, menus, popups, toolbars and dialogs.
 

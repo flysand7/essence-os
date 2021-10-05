@@ -323,14 +323,7 @@ struct ScrollPane {
 	bool enabled[2];
 	bool dragScrolling;
 
-#define SCROLL_MODE_NONE    (0) // No scrolling takes place on this axis.
-#define SCROLL_MODE_HIDDEN  (1) // Scrolling takes place, but there is no visible scrollbar.
-#define SCROLL_MODE_FIXED   (2) // The scrollbar is always visible.
-#define SCROLL_MODE_AUTO    (3) // The scrollbar is only visible if the content is larger than the viewport.
 	uint8_t mode[2];
-#define SCROLL_X_DRAG (1 << 0)
-#define SCROLL_Y_DRAG (1 << 1)
-#define SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
 	uint16_t flags;
 
 	void Setup(EsElement *parent, uint8_t xMode, uint8_t yMode, uint16_t flags);
@@ -2790,11 +2783,11 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 	mode[1] = _yMode;
 	flags = _flags;
 
-	if (mode[0] == SCROLL_MODE_NONE) flags &= ~SCROLL_X_DRAG;
-	if (mode[1] == SCROLL_MODE_NONE) flags &= ~SCROLL_Y_DRAG;
+	if (mode[0] == ES_SCROLL_MODE_NONE) flags &= ~SCROLL_X_DRAG;
+	if (mode[1] == ES_SCROLL_MODE_NONE) flags &= ~SCROLL_Y_DRAG;
 
 	for (int axis = 0; axis < 2; axis++) {
-		if (mode[axis] == SCROLL_MODE_FIXED || mode[axis] == SCROLL_MODE_AUTO) {
+		if (mode[axis] == ES_SCROLL_MODE_FIXED || mode[axis] == ES_SCROLL_MODE_AUTO) {
 			uint64_t flags = ES_CELL_FILL | ES_ELEMENT_NON_CLIENT | (axis ? ES_SCROLLBAR_VERTICAL : ES_SCROLLBAR_HORIZONTAL);
 
 			if (!bar[axis]) {
@@ -2870,7 +2863,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			message->animate.complete = false;
 		}
 	} else if (message->type == ES_MSG_GET_HEIGHT) {
-		if (message->measure.width && (mode[0] == SCROLL_MODE_AUTO) && (mode[1] != SCROLL_MODE_AUTO)) {
+		if (message->measure.width && (mode[0] == ES_SCROLL_MODE_AUTO) && (mode[1] != ES_SCROLL_MODE_AUTO)) {
 			// To accurately measure the height of the element for this width,
 			// we need to determine whether the horizontal scrollbar will be present.
 			// TODO This assumes that the element will be send a LAYOUT message after measurements are complete,
@@ -2881,7 +2874,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			parent->internalOffsetBottom = (m.measure.width + fixedViewport[0] > message->measure.width) ? bar[0]->currentStyle->preferredHeight : 0;
 		}
 	} else if (message->type == ES_MSG_GET_WIDTH) {
-		if (message->measure.width && (mode[1] == SCROLL_MODE_AUTO) && (mode[0] != SCROLL_MODE_AUTO)) {
+		if (message->measure.width && (mode[1] == ES_SCROLL_MODE_AUTO) && (mode[0] != ES_SCROLL_MODE_AUTO)) {
 			// As above.
 			EsMessage m = {};
 			m.type = ES_MSG_GET_HEIGHT;
@@ -2895,7 +2888,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 }
 
 void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) {
-	if (mode[axis] == SCROLL_MODE_NONE) return;
+	if (mode[axis] == ES_SCROLL_MODE_NONE) return;
 	if (newScroll < 0) newScroll = 0;
 	else if (newScroll > limit[axis]) newScroll = limit[axis];
 	if (newScroll == position[axis]) return;
@@ -2917,7 +2910,7 @@ void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) 
 }
 
 bool ScrollPane::RefreshLimit(int axis, int64_t *contentSize) {
-	if (mode[axis] != SCROLL_MODE_NONE) {
+	if (mode[axis] != ES_SCROLL_MODE_NONE) {
 		uint8_t *internalOffset = axis ? &parent->internalOffsetRight : &parent->internalOffsetBottom;
 		EsRectangle bounds = parent->GetBounds();
 
@@ -2936,7 +2929,7 @@ bool ScrollPane::RefreshLimit(int axis, int64_t *contentSize) {
 					axis + 'X', limit[axis], *contentSize, axis ? bounds.r : bounds.b);
 		}
 
-		if (mode[axis] == SCROLL_MODE_AUTO && limit[axis] > 0 && !(*internalOffset)) {
+		if (mode[axis] == ES_SCROLL_MODE_AUTO && limit[axis] > 0 && !(*internalOffset)) {
 			*internalOffset = axis ? bar[axis]->currentStyle->preferredWidth : bar[axis]->currentStyle->preferredHeight;
 			return true;
 		}
@@ -2950,8 +2943,8 @@ void ScrollPane::Refresh() {
 		InspectorNotifyElementEvent(parent, "scroll", "Refreshing scroll pane...\n");
 	}
 
-	parent->internalOffsetRight = mode[1] == SCROLL_MODE_FIXED ? bar[1]->currentStyle->preferredWidth : 0;
-	parent->internalOffsetBottom = mode[0] == SCROLL_MODE_FIXED ? bar[0]->currentStyle->preferredHeight : 0;
+	parent->internalOffsetRight = mode[1] == ES_SCROLL_MODE_FIXED ? bar[1]->currentStyle->preferredWidth : 0;
+	parent->internalOffsetBottom = mode[0] == ES_SCROLL_MODE_FIXED ? bar[0]->currentStyle->preferredHeight : 0;
 
 	int64_t contentWidth = 0, contentHeight = 0;
 
@@ -2991,6 +2984,25 @@ void ScrollPane::Refresh() {
 		pad->InternalMove(parent->internalOffsetRight, parent->internalOffsetBottom, 
 				parent->width - parent->internalOffsetRight - border.r, parent->height - parent->internalOffsetBottom - border.b);
 	}
+}
+
+struct EsScrollView : EsElement { ScrollPane scroll; };
+void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags) { view->scroll.Setup(view, xMode, yMode, flags); }
+void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool notify) { view->scroll.SetPosition(axis, newPosition, notify); }
+void EsScrollViewRefresh(EsScrollView *view) { view->scroll.Refresh(); }
+void EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) { view->scroll.ReceivedMessage(message); }
+int64_t EsScrollViewGetPosition(EsScrollView *view, int axis) { return view->scroll.position[axis]; }
+int64_t EsScrollViewGetLimit(EsScrollView *view, int axis) { return view->scroll.limit[axis]; }
+void EsScrollViewSetFixedViewport(EsScrollView *view, int axis, int32_t value) { view->scroll.fixedViewport[axis] = value; }
+bool EsScrollViewIsBarEnabled(EsScrollView *view, int axis) { return view->scroll.enabled[axis]; }
+bool EsScrollViewIsInDragScroll(EsScrollView *view) { return view->scroll.dragScrolling; }
+
+EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+	EsScrollView *element = (EsScrollView *) EsHeapAllocate(sizeof(EsScrollView), true);
+	if (!element) return nullptr;
+	element->Initialise(parent, flags, nullptr, style);
+	element->cName = "custom scroll view";
+	return element;
 }
 
 // --------------------------------- Panels.
@@ -3386,8 +3398,8 @@ EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags, const EsStyle *style) 
 	if (flags & ES_PANEL_REVERSE)     panel->flags |= ES_ELEMENT_LAYOUT_HINT_REVERSE;
 
 	panel->scroll.Setup(panel, 
-			((flags & ES_PANEL_H_SCROLL_FIXED) ? SCROLL_MODE_FIXED : (flags & ES_PANEL_H_SCROLL_AUTO) ? SCROLL_MODE_AUTO : SCROLL_MODE_NONE),
-			((flags & ES_PANEL_V_SCROLL_FIXED) ? SCROLL_MODE_FIXED : (flags & ES_PANEL_V_SCROLL_AUTO) ? SCROLL_MODE_AUTO : SCROLL_MODE_NONE),
+			((flags & ES_PANEL_H_SCROLL_FIXED) ? ES_SCROLL_MODE_FIXED : (flags & ES_PANEL_H_SCROLL_AUTO) ? ES_SCROLL_MODE_AUTO : ES_SCROLL_MODE_NONE),
+			((flags & ES_PANEL_V_SCROLL_FIXED) ? ES_SCROLL_MODE_FIXED : (flags & ES_PANEL_V_SCROLL_AUTO) ? ES_SCROLL_MODE_AUTO : ES_SCROLL_MODE_NONE),
 			ES_FLAGS_DEFAULT);
 
 	return panel;
@@ -3824,7 +3836,7 @@ EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyl
 	pane->Initialise(parent, flags, ProcessCanvasPaneMessage, style);
 	pane->cName = "canvas pane";
 	pane->zoom = 1.0;
-	pane->scroll.Setup(pane, SCROLL_MODE_AUTO, SCROLL_MODE_AUTO, SCROLL_MANUAL);
+	pane->scroll.Setup(pane, ES_SCROLL_MODE_AUTO, ES_SCROLL_MODE_AUTO, SCROLL_MANUAL);
 	return pane;
 }
 

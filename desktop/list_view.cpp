@@ -1925,18 +1925,18 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 		view->scroll.fixedViewport[1] = 0;
 	}
 
-	// It's safe to use SCROLL_MODE_AUTO even in tiled mode,
+	// It's safe to use ES_SCROLL_MODE_AUTO even in tiled mode,
 	// because decreasing the secondary axis can only increase the primary axis.
 
 	uint8_t scrollXMode = 0, scrollYMode = 0;
 
 	if (view->flags & ES_LIST_VIEW_COLUMNS) {
-		scrollXMode = SCROLL_MODE_AUTO;
-		scrollYMode = SCROLL_MODE_AUTO;
+		scrollXMode = ES_SCROLL_MODE_AUTO;
+		scrollYMode = ES_SCROLL_MODE_AUTO;
 	} else if (view->flags & ES_LIST_VIEW_HORIZONTAL) {
-		scrollXMode = SCROLL_MODE_AUTO;
+		scrollXMode = ES_SCROLL_MODE_AUTO;
 	} else {
-		scrollYMode = SCROLL_MODE_AUTO;
+		scrollYMode = ES_SCROLL_MODE_AUTO;
 	}
 
 	view->scroll.Setup(view, scrollXMode, scrollYMode, SCROLL_X_DRAG | SCROLL_Y_DRAG);
