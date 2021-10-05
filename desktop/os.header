@@ -742,9 +742,9 @@ define ES_SCROLL_MODE_HIDDEN (1) // Scrolling takes place, but there is no visib
 define ES_SCROLL_MODE_FIXED  (2) // The scrollbar is always visible.
 define ES_SCROLL_MODE_AUTO   (3) // The scrollbar is only visible if the content is larger than the viewport.
 // Scroll view flags.
-define SCROLL_X_DRAG (1 << 0)
-define SCROLL_Y_DRAG (1 << 1)
-private define SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
+define ES_SCROLL_X_DRAG (1 << 0)
+define ES_SCROLL_Y_DRAG (1 << 1)
+private define ES_SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
 
 include desktop/icons.header
 
@@ -1319,11 +1319,12 @@ struct EsPanelBand {
 struct EsThemeMetrics {
 	uint64_t mask;
 	EsRectangle insets, clipInsets;
-	int clipEnabled, cursor;
-	int preferredWidth, preferredHeight;
-	int minimumWidth, minimumHeight;
-	int maximumWidth, maximumHeight;
-	int gapMajor, gapMinor, gapWrap;
+	bool clipEnabled;
+	EsCursorStyle cursor;
+	int32_t preferredWidth, preferredHeight;
+	int32_t minimumWidth, minimumHeight;
+	int32_t maximumWidth, maximumHeight;
+	int32_t gapMajor, gapMinor, gapWrap;
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
 	int textAlign, textSize, fontFamily, fontWeight, iconSize;
 	bool isItalic, layoutVertical;

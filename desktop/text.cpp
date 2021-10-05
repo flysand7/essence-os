@@ -4716,7 +4716,7 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 	textbox->scroll.Setup(textbox, 
 			(flags & ES_TEXTBOX_MULTILINE) ? ES_SCROLL_MODE_AUTO : ES_SCROLL_MODE_HIDDEN, 
 			(flags & ES_TEXTBOX_MULTILINE) ? ES_SCROLL_MODE_AUTO : ES_SCROLL_MODE_NONE,
-			SCROLL_X_DRAG | SCROLL_Y_DRAG);
+			ES_SCROLL_X_DRAG | ES_SCROLL_Y_DRAG);
 
 	textbox->undo = &textbox->localUndo;
 	textbox->undo->instance = textbox->instance;

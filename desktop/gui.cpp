@@ -2783,8 +2783,8 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 	mode[1] = _yMode;
 	flags = _flags;
 
-	if (mode[0] == ES_SCROLL_MODE_NONE) flags &= ~SCROLL_X_DRAG;
-	if (mode[1] == ES_SCROLL_MODE_NONE) flags &= ~SCROLL_Y_DRAG;
+	if (mode[0] == ES_SCROLL_MODE_NONE) flags &= ~ES_SCROLL_X_DRAG;
+	if (mode[1] == ES_SCROLL_MODE_NONE) flags &= ~ES_SCROLL_Y_DRAG;
 
 	for (int axis = 0; axis < 2; axis++) {
 		if (mode[axis] == ES_SCROLL_MODE_FIXED || mode[axis] == ES_SCROLL_MODE_AUTO) {
@@ -2844,7 +2844,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 	if (message->type == ES_MSG_LAYOUT) {
 		Refresh();
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG || message->type == ES_MSG_MOUSE_RIGHT_DRAG || message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
-		if (flags & (SCROLL_X_DRAG | SCROLL_Y_DRAG)) {
+		if (flags & (ES_SCROLL_X_DRAG | ES_SCROLL_Y_DRAG)) {
 			parent->StartAnimating();
 			dragScrolling = true;
 		}
@@ -2858,8 +2858,8 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			double distanceY = point.y < bounds.t ? point.y - bounds.t : point.y >= bounds.b ? point.y - bounds.b + 1 : 0;
 			double deltaX = message->animate.deltaMs * distanceX / 300.0;
 			double deltaY = message->animate.deltaMs * distanceY / 300.0;
-			if (deltaX && (flags & SCROLL_X_DRAG)) SetX(position[0] + deltaX, true);
-			if (deltaY && (flags & SCROLL_Y_DRAG)) SetY(position[1] + deltaY, true);
+			if (deltaX && (flags & ES_SCROLL_X_DRAG)) SetX(position[0] + deltaX, true);
+			if (deltaY && (flags & ES_SCROLL_Y_DRAG)) SetY(position[1] + deltaY, true);
 			message->animate.complete = false;
 		}
 	} else if (message->type == ES_MSG_GET_HEIGHT) {
@@ -2961,7 +2961,7 @@ void ScrollPane::Refresh() {
 	if (bar[0]) ScrollbarSetMeasurements(bar[0], bounds.r - fixedViewport[0], contentWidth  - fixedViewport[0]);
 	if (bar[1]) ScrollbarSetMeasurements(bar[1], bounds.b - fixedViewport[1], contentHeight - fixedViewport[1]);
 
-	if (~flags & SCROLL_MANUAL) {
+	if (~flags & ES_SCROLL_MANUAL) {
 		SetPosition(0, position[0], true);
 		SetPosition(1, position[1], true);
 	}
@@ -3836,7 +3836,7 @@ EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyl
 	pane->Initialise(parent, flags, ProcessCanvasPaneMessage, style);
 	pane->cName = "canvas pane";
 	pane->zoom = 1.0;
-	pane->scroll.Setup(pane, ES_SCROLL_MODE_AUTO, ES_SCROLL_MODE_AUTO, SCROLL_MANUAL);
+	pane->scroll.Setup(pane, ES_SCROLL_MODE_AUTO, ES_SCROLL_MODE_AUTO, ES_SCROLL_MANUAL);
 	return pane;
 }
 
@@ -6287,7 +6287,7 @@ EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	m.insets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->insets);
 	m.clipInsets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->clipInsets);
 	m.clipEnabled = metrics->clipEnabled;
-	m.cursor = metrics->cursor;
+	m.cursor = (EsCursorStyle) metrics->cursor;
 	m.preferredWidth = metrics->preferredWidth;
 	m.preferredHeight = metrics->preferredHeight;
 	m.minimumWidth = metrics->minimumWidth;

@@ -1939,7 +1939,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 		scrollYMode = ES_SCROLL_MODE_AUTO;
 	}
 
-	view->scroll.Setup(view, scrollXMode, scrollYMode, SCROLL_X_DRAG | SCROLL_Y_DRAG);
+	view->scroll.Setup(view, scrollXMode, scrollYMode, ES_SCROLL_X_DRAG | ES_SCROLL_Y_DRAG);
 	ListViewCalculateTotalColumnWidth(view);
 
 	// Remove existing visible items; the list will need to be repopulated.
