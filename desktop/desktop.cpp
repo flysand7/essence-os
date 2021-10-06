@@ -780,7 +780,8 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		} else {
 			EsPoint mousePosition = EsMouseGetPosition(tab->window);
 			int32_t dragOffThreshold = GetConstantNumber("tabDragOffThreshold");
-			int32_t previousTabOffsetX = tab->offsetX;
+			// int32_t previousTabOffsetX = tab->offsetX;
+			int32_t previousTabOffsetX = tab->dragPosition;
 
 			if (EsRectangleContains(EsRectangleAdd(band->GetWindowBounds(), ES_RECT_1I(-dragOffThreshold)), mousePosition.x, mousePosition.y)) {
 				ReorderItemDragged(tab, message->mouseDragged.newPositionX);
