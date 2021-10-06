@@ -20,6 +20,8 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
+// 	Cleaning up unused objects.
+// 	Show error if property linked to object of incorrect type.
 // 	In a conditional layer, properties from conditional linked objects (such as a gradient paint) should show if their conditions match.
 // 	Scrollbars on the canvas?
 // 	Icons for different object types (especially color overwrite objects).
@@ -518,7 +520,7 @@ void DocumentSave(void *) {
 	EsBuffer buffer = { .canGrow = 1 };
 #define fwrite(a, b, c, d) EsBufferWrite(&buffer, (a), (b) * (c))
 #else
-	FILE *f = fopen("bin/designer2.dat", "wb");
+	FILE *f = fopen("res/Theme Source.dat", "wb");
 #endif
 
 	uint32_t version = 1;
@@ -551,7 +553,7 @@ void DocumentLoad() {
 	buffer.out = (uint8_t *) EsFileStoreReadAll(fileStore, &buffer.bytes);
 #define fread(a, b, c, d) EsBufferReadInto(&buffer, (a), (b) * (c))
 #else
-	FILE *f = fopen("bin/designer2.dat", "rb");
+	FILE *f = fopen("res/Theme Source.dat", "rb");
 	if (!f) return;
 #endif
 
@@ -3101,6 +3103,8 @@ void Export() {
 
 	// Write out all layers.
 
+	Array<uint32_t> styleMetricsOffsets = {};
+
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		Object *object = &objects[i];
 
@@ -3113,10 +3117,7 @@ void Export() {
 		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
 
 		if (metrics && textStyle) {
-			ExportOffset exportOffset = {};
-			exportOffset.objectID = textStyle->id;
-			exportOffset.offset = ftell(output);
-			exportOffsets.Add(exportOffset);
+			styleMetricsOffsets.Add(ftell(output));
 
 			uint8_t overrideDataBuffer[4096];
 			EsBuffer overrideData = { .out = overrideDataBuffer, .bytes = sizeof(overrideDataBuffer) };
@@ -3250,6 +3251,8 @@ void Export() {
 	}
 
 	// Write out layer lists for styles.
+
+	uintptr_t styleIndex = 0;
 	
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		Object *object = &objects[i];
@@ -3258,18 +3261,13 @@ void Export() {
 			continue;
 		}
 
-		{
-			ExportOffset exportOffset = {};
-			exportOffset.objectID = object->id;
-			exportOffset.offset = ftell(output);
-			exportOffsets.Add(exportOffset);
-		}
-		
-		{
-			Object *textStyle = PropertyFindOrInheritReadObject(object, "textStyle");
-			uint32_t exportOffset = ExportOffsetFindObject(textStyle->id)->offset;
-			fwrite(&exportOffset, 1, sizeof(exportOffset), output);
-		}
+		ExportOffset exportOffset = {};
+		exportOffset.objectID = object->id;
+		exportOffset.offset = ftell(output);
+		exportOffsets.Add(exportOffset);
+
+		uint32_t metricsExportOffset = styleMetricsOffsets[styleIndex++];
+		fwrite(&metricsExportOffset, 1, sizeof(metricsExportOffset), output);
 
 		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
 
@@ -3306,6 +3304,7 @@ void Export() {
 	DocumentFree();
 	fclose(output);
 	exportOffsets.Free();
+	styleMetricsOffsets.Free();
 }
 
 void ExportJSON() {

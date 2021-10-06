@@ -337,7 +337,7 @@ void BuildUtilities() {
 	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
 
 	if (CheckDependencies("Utilities.Designer")) {
-		if (!CallSystem("g++ -MMD -D UI_LINUX util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
+		if (!CallSystem("g++ -MMD -D UI_LINUX -O3 util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
 			ParseDependencies("bin/designer2.d", "Utilities.Designer", false);
 		}
 	}
