@@ -5283,11 +5283,17 @@ int _UIWindowCanvasMessage(EsElement *element, EsMessage *message) {
 		window->e.clip = UI_RECT_2S(window->width, window->height);
 		UIElementMessage(&window->e, UI_MSG_LAYOUT, 0, 0);
 		_UIUpdate();
+	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
+		_UIWindowInputEvent(window, UI_MSG_MOUSE_WHEEL, -message->scrollWheel.dy, 0);
 	} else if (message->type == ES_MSG_MOUSE_MOVED || message->type == ES_MSG_HOVERED_END
 			|| message->type == ES_MSG_MOUSE_LEFT_DRAG || message->type == ES_MSG_MOUSE_RIGHT_DRAG || message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
 		EsPoint point = EsMouseGetPosition(element); 
 		window->cursorX = point.x, window->cursorY = point.y;
 		_UIWindowInputEvent(window, UI_MSG_MOUSE_MOVE, 0, 0);
+	} else if (message->type == ES_MSG_KEY_UP) {
+		window->ctrl = EsKeyboardIsCtrlHeld();
+		window->shift = EsKeyboardIsShiftHeld();
+		window->alt = EsKeyboardIsAltHeld();
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		window->ctrl = EsKeyboardIsCtrlHeld();
 		window->shift = EsKeyboardIsShiftHeld();

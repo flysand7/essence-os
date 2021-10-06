@@ -791,7 +791,7 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 			EsElementMove(window->GetChild(0), WINDOW_INSET, WINDOW_INSET, bounds.r - WINDOW_INSET * 2, CONTAINER_TAB_BAND_HEIGHT);
 		} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
 			// This message is also sent when the window is created.
-			EsRectangle solidInsets = ES_RECT_1((WINDOW_INSET - BORDER_THICKNESS) * theming.scale);
+			EsRectangle solidInsets = ES_RECT_1(WINDOW_INSET - BORDER_THICKNESS);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &solidInsets, ES_WINDOW_PROPERTY_SOLID);
 			EsRectangle embedInsets = ES_RECT_4(WINDOW_INSET, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, WINDOW_INSET);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &embedInsets, 0, ES_WINDOW_PROPERTY_EMBED_INSETS);

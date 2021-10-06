@@ -50,6 +50,8 @@ extern bx_startup_flags_t bx_startup_flags;
 EsHandle openEvent;
 Instance *instance;
 char *configurationFile;
+void *configurationFileData;
+size_t configurationFileBytes;
 
 #define MAX_VGA_COLORS 256
 unsigned long col_vals[MAX_VGA_COLORS]; // 256 VGA colors
@@ -191,6 +193,8 @@ uint32_t ConvertScancode(uint32_t scancode) {
 }
 
 int CanvasCallback(EsElement *element, EsMessage *message) {
+	// TODO Is it safe to pass input to Bochs on this thread?
+
 	if (message->type == ES_MSG_PAINT) {
 		int ox = message->painter->width / 2 - instance->vmemWidth / 2;
 		int oy = message->painter->height / 2 - instance->vmemHeight / 2;
@@ -208,6 +212,7 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 		} else {
 			DEV_kbd_gen_scancode(ConvertScancode(message->keyboard.scancode) | BX_KEY_RELEASED);
 		}
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else {
 		return 0;
 	}
@@ -235,23 +240,20 @@ void MessageLoopThread(EsGeneric) {
 			EsWindowSetIcon(instance->window, ES_ICON_APPLICATIONS_DEVELOPMENT);
 			instance->display = EsCustomElementCreate(instance->window, ES_CELL_FILL | ES_ELEMENT_FOCUSABLE);
 			instance->display->messageUser = CanvasCallback;
+			EsElementFocus(instance->display);
 			SetDimensions(640, 480);
 		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			size_t fileSize;
-			char *file = (char *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
+			configurationFileData = (char *) EsFileStoreReadAll(message->instanceOpen.file, &configurationFileBytes);
 
-			if (!file) {
+			if (!configurationFileData) {
 				EsInstanceOpenComplete(message, false);
 			} else {
-				FILE *f = fopen(configurationFile, "wb");
-				fwrite(file, 1, fileSize, f);
-				fclose(f);
 				EsEventSet(openEvent);
 				EsInstanceOpenComplete(message, true);
 			}
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			// TODO Tell the emulator to stop.
-			unlink(configurationFile);
+			// unlink(configurationFile); (Do this on the POSIX thread.)
 		}
 	}
 }
@@ -467,6 +469,10 @@ int main() {
 	EsMessageMutexRelease();
 	EsThreadCreate(MessageLoopThread, nullptr, 0);
 	EsWaitSingle(openEvent);
+	FILE *f = fopen(configurationFile, "wb");
+	fprintf(stderr, "%s, %p, %d\n", configurationFile, f, (int32_t) configurationFileBytes);
+	fwrite(configurationFileData, 1, configurationFileBytes, f);
+	fclose(f);
 #else
 	char *_argv[] = { "bochs" };
 	bx_startup_flags.argc = 1;
