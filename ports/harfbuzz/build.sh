@@ -1,5 +1,5 @@
 if [ ! -d "bin/harfbuzz" ]; then
-	echo "    Downloading and building Harfbuzz..."
+	echo "Downloading and building Harfbuzz..."
 
 	if [ ! -f "bin/harfbuzz-2.6.4.tar" ]; then
 		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/harfbuzz-2.6.4.tar.xz 2> bin/harfbuzz_dl.txt

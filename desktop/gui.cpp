@@ -17,9 +17,10 @@
 // Behaviour of activation clicks. --> Only ignore activation clicks from menus.
 // Behaviour of the scroll wheel with regards to focused/hovered elements --> Scroll the hovered element only.
 
+// TODO Get these from the theme file.
 #define WINDOW_INSET 	          ((int) (19 * theming.scale))
 #define CONTAINER_TAB_BAND_HEIGHT ((int) (33 * theming.scale))
-#define BORDER_THICKNESS          ((int) (9 * theming.scale))
+#define BORDER_THICKNESS          ((int) ( 9 * theming.scale))
 
 // #define TRACE_LAYOUT
 
@@ -790,7 +791,8 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 			EsElementMove(window->GetChild(0), WINDOW_INSET, WINDOW_INSET, bounds.r - WINDOW_INSET * 2, CONTAINER_TAB_BAND_HEIGHT);
 		} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
 			// This message is also sent when the window is created.
-			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 10 * theming.scale, ES_WINDOW_PROPERTY_SOLID);
+			EsRectangle solidInsets = ES_RECT_1((WINDOW_INSET - BORDER_THICKNESS) * theming.scale);
+			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &solidInsets, ES_WINDOW_PROPERTY_SOLID);
 			EsRectangle embedInsets = ES_RECT_4(WINDOW_INSET, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, WINDOW_INSET);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &embedInsets, 0, ES_WINDOW_PROPERTY_EMBED_INSETS);
 			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, WINDOW_INSET, window->windowHeight - WINDOW_INSET);
@@ -937,7 +939,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 
 		EsElementStartTransition(window, ES_TRANSITION_FADE_IN);
 
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, panel->currentStyle->insets.l, ES_WINDOW_PROPERTY_SOLID);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &panel->currentStyle->insets, ES_WINDOW_PROPERTY_SOLID);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);
 	}
 

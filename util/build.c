@@ -1431,10 +1431,11 @@ void DoCommand(const char *l) {
 		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
-		printf("build (b)                         - Build.\n");
-		printf("test  (t2)                        - Build and run in Qemu.\n");
-		printf("vbox  (v)                         - Build (with optimisations enabled) and run in VirtualBox.\n");
-		printf("debug (d)                         - Build and run in Qemu (GDB server enabled).\n");
+		printf("build         (b)                 - Build.\n");
+		printf("qemu-with-kvm (k)                 - Build (with optimisations enabled) and run in Qemu with KVM.\n");
+		printf("test          (t2)                - Build and run in Qemu.\n");
+		printf("vbox          (v)                 - Build (with optimisations enabled) and run in VirtualBox.\n");
+		printf("debug         (d)                 - Build and run in Qemu (GDB server enabled).\n");
 		printf("config                            - Open the local configuration editor.\n");
 		printf("exit                              - Exit the build system.\n");
 
@@ -1448,7 +1449,7 @@ void DoCommand(const char *l) {
 		printf("live                              - Create a live USB or CDROM.\n");
 
 		printf(ColorHighlight "\n=== Utilities ===\n" ColorNormal);
-		printf("designer                          - Open the interface style designer.\n");
+		printf("designer2                         - Open the interface style designer.\n");
 		printf("line-count                        - Count lines of code.\n");
 		printf("ascii <string>                    - Convert a string to a list of ASCII codepoints.\n");
 		printf("a2l <executable>                  - Translate addresses to lines.\n");

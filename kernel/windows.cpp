@@ -34,7 +34,7 @@ struct Window {
 
 	// State:
 	EsWindowStyle style;
-	EsRectangle solidInsets, embedInsets;
+	EsRectangle solidOffsets, embedInsets;
 	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, queuedScrollUpdate, activationClick, noBringToFront;
 	volatile bool closed;
 
@@ -249,7 +249,7 @@ Window *WindowManager::FindWindowAtPosition(int cursorX, int cursorY, EsObjectID
 		EsRectangle bounds = ES_RECT_4PD(window->position.x, window->position.y, window->width, window->height);
 
 		if (window->solid && !window->hidden && exclude != window->id
-				&& EsRectangleContains(EsRectangleAdd(bounds, window->solidInsets), cursorX, cursorY)
+				&& EsRectangleContains(EsRectangleAdd(bounds, window->solidOffsets), cursorX, cursorY)
 				&& (!window->isMaximised || EsRectangleContains(workArea, cursorX, cursorY))) {
 			return window;
 		}
@@ -791,25 +791,25 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 	// TS("Move window\n");
 
 	if (flags & ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN) {
+		rectangle = EsRectangleAdd(rectangle, solidOffsets);
+
 		if (rectangle.r > (int32_t) graphics.frameBuffer.width) {
-			rectangle.l -= rectangle.r - graphics.frameBuffer.width;
-			rectangle.r -= rectangle.r - graphics.frameBuffer.width;
+			rectangle = Translate(rectangle, graphics.frameBuffer.width - rectangle.r, 0);
 		}
 
 		if (rectangle.b > (int32_t) graphics.frameBuffer.height) {
-			rectangle.t -= rectangle.b - graphics.frameBuffer.height;
-			rectangle.b -= rectangle.b - graphics.frameBuffer.height;
+			rectangle = Translate(rectangle, 0, graphics.frameBuffer.height - rectangle.b);
 		}
 
 		if (rectangle.l < 0) {
-			rectangle.r -= rectangle.l - 0;
-			rectangle.l = 0;
+			rectangle = Translate(rectangle, -rectangle.l, 0);
 		}
 
 		if (rectangle.t < 0) {
-			rectangle.b -= rectangle.t - 0;
-			rectangle.t = 0;
+			rectangle = Translate(rectangle, 0, -rectangle.t);
 		}
+
+		rectangle = EsRectangleSubtract(rectangle, solidOffsets);
 	}
 
 	size_t newWidth = rectangle.r - rectangle.l;

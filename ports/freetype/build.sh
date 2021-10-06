@@ -1,5 +1,5 @@
 if [ ! -d "bin/freetype" ]; then
-	echo "    Downloading and building FreeType..."
+	echo "Downloading and building FreeType..."
 
 	if [ ! -f "bin/freetype-2.9.tar" ]; then
 		curl https://mirrors.up.pt/pub/nongnu/freetype/freetype-2.9.tar.gz > bin/freetype-2.9.tar.gz 2> bin/freetype_dl.txt

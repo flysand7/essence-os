@@ -418,7 +418,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		window->solid = (argument1 & ES_WINDOW_SOLID_TRUE) != 0;
 		window->noClickActivate = (argument1 & ES_WINDOW_SOLID_NO_ACTIVATE) != 0;
 		window->noBringToFront = (argument1 & ES_WINDOW_SOLID_NO_BRING_TO_FRONT) != 0;
-		window->solidInsets = ES_RECT_1I(argument2);
+		EsRectangle solidInsets = ES_RECT_1(0);
+		if (argument2) SYSCALL_READ(&solidInsets, argument2, sizeof(EsRectangle));
+		window->solidOffsets = ES_RECT_4(solidInsets.l, -solidInsets.r, solidInsets.t, -solidInsets.b);
 		KMutexAcquire(&windowManager.mutex);
 		windowManager.MoveCursor(0, 0);
 		KMutexRelease(&windowManager.mutex);
