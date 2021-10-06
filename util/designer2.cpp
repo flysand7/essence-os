@@ -20,12 +20,13 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
+//	Having to link to the end of a conditional object chain is a bit strange.
+// 	Output styles.header in order of header ID.
 // 	Cleaning up unused objects.
 // 	Show error if property linked to object of incorrect type.
 // 	In a conditional layer, properties from conditional linked objects (such as a gradient paint) should show if their conditions match.
 // 	Scrollbars on the canvas?
 // 	Icons for different object types (especially color overwrite objects).
-// 	Fix moving/resizing objects when zoomed in.
 // 	Path layers: dashed contours.
 // 	Picking objects: only highlight objects with an applicable type.
 // 	Displaying radial gradients.
@@ -149,6 +150,10 @@ struct EsPainter {
 void SetBit(uint32_t *value, uint32_t bit, bool on) {
 	if (on) *value = *value | bit;
 	else *value = *value & ~bit;
+}
+
+UIRectangle ScaleRectangle(UIRectangle r, float by) {
+	return UI_RECT_4((int32_t) (r.l * by), (int32_t) (r.r * by), (int32_t) (r.t * by), (int32_t) (r.b * by));
 }
 
 #define IN_DESIGNER
@@ -2164,7 +2169,8 @@ UIRectangle CanvasGetObjectBounds(Object *object) {
 
 	if (object->flags & OBJECT_IS_SELECTED) {
 		if (canvas->dragging) {
-			bounds = UIRectangleAdd(bounds, UI_RECT_2(canvas->dragDeltaX, canvas->dragDeltaY));
+			UIRectangle offset = ScaleRectangle(UI_RECT_2(canvas->dragDeltaX, canvas->dragDeltaY), canvas->zoom);
+			bounds = UIRectangleAdd(bounds, offset);
 		}
 
 		if (canvas->resizing) {
@@ -2182,8 +2188,8 @@ void CanvasSelectObject(Object *object) {
 
 	if (canvas->showPrototype) CanvasSwitchView(nullptr);
 	UIRectangle bounds = CanvasGetObjectBounds(object);
-	canvas->panX += bounds.l - UI_RECT_WIDTH(canvas->bounds) / 2;
-	canvas->panY += bounds.t - UI_RECT_HEIGHT(canvas->bounds) / 2;
+	canvas->panX += ((bounds.l + bounds.r) / 2 - UI_RECT_WIDTH(canvas->bounds) / 2) / canvas->zoom;
+	canvas->panY += ((bounds.t + bounds.b) / 2 - UI_RECT_HEIGHT(canvas->bounds) / 2) / canvas->zoom;
 	ObjectSetSelected(object->id);
 	UIElementRefresh(canvas);
 	InspectorPopulate();
@@ -2372,8 +2378,12 @@ int ResizeHandleMessage(UIElement *element, UIMessage message, int di, void *dp)
 		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_LEFT_UP) {
 		Object *object = ObjectFind(selectedObjectID);
-		UIRectangle canvasOffset = UI_RECT_2((int32_t) canvas->panX - canvas->bounds.l, (int32_t) canvas->panY - canvas->bounds.t);
-		UIRectangle newBounds = UIRectangleAdd(CanvasGetObjectBounds(object), canvasOffset);
+		int32_t x = PropertyReadInt32(object, "_graphX");
+		int32_t y = PropertyReadInt32(object, "_graphY");
+		int32_t w = PropertyReadInt32(object, "_graphW");
+		int32_t h = PropertyReadInt32(object, "_graphH");
+		UIRectangle oldBounds = UI_RECT_4(x, x + w, y, y + h);
+		UIRectangle newBounds = UIRectangleAdd(ScaleRectangle(canvas->resizeOffsets, 1.0f / canvas->zoom), oldBounds);
 		canvas->resizing = false;
 
 		if (object) {
@@ -2615,8 +2625,8 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		int32_t dy = canvas->leftDownY - element->window->cursorY;
 
 		if (canvas->dragging || dx * dx + dy * dy > 200) {
-			int32_t canvasDragNewX = element->window->cursorX + canvas->panX + canvas->dragOffsetX - element->bounds.l;
-			int32_t canvasDragNewY = element->window->cursorY + canvas->panY + canvas->dragOffsetY - element->bounds.t;
+			int32_t canvasDragNewX = (element->window->cursorX + canvas->dragOffsetX - canvas->bounds.l) / canvas->zoom + canvas->panX;
+			int32_t canvasDragNewY = (element->window->cursorY + canvas->dragOffsetY - canvas->bounds.t) / canvas->zoom + canvas->panY;
 			if (!canvas->showPrototype) canvasDragNewX -= canvasDragNewX % CANVAS_ALIGN, canvasDragNewY -= canvasDragNewY % CANVAS_ALIGN;
 			canvas->dragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphX");
 			canvas->dragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphY");
