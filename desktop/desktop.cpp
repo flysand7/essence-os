@@ -295,7 +295,7 @@ bool ReorderItemDragged(ReorderItem *item, int mouseX) {
 		list->items.Delete(currentIndex);
 		list->items.Insert(item, draggedIndex);
 
-		for (uintptr_t i = 0, x = list->currentStyle->insets.l; i < childCount; i++) {
+		for (uintptr_t i = 0, x = list->style->insets.l; i < childCount; i++) {
 			ReorderItem *child = (ReorderItem *) list->items[i];
 
 			if ((int) i != draggedIndex) {
@@ -326,7 +326,7 @@ void ReorderItemDragComplete(ReorderItem *item) {
 
 	ReorderList *list = (ReorderList *) item->parent;
 
-	for (uintptr_t i = 0, x = list->currentStyle->insets.l; i < list->items.Length(); i++) {
+	for (uintptr_t i = 0, x = list->style->insets.l; i < list->items.Length(); i++) {
 		if (list->items[i] == item) {
 			int oldPosition = item->offsetX, newPosition = x + item->offsetProgress;
 
@@ -344,8 +344,8 @@ void ReorderItemDragComplete(ReorderItem *item) {
 
 int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDraggedItem, bool preventTabSizeAnimation) {
 	EsRectangle bounds = list->GetBounds();
-	bounds.l += list->currentStyle->insets.l;
-	bounds.r -= list->currentStyle->insets.r;
+	bounds.l += list->style->insets.l;
+	bounds.r -= list->style->insets.r;
 	bounds.r -= additionalRightMargin;
 
 	size_t childCount = list->items.Length();
@@ -358,7 +358,7 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 
 	for (uintptr_t i = 0; i < childCount; i++) {
 		ReorderItem *child = list->items[i];
-		totalWidth += child->currentStyle->metrics->maximumWidth + list->currentStyle->metrics->gapMinor;
+		totalWidth += child->style->metrics->maximumWidth + list->style->metrics->gapMinor;
 	}
 
 	bool widthClamped = false;
@@ -395,7 +395,7 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 	for (uintptr_t i = 0; i < childCount; i++) {
 		ReorderItem *child = list->items[i];
 		int width = (i == childCount - 1 && widthClamped) ? (totalWidth - x) : child->sizeProgress;
-		int gap = list->currentStyle->metrics->gapMinor;
+		int gap = list->style->metrics->gapMinor;
 
 		if (child->dragging) {
 			int p = child->dragPosition;
@@ -730,10 +730,10 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			message->hitTest.inside = (bounds.b - message->hitTest.y) * 14 < (bounds.r - message->hitTest.x) * bounds.b;
 		}
 	} else if (message->type == ES_MSG_LAYOUT) {
-		int closeButtonWidth = tab->closeButton->currentStyle->preferredWidth;
-		Rectangle16 insets = tab->currentStyle->metrics->insets;
-		EsElementSetHidden(tab->closeButton, tab->currentStyle->gapWrap * 2 + closeButtonWidth >= tab->width);
-		EsElementMove(tab->closeButton, tab->width - tab->currentStyle->gapWrap - closeButtonWidth, 
+		int closeButtonWidth = tab->closeButton->style->preferredWidth;
+		Rectangle16 insets = tab->style->metrics->insets;
+		EsElementSetHidden(tab->closeButton, tab->style->gapWrap * 2 + closeButtonWidth >= tab->width);
+		EsElementMove(tab->closeButton, tab->width - tab->style->gapWrap - closeButtonWidth, 
 				insets.t, closeButtonWidth, tab->height - insets.t - insets.b);
 	} else if (message->type == ES_MSG_PAINT) {
 		EsDrawContent(message->painter, element, ES_RECT_2S(message->painter->width, message->painter->height), 
@@ -774,7 +774,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				// TODO Sometimes the tab ends up a few pixels off?
 				newTab->window->pressed = newTab;
 				newTab->window->dragged = newTab;
-				newTab->dragOffset = dragOffset + 2 * hoverContainer->tabBand->currentStyle->insets.l;
+				newTab->dragOffset = dragOffset + 2 * hoverContainer->tabBand->style->insets.l;
 				newTab->dragging = true;
 			}
 		} else {
@@ -788,9 +788,9 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				// TODO Moving a tab directly from one container to another.
 
 				// If we dragged the tab off the left or right side of the band, put it at the start of the new tab band.
-				bool putAtStart = tab->dragPosition < band->currentStyle->insets.l 
-					|| tab->dragPosition + tab->width > band->width - band->currentStyle->insets.r;
-				int32_t putAtStartClickX = band->currentStyle->insets.l + tab->dragOffset;
+				bool putAtStart = tab->dragPosition < band->style->insets.l 
+					|| tab->dragPosition + tab->width > band->width - band->style->insets.r;
+				int32_t putAtStartClickX = band->style->insets.l + tab->dragOffset;
 
 				// End the drag on this container.
 				EsMessage m = { .type = ES_MSG_MOUSE_LEFT_UP };
@@ -803,7 +803,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 					// Transfer the drag to the new container.
 					EsSyscall(ES_SYSCALL_WINDOW_TRANSFER_PRESS, band->window->handle, newTab->window->handle, 0, 0);
 					ReorderItemDragged(newTab, 0);
-					newTab->dragPosition = putAtStart ? band->currentStyle->insets.l : previousTabOffsetX;
+					newTab->dragPosition = putAtStart ? band->style->insets.l : previousTabOffsetX;
 					newTab->window->pressed = newTab;
 					newTab->window->dragged = newTab;
 					gui.lastClickX = putAtStart ? putAtStartClickX : mousePosition.x;
@@ -910,10 +910,10 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 			}
 		}
 
-		int x = ReorderListLayout(band, band->GetChild(0)->currentStyle->preferredWidth + 10 * theming.scale, 
+		int x = ReorderListLayout(band, band->GetChild(0)->style->preferredWidth + 10 * theming.scale, 
 				true, band->preventNextTabSizeAnimation);
-		band->GetChild(0)->InternalMove(band->GetChild(0)->currentStyle->preferredWidth, 
-				band->GetChild(0)->currentStyle->preferredHeight, x + 10 * theming.scale, 4 * theming.scale);
+		band->GetChild(0)->InternalMove(band->GetChild(0)->style->preferredWidth, 
+				band->GetChild(0)->style->preferredHeight, x + 10 * theming.scale, 4 * theming.scale);
 		band->preventNextTabSizeAnimation = false;
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {

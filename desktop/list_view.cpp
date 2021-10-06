@@ -102,7 +102,7 @@ struct EsListView : EsElement {
 		EsRectangle bounds = GetBounds();
 
 		if (columnHeader) {
-			bounds.t += columnHeader->currentStyle->preferredHeight;
+			bounds.t += columnHeader->style->preferredHeight;
 		}
 
 		return bounds;
@@ -209,10 +209,10 @@ struct EsListView : EsElement {
 	}
 
 	void GetItemPosition(EsListViewIndex groupIndex, EsListViewIndex index, int64_t *_position, int64_t *_itemSize) {
-		int64_t gapBetweenGroup = currentStyle->gapMajor,
-			gapBetweenItems = (flags & ES_LIST_VIEW_TILED) ? currentStyle->gapWrap : currentStyle->gapMinor,
+		int64_t gapBetweenGroup = style->gapMajor,
+			gapBetweenItems = (flags & ES_LIST_VIEW_TILED) ? style->gapWrap : style->gapMinor,
 			fixedSize       = (flags & ES_LIST_VIEW_VARIABLE_SIZE) ? 0 : (flags & ES_LIST_VIEW_HORIZONTAL ? fixedWidth : fixedHeight),
-			startInset 	= flags & ES_LIST_VIEW_HORIZONTAL ? currentStyle->insets.l : currentStyle->insets.t;
+			startInset 	= flags & ES_LIST_VIEW_HORIZONTAL ? style->insets.l : style->insets.t;
 
 		int64_t position = (flags & ES_LIST_VIEW_HORIZONTAL ? -scroll.position[0] : -scroll.position[1]) + startInset, 
 			itemSize = 0;
@@ -302,8 +302,8 @@ struct EsListView : EsElement {
 	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, bool alignTop) {
 		EsRectangle contentBounds = GetListBounds();
 
-		int64_t startInset = flags & ES_LIST_VIEW_HORIZONTAL ? currentStyle->insets.l : currentStyle->insets.t,
-			endInset = flags & ES_LIST_VIEW_HORIZONTAL ? currentStyle->insets.r : currentStyle->insets.b,
+		int64_t startInset = flags & ES_LIST_VIEW_HORIZONTAL ? style->insets.l : style->insets.t,
+			endInset = flags & ES_LIST_VIEW_HORIZONTAL ? style->insets.r : style->insets.b,
 			contentSize = flags & ES_LIST_VIEW_HORIZONTAL ? Width(contentBounds) : Height(contentBounds);
 
 		int64_t position, itemSize;
@@ -329,8 +329,8 @@ struct EsListView : EsElement {
 	}
 
 	EsMessage FindFirstVisibleItem(int64_t *_position, int64_t position, ListViewItem *reference, bool *noItems) {
-		int64_t gapBetweenGroup = currentStyle->gapMajor,
-			gapBetweenItems = (flags & ES_LIST_VIEW_TILED) ? currentStyle->gapWrap : currentStyle->gapMinor,
+		int64_t gapBetweenGroup = style->gapMajor,
+			gapBetweenItems = (flags & ES_LIST_VIEW_TILED) ? style->gapWrap : style->gapMinor,
 			fixedSize       = (flags & ES_LIST_VIEW_VARIABLE_SIZE) ? 0 : (flags & ES_LIST_VIEW_HORIZONTAL ? fixedWidth : fixedHeight);
 		
 		// Find the group.
@@ -483,7 +483,7 @@ struct EsListView : EsElement {
 	void Populate() {
 #if 0
 		EsPrint("--- Before Populate() ---\n");
-		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - currentStyle->insets.t));
+		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - style->insets.t));
 
 		for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
 			EsMessage m = { ES_MSG_LIST_VIEW_GET_CONTENT };
@@ -509,8 +509,8 @@ struct EsListView : EsElement {
 
 		EsRectangle contentBounds = GetListBounds();
 		int64_t contentSize = flags & ES_LIST_VIEW_HORIZONTAL ? Width(contentBounds) : Height(contentBounds);
-		int64_t scroll = EsCRTfloor(flags & ES_LIST_VIEW_HORIZONTAL ? (this->scroll.position[0] - currentStyle->insets.l) 
-				: (this->scroll.position[1] - currentStyle->insets.t));
+		int64_t scroll = EsCRTfloor(flags & ES_LIST_VIEW_HORIZONTAL ? (this->scroll.position[0] - style->insets.l) 
+				: (this->scroll.position[1] - style->insets.t));
 
 		int64_t position = 0;
 		bool noItems = false;
@@ -521,10 +521,10 @@ struct EsListView : EsElement {
 		int64_t fixedMinorSize = (flags & ES_LIST_VIEW_HORIZONTAL) ? fixedHeight : fixedWidth;
 		intptr_t itemsPerBand = GetItemsPerBand();
 		intptr_t itemInBand = 0;
-		int64_t computedMinorGap = currentStyle->gapMinor;
+		int64_t computedMinorGap = style->gapMinor;
 		int64_t minorPosition = 0;
 		int64_t centerOffset = (flags & ES_LIST_VIEW_CENTER_TILES) 
-			? (wrapLimit - itemsPerBand * (fixedMinorSize + currentStyle->gapMinor) + currentStyle->gapMinor) / 2 : 0;
+			? (wrapLimit - itemsPerBand * (fixedMinorSize + style->gapMinor) + style->gapMinor) / 2 : 0;
 
 		while (visibleIndex < visibleItems.Length()) {
 			// Remove visible items no longer visible, before the viewport.
@@ -633,10 +633,10 @@ struct EsListView : EsElement {
 			if ((flags & ES_LIST_VIEW_TILED) && !visibleItem->isHeader && !visibleItem->isFooter) {
 				if (flags & ES_LIST_VIEW_HORIZONTAL) {
 					visibleItem->element->InternalMove(fixedWidth, fixedHeight, 
-							position + contentBounds.l, minorPosition + currentStyle->insets.t + contentBounds.t + centerOffset);
+							position + contentBounds.l, minorPosition + style->insets.t + contentBounds.t + centerOffset);
 				} else {
 					visibleItem->element->InternalMove(fixedWidth, fixedHeight, 
-							minorPosition + currentStyle->insets.l + contentBounds.l + centerOffset, position + contentBounds.t);
+							minorPosition + style->insets.l + contentBounds.l + centerOffset, position + contentBounds.t);
 				}
 
 				minorPosition += computedMinorGap + fixedMinorSize;
@@ -649,33 +649,33 @@ struct EsListView : EsElement {
 					minorPosition = 0;
 					itemInBand = 0;
 					position += (flags & ES_LIST_VIEW_HORIZONTAL) ? visibleItem->element->width : visibleItem->element->height;
-					if (!endOfGroup || (group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER)) position += currentStyle->gapWrap;
+					if (!endOfGroup || (group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER)) position += style->gapWrap;
 				}
 			} else {
 				if (flags & ES_LIST_VIEW_HORIZONTAL) {
 					visibleItem->element->InternalMove(
 						visibleItem->size, 
-						Height(contentBounds) - currentStyle->insets.t - currentStyle->insets.b - visibleItem->indent * currentStyle->gapWrap,
+						Height(contentBounds) - style->insets.t - style->insets.b - visibleItem->indent * style->gapWrap,
 						position + contentBounds.l, 
-						currentStyle->insets.t - this->scroll.position[1] + visibleItem->indent * currentStyle->gapWrap + contentBounds.t);
+						style->insets.t - this->scroll.position[1] + visibleItem->indent * style->gapWrap + contentBounds.t);
 					position += visibleItem->element->width;
 				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.enabled[0]))) {
-					int indent = visibleItem->indent * currentStyle->gapWrap;
+					int indent = visibleItem->indent * style->gapWrap;
 					int firstColumn = columns[0].width * theming.scale + secondaryCellStyle->gapMajor;
 					visibleItem->startAtSecondColumn = indent > firstColumn;
 					if (indent > firstColumn) indent = firstColumn;
 					visibleItem->element->InternalMove(totalColumnWidth - indent, visibleItem->size, 
-						indent - this->scroll.position[0] + contentBounds.l + currentStyle->insets.l, position + contentBounds.t);
+						indent - this->scroll.position[0] + contentBounds.l + style->insets.l, position + contentBounds.t);
 					position += visibleItem->element->height;
 				} else {
-					int indent = visibleItem->indent * currentStyle->gapWrap + currentStyle->insets.l;
-					visibleItem->element->InternalMove(Width(contentBounds) - indent - currentStyle->insets.r, visibleItem->size, 
+					int indent = visibleItem->indent * style->gapWrap + style->insets.l;
+					visibleItem->element->InternalMove(Width(contentBounds) - indent - style->insets.r, visibleItem->size, 
 						indent + contentBounds.l - this->scroll.position[0], position + contentBounds.t);
 					position += visibleItem->element->height;
 				}
 
 				if ((flags & ES_LIST_VIEW_TILED) && (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && currentItem.iterateIndex.index == 0) {
-					position += currentStyle->gapWrap;
+					position += style->gapWrap;
 				}
 			}
 
@@ -684,7 +684,7 @@ struct EsListView : EsElement {
 			visibleIndex++;
 			EsListViewIndex previousGroup = currentItem.iterateIndex.group;
 			if (!IterateForwards(&currentItem)) break;
-			position += previousGroup == currentItem.iterateIndex.group ? (flags & ES_LIST_VIEW_TILED ? 0 : currentStyle->gapMinor) : currentStyle->gapMajor;
+			position += previousGroup == currentItem.iterateIndex.group ? (flags & ES_LIST_VIEW_TILED ? 0 : style->gapMinor) : style->gapMajor;
 		}
 
 		while (visibleIndex < visibleItems.Length()) {
@@ -711,21 +711,21 @@ struct EsListView : EsElement {
 			intptr_t itemCount = group->itemCount;
 
 			if (group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) {
-				groupSize += fixedHeaderSize + currentStyle->gapWrap;
+				groupSize += fixedHeaderSize + style->gapWrap;
 				itemCount--;
 			}
 
 			if (group->flags & ES_LIST_VIEW_GROUP_HAS_FOOTER) {
-				groupSize += fixedFooterSize + currentStyle->gapWrap;
+				groupSize += fixedFooterSize + style->gapWrap;
 				itemCount--;
 			}
 
 			intptr_t bandsInGroup = (itemCount + itemsPerBand - 1) / itemsPerBand;
-			groupSize += (((flags & ES_LIST_VIEW_HORIZONTAL) ? fixedWidth : fixedHeight) + currentStyle->gapWrap) * bandsInGroup;
-			groupSize -= currentStyle->gapWrap;
+			groupSize += (((flags & ES_LIST_VIEW_HORIZONTAL) ? fixedWidth : fixedHeight) + style->gapWrap) * bandsInGroup;
+			groupSize -= style->gapWrap;
 			group->totalSize = groupSize;
 
-			totalSize += groupSize + (group == &groups.Last() ? 0 : currentStyle->gapMajor);
+			totalSize += groupSize + (group == &groups.Last() ? 0 : style->gapMajor);
 		}
 
 		scroll.Refresh();
@@ -941,8 +941,8 @@ struct EsListView : EsElement {
 		} else {
 			int64_t wrapLimit = GetWrapLimit();
 			int64_t fixedMinorSize = (flags & ES_LIST_VIEW_HORIZONTAL) ? fixedHeight : fixedWidth;
-			intptr_t itemsPerBand = fixedMinorSize && ((fixedMinorSize + currentStyle->gapMinor) < wrapLimit) 
-				? (wrapLimit / (fixedMinorSize + currentStyle->gapMinor)) : 1;
+			intptr_t itemsPerBand = fixedMinorSize && ((fixedMinorSize + style->gapMinor) < wrapLimit) 
+				? (wrapLimit / (fixedMinorSize + style->gapMinor)) : 1;
 			return MinimumInteger(itemsPerBand, maximumItemsPerBand);
 		}
 	}
@@ -958,15 +958,15 @@ struct EsListView : EsElement {
 		bool noItems = false;
 
 		if (flags & ES_LIST_VIEW_HORIZONTAL) {
-			if (y1 >= contentBounds.b - currentStyle->insets.b || y2 < contentBounds.t + currentStyle->insets.t) {
+			if (y1 >= contentBounds.b - style->insets.b || y2 < contentBounds.t + style->insets.t) {
 				return;
 			}
 		} else if (flags & ES_LIST_VIEW_COLUMNS) {
-			if (x1 >= contentBounds.l + currentStyle->insets.l + totalColumnWidth || x2 < contentBounds.l + currentStyle->insets.l) {
+			if (x1 >= contentBounds.l + style->insets.l + totalColumnWidth || x2 < contentBounds.l + style->insets.l) {
 				return;
 			}
 		} else {
-			if (x1 >= contentBounds.r - currentStyle->insets.r || x2 < contentBounds.l + currentStyle->insets.l) {
+			if (x1 >= contentBounds.r - style->insets.r || x2 < contentBounds.l + style->insets.l) {
 				return;
 			}
 		}
@@ -974,8 +974,8 @@ struct EsListView : EsElement {
 		// TODO Use reference for FindFirstVisibleItem.
 
 		bool adjustStart = false, adjustEnd = false;
-		int r1 = (flags & ES_LIST_VIEW_HORIZONTAL) ? currentStyle->insets.l - x1 : currentStyle->insets.t - y1 + scroll.fixedViewport[1];
-		int r2 = (flags & ES_LIST_VIEW_HORIZONTAL) ? currentStyle->insets.l - x2 : currentStyle->insets.t - y2 + scroll.fixedViewport[1];
+		int r1 = (flags & ES_LIST_VIEW_HORIZONTAL) ? style->insets.l - x1 : style->insets.t - y1 + scroll.fixedViewport[1];
+		int r2 = (flags & ES_LIST_VIEW_HORIZONTAL) ? style->insets.l - x2 : style->insets.t - y2 + scroll.fixedViewport[1];
 		start = FindFirstVisibleItem(&offset, r1, nullptr, &noItems);
 		if (noItems) return;
 		adjustStart = -offset >= MeasureItems(start.iterateIndex.group, start.iterateIndex.index, 1);
@@ -988,7 +988,7 @@ struct EsListView : EsElement {
 			int64_t fixedMinorSize = (flags & ES_LIST_VIEW_HORIZONTAL) ? fixedHeight : fixedWidth;
 			intptr_t itemsPerBand = GetItemsPerBand();
 			int64_t computedMinorGap = (wrapLimit - itemsPerBand * fixedMinorSize) / (itemsPerBand + 1);
-			int64_t minorStartOffset = computedMinorGap + ((flags & ES_LIST_VIEW_HORIZONTAL) ? currentStyle->insets.t : currentStyle->insets.l);
+			int64_t minorStartOffset = computedMinorGap + ((flags & ES_LIST_VIEW_HORIZONTAL) ? style->insets.t : style->insets.l);
 			intptr_t startInBand = (((flags & ES_LIST_VIEW_HORIZONTAL) ? y1 : x1) - minorStartOffset) / (fixedMinorSize + computedMinorGap);
 			intptr_t endInBand = (((flags & ES_LIST_VIEW_HORIZONTAL) ? y2 : x2) - minorStartOffset) / (fixedMinorSize + computedMinorGap);
 
@@ -1130,7 +1130,7 @@ struct EsListView : EsElement {
 			}
 
 			if (flags & ES_LIST_VIEW_COLUMNS) {
-				EsRectangle bounds = EsRectangleAddBorder(element->GetBounds(), element->currentStyle->insets);
+				EsRectangle bounds = EsRectangleAddBorder(element->GetBounds(), element->style->insets);
 
 				for (uintptr_t i = item->startAtSecondColumn ? 1 : 0; i < columnCount; i++) {
 					m.getContent.column = i;
@@ -1138,10 +1138,10 @@ struct EsListView : EsElement {
 					buffer.position = 0;
 
 					bounds.r = bounds.l + columns[i].width * theming.scale
-						- element->currentStyle->insets.r - element->currentStyle->insets.l;
+						- element->style->insets.r - element->style->insets.l;
 
 					if (i == 0) {
-						bounds.r -= item->indent * currentStyle->gapWrap;
+						bounds.r -= item->indent * style->gapWrap;
 					}
 
 					EsRectangle drawBounds = { bounds.l + message->painter->offsetX, bounds.r + message->painter->offsetX,
@@ -1168,7 +1168,7 @@ struct EsListView : EsElement {
 					bounds.l += columns[i].width * theming.scale + secondaryCellStyle->gapMajor;
 
 					if (i == 0) {
-						bounds.l -= item->indent * currentStyle->gapWrap;
+						bounds.l -= item->indent * style->gapWrap;
 					}
 				}
 			} else {
@@ -1260,8 +1260,8 @@ struct EsListView : EsElement {
 	inline int GetWrapLimit() {
 		EsRectangle bounds = GetListBounds();
 		return (flags & ES_LIST_VIEW_HORIZONTAL) 
-			? bounds.b - bounds.t - currentStyle->insets.b - currentStyle->insets.t 
-			: bounds.r - bounds.l - currentStyle->insets.r - currentStyle->insets.l;
+			? bounds.b - bounds.t - style->insets.b - style->insets.t 
+			: bounds.r - bounds.l - style->insets.r - style->insets.l;
 	}
 
 	ListViewItem *FindVisibleItem(EsListViewIndex group, EsListViewIndex index) {
@@ -1543,26 +1543,26 @@ struct EsListView : EsElement {
 	}
 
 	void MoveInlineTextbox(ListViewItem *item) {
-		UIStyle *style = item->element->currentStyle;
+		UIStyle *style = item->element->style;
 
 		if (flags & ES_LIST_VIEW_COLUMNS) {
 			int offset = primaryCellStyle->metrics->iconSize + primaryCellStyle->gapMinor 
-				+ style->insets.l - inlineTextbox->currentStyle->insets.l;
+				+ style->insets.l - inlineTextbox->style->insets.l;
 			inlineTextbox->InternalMove(columns[0].width * theming.scale - offset, item->element->height, 
 					item->element->offsetX + offset, item->element->offsetY);
 		} else if (flags & ES_LIST_VIEW_TILED) {
 			if (style->metrics->layoutVertical) {
-				int height = inlineTextbox->currentStyle->preferredHeight;
+				int height = inlineTextbox->style->preferredHeight;
 				int textStart = style->metrics->iconSize + style->gapMinor + style->insets.t;
 				int textEnd = item->element->height - style->insets.b;
 				int offset = (textStart + textEnd - height) / 2;
 				inlineTextbox->InternalMove(item->element->width - style->insets.r - style->insets.l, height, 
 						item->element->offsetX + style->insets.l, item->element->offsetY + offset);
 			} else {
-				int textboxInset = inlineTextbox->currentStyle->insets.l;
+				int textboxInset = inlineTextbox->style->insets.l;
 				int offset = style->metrics->iconSize + style->gapMinor 
 					+ style->insets.l - textboxInset;
-				int height = inlineTextbox->currentStyle->preferredHeight;
+				int height = inlineTextbox->style->preferredHeight;
 				inlineTextbox->InternalMove(item->element->width - offset - style->insets.r + textboxInset, height, 
 						item->element->offsetX + offset, 
 						item->element->offsetY + (item->element->height - height) / 2);
@@ -1578,13 +1578,13 @@ struct EsListView : EsElement {
 
 		if (message->type == ES_MSG_GET_WIDTH || message->type == ES_MSG_GET_HEIGHT) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
-				message->measure.width = totalSize + currentStyle->insets.l + currentStyle->insets.r;
+				message->measure.width = totalSize + style->insets.l + style->insets.r;
 			} else {
-				message->measure.height = totalSize + currentStyle->insets.t + currentStyle->insets.b;
+				message->measure.height = totalSize + style->insets.t + style->insets.b;
 
 				if (flags & ES_LIST_VIEW_COLUMNS) {
-					message->measure.width = totalColumnWidth + currentStyle->insets.l + currentStyle->insets.r;
-					message->measure.height += columnHeader->currentStyle->preferredHeight;
+					message->measure.width = totalColumnWidth + style->insets.l + style->insets.r;
+					message->measure.height += columnHeader->style->preferredHeight;
 				}
 			}
 		} else if (message->type == ES_MSG_LAYOUT) {
@@ -1594,7 +1594,7 @@ struct EsListView : EsElement {
 
 			if (columnHeader) {
 				EsRectangle bounds = GetBounds();
-				columnHeader->InternalMove(Width(bounds), columnHeader->currentStyle->preferredHeight, 0, 0);
+				columnHeader->InternalMove(Width(bounds), columnHeader->style->preferredHeight, 0, 0);
 			}
 
 			if (inlineTextbox) {
@@ -1903,14 +1903,14 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 			EsListView *view = (EsListView *) element->userData.p;
 
 			if (message->type == ES_MSG_LAYOUT) {
-				int x = view->currentStyle->insets.l - view->scroll.position[0];
+				int x = view->style->insets.l - view->scroll.position[0];
 
 				for (uintptr_t i = 0; i < element->children.Length(); i += 2) {
 					EsElement *item = element->children[i], *splitter = element->children[i + 1];
 					EsListViewColumn *column = view->columns + item->userData.u;
-					int splitterLeft = splitter->currentStyle->preferredWidth - view->secondaryCellStyle->gapMajor;
+					int splitterLeft = splitter->style->preferredWidth - view->secondaryCellStyle->gapMajor;
 					item->InternalMove(column->width * theming.scale - splitterLeft, element->height, x, 0);
-					splitter->InternalMove(splitter->currentStyle->preferredWidth, element->height, x + column->width * theming.scale - splitterLeft, 0);
+					splitter->InternalMove(splitter->style->preferredWidth, element->height, x + column->width * theming.scale - splitterLeft, 0);
 					x += column->width * theming.scale + view->secondaryCellStyle->gapMajor;
 				}
 			}
@@ -1918,7 +1918,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 			return 0;
 		};
 
-		view->scroll.fixedViewport[1] = view->columnHeader->currentStyle->preferredHeight;
+		view->scroll.fixedViewport[1] = view->columnHeader->style->preferredHeight;
 	} else if ((~view->flags & ES_LIST_VIEW_COLUMNS) && view->columnHeader) {
 		EsElementDestroy(view->columnHeader);
 		view->columnHeader = nullptr;
@@ -2031,7 +2031,7 @@ void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, uint32_t fla
 
 	// Insert gap between groups.
 
-	view->InsertSpace(view->groups.Length() > 1 ? view->currentStyle->gapMajor : 0, firstVisibleItemToMove);
+	view->InsertSpace(view->groups.Length() > 1 ? view->style->gapMajor : 0, firstVisibleItemToMove);
 
 	// Create header and footer items.
 
@@ -2065,7 +2065,7 @@ void EsListViewInsert(EsListView *view, EsListViewIndex groupIndex, EsListViewIn
 	bool addedFirstItemInGroup = !group->itemCount;
 	group->itemCount += count;
 	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, count);
-	int64_t sizeToAdd = (count - (addedFirstItemInGroup ? 1 : 0)) * view->currentStyle->gapMinor + totalSizeOfItems;
+	int64_t sizeToAdd = (count - (addedFirstItemInGroup ? 1 : 0)) * view->style->gapMinor + totalSizeOfItems;
 	group->totalSize += sizeToAdd;
 	view->totalItemCount += count;
 
@@ -2136,7 +2136,7 @@ void EsListViewRemove(EsListView *view, EsListViewIndex groupIndex, EsListViewIn
 
 	int64_t totalSizeOfItems = view->MeasureItems(groupIndex, firstIndex, count);
 	int64_t sizeToRemove = (int64_t) group->itemCount == count ? group->totalSize 
-		: (count * view->currentStyle->gapMinor + totalSizeOfItems);
+		: (count * view->style->gapMinor + totalSizeOfItems);
 	group->itemCount -= count;
 	group->totalSize -= sizeToRemove;
 	view->totalItemCount -= count;
@@ -2258,7 +2258,7 @@ void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t co
 				view->columnResizingOriginalWidth = column->width * theming.scale;
 			} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 				int width = message->mouseDragged.newPositionX - message->mouseDragged.originalPositionX + view->columnResizingOriginalWidth;
-				int minimumWidth = element->currentStyle->metrics->minimumWidth;
+				int minimumWidth = element->style->metrics->minimumWidth;
 				if (width < minimumWidth) width = minimumWidth;
 				column->width = width / theming.scale;
 				ListViewCalculateTotalColumnWidth(view);

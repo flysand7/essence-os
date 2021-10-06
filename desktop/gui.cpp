@@ -136,7 +136,7 @@ struct EsElement : EsElementPublic {
 	uint16_t previousStyleState; // Set by RefreshStyleState.
 	uint16_t transitionDurationMs, transitionTimeMs;
 	uint64_t lastTimeStamp;
-	UIStyle *currentStyle; 
+	UIStyle *style; 
 	UIStyleKey currentStyleKey;
 	ThemeAnimation animation; 
 	EsPaintTarget *previousTransitionFrame; 
@@ -372,15 +372,15 @@ struct EsPanel : EsElement {
 	MeasurementCache measurementCache;
 
 	int GetGapMajor() {
-		return currentStyle->gapMajor;
+		return style->gapMajor;
 	}
 
 	int GetGapMinor() {
-		return currentStyle->gapMinor;
+		return style->gapMinor;
 	}
 
 	EsRectangle GetInsets() {
-		return currentStyle->insets;
+		return style->insets;
 	}
 
 	int GetInsetWidth() {
@@ -830,7 +830,7 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 					EsElementMove(toolbar, 0, 0, bounds.r, bounds.b);
 				} else {
 					int toolbarHeight = toolbar->GetChildCount() ? toolbar->GetHeight(bounds.r) 
-						: toolbar->currentStyle->metrics->minimumHeight;
+						: toolbar->style->metrics->minimumHeight;
 					EsElementMove(window->GetChild(0), 0, toolbarHeight, bounds.r, bounds.b - toolbarHeight);
 					EsElementMove(toolbar, 0, 0, bounds.r, toolbarHeight);
 					EsElementMove(window->GetChild(2), 0, 0, bounds.r, bounds.b);
@@ -939,7 +939,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 
 		EsElementStartTransition(window, ES_TRANSITION_FADE_IN);
 
-		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &panel->currentStyle->insets, ES_WINDOW_PROPERTY_SOLID);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &panel->style->insets, ES_WINDOW_PROPERTY_SOLID);
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, BLEND_WINDOW_MATERIAL_GLASS, 0, ES_WINDOW_PROPERTY_MATERIAL);
 	}
 
@@ -1030,7 +1030,7 @@ void EsMenuShow(EsMenu *menu, int fixedWidth, int fixedHeight) {
 	menu->source->MaybeRefreshStyle();
 	menu->source->window->targetMenu = menu;
 
-	EsRectangle menuInsets = menu->GetChild(0)->currentStyle->insets;
+	EsRectangle menuInsets = menu->GetChild(0)->style->insets;
 	if (fixedWidth) fixedWidth += menuInsets.l + menuInsets.r;
 	if (fixedHeight) fixedHeight += menuInsets.t + menuInsets.b;
 	int width = fixedWidth ?: menu->GetChild(0)->GetWidth(fixedHeight);
@@ -1314,7 +1314,7 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 	}
 
 	if (~flags & ES_ELEMENT_TRANSITION_ENTRANCE) {
-		EsRectangle paintOutsets = element->currentStyle->paintOutsets;
+		EsRectangle paintOutsets = element->style->paintOutsets;
 		int width = element->width + paintOutsets.l + paintOutsets.r;
 		int height = element->height + paintOutsets.t + paintOutsets.b;
 
@@ -1364,8 +1364,8 @@ void EsElement::Repaint(bool all, EsRectangle region) {
 	// TODO Optimisation: don't paint if overlapped by an opaque child or sibling.
 
 	if (all) {
-		region.l = -currentStyle->paintOutsets.l, region.r =  width + currentStyle->paintOutsets.r;
-		region.t = -currentStyle->paintOutsets.t, region.b = height + currentStyle->paintOutsets.b;
+		region.l = -style->paintOutsets.l, region.r =  width + style->paintOutsets.r;
+		region.t = -style->paintOutsets.t, region.b = height + style->paintOutsets.b;
 	} else {
 		region = Translate(region, -internalOffsetLeft, -internalOffsetTop);
 	}
@@ -1375,8 +1375,8 @@ void EsElement::Repaint(bool all, EsRectangle region) {
 
 		region = Translate(region, offsetX + parentBounds.l, offsetY + parentBounds.t);
 
-		if (parent->currentStyle->metrics->clipEnabled) {
-			Rectangle16 clipInsets = parent->currentStyle->metrics->clipInsets;
+		if (parent->style->metrics->clipEnabled) {
+			Rectangle16 clipInsets = parent->style->metrics->clipInsets;
 			region = EsRectangleIntersection(region, EsRectangleAddBorder(parentBounds, RECT16_TO_RECT(clipInsets)));
 		}
 	}
@@ -1409,10 +1409,10 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 
 	{
 		EsRectangle area; 
-		area.l = pOffsetX - currentStyle->paintOutsets.l;
-		area.r = pOffsetX + width + currentStyle->paintOutsets.r;
-		area.t = pOffsetY - currentStyle->paintOutsets.t;
-		area.b = pOffsetY + height + currentStyle->paintOutsets.b;
+		area.l = pOffsetX - style->paintOutsets.l;
+		area.r = pOffsetX + width + style->paintOutsets.r;
+		area.t = pOffsetY - style->paintOutsets.t;
+		area.b = pOffsetY + height + style->paintOutsets.b;
 
 		if (!THEME_RECT_VALID(EsRectangleIntersection(area, painter->clip))) {
 			return;
@@ -1426,9 +1426,9 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 
 	EsPainter oldPainter = *painter;
 
-	UIStyle *style = ThemeAnimationComplete(&animation) ? currentStyle : ThemeStyleInterpolate(currentStyle, &animation);
-	EsDefer(if (style != currentStyle) EsHeapFree(style));
-	painter->style = style;
+	UIStyle *interpolatedStyle = ThemeAnimationComplete(&animation) ? style : ThemeStyleInterpolate(style, &animation);
+	EsDefer(if (interpolatedStyle != style) EsHeapFree(interpolatedStyle));
+	painter->style = interpolatedStyle;
 
 	painter->offsetX = pOffsetX, painter->offsetY = pOffsetY;
 	painter->width = width, painter->height = height;
@@ -1454,9 +1454,9 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 	}
 
 	if (paintFlags & PAINT_SHADOW) {
-		style->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_SHADOW);
+		interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_SHADOW);
 	} else if (paintFlags & PAINT_OVERLAY) {
-		style->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_OVERLAY);
+		interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_OVERLAY);
 
 		// Paint layout bounds, if active.
 
@@ -1469,7 +1469,7 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 		EsRectangle bounds = EsPainterBoundsClient(painter);
 		EsPaintTarget target;
 
-		EsRectangle paintOutsets = currentStyle->paintOutsets;
+		EsRectangle paintOutsets = style->paintOutsets;
 		int targetWidth = width + paintOutsets.l + paintOutsets.r;
 		int targetHeight = height + paintOutsets.t + paintOutsets.b;
 		bounds.l -= paintOutsets.l, bounds.r += paintOutsets.r;
@@ -1504,15 +1504,15 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 
 		if (!EsMessageSend(this, &m)) {
 			// TODO Optimisation: don't paint if overlapped by an opaque child.
-			style->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_BACKGROUND);
+			interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_BACKGROUND);
 		}
 		
 		// Apply the clipping insets.
 
 		EsRectangle oldClip = painter->clip;
 
-		if (currentStyle->metrics->clipEnabled && (~flags & ES_ELEMENT_NO_CLIP)) {
-			Rectangle16 insets = currentStyle->metrics->clipInsets;
+		if (style->metrics->clipEnabled && (~flags & ES_ELEMENT_NO_CLIP)) {
+			Rectangle16 insets = style->metrics->clipInsets;
 			EsRectangle content = ES_RECT_4(painter->offsetX + insets.l, painter->offsetX + width - insets.r, 
 					painter->offsetY + insets.t, painter->offsetY + height - insets.b);
 			painter->clip = EsRectangleIntersection(content, painter->clip);
@@ -1741,7 +1741,7 @@ bool EsElement::RefreshStyleState() {
 
 	bool observedBitsChanged = false;
 
-	if (!currentStyle || currentStyle->IsStateChangeObserved(styleStateFlags, previousStyleState)) {
+	if (!style || style->IsStateChangeObserved(styleStateFlags, previousStyleState)) {
 		observedBitsChanged = true;
 	}
 
@@ -1765,19 +1765,19 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 	currentStyleKey.stateFlags = styleStateFlags;
 	currentStyleKey.scale = theming.scale;
 
-	if (!force && 0 == EsMemoryCompare(&currentStyleKey, &oldStyleKey, sizeof(UIStyleKey)) && currentStyle) {
+	if (!force && 0 == EsMemoryCompare(&currentStyleKey, &oldStyleKey, sizeof(UIStyleKey)) && style) {
 		return;
 	}
 
 	if (~state & UI_STATE_ENTERED) {
-		if (currentStyle) currentStyle->CloseReference();
+		if (style) style->CloseReference();
 		oldStyleKey = currentStyleKey;
 		oldStyleKey.stateFlags |= THEME_STATE_BEFORE_ENTER;
-		currentStyle = GetStyle(oldStyleKey, false);
+		style = GetStyle(oldStyleKey, false);
 	}
 
-	UIStyle *oldStyle = currentStyle;
-	currentStyle = GetStyle(currentStyleKey, false); // TODO Forcing new styles if force flag set.
+	UIStyle *oldStyle = style;
+	style = GetStyle(currentStyleKey, false); // TODO Forcing new styles if force flag set.
 
 	state &= ~UI_STATE_USE_MEASUREMENT_CACHE;
 
@@ -1790,7 +1790,7 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 	}
 
 	if (oldStyle) {
-		if (oldStyle->style == currentStyle->style && api.global->animationTimeMultiplier > 0.01f) {
+		if (oldStyle->style == style->style && api.global->animationTimeMultiplier > 0.01f) {
 			ThemeAnimationBuild(&animation, oldStyle, oldStyleKey.stateFlags, currentStyleKey.stateFlags);
 			animate = !ThemeAnimationComplete(&animation);
 		} else {
@@ -1828,10 +1828,10 @@ void EsElement::SetStyle(const EsStyle *part, bool refreshIfChanged) {
 EsRectangle LayoutCell(EsElement *element, int width, int height) {
 	uint64_t layout = element->flags;
 
-	int maximumWidth  = element->currentStyle->metrics->maximumWidth  ?: ES_PANEL_BAND_SIZE_DEFAULT;
-	int minimumWidth  = element->currentStyle->metrics->minimumWidth  ?: ES_PANEL_BAND_SIZE_DEFAULT;
-	int maximumHeight = element->currentStyle->metrics->maximumHeight ?: ES_PANEL_BAND_SIZE_DEFAULT;
-	int minimumHeight = element->currentStyle->metrics->minimumHeight ?: ES_PANEL_BAND_SIZE_DEFAULT;
+	int maximumWidth  = element->style->metrics->maximumWidth  ?: ES_PANEL_BAND_SIZE_DEFAULT;
+	int minimumWidth  = element->style->metrics->minimumWidth  ?: ES_PANEL_BAND_SIZE_DEFAULT;
+	int maximumHeight = element->style->metrics->maximumHeight ?: ES_PANEL_BAND_SIZE_DEFAULT;
+	int minimumHeight = element->style->metrics->minimumHeight ?: ES_PANEL_BAND_SIZE_DEFAULT;
 
 	if (layout & ES_CELL_H_EXPAND) maximumWidth = INT_MAX;
 	if (layout & ES_CELL_H_SHRINK) minimumWidth = 0;
@@ -2011,8 +2011,8 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 			int totalGapSize = (bandSpan - 1) * gapSize;
 
 			int preferredSizePerBand = (size - totalGapSize) / bandSpan;
-			int maximumSizeValue = axis ? child->currentStyle->metrics->maximumHeight : child->currentStyle->metrics->maximumWidth;
-			int minimumSizeValue = axis ? child->currentStyle->metrics->minimumHeight : child->currentStyle->metrics->minimumWidth;
+			int maximumSizeValue = axis ? child->style->metrics->maximumHeight : child->style->metrics->maximumWidth;
+			int minimumSizeValue = axis ? child->style->metrics->minimumHeight : child->style->metrics->minimumWidth;
 			int maximumSizePerBand = maximumSizeValue ? (((int) maximumSizeValue - totalGapSize) / bandSpan) : ES_PANEL_BAND_SIZE_DEFAULT;
 			int minimumSizePerBand = maximumSizeValue ? (((int) minimumSizeValue - totalGapSize) / bandSpan) : ES_PANEL_BAND_SIZE_DEFAULT;
 
@@ -2385,36 +2385,36 @@ void LayoutStack(EsPanel *panel, EsMessage *message) {
 }
 
 int EsElement::GetWidth(int height) {
-	if (currentStyle->preferredWidth) return currentStyle->preferredWidth;
-	if (!height) height = currentStyle->preferredHeight;
-	else if (currentStyle->preferredHeight && currentStyle->preferredHeight > height && (~flags & (ES_CELL_V_SHRINK))) height = currentStyle->preferredHeight;
-	else if (currentStyle->preferredHeight && currentStyle->preferredHeight < height && (~flags & (ES_CELL_V_EXPAND))) height = currentStyle->preferredHeight;
-	else if (currentStyle->metrics->minimumHeight && currentStyle->metrics->minimumHeight > height) height = currentStyle->metrics->minimumHeight;
-	else if (currentStyle->metrics->maximumHeight && currentStyle->metrics->maximumHeight < height) height = currentStyle->metrics->maximumHeight;
+	if (style->preferredWidth) return style->preferredWidth;
+	if (!height) height = style->preferredHeight;
+	else if (style->preferredHeight && style->preferredHeight > height && (~flags & (ES_CELL_V_SHRINK))) height = style->preferredHeight;
+	else if (style->preferredHeight && style->preferredHeight < height && (~flags & (ES_CELL_V_EXPAND))) height = style->preferredHeight;
+	else if (style->metrics->minimumHeight && style->metrics->minimumHeight > height) height = style->metrics->minimumHeight;
+	else if (style->metrics->maximumHeight && style->metrics->maximumHeight < height) height = style->metrics->maximumHeight;
 	if (height) height -= internalOffsetTop + internalOffsetBottom;
 	EsMessage m = { ES_MSG_GET_WIDTH };
 	m.measure.height = height;
 	EsMessageSend(this, &m);
 	int width = m.measure.width + internalOffsetLeft + internalOffsetRight;
-	if (currentStyle->metrics->minimumWidth && currentStyle->metrics->minimumWidth > width) width = currentStyle->metrics->minimumWidth;
-	if (currentStyle->metrics->maximumWidth && currentStyle->metrics->maximumWidth < width) width = currentStyle->metrics->maximumWidth;
+	if (style->metrics->minimumWidth && style->metrics->minimumWidth > width) width = style->metrics->minimumWidth;
+	if (style->metrics->maximumWidth && style->metrics->maximumWidth < width) width = style->metrics->maximumWidth;
 	return width;
 }
 
 int EsElement::GetHeight(int width) {
-	if (currentStyle->preferredHeight) return currentStyle->preferredHeight;
-	if (!width) width = currentStyle->preferredWidth;
-	else if (currentStyle->preferredWidth && currentStyle->preferredWidth > width && (~flags & (ES_CELL_H_SHRINK))) width = currentStyle->preferredWidth;
-	else if (currentStyle->preferredWidth && currentStyle->preferredWidth < width && (~flags & (ES_CELL_H_EXPAND))) width = currentStyle->preferredWidth;
-	else if (currentStyle->metrics->minimumWidth && currentStyle->metrics->minimumWidth > width) width = currentStyle->metrics->minimumWidth;
-	else if (currentStyle->metrics->maximumWidth && currentStyle->metrics->maximumWidth < width) width = currentStyle->metrics->maximumWidth;
+	if (style->preferredHeight) return style->preferredHeight;
+	if (!width) width = style->preferredWidth;
+	else if (style->preferredWidth && style->preferredWidth > width && (~flags & (ES_CELL_H_SHRINK))) width = style->preferredWidth;
+	else if (style->preferredWidth && style->preferredWidth < width && (~flags & (ES_CELL_H_EXPAND))) width = style->preferredWidth;
+	else if (style->metrics->minimumWidth && style->metrics->minimumWidth > width) width = style->metrics->minimumWidth;
+	else if (style->metrics->maximumWidth && style->metrics->maximumWidth < width) width = style->metrics->maximumWidth;
 	if (width) width -= internalOffsetLeft + internalOffsetRight;
 	EsMessage m = { ES_MSG_GET_HEIGHT };
 	m.measure.width = width;
 	EsMessageSend(this, &m);
 	int height = m.measure.height + internalOffsetTop + internalOffsetBottom;
-	if (currentStyle->metrics->minimumHeight && currentStyle->metrics->minimumHeight > height) height = currentStyle->metrics->minimumHeight;
-	if (currentStyle->metrics->maximumHeight && currentStyle->metrics->maximumHeight < height) height = currentStyle->metrics->maximumHeight;
+	if (style->metrics->minimumHeight && style->metrics->minimumHeight > height) height = style->metrics->minimumHeight;
+	if (style->metrics->maximumHeight && style->metrics->maximumHeight < height) height = style->metrics->maximumHeight;
 	return height;
 }
 
@@ -2473,7 +2473,7 @@ void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY
 			// Clear the old position.
 
 			if (parent) {
-				EsRectangle paintOutsets = currentStyle->paintOutsets;
+				EsRectangle paintOutsets = style->paintOutsets;
 				EsRectangle rectangle = ES_RECT_4(oldOffsetX - paintOutsets.l, oldOffsetX + width + paintOutsets.r,
 						oldOffsetY - paintOutsets.t, oldOffsetY + height + paintOutsets.b);
 				parent->Repaint(false, rectangle);
@@ -2517,7 +2517,7 @@ void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY
 EsRectangle EsElementGetPreferredSize(EsElement *element) {
 	EsMessageMutexCheck();
 
-	return ES_RECT_4(0, element->currentStyle->preferredWidth, 0, element->currentStyle->preferredHeight);
+	return ES_RECT_4(0, element->style->preferredWidth, 0, element->style->preferredHeight);
 }
 
 void EsElementRelayout(EsElement *element) {
@@ -2539,11 +2539,11 @@ void EsElementUpdateContentSize(EsElement *element, uint32_t flags) {
 		element->state &= ~UI_STATE_USE_MEASUREMENT_CACHE;
 		EsElementRelayout(element);
 
-		if (element->currentStyle->preferredWidth || ((element->flags & ES_CELL_H_FILL) == ES_CELL_H_FILL)) {
+		if (element->style->preferredWidth || ((element->flags & ES_CELL_H_FILL) == ES_CELL_H_FILL)) {
 			flags &= ~ES_ELEMENT_UPDATE_CONTENT_WIDTH;
 		}
 
-		if (element->currentStyle->preferredHeight || ((element->flags & ES_CELL_V_FILL) == ES_CELL_V_FILL)) {
+		if (element->style->preferredHeight || ((element->flags & ES_CELL_V_FILL) == ES_CELL_V_FILL)) {
 			flags &= ~ES_ELEMENT_UPDATE_CONTENT_HEIGHT;
 		}
 
@@ -2573,8 +2573,8 @@ void ScrollbarLayout(EsScrollbar *scrollbar) {
 		if (scrollbar->horizontal) {
 			scrollbar->thumbSize = scrollbar->viewportSize * (bounds.r - scrollbar->height * 2) / scrollbar->contentSize;
 
-			if (scrollbar->thumbSize < scrollbar->thumb->currentStyle->preferredWidth) {
-				scrollbar->thumbSize = scrollbar->thumb->currentStyle->preferredWidth;
+			if (scrollbar->thumbSize < scrollbar->thumb->style->preferredWidth) {
+				scrollbar->thumbSize = scrollbar->thumb->style->preferredWidth;
 			}
 
 			if (scrollbar->thumbSize > Width(bounds) - scrollbar->height * 2) {
@@ -2584,16 +2584,16 @@ void ScrollbarLayout(EsScrollbar *scrollbar) {
 			scrollbar->thumbPosition = LinearMap(0, scrollbar->contentSize - scrollbar->viewportSize, 
 					scrollbar->height, bounds.r - scrollbar->thumbSize - scrollbar->height, scrollbar->smoothScrollTarget);
 
-			EsElementMove(scrollbar->up, 0, 0, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2, scrollbar->thumb->currentStyle->preferredHeight);
-			EsElementMove(scrollbar->thumb, (int) scrollbar->thumbPosition, 0, scrollbar->thumbSize, scrollbar->thumb->currentStyle->preferredHeight);
+			EsElementMove(scrollbar->up, 0, 0, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2, scrollbar->thumb->style->preferredHeight);
+			EsElementMove(scrollbar->thumb, (int) scrollbar->thumbPosition, 0, scrollbar->thumbSize, scrollbar->thumb->style->preferredHeight);
 			EsElementMove(scrollbar->down, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2, 0,
 					bounds.r - scrollbar->thumbSize / 2 - (int) scrollbar->thumbPosition, 
-					scrollbar->thumb->currentStyle->preferredHeight);
+					scrollbar->thumb->style->preferredHeight);
 		} else {
 			scrollbar->thumbSize = scrollbar->viewportSize * (bounds.b - scrollbar->width * 2) / scrollbar->contentSize;
 
-			if (scrollbar->thumbSize < scrollbar->thumb->currentStyle->preferredHeight) {
-				scrollbar->thumbSize = scrollbar->thumb->currentStyle->preferredHeight;
+			if (scrollbar->thumbSize < scrollbar->thumb->style->preferredHeight) {
+				scrollbar->thumbSize = scrollbar->thumb->style->preferredHeight;
 			}
 
 			if (scrollbar->thumbSize > Height(bounds) - scrollbar->width * 2) {
@@ -2603,10 +2603,10 @@ void ScrollbarLayout(EsScrollbar *scrollbar) {
 			scrollbar->thumbPosition = LinearMap(0, scrollbar->contentSize - scrollbar->viewportSize, 
 					scrollbar->width, bounds.b - scrollbar->thumbSize - scrollbar->width, scrollbar->smoothScrollTarget);
 
-			EsElementMove(scrollbar->up, 0, 0, scrollbar->thumb->currentStyle->preferredWidth, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2);
-			EsElementMove(scrollbar->thumb, 0, (int) scrollbar->thumbPosition, scrollbar->thumb->currentStyle->preferredWidth, scrollbar->thumbSize);
+			EsElementMove(scrollbar->up, 0, 0, scrollbar->thumb->style->preferredWidth, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2);
+			EsElementMove(scrollbar->thumb, 0, (int) scrollbar->thumbPosition, scrollbar->thumb->style->preferredWidth, scrollbar->thumbSize);
 			EsElementMove(scrollbar->down, 0, (int) scrollbar->thumbPosition + scrollbar->thumbSize / 2,
-					scrollbar->thumb->currentStyle->preferredWidth, 
+					scrollbar->thumb->style->preferredWidth, 
 					bounds.b - scrollbar->thumbSize / 2 - (int) scrollbar->thumbPosition);
 		}
 	}
@@ -2873,7 +2873,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			EsMessage m = {};
 			m.type = ES_MSG_GET_WIDTH;
 			EsMessageSend(parent, &m);
-			parent->internalOffsetBottom = (m.measure.width + fixedViewport[0] > message->measure.width) ? bar[0]->currentStyle->preferredHeight : 0;
+			parent->internalOffsetBottom = (m.measure.width + fixedViewport[0] > message->measure.width) ? bar[0]->style->preferredHeight : 0;
 		}
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		if (message->measure.width && (mode[1] == ES_SCROLL_MODE_AUTO) && (mode[0] != ES_SCROLL_MODE_AUTO)) {
@@ -2881,7 +2881,7 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 			EsMessage m = {};
 			m.type = ES_MSG_GET_HEIGHT;
 			EsMessageSend(parent, &m);
-			parent->internalOffsetRight = (m.measure.height + fixedViewport[1] > message->measure.height) ? bar[1]->currentStyle->preferredWidth : 0;
+			parent->internalOffsetRight = (m.measure.height + fixedViewport[1] > message->measure.height) ? bar[1]->style->preferredWidth : 0;
 		}
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		SetPosition(0, position[0] + 60 * message->scrollWheel.dx / ES_SCROLL_WHEEL_NOTCH, true);
@@ -2932,7 +2932,7 @@ bool ScrollPane::RefreshLimit(int axis, int64_t *contentSize) {
 		}
 
 		if (mode[axis] == ES_SCROLL_MODE_AUTO && limit[axis] > 0 && !(*internalOffset)) {
-			*internalOffset = axis ? bar[axis]->currentStyle->preferredWidth : bar[axis]->currentStyle->preferredHeight;
+			*internalOffset = axis ? bar[axis]->style->preferredWidth : bar[axis]->style->preferredHeight;
 			return true;
 		}
 	}
@@ -2945,8 +2945,8 @@ void ScrollPane::Refresh() {
 		InspectorNotifyElementEvent(parent, "scroll", "Refreshing scroll pane...\n");
 	}
 
-	parent->internalOffsetRight = mode[1] == ES_SCROLL_MODE_FIXED ? bar[1]->currentStyle->preferredWidth : 0;
-	parent->internalOffsetBottom = mode[0] == ES_SCROLL_MODE_FIXED ? bar[0]->currentStyle->preferredHeight : 0;
+	parent->internalOffsetRight = mode[1] == ES_SCROLL_MODE_FIXED ? bar[1]->style->preferredWidth : 0;
+	parent->internalOffsetBottom = mode[0] == ES_SCROLL_MODE_FIXED ? bar[0]->style->preferredHeight : 0;
 
 	int64_t contentWidth = 0, contentHeight = 0;
 
@@ -2968,16 +2968,16 @@ void ScrollPane::Refresh() {
 		SetPosition(1, position[1], true);
 	}
 
-	EsRectangle border = parent->currentStyle->borders;
+	EsRectangle border = parent->style->borders;
 
 	if (bar[0]) {
-		bar[0]->InternalMove(parent->width - parent->internalOffsetRight - border.r - border.l, bar[0]->currentStyle->preferredHeight, 
+		bar[0]->InternalMove(parent->width - parent->internalOffsetRight - border.r - border.l, bar[0]->style->preferredHeight, 
 				border.l, parent->height - parent->internalOffsetBottom - border.b);
 		enabled[0] = ~bar[0]->flags & ES_ELEMENT_DISABLED;
 	}
 
 	if (bar[1]) {
-		bar[1]->InternalMove(bar[1]->currentStyle->preferredWidth, parent->height - parent->internalOffsetBottom - border.b - border.t, 
+		bar[1]->InternalMove(bar[1]->style->preferredWidth, parent->height - parent->internalOffsetBottom - border.b - border.t, 
 				parent->width - parent->internalOffsetRight - border.r, border.t);
 		enabled[1] = ~bar[1]->flags & ES_ELEMENT_DISABLED;
 	}
@@ -3345,11 +3345,11 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 					EsElement *child = panel->children[position];
 
 					if (panel->flags & ES_PANEL_HORIZONTAL) {
-						if (child->offsetX + child->width + child->currentStyle->paintOutsets.r < message->beforeZOrder.clip.l) {
+						if (child->offsetX + child->width + child->style->paintOutsets.r < message->beforeZOrder.clip.l) {
 							break;
 						}
 					} else {
-						if (child->offsetY + child->height + child->currentStyle->paintOutsets.b < message->beforeZOrder.clip.t) {
+						if (child->offsetY + child->height + child->style->paintOutsets.b < message->beforeZOrder.clip.t) {
 							break;
 						}
 					}
@@ -3366,11 +3366,11 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 				EsElement *child = panel->children[position];
 
 				if (panel->flags & ES_PANEL_HORIZONTAL) {
-					if (child->offsetX - child->currentStyle->paintOutsets.l > message->beforeZOrder.clip.r) {
+					if (child->offsetX - child->style->paintOutsets.l > message->beforeZOrder.clip.r) {
 						break;
 					}
 				} else {
-					if (child->offsetY - child->currentStyle->paintOutsets.t > message->beforeZOrder.clip.b) {
+					if (child->offsetY - child->style->paintOutsets.t > message->beforeZOrder.clip.b) {
 						break;
 					}
 				}
@@ -3415,9 +3415,9 @@ int ProcessSpacerMessage(EsElement *element, EsMessage *message) {
 	EsSpacer *spacer = (EsSpacer *) element;
 
 	if (message->type == ES_MSG_GET_WIDTH) {
-		message->measure.width = spacer->width * spacer->currentStyle->scale;
+		message->measure.width = spacer->width * spacer->style->scale;
 	} else if (message->type == ES_MSG_GET_HEIGHT) {
-		message->measure.height = spacer->height * spacer->currentStyle->scale;
+		message->measure.height = spacer->height * spacer->style->scale;
 	}
 
 	return 0;
@@ -3753,7 +3753,7 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 		if (!canvas) return 0;
 		
 		EsRectangle bounds = element->GetBounds();
-		EsRectangle insets = element->currentStyle->insets;
+		EsRectangle insets = element->style->insets;
 		bounds.l += insets.l, bounds.r -= insets.r;
 		bounds.t += insets.t, bounds.b -= insets.b;
 
@@ -3934,16 +3934,16 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		if (!button->measurementCache.Get(message, &button->state)) {
 			EsTextStyle textStyle;
-			button->currentStyle->GetTextStyle(&textStyle);
+			button->style->GetTextStyle(&textStyle);
 			int stringWidth = TextGetStringWidth(button, &textStyle, button->label, button->labelBytes);
-			int iconWidth = button->iconID ? button->currentStyle->metrics->iconSize : 0;
-			int contentWidth = stringWidth + iconWidth + ((stringWidth && iconWidth) ? button->currentStyle->gapMinor : 0)
-				+ button->currentStyle->insets.l + button->currentStyle->insets.r;
+			int iconWidth = button->iconID ? button->style->metrics->iconSize : 0;
+			int contentWidth = stringWidth + iconWidth + ((stringWidth && iconWidth) ? button->style->gapMinor : 0)
+				+ button->style->insets.l + button->style->insets.r;
 
 			if (button->flags & ES_BUTTON_DROPDOWN) {
 				int64_t width = 0;
 				GetPreferredSizeFromStylePart(ES_STYLE_MARKER_DOWN_ARROW, &width, nullptr);
-				contentWidth += width + button->currentStyle->gapMinor;
+				contentWidth += width + button->style->gapMinor;
 			}
 
 			int minimumReportedWidth = GetConstantNumber("pushButtonMinimumReportedWidth");
@@ -4232,12 +4232,12 @@ int ProcessMenuItemMessage(EsElement *element, EsMessage *message) {
 		MenuItemGetKeyboardShortcutString(button->command, &buffer);
 
 		EsTextStyle textStyle;
-		button->currentStyle->GetTextStyle(&textStyle);
+		button->style->GetTextStyle(&textStyle);
 
 		int stringWidth = TextGetStringWidth(button, &textStyle, button->label, button->labelBytes);
 		int keyboardShortcutWidth = TextGetStringWidth(button, &textStyle, (const char *) _buffer, buffer.position);
-		int contentWidth = stringWidth + button->currentStyle->insets.l + button->currentStyle->insets.r 
-			+ (keyboardShortcutWidth ? (keyboardShortcutWidth + button->currentStyle->gapMinor) : 0);
+		int contentWidth = stringWidth + button->style->insets.l + button->style->insets.r 
+			+ (keyboardShortcutWidth ? (keyboardShortcutWidth + button->style->gapMinor) : 0);
 		message->measure.width = MaximumInteger(GetConstantNumber("menuItemMinimumReportedWidth"), contentWidth);
 	} else if (message->type == ES_MSG_DESTROY) {
 		EsHeapFree(button->label);
@@ -4958,9 +4958,9 @@ struct SplitBar : EsElement {
 		EsSplitter *splitter = (EsSplitter *) parent;
 		EsElement *panelBefore = nullptr, *panelAfter = nullptr;
 		int barBefore = 0, barAfter;
-		if (splitter->horizontal) barAfter = EsRectangleAddBorder(splitter->GetBounds(), splitter->currentStyle->borders).r  - currentStyle->preferredWidth;
-		else                      barAfter = EsRectangleAddBorder(splitter->GetBounds(), splitter->currentStyle->borders).b - currentStyle->preferredHeight;
-		int preferredSize = splitter->horizontal ? currentStyle->preferredWidth : currentStyle->preferredHeight;
+		if (splitter->horizontal) barAfter = EsRectangleAddBorder(splitter->GetBounds(), splitter->style->borders).r - style->preferredWidth;
+		else                      barAfter = EsRectangleAddBorder(splitter->GetBounds(), splitter->style->borders).b - style->preferredHeight;
+		int preferredSize = splitter->horizontal ? style->preferredWidth : style->preferredHeight;
 		splitter->resizeStartSizes.Free();
 
 		for (uintptr_t i = 0; i < splitter->GetChildCount(); i++) {
@@ -4983,25 +4983,25 @@ struct SplitBar : EsElement {
 
 		EsAssert(panelBefore && panelAfter); // Could not find split bar in parent.
 
-		barBefore -= splitter->horizontal ? currentStyle->borders.l  : currentStyle->borders.t;
-		barAfter  += splitter->horizontal ? currentStyle->borders.r : currentStyle->borders.b;
+		barBefore -= splitter->horizontal ? style->borders.l : style->borders.t;
+		barAfter  += splitter->horizontal ? style->borders.r : style->borders.b;
 
 		int minimumPosition, maximumPosition, minimumPosition1, maximumPosition1, minimumPosition2, maximumPosition2;
 
 		if (splitter->horizontal) {
-			minimumPosition1 = barBefore + panelBefore->currentStyle->metrics->minimumWidth;
-			maximumPosition1 = barAfter  - panelAfter ->currentStyle->metrics->minimumWidth;
-			minimumPosition2 = barAfter  - panelAfter ->currentStyle->metrics->maximumWidth;
-			maximumPosition2 = barBefore + panelBefore->currentStyle->metrics->maximumWidth;
-			if (!panelAfter ->currentStyle->metrics->maximumWidth) minimumPosition2 = INT_MIN;
-			if (!panelBefore->currentStyle->metrics->maximumWidth) maximumPosition2 = INT_MAX;
+			minimumPosition1 = barBefore + panelBefore->style->metrics->minimumWidth;
+			maximumPosition1 = barAfter  - panelAfter ->style->metrics->minimumWidth;
+			minimumPosition2 = barAfter  - panelAfter ->style->metrics->maximumWidth;
+			maximumPosition2 = barBefore + panelBefore->style->metrics->maximumWidth;
+			if (!panelAfter ->style->metrics->maximumWidth) minimumPosition2 = INT_MIN;
+			if (!panelBefore->style->metrics->maximumWidth) maximumPosition2 = INT_MAX;
 		} else {
-			minimumPosition1 = barBefore + panelBefore->currentStyle->metrics->minimumHeight;
-			maximumPosition1 = barAfter  - panelAfter ->currentStyle->metrics->minimumHeight;
-			minimumPosition2 = barAfter  - panelAfter ->currentStyle->metrics->maximumHeight;
-			maximumPosition2 = barBefore + panelBefore->currentStyle->metrics->maximumHeight;
-			if (!panelAfter ->currentStyle->metrics->maximumHeight) minimumPosition2 = INT_MIN;
-			if (!panelBefore->currentStyle->metrics->maximumHeight) maximumPosition2 = INT_MAX;
+			minimumPosition1 = barBefore + panelBefore->style->metrics->minimumHeight;
+			maximumPosition1 = barAfter  - panelAfter ->style->metrics->minimumHeight;
+			minimumPosition2 = barAfter  - panelAfter ->style->metrics->maximumHeight;
+			maximumPosition2 = barBefore + panelBefore->style->metrics->maximumHeight;
+			if (!panelAfter ->style->metrics->maximumHeight) minimumPosition2 = INT_MIN;
+			if (!panelBefore->style->metrics->maximumHeight) maximumPosition2 = INT_MAX;
 		}
 
 		minimumPosition = minimumPosition1 > minimumPosition2 ? minimumPosition1 : minimumPosition2;
@@ -5078,7 +5078,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_LAYOUT && splitter->GetChildCount()) {
 		EsRectangle client = splitter->GetBounds();
-		EsRectangle bounds = EsRectangleAddBorder(client, splitter->currentStyle->insets);
+		EsRectangle bounds = EsRectangleAddBorder(client, splitter->style->insets);
 
 		size_t childCount = splitter->GetChildCount();
 		EsAssert(childCount & 1); // Expected split bars between each EsSplitter child.
@@ -5103,7 +5103,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 		if (newSize != splitter->previousSize && childCount > 1) {
 			// Step 1: Make a list of current sizes.
 
-			int64_t barSize = splitter->horizontal ? splitter->GetChild(1)->currentStyle->preferredWidth : splitter->GetChild(1)->currentStyle->preferredHeight;
+			int64_t barSize = splitter->horizontal ? splitter->GetChild(1)->style->preferredWidth : splitter->GetChild(1)->style->preferredHeight;
 			int64_t previousPosition = 0;
 
 			if (!splitter->resizeStartSizes.Length()) {
@@ -5178,12 +5178,12 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 			for (uintptr_t i = 1; i < childCount; i += 2) {
 				SplitBar *bar = (SplitBar *) splitter->GetChild(i);
 				bar->position = previousPosition + currentSizes[i >> 1];
-				previousPosition = bar->position + barSize - (splitter->horizontal ? bar->currentStyle->borders.l : bar->currentStyle->borders.t);
+				previousPosition = bar->position + barSize - (splitter->horizontal ? bar->style->borders.l : bar->style->borders.t);
 
 				if (bar->position == 0) {
-					bar->position -= splitter->horizontal ? bar->currentStyle->borders.l  : bar->currentStyle->borders.t;
+					bar->position -= splitter->horizontal ? bar->style->borders.l  : bar->style->borders.t;
 				} else if (bar->position == newSize - barSize) {
-					bar->position += splitter->horizontal ? bar->currentStyle->borders.r : bar->currentStyle->borders.b;
+					bar->position += splitter->horizontal ? bar->style->borders.r : bar->style->borders.b;
 				}
 			}
 
@@ -5201,11 +5201,11 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 
 			if (i & 1) {
 				if (splitter->horizontal) {
-					int size = child->currentStyle->preferredWidth;
+					int size = child->style->preferredWidth;
 					EsElementMove(child, position, client.t, size, client.b - client.t);
 					position += size;
 				} else {
-					int size = child->currentStyle->preferredHeight;
+					int size = child->style->preferredHeight;
 					EsElementMove(child, client.l, position, client.r - client.l, size);
 					position += size;
 				}
@@ -5458,7 +5458,7 @@ int ProcessSliderPointMessage(EsElement *element, EsMessage *message) {
 	EsSlider *slider = (EsSlider *) EsElementGetLayoutParent(element);
 
 	if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
-		double range = slider->width - slider->point->currentStyle->preferredWidth;
+		double range = slider->width - slider->point->style->preferredWidth;
 		slider->inDrag = true;
 		EsSliderSetValue(slider, (message->mouseDragged.newPositionX + element->offsetX - slider->dragOffset) / range);
 	} else if (message->type == ES_MSG_MOUSE_LEFT_UP && slider->inDrag) {
@@ -5480,8 +5480,8 @@ int ProcessSliderMessage(EsElement *element, EsMessage *message) {
 	EsSlider *slider = (EsSlider *) element;
 
 	if (message->type == ES_MSG_LAYOUT) {
-		int pointWidth = slider->point->currentStyle->preferredWidth;
-		int pointHeight = slider->point->currentStyle->preferredHeight;
+		int pointWidth = slider->point->style->preferredWidth;
+		int pointHeight = slider->point->style->preferredHeight;
 		slider->point->InternalMove(pointWidth, pointHeight, (slider->width - pointWidth) * slider->value, (slider->height - pointHeight) / 2);
 	} else if (message->type == ES_MSG_FOCUSED_START) {
 		slider->point->customStyleState |= THEME_STATE_FOCUSED_ITEM;
@@ -5857,7 +5857,7 @@ bool EsElement::InternalDestroy() {
 		EsHeapFree(userData.p);
 	}
 
-	if (currentStyle) currentStyle->CloseReference();
+	if (style) style->CloseReference();
 	if (previousTransitionFrame) EsPaintTargetDestroy(previousTransitionFrame);
 	ThemeAnimationDestroy(&animation);
 	if (window == this) UIWindowDestroy(window); // Windows are deallocated after receiving ES_MSG_WINDOW_DESTROYED.
@@ -5912,7 +5912,7 @@ EsRectangle EsWindowGetBounds(EsWindow *window) {
 
 EsRectangle EsElementGetInsetBounds(EsElement *element) {
 	EsMessageMutexCheck();
-	EsRectangle insets = element->currentStyle->insets;
+	EsRectangle insets = element->style->insets;
 	return ES_RECT_4(insets.l, element->width - insets.r, 
 			insets.t, element->height - insets.b);
 }
@@ -5920,7 +5920,7 @@ EsRectangle EsElementGetInsetBounds(EsElement *element) {
 EsRectangle EsElementGetInsetSize(EsElement *element) {
 	EsMessageMutexCheck();
 
-	EsRectangle insets = element->currentStyle->insets;
+	EsRectangle insets = element->style->insets;
 	return ES_RECT_4(0, element->width - insets.l - insets.r, 
 			0, element->height - insets.t - insets.b);
 }
@@ -6209,7 +6209,7 @@ void EsElementInsertAfter(EsElement *element) {
 	gui.insertAfter = element;
 }
 
-void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *style) {
+void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *_style) {
 	EsMessageMutexCheck();
 
 	// EsPrint("New element '%z' %x with parent %x.\n", _debugName, this, _parent);
@@ -6271,20 +6271,20 @@ void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _cl
 		EsElementUpdateContentSize(parent);
 	}
 
-	SetStyle(style, false);
+	SetStyle(_style, false);
 	RefreshStyle();
 	InspectorNotifyElementCreated(this);
 }
 
 EsRectangle EsElementGetInsets(EsElement *element) {
 	EsMessageMutexCheck();
-	return element->currentStyle->insets;
+	return element->style->insets;
 }
 
 EsThemeMetrics EsElementGetMetrics(EsElement *element) {
 	EsMessageMutexCheck();
 	EsThemeMetrics m = {};
-	ThemeMetrics *metrics = element->currentStyle->metrics;
+	ThemeMetrics *metrics = element->style->metrics;
 #define RECTANGLE_8_TO_ES_RECTANGLE(x) { (int32_t) (x).l, (int32_t) (x).r, (int32_t) (x).t, (int32_t) (x).b }
 	m.insets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->insets);
 	m.clipInsets = RECTANGLE_8_TO_ES_RECTANGLE(metrics->clipInsets);
@@ -6479,7 +6479,7 @@ void EsElementGetSize(EsElement *element, int *width, int *height) {
 }
 
 void EsElementGetTextStyle(EsElement *element, EsTextStyle *style) {
-	element->currentStyle->GetTextStyle(style);
+	element->style->GetTextStyle(style);
 }
 
 void EsElementRepaint(EsElement *element, const EsRectangle *region) {
@@ -7193,7 +7193,7 @@ bool UISetCursor(EsWindow *window) {
 		if (ES_HANDLED == EsMessageSend(element, &m)) {
 			cursorStyle = m.cursorStyle;
 		} else {
-			cursorStyle = (EsCursorStyle) element->currentStyle->metrics->cursor;
+			cursorStyle = (EsCursorStyle) element->style->metrics->cursor;
 		}
 	}
 
@@ -7916,7 +7916,7 @@ void InspectorNotifyElementPainted(EsElement *element, EsPainter *painter) {
 			painter->offsetY, painter->offsetY + painter->height);
 
 	if (entry->element == element) {
-		EsDrawRectangle(painter, bounds, 0x607F7FFF, 0x60FFFF7F, element->currentStyle->insets);
+		EsDrawRectangle(painter, bounds, 0x607F7FFF, 0x60FFFF7F, element->style->insets);
 	} else if (entry->element->parent == element) {
 		if ((element->flags & ES_CELL_FILL) != ES_CELL_FILL) {
 			EsRectangle rectangle = entry->givenBounds;

@@ -4263,14 +4263,14 @@ int ProcessTextboxMarginMessage(EsElement *element, EsMessage *message) {
 			DocumentLine *line = &textbox->lines[i + textbox->firstVisibleLine];
 
 			EsRectangle bounds;
-			bounds.l = painter->offsetX + element->currentStyle->insets.l;
-			bounds.r = painter->offsetX + painter->width - element->currentStyle->insets.r;
+			bounds.l = painter->offsetX + element->style->insets.l;
+			bounds.r = painter->offsetX + painter->width - element->style->insets.r;
 			bounds.t = painter->offsetY + textbox->insets.t + visibleLine->yPosition - textbox->scroll.position[1];
 			bounds.b = bounds.t + line->height;
 
 			char label[64];
 			EsTextRun textRun[2] = {};
-			element->currentStyle->GetTextStyle(&textRun[0].style);
+			element->style->GetTextStyle(&textRun[0].style);
 			textRun[0].style.figures = ES_TEXT_FIGURE_TABULAR;
 			textRun[1].offset = EsStringFormat(label, sizeof(label), "%d", i + textbox->firstVisibleLine + 1);
 			EsTextPlanProperties properties = {};
@@ -4284,13 +4284,13 @@ int ProcessTextboxMarginMessage(EsElement *element, EsMessage *message) {
 }
 
 void TextboxStyleChanged(EsTextbox *textbox) {
-	textbox->borders = textbox->currentStyle->borders;
-	textbox->insets = textbox->currentStyle->insets;
+	textbox->borders = textbox->style->borders;
+	textbox->insets = textbox->style->insets;
 
 	if (textbox->flags & ES_TEXTBOX_MARGIN) {
-		int marginWidth = textbox->margin->currentStyle->preferredWidth;
+		int marginWidth = textbox->margin->style->preferredWidth;
 		textbox->borders.l += marginWidth;
-		textbox->insets.l += marginWidth + textbox->margin->currentStyle->gapMajor;
+		textbox->insets.l += marginWidth + textbox->margin->style->gapMajor;
 	}
 
 	int lineHeight = TextGetLineHeight(textbox, &textbox->textStyle);
@@ -4328,8 +4328,8 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		EsTextSelection selectionProperties = {};
 		selectionProperties.hideCaret = (~textbox->state & UI_STATE_FOCUSED) || (textbox->flags & ES_ELEMENT_DISABLED) || !textbox->editing;
 		selectionProperties.snapCaretToInsets = true;
-		selectionProperties.background = textbox->currentStyle->metrics->selectedBackground;
-		selectionProperties.foreground = textbox->currentStyle->metrics->selectedText;
+		selectionProperties.background = textbox->style->metrics->selectedBackground;
+		selectionProperties.foreground = textbox->style->metrics->selectedText;
 
 		EsRectangle clip;
 		EsRectangleClip(painter->clip, ES_RECT_4(painter->offsetX + textbox->borders.l, 
@@ -4402,7 +4402,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		EsRectangle bounds = textbox->GetBounds();
 
 		if (textbox->margin) {
-			int marginWidth = textbox->margin->currentStyle->preferredWidth;
+			int marginWidth = textbox->margin->style->preferredWidth;
 			textbox->margin->InternalMove(marginWidth, Height(bounds), bounds.l, bounds.t);
 		}
 
@@ -4670,7 +4670,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		TextboxSetHorizontalScroll(textbox, message->scrollbarMoved.scroll);
 	} else if (message->type == ES_MSG_SCROLL_Y) {
 		TextboxRefreshVisibleLines(textbox, false);
-		EsElementRepaintForScroll(textbox, message, EsRectangleAdd(element->GetInternalOffset(), element->currentStyle->borders));
+		EsElementRepaintForScroll(textbox, message, EsRectangleAdd(element->GetInternalOffset(), element->style->borders));
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		DocumentLine *firstLine = &textbox->lines.First();
 		EsBufferFormat(message->getContent.buffer, "'%s'", firstLine->lengthBytes, firstLine->GetBuffer(textbox));
@@ -4680,7 +4680,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			textbox->margin->RefreshStyle(nullptr, false, true);
 		}
 
-		textbox->currentStyle->GetTextStyle(&textbox->textStyle);
+		textbox->style->GetTextStyle(&textbox->textStyle);
 
 		if (textbox->overrideTextSize) {
 			textbox->textStyle.size = textbox->overrideTextSize;
@@ -4721,10 +4721,10 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 	textbox->undo = &textbox->localUndo;
 	textbox->undo->instance = textbox->instance;
 
-	textbox->borders = textbox->currentStyle->borders;
-	textbox->insets = textbox->currentStyle->insets;
+	textbox->borders = textbox->style->borders;
+	textbox->insets = textbox->style->insets;
 
-	textbox->currentStyle->GetTextStyle(&textbox->textStyle);
+	textbox->style->GetTextStyle(&textbox->textStyle);
 
 	textbox->smartQuotes = true;
 
@@ -4746,9 +4746,9 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 		textbox->margin->cName = "margin";
 		textbox->margin->messageUser = ProcessTextboxMarginMessage;
 
-		int marginWidth = textbox->margin->currentStyle->preferredWidth;
+		int marginWidth = textbox->margin->style->preferredWidth;
 		textbox->borders.l += marginWidth;
-		textbox->insets.l += marginWidth + textbox->margin->currentStyle->gapMajor;
+		textbox->insets.l += marginWidth + textbox->margin->style->gapMajor;
 	}
 
 	return textbox;
@@ -4994,7 +4994,7 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 
 		if (!display->plan || display->planWidth != textBounds.r - textBounds.l || display->planHeight != textBounds.b - textBounds.t) {
 			if (display->plan) EsTextPlanDestroy(display->plan);
-			display->properties.flags = display->currentStyle->textAlign;
+			display->properties.flags = display->style->textAlign;
 			if (~display->flags & ES_TEXT_DISPLAY_PREFORMATTED) display->properties.flags |= ES_TEXT_PLAN_TRIM_SPACES;
 			if (display->flags & ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION) display->properties.flags |= ES_TEXT_PLAN_NO_FONT_SUBSTITUTION;
 			display->plan = EsTextPlanCreate(element, &display->properties, textBounds, display->contents, display->textRuns, display->textRunCount);
@@ -5008,7 +5008,7 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_GET_WIDTH || message->type == ES_MSG_GET_HEIGHT) {
 		if (!display->measurementCache.Get(message, &display->state)) {
 			if (display->plan) EsTextPlanDestroy(display->plan);
-			display->properties.flags = display->currentStyle->textAlign | ((display->flags & ES_TEXT_DISPLAY_PREFORMATTED) ? 0 : ES_TEXT_PLAN_TRIM_SPACES);
+			display->properties.flags = display->style->textAlign | ((display->flags & ES_TEXT_DISPLAY_PREFORMATTED) ? 0 : ES_TEXT_PLAN_TRIM_SPACES);
 			EsRectangle insets = EsElementGetInsets(element);
 			display->planWidth = message->type == ES_MSG_GET_HEIGHT && message->measure.width 
 				? (message->measure.width - insets.l - insets.r) : 0;
@@ -5078,12 +5078,12 @@ void EsTextDisplaySetContents(EsTextDisplay *display, const char *string, ptrdif
 	if (display->flags & ES_TEXT_DISPLAY_RICH_TEXT) {
 		EsHeapFree(display->contents);
 		EsTextStyle baseStyle = {};
-		display->currentStyle->GetTextStyle(&baseStyle);
+		display->style->GetTextStyle(&baseStyle);
 		EsRichTextParse(string, stringBytes, &display->contents, &display->textRuns, &display->textRunCount, &baseStyle);
 	} else {
 		HeapDuplicate((void **) &display->contents, (size_t *) &stringBytes, string, stringBytes);
 		display->textRuns = (EsTextRun *) EsHeapAllocate(sizeof(EsTextRun) * 2, true);
-		display->currentStyle->GetTextStyle(&display->textRuns[0].style);
+		display->style->GetTextStyle(&display->textRuns[0].style);
 		display->textRuns[1].offset = stringBytes;
 		display->textRunCount = 1;
 	}
@@ -5119,7 +5119,7 @@ void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t langu
 	EsMemoryCopy(colors, customColors, customColorCount * sizeof(uint32_t));
 
 	EsTextStyle textStyle = {};
-	display->currentStyle->GetTextStyle(&textStyle);
+	display->style->GetTextStyle(&textStyle);
 
 	EsTextRun *newRuns = TextApplySyntaxHighlighting(&textStyle, language, colors, {}, 
 			display->contents, display->textRuns[display->textRunCount].offset).array;
@@ -5142,7 +5142,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 
 	if (message->type == ES_MSG_GET_HEIGHT) {
 		int32_t height = 0;
-		int32_t margin = element->currentStyle->insets.l + element->currentStyle->insets.r + element->currentStyle->gapMinor;
+		int32_t margin = element->style->insets.l + element->style->insets.r + element->style->gapMinor;
 		uintptr_t itemCount = 0;
 
 		for (uintptr_t i = 0; i < element->GetChildCount(); i++) {
@@ -5153,21 +5153,21 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 		}
 
 		if (itemCount) {
-			height += (itemCount - 1) * element->currentStyle->gapMajor;
+			height += (itemCount - 1) * element->style->gapMajor;
 		}
 
-		message->measure.height = height + element->currentStyle->insets.t + element->currentStyle->insets.b;
+		message->measure.height = height + element->style->insets.t + element->style->insets.b;
 	} else if (message->type == ES_MSG_LAYOUT) {
-		int32_t position = element->currentStyle->insets.t;
-		int32_t margin = element->currentStyle->insets.l + element->currentStyle->gapMinor;
-		int32_t width = element->width - margin - element->currentStyle->insets.r;
+		int32_t position = element->style->insets.t;
+		int32_t margin = element->style->insets.l + element->style->gapMinor;
+		int32_t width = element->width - margin - element->style->insets.r;
 
 		for (uintptr_t i = 0; i < element->GetChildCount(); i++) {
 			EsElement *child = element->GetChild(i);
 			if (child->flags & ES_ELEMENT_NON_CLIENT) continue;
 			int height = child->GetHeight(width);
 			EsElementMove(child, margin, position, width, height);
-			position += height + element->currentStyle->gapMajor;
+			position += height + element->style->gapMajor;
 		}
 	} else if (message->type == ES_MSG_PAINT) {
 		char buffer[64];
@@ -5176,7 +5176,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 		EsTextRun textRun[2] = {};
 
 		EsRectangle bounds = EsPainterBoundsClient(message->painter); 
-		bounds.r = bounds.l + element->currentStyle->insets.l;
+		bounds.r = bounds.l + element->style->insets.l;
 
 		uintptr_t counter = display->previous ? display->previous->itemCount : display->startIndex;
 		uint8_t markerType = element->flags & ES_LIST_DISPLAY_MARKER_TYPE_MASK;
@@ -5204,7 +5204,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 				EsAssert(false);
 			}
 
-			child->currentStyle->GetTextStyle(&textRun[0].style);
+			child->style->GetTextStyle(&textRun[0].style);
 			textRun[0].style.figures = ES_TEXT_FIGURE_TABULAR;
 			bounds.t += child->offsetY;
 			bounds.b = bounds.t + child->height;

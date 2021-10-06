@@ -140,7 +140,7 @@ File FileOpen(const char *path, char mode) {
 // Toolchain flags:
 
 const char *commonCompileFlagsFreestanding = " -ffreestanding -fno-exceptions ";
-char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address -Wno-unused-function -Wno-format-truncation -g -I. ";
+char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address -Wno-unused-function -Wno-format-truncation -g -I. -fdiagnostics-column-unit=byte ";
 char commonCompileFlagsWithCStdLib[4096];
 char cCompileFlags[4096] = "";
 char cppCompileFlags[4096] = " -std=c++14 -Wno-pmf-conversions -Wno-invalid-offsetof -fno-rtti ";
