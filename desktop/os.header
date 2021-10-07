@@ -1004,6 +1004,7 @@ enum EsMessageType {
 	// File Manager messages:
 	ES_MSG_FILE_MANAGER_FILE_MODIFIED	= 0x5100
 	ES_MSG_FILE_MANAGER_PATH_MOVED		= 0x5101
+	ES_MSG_FILE_MANAGER_DOCUMENT_UPDATE	= 0x5102	// The managed list of open documents has been updated.
 
 	// Textbox messages:
 	ES_MSG_TEXTBOX_UPDATED			= 0x5200
@@ -1632,8 +1633,8 @@ struct EsMessageGetContent {
 	EsListViewIndex index;
 	EsListViewIndex group;
 	uint32_t icon;
+	uint32_t drawContentFlags;
 	EsBuffer *buffer;
-	bool richText;
 	uint8_t column;
 };
 
@@ -2005,8 +2006,9 @@ function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flag
 // These calls require permission_all_files.
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
 function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
-function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
 function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
+function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
+function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
 
 function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
 function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq);

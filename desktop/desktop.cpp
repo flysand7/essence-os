@@ -490,6 +490,13 @@ void DesktopInspectorThread(EsGeneric) {
 			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
 		}
 
+		for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+			OpenDocument *document = &desktop.openDocuments[i];
+			bytes = EsStringFormat(buffer, sizeof(buffer), "doc: '%s', id %d, refs %d", 
+					document->pathBytes, document->path, document->id, document->referenceCount);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+		}
+
 		EsMessageMutexRelease();
 		EsSleep(500);
 	}
@@ -1896,6 +1903,13 @@ void ApplicationProcessTerminated(EsObjectID pid) {
 // Document management:
 //////////////////////////////////////////////////////
 
+void OpenDocumentListUpdated() {
+	if (desktop.fileManager && desktop.fileManager->singleProcess) {
+		EsMessage m = { .type = ES_MSG_FILE_MANAGER_DOCUMENT_UPDATE };
+		EsMessagePostRemote(desktop.fileManager->singleProcess->handle, &m);
+	}
+}
+
 void OpenDocumentCloseReference(EsObjectID id) {
 	OpenDocument *document = desktop.openDocuments.Get(&id);
 	EsAssert(document->referenceCount && document->referenceCount < 0x10000000 /* sanity check */);
@@ -1905,6 +1919,7 @@ void OpenDocumentCloseReference(EsObjectID id) {
 	EsHeapFree(document->temporarySavePath);
 	EsHandleClose(document->readHandle);
 	desktop.openDocuments.Delete(&id);
+	OpenDocumentListUpdated();
 }
 
 void OpenDocumentOpenReference(EsObjectID id) {
@@ -1955,6 +1970,8 @@ void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest) {
 
 		startupInformation.readHandle = document.readHandle;
 		startupInformation.documentID = document.id;
+
+		OpenDocumentListUpdated();
 	}
 
 	ApplicationInstanceCreate(startupInformation.id, &startupInformation, nullptr);
@@ -2041,6 +2058,8 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 			EsMessagePostRemote(instance->process->handle, &m);
 			EsHeapFree(data);
 		}
+
+		OpenDocumentListUpdated();
 	}
 
 	OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
@@ -2155,7 +2174,7 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 
 	document->currentWriter = 0;
 
-	if (desktop.fileManager->singleProcess) {
+	if (desktop.fileManager && desktop.fileManager->singleProcess) {
 		EsMessage m = {};
 		m.type = ES_MSG_FILE_MANAGER_FILE_MODIFIED;
 		m.user.context1 = EsConstantBufferCreate(document->path, document->pathBytes, desktop.fileManager->singleProcess->handle); 
@@ -2731,6 +2750,19 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			}
 
 			EsBufferWrite(pipe, &information, sizeof(information));
+		}
+	} else if (buffer[0] == DESKTOP_MSG_LIST_OPEN_DOCUMENTS) {
+		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+
+		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+			size_t count = desktop.openDocuments.Count();
+			EsBufferWrite(pipe, &count, sizeof(size_t));
+
+			for (uintptr_t i = 0; i < count; i++) {
+				OpenDocument *document = &desktop.openDocuments[i];
+				EsBufferWrite(pipe, &document->pathBytes, sizeof(size_t));
+				EsBufferWrite(pipe, document->path, document->pathBytes);
+			}
 		}
 	} else if (!instance) {
 		// -------------------------------------------------

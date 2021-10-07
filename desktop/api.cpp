@@ -61,6 +61,7 @@ struct EnumString { const char *cName; int value; };
 #define DESKTOP_MSG_RENAME                   (18)
 #define DESKTOP_MSG_SET_MODIFIED             (19)
 #define DESKTOP_MSG_QUERY_OPEN_DOCUMENT      (20)
+#define DESKTOP_MSG_LIST_OPEN_DOCUMENTS      (21)
 
 struct EsFileStore {
 #define FILE_STORE_HANDLE        (1)
@@ -632,6 +633,11 @@ void EsOpenDocumentQueryInformation(const char *path, ptrdiff_t pathBytes, EsOpe
 		MessageDesktop(buffer, pathBytes + 1, ES_INVALID_HANDLE, &response);
 		EsHeapFree(buffer);
 	}
+}
+
+void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) {
+	uint8_t m = DESKTOP_MSG_LIST_OPEN_DOCUMENTS;
+	MessageDesktop(&m, 1, ES_INVALID_HANDLE, outputBuffer);
 }
 
 void EsApplicationRunTemporary(EsInstance *instance, const char *path, ptrdiff_t pathBytes) {

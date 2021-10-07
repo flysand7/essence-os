@@ -201,7 +201,7 @@ String PathGetDrive(String path) {
 
 bool PathHasPrefix(String path, String prefix) {
 	prefix = PathRemoveTrailingSlash(prefix);
-	return StringStartsWith(path, prefix) && path.bytes > prefix.bytes && path.text[prefix.bytes] == '/';
+	return StringStartsWith(path, prefix) && ((path.bytes > prefix.bytes && path.text[prefix.bytes] == '/') || (path.bytes == prefix.bytes));
 }
 
 bool PathReplacePrefix(String *knownPath, String oldPath, String newPath) {

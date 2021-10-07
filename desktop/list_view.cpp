@@ -1190,8 +1190,7 @@ struct EsListView : EsElement {
 
 				EsDrawContent(message->painter, element, element->GetBounds(), 
 					(char *) _buffer, buffer.position, m.getContent.icon,
-					m.getContent.richText ? ES_DRAW_CONTENT_RICH_TEXT : ES_FLAGS_DEFAULT,
-					&selection);
+					m.getContent.drawContentFlags, &selection);
 			}
 		} else if (message->type == ES_MSG_LAYOUT) {
 			if (element->GetChildCount()) {

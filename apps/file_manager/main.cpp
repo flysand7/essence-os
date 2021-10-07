@@ -248,6 +248,8 @@ Array<String> bookmarks;
 Array<FolderViewSettingsEntry> folderViewSettings;
 HashStore<uint64_t, Thumbnail> thumbnailCache;
 
+Array<String> openDocuments;
+
 // Styles.
 
 const EsStyle styleFolderView = {
@@ -541,9 +543,14 @@ void _start() {
 				FolderDestroy(loadedFolders[i]);
 			}
 
+			for (uintptr_t i = 0; i < openDocuments.Length(); i++) {
+				StringDestroy(&openDocuments[i]);
+			}
+
 			EsAssert(!instances.Length());
 			EsHeapFree(fileTypesBuffer.out);
 
+			openDocuments.Free();
 			bookmarks.Free();
 			drives.Free();
 			folderViewSettings.Free();
@@ -593,6 +600,34 @@ void _start() {
 			}
 
 			EsHeapFree(data);
+		} else if (message->type == ES_MSG_FILE_MANAGER_DOCUMENT_UPDATE) {
+			EsBuffer buffer = { .canGrow = true };
+			_EsOpenDocumentEnumerate(&buffer);
+
+			size_t count = 0;
+			EsBufferReadInto(&buffer, &count, sizeof(size_t));
+
+			for (uintptr_t i = 0; i < openDocuments.Length(); i++) {
+				StringDestroy(&openDocuments[i]);
+			}
+
+			openDocuments.Free();
+
+			for (uintptr_t i = 0; i < count; i++) {
+				size_t pathBytes = 0;
+				EsBufferReadInto(&buffer, &pathBytes, sizeof(size_t));
+				char *path = (char *) EsHeapAllocate(pathBytes, false);
+				EsBufferReadInto(&buffer, path, pathBytes);
+				String string = { .text = path, .bytes = pathBytes, .allocated = pathBytes };
+				openDocuments.Add(string);
+			}
+
+			for (uintptr_t i = 0; i < instances.Length(); i++) {
+				EsListViewInvalidateAll(instances[i]->list);
+			}
+
+			EsHeapFree(buffer.out);
+			EsAssert(!buffer.error);
 		} else if (message->type == MESSAGE_BLOCKING_TASK_COMPLETE) {
 			Instance *instance = (Instance *) message->user.context1.p;
 			if (message->user.context2.u == instance->blockingTaskID) BlockingTaskComplete(instance);

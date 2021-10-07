@@ -138,7 +138,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 			} else {
 				// TODO Get default from configuration.
 				instance->viewSettings.sortColumn = COLUMN_NAME;
-				instance->viewSettings.viewType = VIEW_DETAILS;
+				instance->viewSettings.viewType = VIEW_TILES;
 			}
 		}
 
@@ -753,9 +753,29 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		FolderEntry *entry = listEntry->entry;
 		FileType *fileType = FolderEntryGetType(instance->folder, entry);
 		String name = entry->GetName();
-		EsBufferFormat(message->getContent.buffer, "%s\n\a2]%s " HYPHENATION_POINT " %D", name.bytes, name.text, fileType->nameBytes, fileType->name, entry->size);
+		bool isOpen = false;
+
+		{
+			// Check if the file is an open document.
+			// TODO Is this slow?
+
+			String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
+
+			for (uintptr_t i = 0; i < openDocuments.Length(); i++) {
+				if (StringEquals(openDocuments[i], path)) {
+					isOpen = true;
+					break;
+				}
+			}
+
+			StringDestroy(&path);
+		}
+
+		EsBufferFormat(message->getContent.buffer, "%z%s\n\a2w4]%s " HYPHENATION_POINT " %D", 
+				isOpen ? "\aw6]" : "",
+				name.bytes, name.text, fileType->nameBytes, fileType->name, entry->size);
 		message->getContent.icon = fileType->iconID;
-		message->getContent.richText = true;
+		message->getContent.drawContentFlags = ES_DRAW_CONTENT_RICH_TEXT;
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT_RANGE) {
 		for (intptr_t i = message->selectRange.fromIndex; i <= message->selectRange.toIndex; i++) {
 			ListEntry *entry = &instance->listContents[i];

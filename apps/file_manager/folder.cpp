@@ -489,6 +489,10 @@ void FolderPathMoved(String oldPath, String newPath, bool saveConfiguration) {
 		}
 	}
 
+	for (uintptr_t i = 0; i < openDocuments.Length(); i++) {
+		PathReplacePrefix(&openDocuments[i], oldPath, newPath);
+	}
+
 	for (uintptr_t i = 0; i < bookmarks.Length(); i++) {
 		PathReplacePrefix(&bookmarks[i], oldPath, newPath);
 	}
