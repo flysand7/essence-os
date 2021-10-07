@@ -20,6 +20,9 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
+// 	Method to iterate through all the objects that link to selected object.
+// 	Sorted list in ObjectAddInstanceCommand.
+// 	Hide arrows to colors.
 //	Having to link to the end of a conditional object chain is a bit strange.
 // 	Output styles.header in order of header ID.
 // 	Cleaning up unused objects.
@@ -342,6 +345,7 @@ struct Step {
 
 struct ExportOffset {
 	uint64_t objectID;
+	uint64_t styleObjectID;
 	uintptr_t offset;
 	char cPropertyName[PROPERTY_NAME_SIZE];
 	uint8_t overrideType;
@@ -407,6 +411,16 @@ Object *ObjectFind(uint64_t id) {
 ExportOffset *ExportOffsetFindObject(uint64_t id) {
 	for (uintptr_t i = 0; i < exportOffsets.Length(); i++) {
 		if (exportOffsets[i].objectID == id) {
+			return &exportOffsets[i];
+		}
+	}
+
+	return nullptr;
+}
+
+ExportOffset *ExportOffsetFindObjectForStyle(uint64_t id, uint64_t style) {
+	for (uintptr_t i = 0; i < exportOffsets.Length(); i++) {
+		if (exportOffsets[i].objectID == id && exportOffsets[i].styleObjectID == style) {
 			return &exportOffsets[i];
 		}
 	}
@@ -1433,6 +1447,18 @@ void InspectorPopulate() {
 	UIParentPush(inspector);
 
 	Object *object = ObjectFind(selectedObjectID);
+	size_t referenceCount = 0;
+
+	if (object) {
+		for (uintptr_t i = 0; i < objects.Length(); i++) {
+			for (uintptr_t j = 0; j < objects[i].properties.Length(); j++) {
+				if (objects[i].properties[j].type == PROP_OBJECT 
+						&& objects[i].properties[j].object == object->id) {
+					referenceCount++;
+				}
+			}
+		}
+	}
 
 	if (object && object->type != OBJ_INSTANCE) {
 		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
@@ -1444,6 +1470,8 @@ void InspectorPopulate() {
 			UIButtonCreate(0, UI_BUTTON_SMALL, "Auto", -1)->invoke = InspectorAutoNameObject;
 			UIButtonCreate(0, UI_BUTTON_SMALL, "Rename", -1)->invoke = InspectorRenameObject;
 			UIParentPop();
+			snprintf(buffer, sizeof(buffer), "%ld references", referenceCount);
+			UILabelCreate(0, 0, buffer, -1);
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE
 				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
@@ -3122,6 +3150,8 @@ void Export() {
 			continue;
 		}
 		
+		uint64_t styleObjectID = object->id;
+
 		Object *metrics = PropertyFindOrInheritReadObject(object, "metrics");
 		Object *textStyle = PropertyFindOrInheritReadObject(object, "textStyle");
 		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");
@@ -3208,6 +3238,7 @@ void Export() {
 				if (!layerObject) continue;
 
 				ExportOffset exportOffset = {};
+				exportOffset.styleObjectID = styleObjectID;
 				exportOffset.objectID = layerObject->id;
 				exportOffset.offset = ftell(output);
 				exportOffsets.Add(exportOffset);
@@ -3271,6 +3302,8 @@ void Export() {
 			continue;
 		}
 
+		uint64_t styleObjectID = object->id;
+
 		ExportOffset exportOffset = {};
 		exportOffset.objectID = object->id;
 		exportOffset.offset = ftell(output);
@@ -3292,7 +3325,7 @@ void Export() {
 				Property *layerProperty = PropertyFind(appearance, cPropertyName, PROP_OBJECT);
 				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
 				if (!layerObject) continue;
-				uint32_t exportOffset = ExportOffsetFindObject(layerObject->id)->offset;
+				uint32_t exportOffset = ExportOffsetFindObjectForStyle(layerObject->id, styleObjectID)->offset;
 				fwrite(&exportOffset, 1, sizeof(exportOffset), output);
 			}
 		}

@@ -196,10 +196,13 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 	// TODO Is it safe to pass input to Bochs on this thread?
 
 	if (message->type == ES_MSG_PAINT) {
-		int ox = message->painter->width / 2 - instance->vmemWidth / 2;
-		int oy = message->painter->height / 2 - instance->vmemHeight / 2;
-		EsRectangle bounds = { ox, ox + instance->vmemWidth, oy, oy + instance->vmemHeight };
-		EsDrawBitmap(message->painter, bounds, instance->vmem, instance->vmemWidth * 4, 0xFFFF);
+		EsRectangle bounds = EsPainterBoundsInset(message->painter);
+		EsRectangle imageBounds = EsRectangleCenter(bounds, ES_RECT_2S(instance->vmemWidth, instance->vmemHeight));
+		EsDrawBitmap(message->painter, imageBounds, instance->vmem, instance->vmemWidth * 4, ES_DRAW_BITMAP_OPAQUE);
+		EsDrawBlock(message->painter, ES_RECT_4(bounds.l, imageBounds.l, bounds.t, bounds.b), 0xFF000000);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.r, bounds.r, bounds.t, bounds.b), 0xFF000000);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, bounds.t, imageBounds.t), 0xFF000000);
+		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, imageBounds.b, bounds.b), 0xFF000000);
 		repaintQueued = false;
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL) {

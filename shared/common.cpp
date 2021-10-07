@@ -365,15 +365,17 @@ void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *sourceBits, 
 				j--;
 			} 
 		} else if (mode == ES_DRAW_BITMAP_OPAQUE) {
+			__m128i fillAlpha = _mm_set1_epi32(0xFF000000);
+
 			while (j >= 4) {
-				_mm_storeu_si128((__m128i *) destination, _mm_loadu_si128((__m128i *) source));
+				_mm_storeu_si128((__m128i *) destination, _mm_or_si128(fillAlpha, _mm_loadu_si128((__m128i *) source)));
 				destination += 4;
 				source += 4;
 				j -= 4;
 			} 
 
 			while (j > 0) {
-				*destination = *source;
+				*destination = 0xFF000000 | *source;
 				destination++;
 				source++;
 				j--;
