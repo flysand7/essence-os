@@ -20,7 +20,8 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
-// 	Method to iterate through all the objects that link to selected object.
+// 	Change the type of an object in-place.
+// 	Undoing a delete does not previous an instance's layer.
 // 	Sorted list in ObjectAddInstanceCommand.
 // 	Hide arrows to colors.
 //	Having to link to the end of a conditional object chain is a bit strange.
@@ -213,7 +214,14 @@ const EsInstanceClassEditorSettings instanceClassEditorSettings = {
 #endif
 
 struct Canvas : UIElement {
-	bool showArrows;
+#define ARROW_MODE_NONE        (0)
+#define ARROW_MODE_ALL         (1)
+#define ARROW_MODE_FROM        (2)
+#define ARROW_MODE_TO          (3)
+#define ARROW_MODE_FROM_OR_TO  (4)
+#define ARROW_MODE_FROM_AND_TO (5)
+	uint8_t arrowMode;
+
 	bool showPrototype;
 
 	float zoom;
@@ -692,7 +700,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		for (uintptr_t i = 0; i < objects.Length(); i++) {
 			if (objects[i].id == step.objectID) {
 				step.object = objects[i];
-				objects.DeleteSwap(i);
+				objects.Delete(i);
 				break;
 			}
 		}
@@ -2542,7 +2550,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			}
 		}
 
-		if (canvas->showArrows && !canvas->showPrototype) {
+		if (canvas->arrowMode && !canvas->showPrototype) {
 			// Draw object connections.
 
 			for (uintptr_t i = 0; i < objects.Length(); i++) {
@@ -2554,6 +2562,21 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 					if (object->properties[j].type == PROP_OBJECT) {
 						Object *target = ObjectFind(object->properties[j].object);
 						if (!target) continue;
+
+						bool sourceIsSelected = object->flags & OBJECT_IS_SELECTED;
+						bool targetIsSelected = target->flags & OBJECT_IS_SELECTED;
+
+						if (canvas->arrowMode == ARROW_MODE_ALL) {
+						} else if (canvas->arrowMode == ARROW_MODE_FROM) {
+							if (!sourceIsSelected) continue;
+						} else if (canvas->arrowMode == ARROW_MODE_TO) {
+							if (!targetIsSelected) continue;
+						} else if (canvas->arrowMode == ARROW_MODE_FROM_OR_TO) {
+							if (!targetIsSelected && !sourceIsSelected) continue;
+						} else if (canvas->arrowMode == ARROW_MODE_FROM_AND_TO) {
+							if (!targetIsSelected || !sourceIsSelected) continue;
+						}
+
 						UIRectangle b2 = CanvasGetObjectBounds(target);
 						CanvasDrawArrow(painter, (b2.l + b2.r) / 2, (b2.t + b2.b) / 2, (b1.l + b1.r) / 2, (b1.t + b1.b) / 2, 0xFF000000);
 					}
@@ -2743,9 +2766,20 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	return 0;
 }
 
-void CanvasToggleArrows(void *) {
-	canvas->showArrows = !canvas->showArrows;
+void CanvasArrowModeInternal(void *cp) {
+	canvas->arrowMode = (uintptr_t) cp;
 	UIElementRepaint(canvas, nullptr);
+}
+
+void CanvasArrowMode(void *) {
+	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | UI_MENU_PLACE_ABOVE);
+	UIMenuAddItem(menu, 0, "None", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_NONE);
+	UIMenuAddItem(menu, 0, "All", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_ALL);
+	UIMenuAddItem(menu, 0, "From selected", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_FROM);
+	UIMenuAddItem(menu, 0, "To selected", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_TO);
+	UIMenuAddItem(menu, 0, "From or to selected", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_FROM_OR_TO);
+	UIMenuAddItem(menu, 0, "From and to selected", -1, CanvasArrowModeInternal, (void *) (uintptr_t) ARROW_MODE_FROM_AND_TO);
+	UIMenuShow(menu);
 }
 
 void CanvasSwitchView(void *) {
@@ -3243,15 +3277,16 @@ void Export() {
 				exportOffset.offset = ftell(output);
 				exportOffsets.Add(exportOffset);
 
-#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(appearance, cPropertyName)
-				LAYER_READ_INT32(offset0);
-				LAYER_READ_INT32(offset1);
-				LAYER_READ_INT32(offset2);
-				LAYER_READ_INT32(offset3);
-				LAYER_READ_INT32(position0);
-				LAYER_READ_INT32(position1);
-				LAYER_READ_INT32(position2);
-				LAYER_READ_INT32(position3);
+#define LAYER_READ_INT8(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(appearance, cPropertyName)
+				LAYER_READ_INT8(offset0);
+				LAYER_READ_INT8(offset1);
+				LAYER_READ_INT8(offset2);
+				LAYER_READ_INT8(offset3);
+				LAYER_READ_INT8(position0);
+				LAYER_READ_INT8(position1);
+				LAYER_READ_INT8(position2);
+				LAYER_READ_INT8(position3);
+				LAYER_READ_INT8(mode);
 #undef LAYER_READ_INT32
 
 				uint8_t baseDataBuffer[4096];
@@ -3272,8 +3307,8 @@ void Export() {
 				} else if (layerObject->type == OBJ_LAYER_TEXT) {
 					layer.type = THEME_LAYER_TEXT;
 					ThemeLayerText text = {};
-					ExportI8(&context, text, blur, object, "blur");
-					ExportColor(&context, text, color, object, "color");
+					ExportI8(&context, text, blur, layerObject, "blur");
+					ExportColor(&context, text, color, layerObject, "color");
 					ExportWrite(&context, &text, sizeof(text));
 				} else {
 					assert(false);
@@ -3282,6 +3317,7 @@ void Export() {
 				layer.dataByteCount = baseData.position + sizeof(layer);
 				layer.overrideCount = overrideData.position / sizeof(ThemeOverride);
 				layer.overrideListOffset = layer.dataByteCount + ftell(output);
+				layer.mode = mode;
 				fwrite(&layer, 1, sizeof(layer), output);
 				fwrite(baseData.out, 1, baseData.position, output);
 				fwrite(overrideData.out, 1, overrideData.position, output);
@@ -3452,7 +3488,7 @@ int main(int argc, char **argv) {
 
 	graphControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
 	graphControls->gap = -1;
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Toggle arrows", -1)->invoke = CanvasToggleArrows;
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Arrow mode \x18", -1)->invoke = CanvasArrowMode;
 		UIButtonCreate(0, UI_BUTTON_SMALL, "Add object \x18", -1)->invoke = ObjectAddCommand;
 	UIParentPop();
 
@@ -3468,6 +3504,7 @@ int main(int argc, char **argv) {
 
 	canvas->zoom = canvas->swapZoom = 1.0f;
 	canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
+	canvas->arrowMode = ARROW_MODE_FROM_OR_TO;
 
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Z'), 1 /* ctrl */, 0, 0, DocumentUndoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));

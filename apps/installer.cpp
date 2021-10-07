@@ -1055,7 +1055,7 @@ void _start() {
 
 		EsPanel *buttonsRow = EsPanelCreate(panelInstallOptions, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleButtonsRow);
 		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(InstallerViewLicenses)), ButtonViewLicenses);
-		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopShutdownAction)), ButtonShutdown);
+		EsButtonOnCommand(EsButtonCreate(buttonsRow, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(DesktopShutdownAction)), ButtonShutdown);
 		EsSpacerCreate(buttonsRow, ES_CELL_H_FILL);
 		installButton = EsButtonCreate(buttonsRow, ES_ELEMENT_DISABLED, 0, INTERFACE_STRING(InstallerInstall));
 		EsButtonOnCommand(installButton, ButtonInstall);
