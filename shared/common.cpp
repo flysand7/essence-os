@@ -392,48 +392,27 @@ void EsDrawRectangle(EsPainter *painter, EsRectangle r, uint32_t mainColor, uint
 	EsDrawBlock(painter, ES_RECT_4(r.l + borderSize.l, r.r - borderSize.r, r.t + borderSize.t, r.b - borderSize.b), mainColor);
 }
 
-void ImageDraw(uint32_t *destinationBits, uint32_t destinationWidth, uint32_t destinationHeight, size_t destinationStride,
-		uint32_t *sourceBits, uint32_t sourceWidth, uint32_t sourceHeight, size_t sourceStride,
-		EsRectangle destinationRegion, EsRectangle sourceRegion, uint16_t alpha, bool fullAlpha) {
-	if (sourceRegion.l < 0 || sourceRegion.t < 0
-			|| sourceRegion.r < 0 || sourceRegion.b < 0
-			|| sourceRegion.r > (int32_t) sourceWidth || sourceRegion.b > (int32_t) sourceHeight
-			|| sourceRegion.l >= sourceRegion.r || sourceRegion.t >= sourceRegion.b) {
-		return;
-	}
+#ifndef KERNEL
+void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *sourceBits, uintptr_t sourceStride, uint16_t alpha) {
+	EsRectangle bounds = EsRectangleIntersection(painter->clip, destinationRegion);
+	uint32_t *destinationBits = (uint32_t *) painter->target->bits;
+	uintptr_t destinationStride = painter->target->stride;
+	bool fullAlpha = painter->target->fullAlpha;
 
-	EsRectangle clipRegion = ES_RECT_4(0, destinationWidth, 0, destinationHeight);
-	EsRectangle sourceBorderRegion = sourceRegion;
+	for (int32_t y = bounds.t; y < bounds.b; y++) {
+		int32_t sy = LinearMap(destinationRegion.t, destinationRegion.b, sourceRegion.t, sourceRegion.b, y);
+		float sxDelta = (float) (sourceRegion.l - sourceRegion.r) / (destinationRegion.l - destinationRegion.r);
+		float sxFloat = LinearMap(destinationRegion.l, destinationRegion.r, sourceRegion.l, sourceRegion.r, bounds.l);
 
-	clipRegion = EsRectangleIntersection(clipRegion, destinationRegion);
-	if (clipRegion.r <= clipRegion.l || clipRegion.b <= clipRegion.t) return;
-	sourceRegion = EsRectangleAdd(sourceRegion, EsRectangleSubtract(clipRegion, destinationRegion));
-	int borderWidth = Width(sourceBorderRegion), borderHeight = Height(sourceBorderRegion);
-	if (sourceRegion.l > sourceBorderRegion.l) sourceRegion.l = sourceBorderRegion.l + (clipRegion.l - destinationRegion.l) * borderWidth  / Width(destinationRegion);
-	if (sourceRegion.r < sourceBorderRegion.r) sourceRegion.r = sourceBorderRegion.r + (clipRegion.r - destinationRegion.r) * borderWidth  / Width(destinationRegion);
-	if (sourceRegion.t > sourceBorderRegion.t) sourceRegion.t = sourceBorderRegion.t + (clipRegion.t - destinationRegion.t) * borderHeight / Height(destinationRegion); 
-	if (sourceRegion.b < sourceBorderRegion.b) sourceRegion.b = sourceBorderRegion.b + (clipRegion.b - destinationRegion.b) * borderHeight / Height(destinationRegion); 
-	destinationRegion = clipRegion;
-
-	for (intptr_t y = destinationRegion.t; y < destinationRegion.b; y++) {
-		intptr_t sy = y - destinationRegion.t + sourceRegion.t;
-
-		intptr_t sourceBorderSize = sourceRegion.b - sourceRegion.t;
-		intptr_t destinationBorderSize = destinationRegion.b - destinationRegion.t;
-		sy = (y - destinationRegion.t) * sourceBorderSize / destinationBorderSize + sourceRegion.t;
-
-		for (intptr_t x = destinationRegion.l; x < destinationRegion.r; x++) {
-			intptr_t sx = x - destinationRegion.l + sourceRegion.l;
-
-			intptr_t sourceBorderSize = sourceRegion.r - sourceRegion.l;
-			intptr_t destinationBorderSize = destinationRegion.r - destinationRegion.l;
-			sx = (x - destinationRegion.l) * sourceBorderSize / destinationBorderSize + sourceRegion.l;
+		for (int32_t x = bounds.l; x < bounds.r; x++) {
+			int32_t sx = sxFloat;
+			sxFloat += sxDelta;
 
 			uint32_t *destinationPixel = destinationBits + x + y * destinationStride / 4;
 			uint32_t *sourcePixel = sourceBits + sx + sy * sourceStride / 4;
 			uint32_t modified = *sourcePixel;
 
-			if (alpha == 0xFFFF) {
+			if (alpha == ES_DRAW_BITMAP_OPAQUE) {
 				*destinationPixel = modified;
 			} else {
 				if (alpha != 0xFF) {
@@ -446,25 +425,20 @@ void ImageDraw(uint32_t *destinationBits, uint32_t destinationWidth, uint32_t de
 	}
 }
 
-void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *bits, uintptr_t stride, uint16_t alpha) {
-	ImageDraw((uint32_t *) painter->target->bits, painter->target->width, painter->target->height, painter->target->stride,
-			bits, Width(sourceRegion), Height(sourceRegion), stride,
-			destinationRegion, sourceRegion, alpha, painter->target->fullAlpha);
-}
-
 void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha) {
 	bool scale = !(Width(destinationRegion) == Width(sourceRegion) && Height(destinationRegion) == Height(sourceRegion));
 
 	if (scale) {
-		ImageDraw((uint32_t *) painter->target->bits, painter->target->width, painter->target->height, painter->target->stride,
-				(uint32_t *) source->bits, source->width, source->height, source->stride,
-				destinationRegion, sourceRegion, alpha, painter->target->fullAlpha);
+		EsDrawBitmapScaled(painter, destinationRegion, 
+				sourceRegion, (uint32_t *) source->bits, 
+				source->stride, source->fullAlpha ? alpha : 0xFFFF);
 	} else {
 		EsDrawBitmap(painter, destinationRegion, 
 				(uint32_t *) source->bits + sourceRegion.l + sourceRegion.t * source->stride / 4, 
 				source->stride, source->fullAlpha ? alpha : 0xFFFF);
 	}
 }
+#endif
 
 #endif
 
