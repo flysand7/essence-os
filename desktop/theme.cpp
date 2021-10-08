@@ -1577,10 +1577,10 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 	style->borders.t = themeStyle->approximateBorders.t * key.scale;
 	style->borders.b = themeStyle->approximateBorders.b * key.scale;
 
-	style->paintOutsets.l = themeStyle->paintOutsets.l * key.scale;
-	style->paintOutsets.r = themeStyle->paintOutsets.r * key.scale;
-	style->paintOutsets.t = themeStyle->paintOutsets.t * key.scale;
-	style->paintOutsets.b = themeStyle->paintOutsets.b * key.scale;
+	style->paintOutsets.l = EsCRTceilf(themeStyle->paintOutsets.l * key.scale);
+	style->paintOutsets.r = EsCRTceilf(themeStyle->paintOutsets.r * key.scale);
+	style->paintOutsets.t = EsCRTceilf(themeStyle->paintOutsets.t * key.scale);
+	style->paintOutsets.b = EsCRTceilf(themeStyle->paintOutsets.b * key.scale);
 
 	if (style->opaqueInsets.l != 0x7F) {
 		style->opaqueInsets.l = themeStyle->opaqueInsets.l * key.scale;

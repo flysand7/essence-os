@@ -11,7 +11,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 
 	cd bin/harfbuzz
 	./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared \
-		CFLAGS="-g -O2 -DHB_TINY" CXXFLAGS="-g -O2 -DHB_TINY" > ../harfbuzz_configure.txt
+		CFLAGS="-g -O3 -DHB_TINY" CXXFLAGS="-g -O3 -DHB_TINY" > ../harfbuzz_configure.txt
 	cd ../..
 
 	cp ports/harfbuzz/essence-config.h bin/harfbuzz/config.h

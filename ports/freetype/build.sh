@@ -15,7 +15,7 @@ if [ ! -d "bin/freetype" ]; then
 
 	cd bin/freetype
 	./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz \
-		CC=x86_64-essence-gcc CFLAGS="-g -ffreestanding -DARCH_X86_64 -Wno-unused-function" \
+		CC=x86_64-essence-gcc CFLAGS="-g -ffreestanding -DARCH_X86_64 -Wno-unused-function -O3" \
 		LDFLAGS="-nostdlib -lgcc" --host=x86_64-essence > ../freetype_configure.txt
 	make ANSIFLAGS="" > /dev/null
 	cd ../..

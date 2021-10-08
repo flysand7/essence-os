@@ -7017,13 +7017,18 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (message->keyboard.scancode == ES_SCANCODE_TAB && (message->keyboard.modifiers & ~ES_MODIFIER_SHIFT) == 0) {
 		EsElement *element = window->focused ?: window;
 		EsElement *start = element;
+		bool backwards = message->keyboard.modifiers & ES_MODIFIER_SHIFT;
 
-		do {
-			element = UITabTraversalDo(element, message->keyboard.modifiers & ES_MODIFIER_SHIFT);
-		} while (!element->IsTabTraversable() && element != start);
+		tryAgain:
+		element = UITabTraversalDo(element, backwards);
+		if (!element->IsTabTraversable() && element != start) goto tryAgain;
 
 		if (element->state & UI_STATE_RADIO_GROUP) {
-			element = EsPanelRadioGroupGetChecked((EsPanel *) element);
+			if (backwards && start->parent == element) {
+				goto tryAgain;
+			} else {
+				element = EsPanelRadioGroupGetChecked((EsPanel *) element);
+			}
 		}
 
 		EsElementFocus(element, ES_ELEMENT_FOCUS_ENSURE_VISIBLE | ES_ELEMENT_FOCUS_FROM_KEYBOARD);

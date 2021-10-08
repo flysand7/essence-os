@@ -1942,6 +1942,99 @@ uint32_t GraphGetColorFromProperty(Property *property) {
 
 //////////////////////////////////////////////////////////////
 
+Rectangle8 ExportCalculatePaintOutsets(Object *object) {
+	Rectangle8 paintOutsets = {};
+
+	int32_t layerCount = PropertyReadInt32(object, "layers_count");
+	if (layerCount < 0) layerCount = 0;
+	if (layerCount > 100) layerCount = 100;
+
+	for (int32_t i = 0; i < layerCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		sprintf(cPropertyName, "layers_%d_layer", i);
+		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		if (!layerObject) continue;
+
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
+		LAYER_READ_INT32(offset0);
+		LAYER_READ_INT32(offset1);
+		LAYER_READ_INT32(offset2);
+		LAYER_READ_INT32(offset3);
+		LAYER_READ_INT32(position0);
+		LAYER_READ_INT32(position1);
+		LAYER_READ_INT32(position2);
+		LAYER_READ_INT32(position3);
+#undef LAYER_READ_INT32
+
+		if (layerObject->type == OBJ_LAYER_BOX) {
+			Object *object = layerObject;
+			int depth = 0;
+
+			while (object && (depth++ < 100)) {
+				int32_t boxOffset0 = PropertyReadInt32(object, "offset0");
+				int32_t boxOffset1 = PropertyReadInt32(object, "offset1");
+				int32_t boxOffset2 = PropertyReadInt32(object, "offset2");
+				int32_t boxOffset3 = PropertyReadInt32(object, "offset3");
+				if (boxOffset0 < offset0) offset0 = boxOffset0;
+				if (boxOffset1 > offset1) offset1 = boxOffset1;
+				if (boxOffset2 < offset2) offset2 = boxOffset2;
+				if (boxOffset3 > offset3) offset3 = boxOffset3;
+				Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
+				object = ObjectFind(property ? property->object : 0);
+			}
+		}
+
+		if (position0 ==   0 && -offset0 > paintOutsets.l) paintOutsets.l = -offset0;
+		if (position1 == 100 &&  offset1 > paintOutsets.r) paintOutsets.r =  offset1;
+		if (position2 ==   0 && -offset2 > paintOutsets.t) paintOutsets.t = -offset2;
+		if (position3 == 100 &&  offset3 > paintOutsets.b) paintOutsets.b =  offset3;
+	}
+
+	return paintOutsets;
+}
+
+Rectangle8 ExportCalculateOpaqueInsets(Object *object) {
+	return { 0x7F, 0x7F, 0x7F, 0x7F }; // TODO;
+}
+
+Rectangle8 ExportCalculateApproximateBorders(Object *object) {
+	int32_t layerCount = PropertyReadInt32(object, "layers_count");
+	if (layerCount < 0) layerCount = 0;
+	if (layerCount > 100) layerCount = 100;
+
+	for (int32_t i = 0; i < layerCount; i++) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		sprintf(cPropertyName, "layers_%d_layer", i);
+		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		if (!layerObject) continue;
+
+#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
+		LAYER_READ_INT32(position0);
+		LAYER_READ_INT32(position1);
+		LAYER_READ_INT32(position2);
+		LAYER_READ_INT32(position3);
+		LAYER_READ_INT32(mode);
+#undef LAYER_READ_INT32
+
+		if (layerObject->type == OBJ_LAYER_BOX && position0 == 0 && position1 == 100 && position2 == 0 && position3 == 100
+				&& !PropertyReadInt32(layerObject, "shadowHiding") && !PropertyReadInt32(layerObject, "isBlurred")
+				&& mode == THEME_LAYER_MODE_BACKGROUND && PropertyFind(layerObject, "borderPaint")) {
+			return { 
+				(int8_t) PropertyReadInt32(layerObject, "borders0"),
+				(int8_t) PropertyReadInt32(layerObject, "borders1"),
+				(int8_t) PropertyReadInt32(layerObject, "borders2"),
+				(int8_t) PropertyReadInt32(layerObject, "borders3"),
+			};
+		}
+	}
+
+	return {};
+}
+
+//////////////////////////////////////////////////////////////
+
 struct ExportContext {
 	EsBuffer *baseData;
 	EsBuffer *overrideData;
@@ -2535,7 +2628,16 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			} else if (object->type == OBJ_INSTANCE) {
 				Property *style = PropertyFind(object, "style", PROP_OBJECT);
 				canvas->previewStateActive = object->id == selectedObjectID;
-				CanvasDrawStyle(ObjectFind(style ? style->object : 0), bounds, painter);
+				Object *styleObject = ObjectFind(style ? style->object : 0);
+				Rectangle8 paintOutsets = ExportCalculatePaintOutsets(PropertyFindOrInheritReadObject(styleObject, "appearance"));
+				UIRectangle clip = bounds;
+				clip.l -= ceilf(paintOutsets.l * canvas->zoom);
+				clip.r += ceilf(paintOutsets.r * canvas->zoom);
+				clip.t -= ceilf(paintOutsets.t * canvas->zoom);
+				clip.b += ceilf(paintOutsets.b * canvas->zoom);
+				UIPainter painter2 = *painter;
+				painter2.clip = UIRectangleIntersection(painter2.clip, clip);
+				CanvasDrawStyle(styleObject, bounds, &painter2);
 			} else if (object->type == OBJ_LAYER_METRICS) {
 				// TODO Visually show the preferred size, insets and gaps?
 				UIDrawString(painter, bounds, "Metrics", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
@@ -2967,97 +3069,6 @@ void ObjectDuplicateCommand(void *) {
 }
 
 //////////////////////////////////////////////////////////////
-
-Rectangle8 ExportCalculatePaintOutsets(Object *object) {
-	Rectangle8 paintOutsets = {};
-
-	int32_t layerCount = PropertyReadInt32(object, "layers_count");
-	if (layerCount < 0) layerCount = 0;
-	if (layerCount > 100) layerCount = 100;
-
-	for (int32_t i = 0; i < layerCount; i++) {
-		char cPropertyName[PROPERTY_NAME_SIZE];
-		sprintf(cPropertyName, "layers_%d_layer", i);
-		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
-		if (!layerObject) continue;
-
-#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
-		LAYER_READ_INT32(offset0);
-		LAYER_READ_INT32(offset1);
-		LAYER_READ_INT32(offset2);
-		LAYER_READ_INT32(offset3);
-		LAYER_READ_INT32(position0);
-		LAYER_READ_INT32(position1);
-		LAYER_READ_INT32(position2);
-		LAYER_READ_INT32(position3);
-#undef LAYER_READ_INT32
-
-		if (layerObject->type == OBJ_LAYER_BOX) {
-			Object *object = layerObject;
-			int depth = 0;
-
-			while (object && (depth++ < 100)) {
-				int32_t boxOffset0 = PropertyReadInt32(object, "offset0");
-				int32_t boxOffset1 = PropertyReadInt32(object, "offset1");
-				int32_t boxOffset2 = PropertyReadInt32(object, "offset2");
-				int32_t boxOffset3 = PropertyReadInt32(object, "offset3");
-				if (boxOffset0 < offset0) offset0 = boxOffset0;
-				if (boxOffset1 > offset1) offset1 = boxOffset1;
-				if (boxOffset2 < offset2) offset2 = boxOffset2;
-				if (boxOffset3 > offset3) offset3 = boxOffset3;
-				Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
-				object = ObjectFind(property ? property->object : 0);
-			}
-		}
-
-		if (position0 ==   0 && -offset0 > paintOutsets.l) paintOutsets.l = -offset0;
-		if (position1 == 100 &&  offset1 > paintOutsets.r) paintOutsets.r =  offset1;
-		if (position2 ==   0 && -offset2 > paintOutsets.t) paintOutsets.t = -offset2;
-		if (position3 == 100 &&  offset3 > paintOutsets.b) paintOutsets.b =  offset3;
-	}
-
-	return paintOutsets;
-}
-
-Rectangle8 ExportCalculateOpaqueInsets(Object *object) {
-	return { 0x7F, 0x7F, 0x7F, 0x7F }; // TODO;
-}
-
-Rectangle8 ExportCalculateApproximateBorders(Object *object) {
-	int32_t layerCount = PropertyReadInt32(object, "layers_count");
-	if (layerCount < 0) layerCount = 0;
-	if (layerCount > 100) layerCount = 100;
-
-	for (int32_t i = 0; i < layerCount; i++) {
-		char cPropertyName[PROPERTY_NAME_SIZE];
-		sprintf(cPropertyName, "layers_%d_layer", i);
-		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
-		if (!layerObject) continue;
-
-#define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
-		LAYER_READ_INT32(position0);
-		LAYER_READ_INT32(position1);
-		LAYER_READ_INT32(position2);
-		LAYER_READ_INT32(position3);
-		LAYER_READ_INT32(mode);
-#undef LAYER_READ_INT32
-
-		if (layerObject->type == OBJ_LAYER_BOX && position0 == 0 && position1 == 100 && position2 == 0 && position3 == 100
-				&& !PropertyReadInt32(layerObject, "shadowHiding") && !PropertyReadInt32(layerObject, "isBlurred")
-				&& mode == THEME_LAYER_MODE_BACKGROUND && PropertyFind(layerObject, "borderPaint")) {
-			return { 
-				(int8_t) PropertyReadInt32(layerObject, "borders0"),
-				(int8_t) PropertyReadInt32(layerObject, "borders1"),
-				(int8_t) PropertyReadInt32(layerObject, "borders2"),
-				(int8_t) PropertyReadInt32(layerObject, "borders3"),
-			};
-		}
-	}
-
-	return {};
-}
 
 #ifndef OS_ESSENCE
 void Export() {

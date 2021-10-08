@@ -186,6 +186,10 @@ void UpdateProcesses(Instance *instance) {
 		totalCPUTimeSlices += processes[i].cpuUsage;
 	}
 
+	if (!totalCPUTimeSlices) {
+		totalCPUTimeSlices = 1;
+	}
+
 	int64_t percentageSum = 0;
 
 	for (uintptr_t i = 0; i < processes.Length(); i++) {
