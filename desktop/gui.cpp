@@ -3723,6 +3723,10 @@ EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, const EsStyle *sty
 	return button;
 }
 
+EsElement *EsDialogGetContentArea(EsDialog *dialog) {
+	return dialog->contentArea;
+}
+
 // --------------------------------- Canvas panes.
 
 struct EsCanvasPane : EsElement {

@@ -101,12 +101,14 @@ typedef struct ThemePaintSolid {
 typedef struct ThemeGradientStop {
 	uint32_t color;
 	int8_t position;
+	uint8_t windowColorIndex;
+	uint16_t _unused1;
 } ThemeGradientStop;
 
 typedef struct ThemePaintLinearGradient {
 	float transform[3];
 	uint8_t stopCount;
-	int8_t useGammaInterpolation : 1, useDithering : 1, useSystemColor : 1;
+	int8_t useGammaInterpolation : 1, useDithering : 1;
 	uint8_t repeatMode;
 	uint8_t _unused0;
 	// Followed by gradient stops.
@@ -352,7 +354,7 @@ struct {
 	EsPaintTarget cursors;
 	float scale;
 	HashStore<UIStyleKey, struct UIStyle *> loadedStyles;
-	float systemHue, systemSaturation, systemValue, systemHueShift;
+	uint32_t windowColors[6];
 } theming;
 #endif
 
@@ -584,6 +586,27 @@ void ThemeFillBlurCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 	}
 }
 
+uint32_t WindowColorCalculate(uint8_t index) {
+#ifdef IN_DESIGNER
+	uint32_t windowColors[6] = {
+		0xFF83B8F7, 0xFF6D9CDF, 0xFF4166B5, // Active container window gradient stops.
+		0xFFD2D0F2, 0xFFCDCCFA, 0xFFB5BEDF, // Inactive container window gradient stops.
+	};
+#else
+	uint32_t *windowColors = theming.windowColors;
+#endif
+
+	if (index >= 30 && index < 60) {
+		return EsColorInterpolate(windowColors[0], windowColors[3], (index - 30) / 29.0f);
+	} else if (index >= 60 && index < 90) {
+		return EsColorInterpolate(windowColors[1], windowColors[4], (index - 60) / 29.0f);
+	} else if (index >= 90 && index < 120) {
+		return EsColorInterpolate(windowColors[2], windowColors[5], (index - 90) / 29.0f);
+	} else {
+		return 0;
+	}
+}
+
 ES_FUNCTION_OPTIMISE_O2 
 void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gradient, int width, int height, EsBuffer *data) {
 	if (!gradient) {
@@ -615,16 +638,8 @@ void GradientCacheSetup(GradientCache *cache, const ThemePaintLinearGradient *gr
 		uint32_t color0 = stop0->color;
 		uint32_t color1 = stop1->color;
 
-#ifndef IN_DESIGNER
-		if (gradient->useSystemColor) {
-			float h, h2, s, v;
-			EsColorConvertToHSV(color0, &h, &s, &v);
-			color0 = (color0 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue, s * theming.systemSaturation, v * theming.systemValue);
-			EsColorConvertToHSV(color1, &h2, &s, &v);
-			color1 = (color1 & 0xFF000000) | EsColorConvertToRGB(theming.systemHue + (h2 - h) * theming.systemHueShift, 
-					s * theming.systemSaturation, v * theming.systemValue);
-		}
-#endif
+		if (stop0->windowColorIndex) color0 = WindowColorCalculate(stop0->windowColorIndex);
+		if (stop1->windowColorIndex) color1 = WindowColorCalculate(stop1->windowColorIndex);
 
 		float fa = ((color0 >> 24) & 0xFF) / 255.0f;
 		float fb = ((color0 >> 16) & 0xFF) / 255.0f;
@@ -1345,20 +1360,23 @@ void ThemeAnimationDestroy(ThemeAnimation *animation) {
 
 ThemeVariant ThemeAnimatingPropertyInterpolate(ThemeAnimatingProperty *property, UIStyle *destination, uint8_t *layerData) {
 	uint32_t dataOffset = property->offset;
-	EsAssert(dataOffset <= destination->layerDataByteCount - sizeof(ThemeVariant));
 	float position = (float) property->elapsed / property->duration;
 	position = SmoothAnimationTime(position);
 
 	if (property->type == THEME_OVERRIDE_I8) {
+		EsAssert(dataOffset <= destination->layerDataByteCount - sizeof(uint8_t));
 		int8_t to = *(int8_t *) (layerData + dataOffset);
 		return (ThemeVariant) { .i8 = (int8_t ) LinearInterpolate(property->from.i8, to, position) };
 	} else if (property->type == THEME_OVERRIDE_I16) {
+		EsAssert(dataOffset <= destination->layerDataByteCount - sizeof(uint16_t));
 		int16_t to = *(int16_t *) (layerData + dataOffset);
 		return (ThemeVariant) { .i16 = (int16_t) LinearInterpolate(property->from.i16, to, position) };
 	} else if (property->type == THEME_OVERRIDE_F32) {
+		EsAssert(dataOffset <= destination->layerDataByteCount - sizeof(float));
 		float to = *(float *) (layerData + dataOffset);
 		return (ThemeVariant) { .f32 = (float) LinearInterpolate(property->from.f32, to, position) };
 	} else if (property->type == THEME_OVERRIDE_COLOR) {
+		EsAssert(dataOffset <= destination->layerDataByteCount - sizeof(uint32_t));
 		uint32_t to = *(uint32_t *) (layerData + dataOffset);
 		return (ThemeVariant) { .u32 = EsColorInterpolate(property->from.u32, to, position) };
 	} else {
@@ -1413,7 +1431,11 @@ void _ThemeAnimationBuildAddProperties(ThemeAnimation *animation, UIStyle *style
 			}
 
 			uintptr_t key = themeOverride->offset + layerCumulativeDataOffset;
-			EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(ThemeVariant));
+
+			if (themeOverride->type == THEME_OVERRIDE_I8)    EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(uint8_t));
+			if (themeOverride->type == THEME_OVERRIDE_I16)   EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(uint16_t));
+			if (themeOverride->type == THEME_OVERRIDE_F32)   EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(float));
+			if (themeOverride->type == THEME_OVERRIDE_COLOR) EsAssert(key <= (uintptr_t) style->layerDataByteCount - sizeof(uint32_t));
 
 			uintptr_t point;
 			bool alreadyInList;

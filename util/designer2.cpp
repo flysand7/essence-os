@@ -64,6 +64,8 @@
 #define ES_FONT_SERIF 	   (0xFFFE)
 #define ES_FONT_MONOSPACED (0xFFFD)
 
+#define ES_RECT_4(a, b, c, d) UI_RECT_4((int32_t) (a), (int32_t) (b), (int32_t) (c), (int32_t) (d))
+
 #define ES_FUNCTION_OPTIMISE_O2 __attribute__((optimize("-O2")))
 #define ES_FUNCTION_OPTIMISE_O3 __attribute__((optimize("-O3")))
 
@@ -1773,10 +1775,6 @@ void InspectorPopulate() {
 
 			InspectorAddBooleanToggle(object, "Use gamma interpolation", "useGammaInterpolation");
 
-			if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
-				InspectorAddBooleanToggle(object, "Use window tint color", "useSystemColor");
-			}
-
 			int32_t stopCount = PropertyReadInt32(object, "stops_count");
 			if (stopCount < 0) stopCount = 0;
 			if (stopCount > 100) stopCount = 100;
@@ -1794,6 +1792,8 @@ void InspectorPopulate() {
 				InspectorAddLink(object, "Color:", cPropertyName);
 				sprintf(cPropertyName, "stops_%d_position", i);
 				InspectorAddInteger(object, "Position (%):", cPropertyName);
+				sprintf(cPropertyName, "stops_%d_wci", i);
+				InspectorAddInteger(object, "Window color index:", cPropertyName);
 				UIParentPop();
 
 				if (i != stopCount - 1) {
@@ -2030,6 +2030,8 @@ void ExportGradientStopArray(Object *object, ExportContext *data, size_t stopCou
 		ExportColor(data, stop, color, object, cPropertyName);
 		sprintf(cPropertyName, "stops_%d_position", (int32_t) i);
 		ExportI8(data, stop, position, object, cPropertyName);
+		sprintf(cPropertyName, "stops_%d_wci", (int32_t) i);
+		ExportI8(data, stop, windowColorIndex, object, cPropertyName);
 		ExportWrite(data, &stop, sizeof(stop));
 	}
 }
@@ -2060,7 +2062,6 @@ int8_t ExportPaint(Object *parentObject, const char *cPropertyNameInParent, Expo
 			ExportF32(data, paint, transform[2], object, "transformStart");
 			paint.stopCount = PropertyFindOrInheritReadInt32(object, "stops_count");
 			paint.useGammaInterpolation = !!PropertyFindOrInheritReadInt32(object, "useGammaInterpolation");
-			paint.useSystemColor = !!PropertyFindOrInheritReadInt32(object, "useSystemColor");
 			paint.repeatMode = PropertyFindOrInheritReadInt32(object, "repeatMode");
 			ExportWrite(data, &paint, sizeof(paint));
 			ExportGradientStopArray(object, data, paint.stopCount);

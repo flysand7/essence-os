@@ -153,7 +153,25 @@ void InitialiseInstance(EsInstance *instance) {
 	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
 
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Alert 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
-		EsDialogShow(element->window, "Title", -1, "Content.", -1, ES_ICON_DIALOG_WARNING, ES_DIALOG_ALERT_OK_BUTTON);
+		EsDialog *dialog = EsDialogShow(element->window, "Rename multiple items", -1, 
+				"Choose the format for the new names.", -1, ES_ICON_DOCUMENT_EDIT, ES_FLAGS_DEFAULT);
+		EsElement *contentArea = EsDialogGetContentArea(dialog);
+
+		EsPanel *table = EsPanelCreate(contentArea, ES_PANEL_HORIZONTAL | ES_PANEL_TABLE, ES_STYLE_PANEL_FORM_TABLE);
+		EsPanelSetBands(table, 2);
+		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, "Prefix:");
+		EsTextboxInsert(EsTextboxCreate(table), "file ");
+		EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_V_TOP, ES_STYLE_TEXT_RADIO_GROUP_LABEL, "Content:");
+		EsPanel *radioGroup = EsPanelCreate(table, ES_PANEL_RADIO_GROUP | ES_CELL_H_EXPAND);
+		EsButton *button = EsButtonCreate(radioGroup, ES_BUTTON_RADIOBOX | ES_CELL_H_EXPAND, 0, "Counter");
+		EsButtonSetCheck(button, ES_CHECK_CHECKED);
+		EsButtonCreate(radioGroup, ES_BUTTON_RADIOBOX | ES_CELL_H_EXPAND, 0, "Original name");
+		EsButtonCreate(radioGroup, ES_BUTTON_RADIOBOX | ES_CELL_H_EXPAND, 0, "Date modified");
+		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, "Suffix:");
+		EsTextboxCreate(table);
+		EsTextDisplayCreate(contentArea, ES_CELL_H_EXPAND, ES_STYLE_TEXT_PARAGRAPH, "Example: file 1.txt");
+		EsDialogAddButton(dialog, ES_FLAGS_DEFAULT, 0, "Cancel");
+		EsDialogAddButton(dialog, ES_BUTTON_DEFAULT, 0, "Rename all");
 	});
 
 	EsPanel *table = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE_H_JUSTIFY);

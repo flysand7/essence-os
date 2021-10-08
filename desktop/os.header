@@ -2427,10 +2427,11 @@ function void EsMenuClose(EsMenu *menu);
 function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
-function void EsDialogClose(EsDialog *dialog);
 function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT);
 function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, 
 		STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL);
+function void EsDialogClose(EsDialog *dialog);
+function EsElement *EsDialogGetContentArea(EsDialog *dialog);
 
 function void EsFileMenuAddToToolbar(EsElement *toolbar, const EsFileMenuSettings *settings = ES_NULL);
 function void EsFileMenuCreate(ES_INSTANCE_TYPE *instance, EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT);

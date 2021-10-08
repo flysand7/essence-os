@@ -125,15 +125,7 @@ double SmoothAnimationTimeSharp(double progress) {
 	return 1 + progressSquared * progressSquared * progress;
 }
 
-#endif
-
-#ifdef SHARED_MATH_WANT_ALL
-
-EsRectangle EsRectangleLinearInterpolate(EsRectangle from, EsRectangle to, float progress) {
-	return ES_RECT_4(LinearInterpolate(from.l, to.l, progress), LinearInterpolate(from.r, to.r, progress), 
-			LinearInterpolate(from.t, to.t, progress), LinearInterpolate(from.b, to.b, progress));
-}
-
+#ifndef EsColorInterpolate
 uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress) {
 	float fa = ((from >> 24) & 0xFF) / 255.0f;
 	float fb = ((from >> 16) & 0xFF) / 255.0f;
@@ -152,6 +144,14 @@ uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress) {
 		| (uint32_t) (LinearInterpolate(fb, tb, progress) * 255.0f) << 16
 		| (uint32_t) (LinearInterpolate(fa, ta, progress) * 255.0f) << 24;
 }
+#endif
+
+#ifndef EsRectangleLinearInterpolate
+EsRectangle EsRectangleLinearInterpolate(EsRectangle from, EsRectangle to, float progress) {
+	return ES_RECT_4(LinearInterpolate(from.l, to.l, progress), LinearInterpolate(from.r, to.r, progress), 
+			LinearInterpolate(from.t, to.t, progress), LinearInterpolate(from.b, to.b, progress));
+}
+#endif
 
 #endif
 

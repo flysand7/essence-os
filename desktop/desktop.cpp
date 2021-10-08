@@ -1277,7 +1277,7 @@ void ShutdownModalCreate() {
 			ES_CELL_H_FILL, ES_STYLE_TEXT_PARAGRAPH, INTERFACE_STRING(DesktopConfirmShutdown))->cName = "dialog contents";
 	EsPanel *buttonArea = EsPanelCreate(dialog, ES_PANEL_HORIZONTAL | ES_PANEL_REVERSE | ES_CELL_H_FILL, ES_STYLE_DIALOG_BUTTON_AREA);
 	EsButton *cancelButton = EsButtonCreate(buttonArea, ES_BUTTON_DEFAULT | ES_BUTTON_CANCEL, 0, INTERFACE_STRING(CommonCancel));
-	EsButton *restartButton = EsButtonCreate(buttonArea, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(DesktopRestartAction));
+	EsButton *restartButton = EsButtonCreate(buttonArea, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(DesktopRestartAction));
 	EsButton *shutdownButton = EsButtonCreate(buttonArea, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(DesktopShutdownAction));
 	EsElementFocus(cancelButton);
 

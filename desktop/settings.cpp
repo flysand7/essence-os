@@ -51,18 +51,27 @@ const EsStyle styleSettingsGroupContainer2 = {
 	},
 };
 
-const uint32_t windowColors[] = {
-	0xFF0032,
-	0xFF6042,
-	0xFF7F24, // TODO Hue shift looks bad.
-	0xFFFF24, // TODO Hue shift looks bad.
-	0x67EFC4,
-	0x54ACE5,
-	0x448CF5,
-	0x044CF5,
-	0xAC00FF,
-	0xE8ECF9,
-	0xB7BBC5, // TODO Make this look better when deactivated.
+const uint32_t windowColors[][7] = {
+	// TODO Improve these!
+	
+	//  Preview    Active 1    Active 2    Active 3   Inactive 1  Inactive 2  Inactive 3
+#if 0
+	{ 0xFFE7E2EA, 0xFFE7E2EA, 0xFFD2CBD5, 0xFFAFA4B9, 0xFFD2D0F2, 0xFFCDCCFA, 0xFFB5BEDF },
+	{ 0xFF83B8F7, 0xFF83B8F7, 0xFF6D9CDF, 0xFF4166B5, 0xFFD2D0F2, 0xFFCDCCFA, 0xFFB5BEDF },
+	{ 0xFFE0E0E0, 0xFFE4E5E7, 0xFFCCCDCF, 0xFF909193, 0xFFD2D0F2, 0xFFCDCCFA, 0xFFB5BEDF },
+#else
+	{ 0xFFFF0032, 0xFFF78399, 0xFFDF6D83, 0xFFB54157, 0xFFF2D0D6, 0xFFFACCD5, 0xFFDFB5BD },
+	{ 0xFFFF6042, 0xFFF7AEA1, 0xFFDF978A, 0xFFB56C5F, 0xFFF2DCD8, 0xFFFADDD7, 0xFFDFC4BF },
+	{ 0xFFFF7F24, 0xFFF7BC93, 0xFFDFA57D, 0xFFB57A51, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
+	{ 0xFFFFFF24, 0xFFF7F793, 0xFFDFDF7D, 0xFFB5B551, 0xFFF2F2D4, 0xFFFAFAD2, 0xFFDFDFBA },
+	{ 0xFF67EFC4, 0xFFA9E7D3, 0xFF94D1BD, 0xFF6BA996, 0xFFD0E2DD, 0xFFD1EAE2, 0xFFBAD1C9 },
+	{ 0xFF54ACE5, 0xFF9BC3DD, 0xFF87AEC8, 0xFF6088A2, 0xFFC5D1D9, 0xFFC6D6E0, 0xFFB0BEC8 },
+	{ 0xFF448CF5, 0xFF9CBDED, 0xFF87A7D6, 0xFF5D7EAD, 0xFFD0DAE8, 0xFFD0DDF0, 0xFFB9C4D6 },
+	{ 0xFF044CF5, 0xFF7FA0ED, 0xFF6A8AD6, 0xFF4061AD, 0xFFC8D1E8, 0xFFC4D1F0, 0xFFAEBAD6 },
+	{ 0xFFAC00FF, 0xFFD183F7, 0xFFB96DDF, 0xFF8F41B5, 0xFFE6D0F2, 0xFFEBCCFA, 0xFFD1B5DF },
+	{ 0xFFE8ECF9, 0xFFE9EBF1, 0xFFD2D3D9, 0xFFA9AAB0, 0xFFEAEAEC, 0xFFF1F1F4, 0xFFD6D7D9 },
+	{ 0xFFB7BBC5, 0xFFB8BABE, 0xFFA6A7AC, 0xFF85878B, 0xFFB9B9BA, 0xFFBEBFC1, 0xFFA9AAAC },
+#endif
 };
 
 const EsStyle styleSettingsGroupContainer3 = {
@@ -619,7 +628,7 @@ int SettingsColorButtonMessage(EsElement *element, EsMessage *message) {
 		uint32_t cornerRadii[4] = { cornerRadius, cornerRadius, cornerRadius, cornerRadius };
 		int32_t borderSize = 1 * EsElementGetScaleFactor(element);
 
-		uint32_t color = EsColorBlend(windowColors[element->userData.u] | 0xFF000000, 0x20FFFFFF, false);
+		uint32_t color = EsColorBlend(windowColors[element->userData.u][0], 0x20FFFFFF, false);
 		if (element->window->pressed == element) color = EsColorBlend(color, 0x40000000, false);
 		EsDrawRoundedRectangle(message->painter, bounds, color, EsColorBlend(color, 0x40000000, false), ES_RECT_1(borderSize), cornerRadii);
 
@@ -642,13 +651,7 @@ void SettingsWindowColorUpdated() {
 		index = 0;
 	}
 
-	EsColorConvertToHSV(windowColors[index], &theming.systemHue, &theming.systemSaturation, &theming.systemValue);
-
-	if (theming.systemHue > 0.3f && theming.systemHue < 3.3f) {
-		theming.systemHueShift = -1.5f;
-	} else {
-		theming.systemHueShift = 1.0f;
-	}
+	EsMemoryCopy(theming.windowColors, &windowColors[index][1], sizeof(theming.windowColors));
 
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 		if (gui.allWindows[i]->windowStyle == ES_WINDOW_CONTAINER) {
