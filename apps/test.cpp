@@ -152,6 +152,9 @@ void InitialiseInstance(EsInstance *instance) {
 	EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, &stylePanel);
 	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
 
+	EsTextboxCreate(panel);
+	EsTextboxCreate(panel);
+
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Alert 1"), [] (EsInstance *, EsElement *element, EsCommand *) { 
 		EsDialog *dialog = EsDialogShow(element->window, "Rename multiple items", -1, 
 				"Choose the format for the new names.", -1, ES_ICON_DOCUMENT_EDIT, ES_FLAGS_DEFAULT);

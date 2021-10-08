@@ -40,7 +40,7 @@ struct {
 	// Input.
 	bool draggingStarted, mouseButtonDown;
 	uint8_t leftModifiers, rightModifiers;
-	int lastClickX, lastClickY, lastClickButton, resizeType;
+	int lastClickX, lastClickY, lastClickButton;
 
 	// Menus.
 	bool menuMode;
@@ -59,7 +59,6 @@ struct {
 	// Misc.
 	Array<EsWindow *> allWindows;
 	HashTable keyboardShortcutNames;
-	EsCursorStyle resizeCursor;
 	EsElement *insertAfter;
 
 	// Resizing data.
@@ -445,10 +444,14 @@ struct EsWindow : EsElement {
 	EsWindowStyle windowStyle;
 	uint32_t windowWidth, windowHeight;
 
+	// TODO Replace this with a bitset?
 	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, doNotPaint;
 	bool restoreOnNextMove, resetPositionOnNextMove, receivedFirstResize, isMaximised;
 	bool hovering, activated, appearActivated;
 	bool visualizeRepaints, visualizeLayoutBounds, visualizePaintSteps; // Inspector properties.
+
+	uint8_t resizeType;
+	EsCursorStyle resizeCursor;
 
 	EsElement *mainPanel, *toolbar;
 	EsPanel *toolbarSwitcher;
@@ -669,14 +672,14 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 		message->cursorStyle = ES_CURSOR_NORMAL;
 
 		if (window->isMaximised) {
-			gui.resizeType = 0;
-			gui.resizeCursor = message->cursorStyle;
+			window->resizeType = 0;
+			window->resizeCursor = message->cursorStyle;
 		} else {
 			bool left = position.x < to, right = position.x >= bounds.r - to, 
 			     top = position.y < to, bottom = position.y >= bounds.b - to;
 
 			if (gui.resizing) {
-				message->cursorStyle = gui.resizeCursor;
+				message->cursorStyle = window->resizeCursor;
 			} else if (position.x < from || position.y < from 
 					|| position.x >= bounds.r - from || position.y >= bounds.b - from) {
 			} else if ((right && top) || (bottom && left)) {
@@ -690,8 +693,8 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 			}
 
 			if (!window->pressed && !gui.mouseButtonDown) {
-				gui.resizeType = (left ? RESIZE_LEFT : 0) | (right ? RESIZE_RIGHT : 0) | (top ? RESIZE_TOP : 0) | (bottom ? RESIZE_BOTTOM : 0);
-				gui.resizeCursor = message->cursorStyle;
+				window->resizeType = (left ? RESIZE_LEFT : 0) | (right ? RESIZE_RIGHT : 0) | (top ? RESIZE_TOP : 0) | (bottom ? RESIZE_BOTTOM : 0);
+				window->resizeCursor = message->cursorStyle;
 			}
 		}
 
@@ -702,15 +705,15 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 
 		if (gui.resizing) {
 			EsPoint screenPosition = EsMouseGetPosition(nullptr);
-			WindowChangeBounds(gui.resizeType, screenPosition.x, screenPosition.y, 
+			WindowChangeBounds(window->resizeType, screenPosition.x, screenPosition.y, 
 					&gui.lastClickX, &gui.lastClickY, window,
 					gui.resizingBothSides, &gui.resizeStartBounds);
 		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 		EsPoint screenPosition = EsMouseGetPosition(nullptr);
 
-		if (!window->isMaximised || gui.resizeType == RESIZE_MOVE) {
-			WindowChangeBounds(gui.resizeType, screenPosition.x, screenPosition.y, 
+		if (!window->isMaximised || window->resizeType == RESIZE_MOVE) {
+			WindowChangeBounds(window->resizeType, screenPosition.x, screenPosition.y, 
 					&gui.lastClickX, &gui.lastClickY, window,
 					gui.resizingBothSides, &gui.resizeStartBounds);
 			gui.resizing = true;
@@ -7403,7 +7406,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
 
-		if (element && (~element->flags & ES_ELEMENT_DISABLED) && (~element->state & UI_STATE_BLOCK_INTERACTION)) {
+		if (element && (~element->state & UI_STATE_BLOCK_INTERACTION)) {
 			UIMessageSendPropagateToAncestors(element, message);
 		}
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {

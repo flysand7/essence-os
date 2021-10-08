@@ -1031,7 +1031,8 @@ void _start() {
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
 	EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, handle, 0, 0, ES_WINDOW_PROPERTY_FOCUSED);
 
-	EsPanel *sheet = EsPanelCreate(window, ES_PANEL_VERTICAL | ES_CELL_PUSH | ES_CELL_CENTER, ES_STYLE_INSTALLER_ROOT);
+	EsPanel *clearBackground = EsPanelCreate(window, ES_CELL_FILL, ES_STYLE_CLEAR_BACKGROUND);
+	EsPanel *sheet = EsPanelCreate(clearBackground, ES_PANEL_VERTICAL | ES_CELL_PUSH | ES_CELL_CENTER, ES_STYLE_INSTALLER_ROOT);
 	switcher = EsPanelCreate(sheet, ES_CELL_H_FILL | ES_PANEL_SWITCHER);
 	switcher->messageUser = SwitcherMessage;
 
