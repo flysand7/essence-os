@@ -839,6 +839,76 @@ void DocumentSwapPropertyPrefixes(Object *object, Step step, const char *cPrefix
 	steps.Free();
 }
 
+int PropertyCompareNames(const void *left, const void *right) {
+	return strcmp(((*(Property *) left)).cName, ((*(Property *) right)).cName);
+}
+
+void TextStyleRemoveDuplicates(void *cp) {
+	// Remove all duplicates of this text style,
+	// and redirect objects that linked to them to this object.
+
+	Object *object = ObjectFind((uintptr_t) cp);
+	if (!object) return;
+
+	// TODO Support undo.
+	if (strcmp("OK", UIDialogShow(window, 0, "Warning: You cannot undo this action.\n%f%b%b", "OK", "Cancel"))) return;
+
+	// Start by sorting the property list so we can detect duplicates easier.
+	qsort(object->properties.array, object->properties.Length(), sizeof(Property), PropertyCompareNames);
+
+	for (uintptr_t i = 0; i < objects.Length(); i++) {
+		Object *other = &objects[i];
+		if (other->type != OBJ_VAR_TEXT_STYLE || other == object) continue;
+		qsort(other->properties.array, other->properties.Length(), sizeof(Property), PropertyCompareNames);
+
+		uintptr_t pi = 0, pj = 0;
+
+		while (pi != object->properties.Length() && pj != other->properties.Length()) {
+			// Ignore the graph position when checking for duplicates.
+			if (0 == strcmp(object->properties[pi].cName, "_graphX")) { pi++; continue; }
+			if (0 == strcmp(object->properties[pi].cName, "_graphY")) { pi++; continue; }
+			if (0 == strcmp(object->properties[pi].cName, "_graphW")) { pi++; continue; }
+			if (0 == strcmp(object->properties[pi].cName, "_graphH")) { pi++; continue; }
+			if (0 == strcmp(other ->properties[pj].cName, "_graphX")) { pj++; continue; }
+			if (0 == strcmp(other ->properties[pj].cName, "_graphY")) { pj++; continue; }
+			if (0 == strcmp(other ->properties[pj].cName, "_graphW")) { pj++; continue; }
+			if (0 == strcmp(other ->properties[pj].cName, "_graphH")) { pj++; continue; }
+
+			// Check if the properties are identical.
+			if (strcmp(object->properties[pi].cName, other->properties[pj].cName))                                               break;
+			if (object->properties[pi].type != other->properties[pj].type)                                                       break;
+			if (object->properties[pi].type == PROP_INT    && object->properties[pi].integer  != other->properties[pj].integer ) break;
+			if (object->properties[pi].type == PROP_COLOR  && object->properties[pi].integer  != other->properties[pj].integer ) break;
+			if (object->properties[pi].type == PROP_OBJECT && object->properties[pi].object   != other->properties[pj].object  ) break;
+			if (object->properties[pi].type == PROP_FLOAT  && object->properties[pi].floating != other->properties[pj].floating) break;
+			
+			pi++, pj++;
+		}
+
+		if (pi != object->properties.Length() || pj != other->properties.Length()) {
+			continue;
+		}
+
+		// Duplicate found. Delete and relink.
+		uint64_t replaceID = other->id;
+		objects.Delete(i);
+		ObjectLookupRebuild();
+		object = ObjectFind((uintptr_t) cp);
+		assert(object);
+		i--;
+
+		for (uintptr_t j = 0; j < objects.Length(); j++) {
+			Object *source = &objects[j];
+
+			for (uintptr_t k = 0; k < source->properties.Length(); k++) {
+				if (source->properties[k].type == PROP_OBJECT && source->properties[k].object == replaceID) {
+					source->properties[k].object = object->id;
+				}
+			}
+		}
+	}
+}
+
 //////////////////////////////////////////////////////////////
 
 enum InspectorElementType {
@@ -1622,6 +1692,10 @@ void InspectorPopulate() {
 
 			InspectorAddLink(object, "Icon color:", "iconColor");
 			InspectorAddInteger(object, "Icon size:", "iconSize");
+
+			UIButton *removeDuplicates = UIButtonCreate(0, 0, "Remove duplicates", -1);
+			removeDuplicates->e.cp = (void *) (uintptr_t) object->id;
+			removeDuplicates->invoke = TextStyleRemoveDuplicates;
 		} else if (object->type == OBJ_VAR_CONTOUR_STYLE) {
 			InspectorAddInteger(object, "Internal width:", "internalWidth");
 			InspectorAddInteger(object, "External width:", "externalWidth");
@@ -3421,7 +3495,7 @@ void Export() {
 void ExportJSON() {
 	DocumentLoad();
 	FILE *f = fopen("bin/designer2.json", "wb");
-	fprintf(f, "{\n\t\"version\": 1,\n\t\"objectIDAllocator\": %ld,\n", objectIDAllocator);
+	fprintf(f, "{\n\t\"version\": 1,\n\t\"objectIDAllocator\": %ld,\n\t\"objects\": [\n", objectIDAllocator);
 
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		Object *object = &objects[i];
@@ -3434,12 +3508,12 @@ void ExportJSON() {
 			}
 		}
 
-		fprintf(f, "\t\"%ld\": {\n\t\t\"Flags\": %d,\n\t\t\"Type\": \"%s\",\n\t\t\"Name\": \"%s\",\n", 
+		fprintf(f, "\t\t{\n\t\t\t\"ID\": %ld,\n\t\t\t\"Flags\": %d,\n\t\t\t\"Type\": \"%s\",\n\t\t\t\"Name\": \"%s\",\n", 
 				object->id, object->flags, type, object->cName);
 
 		for (uintptr_t i = 0; i < object->properties.Length(); i++) {
 			Property *property = &object->properties[i];
-			fprintf(f, "\t\t\"%s\": ", property->cName);
+			fprintf(f, "\t\t\t\"%s\": ", property->cName);
 			if (property->type == PROP_COLOR) fprintf(f, "\"#%.8X\"", (uint32_t) property->integer);
 			if (property->type == PROP_INT) fprintf(f, "%d", property->integer);
 			if (property->type == PROP_OBJECT) fprintf(f, "\"@%ld\"", property->object);
@@ -3447,10 +3521,10 @@ void ExportJSON() {
 			fprintf(f, "%s\n", i < object->properties.Length() - 1 ? "," : "");
 		}
 
-		fprintf(f, "\t}%s\n", i < objects.Length() - 1 ? "," : "");
+		fprintf(f, "\t\t}%s\n", i < objects.Length() - 1 ? "," : "");
 	}
 
-	fprintf(f, "}\n");
+	fprintf(f, "\t]\n}\n");
 	fclose(f);
 	DocumentFree();
 }
