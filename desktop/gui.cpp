@@ -18,11 +18,25 @@
 // Behaviour of the scroll wheel with regards to focused/hovered elements --> Scroll the hovered element only.
 
 // TODO Get these from the theme file.
-#define WINDOW_INSET 	          ((int) (19 * theming.scale))
+#define CONTAINER_SOLID_T         ((int) (25 * theming.scale))
+#define CONTAINER_SOLID_B         ((int) (35 * theming.scale))
+#define CONTAINER_SOLID_C         ((int) (30 * theming.scale))
+#define CONTAINER_EMBED_T         ((int) (64 * theming.scale))
+#define CONTAINER_EMBED_B         ((int) (44 * theming.scale))
+#define CONTAINER_EMBED_C         ((int) (39 * theming.scale))
+#define CONTAINER_OPAQUE_T        ((int) (30 * theming.scale))
+#define CONTAINER_OPAQUE_B        ((int) (40 * theming.scale))
+#define CONTAINER_OPAQUE_C        ((int) (35 * theming.scale))
+#define CONTAINER_MAXIMIZE_T      ((int) (29 * theming.scale))
+#define CONTAINER_MAXIMIZE_B      ((int) (44 * theming.scale))
+#define CONTAINER_MAXIMIZE_C      ((int) (39 * theming.scale))
 #define CONTAINER_TAB_BAND_HEIGHT ((int) (33 * theming.scale))
-#define BORDER_THICKNESS          ((int) ( 9 * theming.scale))
-
-// #define TRACE_LAYOUT
+#define CONTAINER_RESIZE_BORDER   ((int) (CONTAINER_EMBED_C - CONTAINER_SOLID_C))
+#define CONTAINER_RESIZE_OFFSET   ((int) (CONTAINER_RESIZE_BORDER / 2))
+#define CONTAINER_SNAP_T          ((int) (0 * theming.scale))
+#define CONTAINER_SNAP_B          ((int) (-4 * theming.scale))
+#define CONTAINER_SNAP_OUTSIDE    ((int) (-5 * theming.scale))
+#define CONTAINER_SNAP_INSIDE     ((int) (17 * theming.scale))
 
 struct AccessKeyEntry {
 	char character;
@@ -531,24 +545,24 @@ void WindowSnap(EsWindow *window, bool restored, bool dragging, uint8_t edge) {
 	EsRectangle bounds;
 
 	if (edge == SNAP_EDGE_MAXIMIZE) {
-		bounds.t = screen.t - 16 * theming.scale;
-		bounds.b = screen.b + WINDOW_INSET;
-		bounds.l = screen.l - WINDOW_INSET;
-		bounds.r = screen.r + WINDOW_INSET;
+		bounds.t = screen.t - CONTAINER_MAXIMIZE_T;
+		bounds.b = screen.b + CONTAINER_MAXIMIZE_B;
+		bounds.l = screen.l - CONTAINER_MAXIMIZE_C;
+		bounds.r = screen.r + CONTAINER_MAXIMIZE_C;
 	} else if (edge == SNAP_EDGE_LEFT) {
-		bounds.t = screen.t;
-		bounds.b = screen.b;
-		bounds.l = screen.l;
-		bounds.r = (screen.r + screen.l) / 2 + BORDER_THICKNESS / 2;
+		bounds.t = screen.t + CONTAINER_SNAP_T;
+		bounds.b = screen.b - CONTAINER_SNAP_B;
+		bounds.l = screen.l + CONTAINER_SNAP_OUTSIDE;
+		bounds.r = (screen.r + screen.l) / 2 + CONTAINER_SNAP_INSIDE;
 	} else if (edge == SNAP_EDGE_RIGHT) {
-		bounds.t = screen.t;
-		bounds.b = screen.b;
-		bounds.l = (screen.r + screen.l) / 2 - BORDER_THICKNESS / 2;
-		bounds.r = screen.r;
+		bounds.t = screen.t + CONTAINER_SNAP_T;
+		bounds.b = screen.b - CONTAINER_SNAP_B;
+		bounds.l = (screen.r + screen.l) / 2 - CONTAINER_SNAP_INSIDE;
+		bounds.r = screen.r - CONTAINER_SNAP_OUTSIDE;
 	}
 
 	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, 
-			ES_WINDOW_MOVE_DYNAMIC | (edge == SNAP_EDGE_MAXIMIZE ? ES_WINDOW_MOVE_MAXIMISED : 0));
+			ES_WINDOW_MOVE_DYNAMIC | (edge == SNAP_EDGE_MAXIMIZE ? ES_WINDOW_MOVE_MAXIMIZED : 0));
 
 	if (!dragging) {
 		window->resetPositionOnNextMove = true;
@@ -580,13 +594,12 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 		restored = true;
 	}
 
-	int offset = BORDER_THICKNESS / 2 - WINDOW_INSET;
 	EsRectangle bounds = previousBounds;
 
-	if (direction & RESIZE_LEFT)   bounds.l = newX + offset;
-	if (direction & RESIZE_RIGHT)  bounds.r = newX - offset;
-	if (direction & RESIZE_TOP)    bounds.t = newY + offset;
-	if (direction & RESIZE_BOTTOM) bounds.b = newY - offset;
+	if (direction & RESIZE_LEFT)   bounds.l = newX - CONTAINER_SOLID_C - CONTAINER_RESIZE_OFFSET;
+	if (direction & RESIZE_RIGHT)  bounds.r = newX + CONTAINER_SOLID_C + CONTAINER_RESIZE_OFFSET;
+	if (direction & RESIZE_TOP)    bounds.t = newY - CONTAINER_SOLID_T - CONTAINER_RESIZE_OFFSET;
+	if (direction & RESIZE_BOTTOM) bounds.b = newY + CONTAINER_SOLID_B + CONTAINER_RESIZE_OFFSET;
 
 	if (startBounds && direction != RESIZE_MOVE) {
 		if (direction & RESIZE_LEFT)   bounds.r = gui.resizeStartBounds.r + (bothSides ? gui.resizeStartBounds.l - newX : 0);
@@ -619,7 +632,7 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 			return;
 		} else {
 			if (restored && window->resetPositionOnNextMove) {
-				// The user previously snapped/maximised the window in a previous operation.
+				// The user previously snapped/maximized the window in a previous operation.
 				// Therefore, the movement anchor won't be what the user expects.
 				// Try to put it in the center.
 				int positionAlongWindow = *originalX - previousBounds.l;
@@ -666,7 +679,7 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 	EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_DYNAMIC);
 }
 
-int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle bounds, int from, int to) {
+int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle bounds, bool addSolidInsets) {
 	if (message->type == ES_MSG_GET_CURSOR) {
 		EsPoint position = EsMouseGetPosition(window);
 		message->cursorStyle = ES_CURSOR_NORMAL;
@@ -675,13 +688,18 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 			window->resizeType = 0;
 			window->resizeCursor = message->cursorStyle;
 		} else {
-			bool left = position.x < to, right = position.x >= bounds.r - to, 
-			     top = position.y < to, bottom = position.y >= bounds.b - to;
+			int32_t solidC = addSolidInsets ? CONTAINER_SOLID_C : 0;
+			int32_t solidT = addSolidInsets ? CONTAINER_SOLID_T : 0;
+			int32_t solidB = addSolidInsets ? CONTAINER_SOLID_B : 0;
+
+			bool left = position.x < solidC + CONTAINER_RESIZE_BORDER;
+			bool right = position.x >= bounds.r - solidC - CONTAINER_RESIZE_BORDER;
+			bool top = position.y < solidT + CONTAINER_RESIZE_BORDER;
+			bool bottom = position.y >= bounds.b - solidB - CONTAINER_RESIZE_BORDER;
 
 			if (gui.resizing) {
 				message->cursorStyle = window->resizeCursor;
-			} else if (position.x < from || position.y < from 
-					|| position.x >= bounds.r - from || position.y >= bounds.b - from) {
+			} else if (position.x < solidC || position.y < solidT || position.x >= bounds.r - solidC || position.y >= bounds.b - solidB) {
 			} else if ((right && top) || (bottom && left)) {
 				message->cursorStyle = ES_CURSOR_RESIZE_DIAGONAL_1;
 			} else if ((left && top) || (bottom && right)) {
@@ -791,17 +809,19 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 
 	if (window->windowStyle == ES_WINDOW_CONTAINER) {
 		if (message->type == ES_MSG_LAYOUT) {
-			EsElementMove(window->GetChild(0), WINDOW_INSET, WINDOW_INSET, bounds.r - WINDOW_INSET * 2, CONTAINER_TAB_BAND_HEIGHT);
+			EsElementMove(window->GetChild(0), CONTAINER_EMBED_C, CONTAINER_EMBED_T - CONTAINER_TAB_BAND_HEIGHT, 
+					bounds.r - CONTAINER_EMBED_C * 2, CONTAINER_TAB_BAND_HEIGHT);
 		} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
 			// This message is also sent when the window is created.
-			EsRectangle solidInsets = ES_RECT_1(WINDOW_INSET - BORDER_THICKNESS);
+			EsRectangle solidInsets = ES_RECT_4(CONTAINER_SOLID_C, CONTAINER_SOLID_C, CONTAINER_SOLID_T, CONTAINER_SOLID_B);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, (uintptr_t) &solidInsets, ES_WINDOW_PROPERTY_SOLID);
-			EsRectangle embedInsets = ES_RECT_4(WINDOW_INSET, WINDOW_INSET, WINDOW_INSET + CONTAINER_TAB_BAND_HEIGHT, WINDOW_INSET);
+			EsRectangle embedInsets = ES_RECT_4(CONTAINER_EMBED_C, CONTAINER_EMBED_C, CONTAINER_EMBED_T, CONTAINER_EMBED_B);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &embedInsets, 0, ES_WINDOW_PROPERTY_EMBED_INSETS);
-			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, WINDOW_INSET, window->windowHeight - WINDOW_INSET);
+			EsRectangle opaqueBounds = ES_RECT_4(CONTAINER_OPAQUE_C, window->windowWidth - CONTAINER_OPAQUE_C, 
+					CONTAINER_OPAQUE_T, window->windowHeight - CONTAINER_OPAQUE_B);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &opaqueBounds, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		} else {
-			response = ProcessWindowBorderMessage(window, message, bounds, WINDOW_INSET - BORDER_THICKNESS, WINDOW_INSET);
+			response = ProcessWindowBorderMessage(window, message, bounds, true);
 		}
 	} else if (window->windowStyle == ES_WINDOW_MENU) {
 		if (message->type == ES_MSG_PAINT_BACKGROUND) {
@@ -818,11 +838,10 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 	} else if (window->windowStyle == ES_WINDOW_INSPECTOR) {
 		if (message->type == ES_MSG_LAYOUT) {
 			if (window->GetChildCount()) {
-				EsElementMove(window->GetChild(0), BORDER_THICKNESS, BORDER_THICKNESS + 30,
-						bounds.r - BORDER_THICKNESS * 2, bounds.b - BORDER_THICKNESS * 2 - 30);
+				EsElementMove(window->GetChild(0), 9, 9 + 30, bounds.r - 9 * 2, bounds.b - 9 * 2 - 30);
 			}
 		} else {
-			response = ProcessWindowBorderMessage(window, message, bounds, 0, BORDER_THICKNESS);
+			response = ProcessWindowBorderMessage(window, message, bounds, false);
 		}
 	} else if (window->windowStyle == ES_WINDOW_NORMAL) {
 		if (message->type == ES_MSG_LAYOUT) {
@@ -2422,22 +2441,6 @@ int EsElement::GetHeight(int width) {
 }
 
 void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY) {
-#ifdef TRACE_LAYOUT
-	if (parent) {
-		EsElement *parent = this->parent->parent;
-		while (parent) parent = parent->parent, EsPrint("\t");
-		EsPrint("(move) %z\n", debugName);
-	}
-#endif
-
-#ifdef TRACE_LAYOUT
-	if (parent) {
-		EsElement *parent = this->parent->parent;
-		while (parent) parent = parent->parent, EsPrint("\t");
-		EsPrint("(move) %z :: in %d, %d; %d, %d :: ", debugName, _offsetX, _offsetY, _width, _height);
-	}
-#endif
-
 	// Add the internal offset.
 
 	if (parent) {
@@ -2452,14 +2455,6 @@ void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY
 	bool relayoutRequested = state & UI_STATE_RELAYOUT;
 	bool relayoutChild = state & UI_STATE_RELAYOUT_CHILD;
 	int oldOffsetX = offsetX, oldOffsetY = offsetY;
-
-#ifdef TRACE_LAYOUT
-	if (parent) {
-		EsPrint("align %d, %d; %d, %d ::%z%z%z%z\n", _offsetX, _offsetY, _width, _height,
-				hasPositionChanged ? " pos" : "", hasSizeChanged ? " size" : "", 
-				relayoutRequested ? " rel" : "", relayoutChild ? " child" : "");
-	}
-#endif
 
 	// Update the variables.
 
@@ -7425,7 +7420,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		window->height = window->windowHeight = message->windowResized.content.b;
 
 		if (window->windowStyle == ES_WINDOW_CONTAINER) {
-			EsRectangle opaqueBounds = ES_RECT_4(WINDOW_INSET, window->windowWidth - WINDOW_INSET, WINDOW_INSET, window->windowHeight - WINDOW_INSET);
+			EsRectangle opaqueBounds = ES_RECT_4(CONTAINER_OPAQUE_C, window->windowWidth - CONTAINER_OPAQUE_C, 
+					CONTAINER_OPAQUE_T, window->windowHeight - CONTAINER_OPAQUE_B);
 			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, (uintptr_t) &opaqueBounds, 0, ES_WINDOW_PROPERTY_OPAQUE_BOUNDS);
 		} else if (window->windowStyle == ES_WINDOW_INSPECTOR) {
 			EsRectangle opaqueBounds = ES_RECT_2S(window->windowWidth, window->windowHeight);

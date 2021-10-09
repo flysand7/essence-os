@@ -775,7 +775,7 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 	}
 
 	if ((flags & ES_WINDOW_MOVE_DYNAMIC) 
-			&& (isMaximised == !!(flags & ES_WINDOW_MOVE_MAXIMISED) /* cannot queue resize if changing isMaximised */)
+			&& (isMaximised == !!(flags & ES_WINDOW_MOVE_MAXIMIZED) /* cannot queue resize if changing isMaximised */)
 			&& windowManager.resizeWindow == this
 			&& windowManager.resizeStartTimeStampMs + RESIZE_FLICKER_TIMEOUT_MS > KGetTimeInMs()) {
 		windowManager.resizeQueued = true;
@@ -785,7 +785,7 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 
 	bool result = true;
 
-	isMaximised = flags & ES_WINDOW_MOVE_MAXIMISED;
+	isMaximised = flags & ES_WINDOW_MOVE_MAXIMIZED;
 	alwaysOnTop = flags & ES_WINDOW_MOVE_ALWAYS_ON_TOP;
 
 	// TS("Move window\n");

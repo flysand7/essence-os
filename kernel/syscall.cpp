@@ -569,7 +569,17 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 			uintptr_t stride = Width(region) * 4;
 			EsRectangle clippedRegion = EsRectangleIntersection(region, ES_RECT_2S(surface->width, surface->height));
 
-			if (argument3 != WINDOW_SET_BITS_AFTER_RESIZE) {
+			EsRectangle directUpdateSubRegion;
+
+			if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
+				directUpdateSubRegion = ES_RECT_4(0, window->width, 0, insets.t);
+			} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
+				directUpdateSubRegion = ES_RECT_4(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
+			} else {
+				directUpdateSubRegion = ES_RECT_4(0, window->width, 0, window->height);
+			}
+
+			if (argument3 != WINDOW_SET_BITS_AFTER_RESIZE && EsRectangleEquals(region, EsRectangleIntersection(region, directUpdateSubRegion))) {
 				skipUpdate = window->UpdateDirect((K_USER_BUFFER uint32_t *) argument2, stride, clippedRegion);
 			}
 

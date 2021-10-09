@@ -314,6 +314,8 @@ float EsCRTfabsf(float x) {
 }
 
 float EsCRTceilf(float x) {
+	if (x == 0) return x;
+
 	ConvertFloatInteger convert = {x};
 	uint32_t sign = convert.i & 0x80000000;
 	int exponent = (int) ((convert.i >> 23) & 0xFF) - 0x7F;

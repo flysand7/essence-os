@@ -263,6 +263,7 @@ void InspectorPopulate();
 void InspectorPickTargetEnd();
 void CanvasSelectObject(struct Object *object);
 void CanvasSwitchView(void *cp);
+Rectangle8 ExportCalculatePaintOutsets(Object *object);
 
 //////////////////////////////////////////////////////////////
 
@@ -1865,6 +1866,11 @@ void InspectorPopulate() {
 		InspectorAddPreviewStateBitsCheckbox(cStateBitStrings[8], 1 <<  7);
 		UIParentPop();
 		UIParentPop();
+
+		Rectangle8 paintOutsets = ExportCalculatePaintOutsets(PropertyFindOrInheritReadObject(style, "appearance"));
+		char paintOutsetsText[256];
+		snprintf(paintOutsetsText, sizeof(paintOutsetsText), "Paint outsets: %d, %d, %d, %d.", UI_RECT_ALL(paintOutsets));
+		UILabelCreate(0, 0, paintOutsetsText, -1);
 	} else {
 		UILabelCreate(0, 0, "Select an object to inspect.", -1);
 	}
@@ -3012,16 +3018,30 @@ void ObjectAddCommand(void *) {
 	UIMenuShow(menu);
 }
 
+int ObjectCompareNames(const void *left, const void *right) {
+	return strcmp(((*(Object **) left))->cName, ((*(Object **) right))->cName);
+}
+
 void ObjectAddInstanceCommand(void *) {
-	UIMenu *menu = UIMenuCreate(window->pressed, 0);
+	Array<Object *> styles = {};
 
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		if (objects[i].type == OBJ_STYLE) {
-			UIMenuAddItem(menu, 0, objects[i].cName, -1, ObjectAddInstanceCommandInternal, (void *) (uintptr_t) &objects[i]);
+			styles.Add(&objects[i]);
 		}
 	}
 
+	qsort(styles.array, styles.Length(), sizeof(Object *), ObjectCompareNames);
+
+	UIMenu *menu = UIMenuCreate(window->pressed, 0);
+
+	for (uintptr_t i = 0; i < styles.Length(); i++) {
+		Object *object = styles[i];
+		UIMenuAddItem(menu, 0, object->cName, -1, ObjectAddInstanceCommandInternal, (void *) (uintptr_t) object);
+	}
+
 	UIMenuShow(menu);
+	styles.Free();
 }
 
 void ObjectDeleteCommand(void *) {
