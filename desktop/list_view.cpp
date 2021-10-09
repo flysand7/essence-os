@@ -3,6 +3,7 @@
 // TODO Drag and drop.
 // TODO GetFirstIndex/GetLastIndex assume that every group is non-empty.
 // TODO Sticking to top/bottom scroll when inserting/removing space.
+// TODO Audit usage of MeasureItems -- it doesn't take into account the gap between items!
 
 struct ListViewItemElement : EsElement {
 	uintptr_t index; // Index into the visible items array.
@@ -1965,6 +1966,7 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 		if (!view->groups[i].itemCount) continue;
 		spaceDelta -= view->groups[i].totalSize;
 		view->groups[i].totalSize = view->MeasureItems(i, 0, view->groups[i].itemCount);
+		view->groups[i].totalSize += view->style->gapMinor * (view->groups[i].itemCount - 1);
 		spaceDelta += view->groups[i].totalSize;
 	}
 
