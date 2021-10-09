@@ -38,7 +38,7 @@ bool EsMemoryDecommit(void *pointer, size_t bytes) {
 	return ES_SUCCESS == (intptr_t) EsSyscall(ES_SYSCALL_MEMORY_COMMIT, (uintptr_t) pointer >> ES_PAGE_BITS, bytes >> ES_PAGE_BITS, 1, 0);
 }
 
-EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information) {
+EsError EsProcessCreate(const EsProcessCreationArguments *arguments, EsProcessInformation *information) {
 	EsProcessInformation _information;
 	if (!information) information = &_information;
 

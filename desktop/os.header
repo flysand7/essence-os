@@ -2015,7 +2015,7 @@ function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void
 
 // Processes and threads.
 
-function EsError EsProcessCreate(EsProcessCreationArguments *arguments, EsProcessInformation *information); 
+function EsError EsProcessCreate(const EsProcessCreationArguments *arguments, EsProcessInformation *information); 
 function int EsProcessGetExitStatus(EsHandle process); 
 function EsObjectID EsProcessGetID(EsHandle process);
 function void EsProcessGetState(EsHandle process, EsProcessState *state); 

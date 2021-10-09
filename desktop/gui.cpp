@@ -8034,10 +8034,12 @@ void InspectorSetup(EsWindow *window) {
 
 	inspector->selectedElement = -1;
 
-	EsPanel *panel = EsPanelCreate(window, ES_CELL_FILL, ES_STYLE_PANEL_FILLED);
+	EsSplitter *splitter = EsSplitterCreate(window, ES_CELL_FILL | ES_SPLITTER_VERTICAL);
+	EsPanel *panel1 = EsPanelCreate(splitter, ES_CELL_FILL, ES_STYLE_PANEL_FILLED);
+	EsPanel *panel2 = EsPanelCreate(splitter, ES_CELL_FILL, ES_STYLE_PANEL_FILLED);
 
 	{
-		EsPanel *toolbar = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
+		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
 		inspector->visualizeRepaints = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR, 0, "Visualize repaints");
 		EsButtonOnCommand(inspector->visualizeRepaints, InspectorVisualizeRepaints);
 		inspector->visualizeLayoutBounds = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR, 0, "Visualize layout bounds");
@@ -8046,13 +8048,13 @@ void InspectorSetup(EsWindow *window) {
 		EsButtonOnCommand(inspector->visualizePaintSteps, InspectorVisualizePaintSteps);
 	}
 
-	inspector->elementList = EsListViewCreate(panel, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);
+	inspector->elementList = EsListViewCreate(panel1, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);
 	inspector->elementList->messageUser = InspectorElementListCallback;
 	EsListViewSetColumns(inspector->elementList, inspectorElementListColumns, sizeof(inspectorElementListColumns) / sizeof(EsListViewColumn));
 	EsListViewInsertGroup(inspector->elementList, 0);
 
 	{
-		EsPanel *toolbar = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
+		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
 		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
 		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Horizontal:");
 		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
@@ -8092,7 +8094,7 @@ void InspectorSetup(EsWindow *window) {
 	}
 
 	{
-		EsPanel *toolbar = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
+		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
 		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
 		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Stack:");
 		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
@@ -8117,7 +8119,7 @@ void InspectorSetup(EsWindow *window) {
 	}
 
 	{
-		EsPanel *toolbar = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
+		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
 		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
 		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Content:");
 		inspector->contentTextbox = EsTextboxCreate(toolbar, ES_ELEMENT_DISABLED | ES_TEXTBOX_EDIT_BASED);
@@ -8129,7 +8131,7 @@ void InspectorSetup(EsWindow *window) {
 	}
 
 	{
-		inspector->listEvents = EsListViewCreate(panel, ES_CELL_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
+		inspector->listEvents = EsListViewCreate(panel2, ES_CELL_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 	}
 
 	InspectorRefreshElementList(inspector);

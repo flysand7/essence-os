@@ -2375,6 +2375,9 @@ UIRectangle CanvasGetObjectBounds(Object *object) {
 	int32_t w = PropertyReadInt32(object, "_graphW") * canvas->zoom;
 	int32_t h = PropertyReadInt32(object, "_graphH") * canvas->zoom;
 
+	if (w < 1) w = 1;
+	if (h < 1) h = 1;
+
 	UIRectangle bounds = UI_RECT_4(x, x + w, y, y + h);
 
 	if (object->flags & OBJECT_IS_SELECTED) {
@@ -2656,14 +2659,16 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 					UIDrawBorder(painter, UIRectangleAdd(bounds, UI_RECT_1I(-3)), 0xFF4092FF, UI_RECT_1(3));
 				} 
 
-				UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
-						object->cName, -1, 0xFF000000, UI_ALIGN_LEFT, nullptr);
+				if (object->type == OBJ_COMMENT || canvas->zoom > 0.1f) {
+					UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
+							object->cName, -1, 0xFF000000, UI_ALIGN_LEFT, nullptr);
+				}
 
 				UIDrawRectangle(painter, bounds, 0xFFE0E0E0, 0xFF404040, UI_RECT_1(1));
 				UIDrawBlock(painter, UI_RECT_4(bounds.l + 1, bounds.r + 1, bounds.b, bounds.b + 1), 0xFF404040);
 				UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
 
-				if (isConditional) {
+				if (isConditional && canvas->zoom > 0.1f) {
 					UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
 					UIDrawBlock(painter, indicator, 0xFFFFFF00);
 					UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
@@ -2911,7 +2916,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		while (divisions > 0) factor *= perDivision, divisions--;
 		while (divisions < 0) factor /= perDivision, divisions++;
 		if (canvas->zoom * factor > 4) factor = 4 / canvas->zoom;
-		if (canvas->zoom * factor < 0.1) factor = 0.1 / canvas->zoom;
+		if (canvas->zoom * factor < 0.05) factor = 0.05 / canvas->zoom;
 		int mx = element->window->cursorX - element->bounds.l;
 		int my = element->window->cursorY - element->bounds.t;
 		canvas->zoom *= factor;
@@ -3594,8 +3599,8 @@ int main(int argc, char **argv) {
 
 	graphControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
 	graphControls->gap = -1;
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Arrow mode \x18", -1)->invoke = CanvasArrowMode;
 		UIButtonCreate(0, UI_BUTTON_SMALL, "Add object \x18", -1)->invoke = ObjectAddCommand;
+		UIButtonCreate(0, UI_BUTTON_SMALL, "Arrow mode \x18", -1)->invoke = CanvasArrowMode;
 	UIParentPop();
 
 	prototypeControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);

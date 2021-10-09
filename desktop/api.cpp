@@ -587,15 +587,8 @@ int EsMessageSend(EsElement *element, EsMessage *message) {
 		response = element->messageUser(element, message);
 	}
 
-	bool handledByUser = response;
-
 	if (response == 0 && element->messageClass) {
 		response = element->messageClass(element, message);
-	}
-
-	if ((element->state & UI_STATE_INSPECTING) && message->type != ES_MSG_GET_INSPECTOR_INFORMATION) {
-		InspectorNotifyElementEvent(element, "message", "Element processed message '%z' with response %i%z.\n", 
-				EnumLookupNameFromValue(enumStrings_EsMessageType, message->type), response, handledByUser ? " (from user callback)" : "");
 	}
 
 	if (message->type >= ES_MSG_STATE_CHANGE_MESSAGE_START && message->type <= ES_MSG_STATE_CHANGE_MESSAGE_END) {
