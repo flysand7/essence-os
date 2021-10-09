@@ -911,3 +911,7 @@ size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes) {
 EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq) {
 	return EsSyscall(ES_SYSCALL_DEVICE_CONTROL, handle, type, (uintptr_t) dp, (uintptr_t) dq);
 }
+
+uintptr_t _EsDebugCommand(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d) {
+	return EsSyscall(ES_SYSCALL_DEBUG_COMMAND, a, b, c, d);
+}

@@ -763,7 +763,7 @@ enum EsFatalError {
 	ES_FATAL_ERROR_COUNT
 }
 
-enum EsSyscallType {
+private enum EsSyscallType {
 	// Memory.
 
 	ES_SYSCALL_MEMORY_ALLOCATE
@@ -1179,7 +1179,7 @@ struct EsElementPublic {
 	uint64_t flags; // Bits 0-31: specific to the type of element; bits 32-63: common to all elements.
 };
 
-struct EsBatchCall {
+private struct EsBatchCall {
 	EsSyscallType index; 
 	bool stopBatchIfError;
 	union { uintptr_t argument0, returnValue; };
@@ -1241,7 +1241,7 @@ struct EsMutex {
 
 struct EsCrashReason {
 	EsFatalError errorCode;
-	EsSyscallType duringSystemCall;
+	int32_t duringSystemCall;
 }
 
 struct EsProcessState {
@@ -1949,8 +1949,9 @@ function void EsPOSIXInitialise(int *argc, char ***argv);
 function intptr_t EsPOSIXSystemCall(intptr_t n, intptr_t a1, intptr_t a2, intptr_t a3, intptr_t a4, intptr_t a5, intptr_t a6); 
 function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix);
 
-function void EsBatch(EsBatchCall *calls, size_t count); 
-function uintptr_t _EsSyscall(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e, uintptr_t f); 
+private function void EsBatch(EsBatchCall *calls, size_t count); 
+private function uintptr_t _EsSyscall(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e, uintptr_t f); 
+function uintptr_t _EsDebugCommand(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d);
 
 // Configuration and settings.
 

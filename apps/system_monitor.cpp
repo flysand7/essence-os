@@ -237,14 +237,14 @@ void UpdateDisplay(Instance *instance, int index) {
 		EsPanelSwitchTo(instance->switcher, instance->listViewProcesses, ES_TRANSITION_NONE);
 		EsElementFocus(instance->listViewProcesses);
 	} else if (index == DISPLAY_GENERAL_LOG) {
-		size_t bytes = EsSyscall(ES_SYSCALL_DEBUG_COMMAND, index, (uintptr_t) generalLogBuffer, sizeof(generalLogBuffer), 0);
+		size_t bytes = _EsDebugCommand(index, (uintptr_t) generalLogBuffer, sizeof(generalLogBuffer), 0);
 		EsTextboxSelectAll(instance->textboxGeneralLog);
 		EsTextboxInsert(instance->textboxGeneralLog, generalLogBuffer, bytes);
 		EsTextboxEnsureCaretVisible(instance->textboxGeneralLog, false);
 		EsPanelSwitchTo(instance->switcher, instance->textboxGeneralLog, ES_TRANSITION_NONE);
 	} else if (index == DISPLAY_MEMORY) {
 		EsMemoryStatistics statistics = {};
-		EsSyscall(ES_SYSCALL_DEBUG_COMMAND, index, (uintptr_t) &statistics, 0, 0);
+		_EsDebugCommand(index, (uintptr_t) &statistics, 0, 0);
 
 		EsPanelSwitchTo(instance->switcher, instance->panelMemoryStatistics, ES_TRANSITION_NONE);
 
