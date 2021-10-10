@@ -931,8 +931,8 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		window->state |= UI_STATE_Z_STACK;
 	} else if (style == ES_WINDOW_INSPECTOR) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, ES_WINDOW_SOLID_TRUE, 0, ES_WINDOW_PROPERTY_SOLID);
-		window->SetStyle(ES_STYLE_PANEL_INSPECTOR_WINDOW_ROOT);
-		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, ES_STYLE_PANEL_INSPECTOR_WINDOW_CONTAINER);
+		window->SetStyle(ES_STYLE_PANEL_FILLED);
+		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL);
 		EsRectangle bounds = { 10, 600, 10, 500 };
 		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN);
 	} else if (style == ES_WINDOW_TIP || style == ES_WINDOW_PLAIN) {
