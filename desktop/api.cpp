@@ -84,16 +84,6 @@ struct EsFileStore {
 	};
 };
 
-struct GlobalData {
-	volatile int32_t clickChainTimeoutMs;
-	volatile float uiScale;
-	volatile bool swapLeftAndRightButtons;
-	volatile bool showCursorShadow;
-	volatile bool useSmartQuotes;
-	volatile bool enableHoverState;
-	volatile float animationTimeMultiplier;
-};
-
 struct ThreadLocalStorage {
 	// This must be the first field.
 	ThreadLocalStorage *self;
@@ -173,6 +163,7 @@ ptrdiff_t tlsStorageOffset;
 // Miscellanous forward declarations.
 extern "C" void EsUnimplemented();
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
+extern "C" uint64_t ProcessorReadTimeStamp();
 void MaybeDestroyElement(EsElement *element);
 const char *GetConstantString(const char *key);
 void UndoManagerDestroy(EsUndoManager *manager);
@@ -969,8 +960,6 @@ EsMessage *EsMessageReceive() {
 	EsMessageMutexCheck();
 
 	while (true) {
-		TS("Process message\n");
-
 		if (message.message.type == ES_MSG_INSTANCE_CREATE) {
 			if (message.message.createInstance.data != ES_INVALID_HANDLE) {
 				EsHandleClose(message.message.createInstance.data);
@@ -1471,7 +1460,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		// Initialise the API.
 
 		_init();
-		EsRandomSeed(EsTimeStamp());
+		EsRandomSeed(ProcessorReadTimeStamp());
 		ThreadInitialise(&api.firstThreadLocalStorage);
 		EsMessageMutexAcquire();
 

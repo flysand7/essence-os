@@ -227,7 +227,7 @@ struct Scheduler {
 
 	volatile bool started, panic, shutdown;
 
-	uint64_t timeMs, lastTimeStamp;
+	uint64_t timeMs;
 
 	unsigned currentProcessorID;
 
@@ -1342,14 +1342,20 @@ void Scheduler::Yield(InterruptContext *context) {
 	else newThread->process->cpuTimeSlices++;
 
 	// Prepare the next timer interrupt.
-	uint64_t time = 1;
-	ArchNextTimer(time);
+	uint64_t nextTimer = 1;
+	ArchNextTimer(nextTimer);
 
 	InterruptContext *newContext = newThread->interruptContext;
 
 	if (!local->processorID) {
 		// Update the scheduler's time.
+#if 1
+		timeMs = ArchGetTimeMs();
+		globalData->schedulerTimeMs = timeMs;
+#else
+		// This drifts by roughly a second every minute.
 		timeMs = ProcessorReadTimeStamp() / KGetTimeStampTicksPerMs(); 
+#endif
 
 		// Update the time stamp counter synchronization value.
 		extern volatile uint64_t timeStampCounterSynchronizationValue;

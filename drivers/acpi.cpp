@@ -133,6 +133,7 @@ struct ACPI {
 	ACPIDescriptorTable *madt;
 
 	bool ps2ControllerUnavailable, vgaControllerUnavailable;
+	uint8_t centuryRegisterIndex;
 
 	KDevice *computer;
 };
@@ -788,18 +789,23 @@ static void DeviceAttach(KDevice *parentDevice) {
 #endif
 
 	if (!acpi.vgaControllerUnavailable) {
-		KDeviceAttachByName(acpi.computer, "SVGA");
+		KDeviceAttachByName(acpi.computer, "SVGA"); // TODO Remove from the startup critical path.
 	}
 
 	KDeviceAttachByName(acpi.computer, "PCI");
+	KDeviceAttachByName(acpi.computer, "RTC"); // TODO Remove from the startup critical path.
 }
 
 KDriver driverACPI = {
 	.attach = DeviceAttach,
 };
 
-void *KGetRSDP() {
+void *ACPIGetRSDP() {
 	return acpi.rsdp;
+}
+
+uint8_t ACPIGetCenturyRegisterIndex() {
+	return acpi.centuryRegisterIndex;
 }
 
 inline void ArchInitialise() {
@@ -884,6 +890,7 @@ void ACPI::Initialise() {
 				fadt->Check();
 				
 				if (header->length > 109) {
+					centuryRegisterIndex = ((uint8_t *) fadt)[108];
 					uint8_t bootArchitectureFlags = ((uint8_t *) fadt)[109];
 					ps2ControllerUnavailable = ~bootArchitectureFlags & (1 << 1);
 					vgaControllerUnavailable =  bootArchitectureFlags & (1 << 2);
@@ -1004,28 +1011,6 @@ void ACPI::Initialise() {
 	timeStampTicksPerMs = (end - start) >> 3;
 	ProcessorEnableInterrupts();
 	// EsPrint("timeStampTicksPerMs = %d\n", timeStampTicksPerMs);
-
-	// Add some entropy.
-	{
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 0);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 0);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 2);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 1);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 4);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 2);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 6);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 3);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 7);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 4);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 8);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 5);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 9);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 6);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 10);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 7);
-		for (int i = 0; i < 10; i++) ProcessorOut8(0x70, 11);
-		EsRandomAddEntropy(ProcessorIn8(0x71) << 8);
-	}
 
 	// Finish processor initialisation.
 	// This sets up interrupts, the timer, CPULocalStorage, the GDT and TSS,

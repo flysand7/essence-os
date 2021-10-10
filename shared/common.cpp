@@ -1412,45 +1412,6 @@ void EsPrintHelloWorld() {
 #endif
 
 /////////////////////////////////
-// Timing utility functions.
-/////////////////////////////////
-
-#ifdef SHARED_COMMON_WANT_ALL
-
-#ifdef KERNEL
-
-#if 0
-int __tsi = 1;
-#define TS(...) for (int i = 0; i < __tsi; i++) EsPrint("]   "); EsPrint(__VA_ARGS__); uint64_t __ts = KGetTimeInMs(); __tsi++; \
-			   EsDefer({__tsi--; for (int i = 0; i < __tsi; i++) EsPrint("]   "); \
-					   EsPrint("> %d ms\n", (KGetTimeInMs() - __ts)); \
-					   for (int i = 0; i < __tsi; i++) EsPrint("]   "); EsPrint("\n");})
-#define TSP(...) for (int i = 0; i < __tsi; i++) EsPrint("]   "); EsPrint(__VA_ARGS__, (KGetTimeInMs() - __ts));
-#else
-#define TS(...) 
-#define TSP(...) 
-#endif
-
-#else
-
-#if 0
-int __tsi = 1;
-#define TS(...) for (int i = 0; i < __tsi; i++) EsPrint("|   "); EsPrint(__VA_ARGS__); uint64_t __ts = EsTimeStamp(); __tsi++; \
-			   EsDefer({__tsi--; for (int i = 0; i < __tsi; i++) EsPrint("|   "); \
-					   EsPrint("> %d ms (%d mcs)\n", (EsTimeStamp() - __ts) / (api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] * 1000 + 1), (EsTimeStamp() - __ts) / (api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] + 1)); \
-					   for (int i = 0; i < __tsi; i++) EsPrint("|   "); EsPrint("\n");})
-#define TSP(...) for (int i = 0; i < __tsi; i++) EsPrint("|   "); EsPrint(__VA_ARGS__, (EsTimeStamp() - __ts) / \
-		(api.systemConstants[ES_SYSTEM_CONSTANT_TIME_STAMP_UNITS_PER_MICROSECOND] * 1000 + 1));
-#else
-#define TS(...) 
-#define TSP(...) 
-#endif
-
-#endif
-
-#endif
-
-/////////////////////////////////
 // Random number generator.
 /////////////////////////////////
 
@@ -2682,6 +2643,71 @@ int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue) {
 #else
 	return *pointer;
 #endif
+}
+
+#endif
+
+/////////////////////////////////
+// Time and date.
+/////////////////////////////////
+
+#if defined(SHARED_COMMON_WANT_ALL)
+
+const uint16_t daysBeforeMonthStart[] = { 
+	0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, // Normal year.
+	0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, // Leap year.
+};
+
+uint64_t DateToLinear(const EsDateComponents *components) {
+	uint64_t dayCount = 365 * components->year + daysBeforeMonthStart[components->month - 1] + components->day - 1;
+	uint16_t year = components->month < 3 ? components->year - 1 : components->year;
+	dayCount += 1 + year / 4 - year / 100 + year / 400; // Add additional days for leap years, only including this year's if we're past February.
+	return components->millisecond + 1000 * (components->second + 60 * (components->minute + 60 * (components->hour + 24 * dayCount)));
+}
+
+uint8_t DateCalculateDayOfWeek(const EsDateComponents *components) {
+	return ((DateToLinear(components) / 86400000 + 5) % 7) + 1;
+}
+
+void DateToComponents(uint64_t x, EsDateComponents *components) {
+	components->millisecond = x % 1000, x /= 1000;
+	components->second      = x %   60, x /=   60;
+	components->minute      = x %   60, x /=   60;
+	components->hour        = x %   24, x /=   24;
+	// x = days since epoch.
+
+	// 146097 days per 400 year block.
+	components->year = (x / 146097) * 400;
+	x %= 146097; // x = day within 400 year block.
+
+	bool isLeapYear = true;
+
+	// 36525 days in the first 100 year block, and 36524 per the other 100 year blocks.
+	if (x < 36525) {
+		components->year += (x / 1461) * 4;
+		x %= 1461; // x = day within 4 year block.
+	} else {
+		x -= 36525;
+		components->year += (x / 36524 + 1) * 100;
+		x %= 36524; // x = day within 100 year block.
+
+		// 1460 days in the first 4 year block, and 1461 per the other 4 year blocks.
+		if (x < 1460) components->year += x / 365, x %= 365, isLeapYear = false;
+		else components->year += ((x - 1460) / 1461 + 1) * 4, x = (x - 1460) % 1461;
+	}
+
+	if (x >= 366) components->year += (x - 1) / 365, x = (x - 1) % 365, isLeapYear = false;
+	// x = day within year.
+
+	for (uintptr_t i = 12; i >= 1; i--) {
+		uint16_t offset = daysBeforeMonthStart[i + (isLeapYear ? 11 : -1)];
+
+		if (x >= offset) {
+			components->month = i;
+			components->day = x - offset + 1;
+			break;
+		}
+	}
 }
 
 #endif

@@ -755,7 +755,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_HANDLE_SHARE) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	if (~currentProcess->permissions & ES_PERMISSION_GET_VOLUME_INFORMATION) {
-		SYSCALL_RETURN(0, false);
+		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, node, KNode);
@@ -1331,7 +1331,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_BATCH) {
 		uintptr_t _returnValue = calls[i].returnValue = DoSyscall(call.index, call.argument0, call.argument1, call.argument2, call.argument3, 
 				DO_SYSCALL_BATCHED, &fatal, userStackPointer);
 		if (fatal) SYSCALL_RETURN(_returnValue, true);
-		if (calls->stopBatchIfError && ES_CHECK_ERROR(_returnValue)) break;
+		if (calls[i].stopBatchIfError && ES_CHECK_ERROR(_returnValue)) break;
 		if (currentThread->terminating) break;
 	}
 
@@ -1860,6 +1860,19 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 		} else if (type == ES_DEVICE_CONTROL_BLOCK_DETECT_FS) {
 			KDeviceOpenHandle(block);
 			FSDetectFileSystem(block); // Closes handle.
+		} else {
+			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+		}
+	} else if (device->type == ES_DEVICE_CLOCK) {
+		KClockDevice *clock = (KClockDevice *) device;
+
+		if (type == ES_DEVICE_CONTROL_CLOCK_READ) {
+			EsDateComponents components;
+			uint64_t linear;
+			EsError error = clock->read(clock, &components, &linear);
+			SYSCALL_WRITE(dp, &components, sizeof(EsDateComponents));
+			SYSCALL_WRITE(dq, &linear, sizeof(uint64_t));
+			SYSCALL_RETURN(error, false);
 		} else {
 			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 		}

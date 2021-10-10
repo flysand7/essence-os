@@ -6,8 +6,13 @@ double EsTimeStampMs() {
 	if (!api.startupInformation->timeStampTicksPerMs) {
 		return 0;
 	} else {
-		return (double) EsTimeStamp() / api.startupInformation->timeStampTicksPerMs;
+		return (double) ProcessorReadTimeStamp() / api.startupInformation->timeStampTicksPerMs;
 	}
+}
+
+void EsDateNowUTC(EsDateComponents *date) {
+	uint64_t linear = api.global->schedulerTimeMs + api.global->schedulerTimeOffset;
+	DateToComponents(linear, date);
 }
 
 void *EsMemoryReserve(size_t size, EsMemoryProtection protection, uint32_t flags) {

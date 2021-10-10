@@ -55,8 +55,8 @@ _EsCRTlongjmp:
 	.return:
 	ret
 
-[global EsTimeStamp]
-EsTimeStamp:
+[global ProcessorReadTimeStamp]
+ProcessorReadTimeStamp:
 	rdtsc
 	shl	rdx,32
 	or	rax,rdx

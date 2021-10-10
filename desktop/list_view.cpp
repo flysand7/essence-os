@@ -1484,7 +1484,7 @@ struct EsListView : EsElement {
 			EsMessageSend(this, &m);
 			return true;
 		} else if (!ctrl && !alt) {
-			uint64_t currentTime = EsTimeStamp() / api.startupInformation->timeStampTicksPerMs;
+			uint64_t currentTime = EsTimeStampMs();
 
 			if (searchBufferLastKeyTime + GetConstantNumber("listViewSearchBufferTimeout") < currentTime) {
 				searchBufferBytes = 0;
@@ -1785,7 +1785,7 @@ struct EsListView : EsElement {
 				DragSelect();
 			}
 
-			uint64_t currentTime = EsTimeStamp() / api.startupInformation->timeStampTicksPerMs;
+			uint64_t currentTime = EsTimeStampMs();
 			int64_t remainingTime = searchBufferLastKeyTime + GetConstantNumber("listViewSearchBufferTimeout") - currentTime;
 
 			if (remainingTime < 0) {

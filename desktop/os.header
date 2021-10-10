@@ -1142,6 +1142,7 @@ enum EsDeviceType {
 	ES_DEVICE_NETWORK_CARD
 	ES_DEVICE_USB
 	ES_DEVICE_PCI_FUNCTION
+	ES_DEVICE_CLOCK
 }
 
 enum EsClipboardFormat {
@@ -1155,6 +1156,8 @@ enum EsDeviceControlType {
 	ES_DEVICE_CONTROL_BLOCK_READ            = 0x1002
 	ES_DEVICE_CONTROL_BLOCK_WRITE           = 0x1003
 	ES_DEVICE_CONTROL_BLOCK_DETECT_FS       = 0x1004 // Detect file systems. All existing file systems must have been unmounted.
+
+	ES_DEVICE_CONTROL_CLOCK_READ            = 0x2001
 }
 
 function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
@@ -1919,6 +1922,17 @@ struct EsOpenDocumentInformation {
 	char applicationName[128];
 };
 
+struct EsDateComponents {
+	uint16_t year;
+	uint8_t  month;       // 1-12.
+	uint8_t  day;         // Starting at 1.
+	uint8_t  hour;        // 0-23.
+	uint8_t  minute;      // 0-59. 
+	uint8_t  second;      // 0-59.
+	uint8_t  _unused;
+	uint16_t millisecond; // 0-999.
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -2106,8 +2120,6 @@ function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
 function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
 function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument); 
 function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument, EsSwapCallback swap); 
-function uint64_t EsTimeStamp(); 
-function double EsTimeStampMs(); 
 
 // Graphics.
 
@@ -2201,21 +2213,31 @@ function EsHandle EsEventCreate(bool autoReset);
 function void EsEventForward(EsHandle event, EsHandle eventSink, EsGeneric data); // TODO Forwarding process/thread killed events. 
 function void EsEventReset(EsHandle event); 
 function void EsEventSet(EsHandle event); 
+
 function EsHandle EsEventSinkCreate(bool ignoreDuplicates); 
 function EsError EsEventSinkPop(EsHandle eventSink, EsGeneric *data); // Returns ES_ERROR_EVENT_NOT_SET if empty, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
 function EsError EsEventSinkPush(EsHandle eventSink, EsGeneric data); // Returns ES_ERROR_EVENT_SINK_DUPLICATE if duplicate, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
+
 function void EsMutexAcquire(EsMutex *mutex); 
 function void EsMutexDestroy(EsMutex *mutex); 
 function void EsMutexRelease(EsMutex *mutex); 
-function void EsPerformanceTimerPush(); // Stack size should not exceed 100 values.
-function double EsPerformanceTimerPop(); // Returns value in seconds.
+
 function void EsSchedulerYield(); 
-function void EsSleep(uint64_t milliseconds); 
+
 function void EsSpinlockAcquire(EsSpinlock *spinlock); 
 function void EsSpinlockRelease(EsSpinlock *spinlock); 
+
 function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallback callback, EsGeneric argument); 
 function void EsTimerCancel(EsTimer id);
+
+function void EsSleep(uint64_t milliseconds); 
 function uintptr_t EsWait(EsHandle *objects, size_t objectCount, uintptr_t timeoutMs); 
+
+function void EsPerformanceTimerPush(); // Stack size should not exceed 100 values.
+function double EsPerformanceTimerPop(); // Returns value in seconds.
+function double EsTimeStampMs(); // Current value of the performance timer, in ms.
+
+function void EsDateNowUTC(EsDateComponents *date); // Don't rely on the accuracy of the millisecond field.
 
 // Strings.
 

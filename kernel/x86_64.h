@@ -27,5 +27,7 @@ NewProcessorStorage AllocateNewProcessorStorage(struct ACPIProcessor *archCPU);
 bool HasSSSE3Support();
 uintptr_t GetBootloaderInformationOffset();
 void ArchDelay1Ms(); // Spin for approximately 1ms. Use only during initialisation. Not thread-safe.
+void *ACPIGetRSDP();
+uint8_t ACPIGetCenturyRegisterIndex();
 
 #endif

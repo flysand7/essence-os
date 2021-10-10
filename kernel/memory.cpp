@@ -330,6 +330,8 @@ size_t mmCoreRegionCount, mmCoreRegionArrayCommit;
 LinkedList<MMSharedRegion> mmNamedSharedRegions;
 KMutex mmNamedSharedRegionsMutex;
 
+GlobalData *globalData; // Shared with all processes.
+
 // Code!
 
 void MMUpdateAvailablePageCount(bool increase) {
@@ -2119,12 +2121,12 @@ MMSpace *MMGetCurrentProcessSpace() {
 	return GetCurrentThread()->process->vmm;
 }
 
-bool MMFaultRange(uintptr_t address, uintptr_t byteCount) {
+bool MMFaultRange(uintptr_t address, uintptr_t byteCount, uint32_t flags = ES_FLAGS_DEFAULT) {
 	uintptr_t start = address & ~(K_PAGE_SIZE - 1);
 	uintptr_t end = (address + byteCount - 1) & ~(K_PAGE_SIZE - 1);
 
 	for (uintptr_t page = start; page <= end; page += K_PAGE_SIZE) {
-		if (!MMArchHandlePageFault(page, ES_FLAGS_DEFAULT)) {
+		if (!MMArchHandlePageFault(page, flags)) {
 			return false;
 		}
 	}
@@ -2334,6 +2336,14 @@ void MMInitialise() {
 		pmm.balanceThread = scheduler.SpawnThread("MMBalance", (uintptr_t) MMBalanceThread, 0, ES_FLAGS_DEFAULT);
 		pmm.balanceThread->isPageGenerator = true;
 		scheduler.SpawnThread("MMObjTrim", (uintptr_t) MMObjectCacheTrimThread, 0, ES_FLAGS_DEFAULT);
+	}
+
+	{
+		// Create the global data shared region.
+
+		MMSharedRegion *region = MMSharedOpenRegion(EsLiteral("Desktop.Global"), sizeof(GlobalData), ES_FLAGS_DEFAULT); 
+		globalData = (GlobalData *) MMMapShared(kernelMMSpace, region, 0, sizeof(GlobalData), MM_REGION_FIXED);
+		MMFaultRange((uintptr_t) globalData, sizeof(GlobalData), MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR);
 	}
 }
 

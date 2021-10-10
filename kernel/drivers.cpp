@@ -222,8 +222,6 @@ const KDriver *DriverLoad(KInstalledDriver *installedDriver) {
 }
 
 void DeviceAttach(DeviceAttachData attach) {
-	TS("DeviceAttach to %s\n", attach.installedDriver->nameBytes, attach.installedDriver->name);
-
 	if (attach.parentDevice) {
 		KDeviceOpenHandle(attach.parentDevice);
 	}

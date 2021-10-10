@@ -2941,6 +2941,16 @@ void DesktopMessage(EsMessage *message) {
 				EsMessagePostRemote(process->handle, message);
 			}
 		}
+
+		if (message->device.type == ES_DEVICE_CLOCK) {
+			EsDateComponents reading;
+			uint64_t linear;
+
+			if (ES_SUCCESS == EsDeviceControl(message->device.handle, ES_DEVICE_CONTROL_CLOCK_READ, &reading, &linear)) {
+				// TODO Scheduler timer is not particularly accurate, so we should periodically resynchronize with the clock.
+				api.global->schedulerTimeOffset = (linear ?: DateToLinear(&reading)) - api.global->schedulerTimeMs;
+			}
+		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
 		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
 			ApplicationProcess *process = desktop.allApplicationProcesses[i];

@@ -606,6 +606,31 @@ void ArchCheckAddressInRange(int type, uintptr_t address) {
 	}
 }
 
+uint64_t ArchGetTimeMs() {
+	// NOTE This will only work if called at least once every 50 ms.
+	// 	(The PIT only stores a 16-bit counter, which is depleted every 50 ms.)
+
+	static bool started = false;
+	static uint64_t cumulative = 0, last = 0;
+
+	if (!started) {
+		ProcessorOut8(0x43, 0x30);
+		ProcessorOut8(0x40, 0xFF);
+		ProcessorOut8(0x40, 0xFF);
+		started = true;
+		last = 0xFFFF;
+		return 0;
+	} else {
+		ProcessorOut8(0x43, 0x00);
+		uint16_t x = ProcessorIn8(0x40);
+		x |= (ProcessorIn8(0x40)) << 8;
+		cumulative += last - x;
+		if (x > last) cumulative += 0x10000;
+		last = x;
+		return cumulative * 1000 / 1193182;
+	}
+}
+
 void ArchDelay1Ms() {
 	ProcessorOut8(0x43, 0x30);
 	ProcessorOut8(0x40, 0xA9);
@@ -810,9 +835,9 @@ size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi, int processorID) {
 }
 
 void ArchNextTimer(size_t ms) {
-	while (!scheduler.started); 			// Wait until the scheduler is ready.
-	GetLocalStorage()->schedulerReady = true; 	// Make sure this CPU can be scheduled.
-	acpi.lapic.ArchNextTimer(ms); 			// Set the next timer.
+	while (!scheduler.started);               // Wait until the scheduler is ready.
+	GetLocalStorage()->schedulerReady = true; // Make sure this CPU can be scheduled.
+	acpi.lapic.ArchNextTimer(ms);             // Set the next timer.
 }
 
 NewProcessorStorage AllocateNewProcessorStorage(ACPIProcessor *archCPU) {

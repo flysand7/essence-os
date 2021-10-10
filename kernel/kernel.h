@@ -99,7 +99,8 @@ void ArchShutdown(uintptr_t action);
 
 extern "C" void ArchResetCPU();
 extern "C" void ArchSpeakerBeep();
-extern "C" void ArchNextTimer(size_t ms); // Receive a TIMER_INTERRUPT in ms ms.
+extern "C" void ArchNextTimer(size_t ms); // Schedule the next TIMER_INTERRUPT.
+extern "C" uint64_t ArchGetTimeMs(); // Called by the scheduler on the boot processor every context switch.
 InterruptContext *ArchInitialiseThread(uintptr_t kernelStack, uintptr_t kernelStackSize, struct Thread *thread, 
 		uintptr_t startAddress, uintptr_t argument1, uintptr_t argument2,
 		 bool userland, uintptr_t stack, uintptr_t userStackSize);

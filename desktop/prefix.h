@@ -241,7 +241,7 @@ ES_EXTERN_C void _start();
 #define ES_INFINITY __builtin_inff()
 #define ES_PI (3.1415926535897932384626433832795028841971693994)
 
-// --------- Internal APIs:
+// --------- Internals:
 
 #if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)
 
@@ -277,6 +277,18 @@ struct BundleFile {
 struct MemoryAvailable {
 	size_t available;
 	size_t total;
+};
+
+struct GlobalData {
+	volatile int32_t clickChainTimeoutMs;
+	volatile float uiScale;
+	volatile bool swapLeftAndRightButtons;
+	volatile bool showCursorShadow;
+	volatile bool useSmartQuotes;
+	volatile bool enableHoverState;
+	volatile float animationTimeMultiplier;
+	volatile uint64_t schedulerTimeMs;
+	volatile uint64_t schedulerTimeOffset;
 };
 
 #ifdef KERNEL

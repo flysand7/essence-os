@@ -275,6 +275,7 @@ Option options[] = {
 	{ "Driver.PCI", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.PS2", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.Root", OPTION_TYPE_BOOL, { .b = true } },
+	{ "Driver.RTC", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.SVGA", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.USB", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.USBBulk", OPTION_TYPE_BOOL, { .b = true } },

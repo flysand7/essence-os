@@ -1663,7 +1663,7 @@ bool EsElement::StartAnimating() {
 }
 
 void ProcessAnimations() {
-	uint64_t timeStamp = EsTimeStamp(); // TODO Use global time instead.
+	uint64_t timeStamp = ProcessorReadTimeStamp();
 	int64_t waitMs = -1;
 
 	for (uintptr_t i = 0; i < gui.animatingElements.Length(); i++) {
@@ -5775,6 +5775,10 @@ void EsElement::Destroy(bool manual) {
 				break;
 			}
 		}
+	}
+
+	if (state & UI_STATE_FOCUSED) {
+		UIRemoveFocusFromElement(this);
 	}
 
 	state |= UI_STATE_DESTROYING | UI_STATE_DESTROYING_CHILD | UI_STATE_BLOCK_INTERACTION;

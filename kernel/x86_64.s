@@ -2,8 +2,6 @@
 
 [section .bss]
 
-[extern ArchNextTimer]
-
 align 16
 
 %define stack_size 16384
@@ -250,6 +248,7 @@ StartKernel:
 ProcessorReady:
 	; Set the timer and become this CPU's idle thread.
 	mov	rdi,1
+	[extern ArchNextTimer]
 	call	ArchNextTimer
 	jmp	ProcessorIdle
 

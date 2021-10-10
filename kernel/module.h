@@ -180,7 +180,6 @@ extern "C" uint64_t ProcessorReadMXCSR();
 
 extern "C" uint64_t KGetTimeInMs(); // Scheduler time.
 
-void *KGetRSDP();
 size_t KGetCPUCount();
 CPULocalStorage *KGetCPULocal(uintptr_t index);
 uint64_t KCPUCurrentID();
@@ -603,6 +602,10 @@ void KDeviceRemoved(KDevice *device); // Call when a child device is removed. Mu
 void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type); // Send a message to Desktop to inform it the device was connected.
 
 #include <bin/kernel_config.h>
+
+struct KClockDevice : KDevice {
+	EsError (*read)(KClockDevice *device, EsDateComponents *components, uint64_t *linearMs);
+};
 
 // ---------------------------------------------------------------------------------------------------------------
 // Direct memory access.
