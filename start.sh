@@ -6,7 +6,16 @@ cd "$(dirname "$0")"
 # Create the bin directory.
 mkdir -p bin
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
+# Check that we are running on a sensible platform.
+uname -o | grep Cygwin > /dev/null
+if [ $? -ne 1 ]; then
+	echo Cygwin is not supported. Please install a modern GNU/Linux distro.
+	exit
+fi
+
+# Setup for Darwin.
+uname -o | grep Darwin > /dev/null
+if [ $? -ne 1 ]; then
 	export CC=gcc-11
 	export CXX=g++-11
 	export CPPFLAGS=-I/opt/homebrew/include
@@ -15,13 +24,6 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 	alias gcc="gcc-11"
 	alias g++="g++-11"
 	alias sed="gsed"
-else
-	# Check that we are running on a sensible platform.
-	uname -o | grep Cygwin > /dev/null
-	if [ $? -ne 1 ]; then
-		echo Cygwin is not supported. Please install a modern GNU/Linux distro.
-		exit
-	fi
 fi
 
 # Check that the source code is valid.

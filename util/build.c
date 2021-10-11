@@ -36,6 +36,7 @@ bool foundValidCrossCompiler;
 bool coloredOutput;
 bool encounteredErrors;
 bool interactiveMode;
+bool canBuildLuigi;
 FILE *systemLog;
 char compilerPath[4096];
 int argc;
@@ -333,15 +334,15 @@ void BuildUtilities() {
 	BUILD_UTILITY("render_svg", "-lm", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
 
-#ifndef __APPLE__ // Luigi doesn't support macOS.
-	BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
+	if (canBuildLuigi) {
+		BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
 
-	if (CheckDependencies("Utilities.Designer")) {
-		if (!CallSystem("g++ -MMD -D UI_LINUX -O3 util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
-			ParseDependencies("bin/designer2.d", "Utilities.Designer", false);
+		if (CheckDependencies("Utilities.Designer")) {
+			if (!CallSystem("g++ -MMD -D UI_LINUX -O3 util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
+				ParseDependencies("bin/designer2.d", "Utilities.Designer", false);
+			}
 		}
 	}
-#endif
 }
 
 void Build(int optimise, bool compile) {
@@ -1572,6 +1573,8 @@ int main(int _argc, char **_argv) {
 
 	printf("Enter 'help' to get a list of commands.\n");
 	char *prev = NULL;
+
+	canBuildLuigi = !CallSystem("gcc -o bin/luigi.h.gch util/luigi.h -D UI_IMPLEMENTATION -D UI_LINUX");
 
 	while (true) {
 		char *l = NULL;
