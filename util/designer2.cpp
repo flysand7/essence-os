@@ -20,21 +20,14 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
-// 	Change the type of an object in-place.
-// 	Undoing a delete does not previous an instance's layer.
-// 	Sorted list in ObjectAddInstanceCommand.
-// 	Hide arrows to colors.
+// 	Undoing a delete does not preserve an instance's layer.
 //	Having to link to the end of a conditional object chain is a bit strange.
-// 	Output styles.header in order of header ID.
-// 	Cleaning up unused objects.
+// 	Automatically cleaning up unused objects.
 // 	Show error if property linked to object of incorrect type.
-// 	In a conditional layer, properties from conditional linked objects (such as a gradient paint) should show if their conditions match.
-// 	Scrollbars on the canvas?
 // 	Icons for different object types (especially color overwrite objects).
 // 	Path layers: dashed contours.
 // 	Picking objects: only highlight objects with an applicable type.
 // 	Displaying radial gradients.
-// 	Resizing graph objects?
 // 	Find object in graph by name.
 // 	Auto-layout in the prototype display.
 // 	Importing SVGs and TTFs.
@@ -264,6 +257,8 @@ void InspectorPickTargetEnd();
 void CanvasSelectObject(struct Object *object);
 void CanvasSwitchView(void *cp);
 Rectangle8 ExportCalculatePaintOutsets(Object *object);
+void ObjectAddCommand(void *cp);
+void ObjectChangeTypeInternal(void *cp);
 
 //////////////////////////////////////////////////////////////
 
@@ -293,6 +288,7 @@ enum ObjectType : uint8_t {
 	OBJ_STYLE,
 	OBJ_COMMENT,
 	OBJ_INSTANCE,
+	OBJ_SELECTOR,
 
 	OBJ_VAR_COLOR = 0x40,
 	OBJ_VAR_INT,
@@ -330,6 +326,7 @@ enum StepType : uint8_t {
 	STEP_RENAME_OBJECT,
 	STEP_ADD_OBJECT,
 	STEP_DELETE_OBJECT,
+	STEP_CHANGE_OBJECT_TYPE,
 	STEP_SET_OBJECT_DEPTH,
 };
 
@@ -373,6 +370,7 @@ ObjectTypeString cObjectTypeStrings[] = {
 	ADD_STRING(OBJ_STYLE),
 	ADD_STRING(OBJ_COMMENT),
 	ADD_STRING(OBJ_INSTANCE),
+	ADD_STRING(OBJ_SELECTOR),
 	ADD_STRING(OBJ_VAR_COLOR),
 	ADD_STRING(OBJ_VAR_INT),
 	ADD_STRING(OBJ_VAR_TEXT_STYLE),
@@ -396,12 +394,29 @@ bool documentModified;
 uint64_t selectedObjectID;
 HashStore<uint64_t, uintptr_t> objectLookup;
 Array<ExportOffset> exportOffsets;
+uint8_t activeSelectorIndex;
 
 // Document state:
 Array<Object> objects;
 uint64_t objectIDAllocator;
 
-Object *ObjectFind(uint64_t id) {
+Property *PropertyFind(Object *object, const char *cName, uint8_t type = 0) {
+	if (object) {
+		for (uintptr_t i = 0; i < object->properties.Length(); i++) {
+			if (0 == strcmp(object->properties[i].cName, cName)) {
+				if (type && object->properties[i].type != type) {
+					return nullptr;
+				} else {
+					return &object->properties[i];
+				}
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+Object *ObjectFind(uint64_t id, bool resolveSelectors, int depth = 0) {
 #if 0
 	for (uintptr_t i = 0; i < objects.Length(); i++) {
 		if (objects[i].id == id) {
@@ -415,6 +430,14 @@ Object *ObjectFind(uint64_t id) {
 	uint64_t *index = objectLookup.Get(&id);
 	Object *object = index ? &objects[*index] : nullptr;
 	if (object) assert(object->id == id);
+
+	if (resolveSelectors && depth < 10 && object && object->type == OBJ_SELECTOR) {
+		char cPropertyName[PROPERTY_NAME_SIZE];
+		snprintf(cPropertyName, sizeof(cPropertyName), "options_%d_link", activeSelectorIndex);
+		Property *property = PropertyFind(object, cPropertyName);
+		return property ? ObjectFind(property->object, true, depth + 1) : nullptr;
+	}
+
 	return object;
 #endif
 }
@@ -452,14 +475,14 @@ ExportOffset *ExportOffsetFindProperty(uint64_t objectID, const char *cPropertyN
 
 void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection = true) {
 	if (selectedObjectID && removeSelectedFlagFromPreviousSelection) {
-		Object *object = ObjectFind(selectedObjectID);
+		Object *object = ObjectFind(selectedObjectID, false);
 		if (object) object->flags &= ~OBJECT_IS_SELECTED;
 	}
 
 	selectedObjectID = id;
 
 	if (selectedObjectID) {
-		Object *object = ObjectFind(selectedObjectID);
+		Object *object = ObjectFind(selectedObjectID, false);
 		if (object) object->flags |= OBJECT_IS_SELECTED;
 	}
 
@@ -467,22 +490,6 @@ void ObjectSetSelected(uint64_t id, bool removeSelectedFlagFromPreviousSelection
 		canvas->previewPrimaryState = THEME_PRIMARY_STATE_IDLE;
 		canvas->previewStateBits = 0;
 	}
-}
-
-Property *PropertyFind(Object *object, const char *cName, uint8_t type = 0) {
-	if (object) {
-		for (uintptr_t i = 0; i < object->properties.Length(); i++) {
-			if (0 == strcmp(object->properties[i].cName, cName)) {
-				if (type && object->properties[i].type != type) {
-					return nullptr;
-				} else {
-					return &object->properties[i];
-				}
-			}
-		}
-	}
-
-	return nullptr;
 }
 
 int32_t PropertyReadInt32(Object *object, const char *cName, int32_t defaultValue = 0) {
@@ -516,7 +523,7 @@ Property *PropertyFindOrInherit(Object *object, const char *cName, uint8_t type 
 
 		// Go to the inheritance parent object.
 		Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
-		object = ObjectFind(property ? property->object : 0);
+		object = ObjectFind(property ? property->object : 0, true);
 	}
 
 	return nullptr;
@@ -534,7 +541,7 @@ float PropertyFindOrInheritReadFloat(Object *object, const char *cName, float de
 
 Object *PropertyFindOrInheritReadObject(Object *object, const char *cName) {
 	Property *property = PropertyFindOrInherit(object, cName, PROP_OBJECT);
-	return property ? ObjectFind(property->object) : nullptr;
+	return property ? ObjectFind(property->object, true) : nullptr;
 }
 
 void ObjectLookupRebuild() {
@@ -635,7 +642,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 
 	if (step.type == STEP_GROUP_MARKER) {
 	} else if (step.type == STEP_MODIFY_PROPERTY) {
-		Object *object = ObjectFind(step.objectID);
+		Object *object = ObjectFind(step.objectID, false);
 		UI_ASSERT(object);
 
 		Property *property = PropertyFind(object, step.property.cName);
@@ -677,7 +684,7 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 			InspectorAnnouncePropertyChanged(step.objectID, step.property.cName);
 		}
 	} else if (step.type == STEP_RENAME_OBJECT) {
-		Object *object = ObjectFind(step.objectID);
+		Object *object = ObjectFind(step.objectID, false);
 		UI_ASSERT(object);
 
 		char oldName[OBJECT_NAME_SIZE];
@@ -693,6 +700,13 @@ void DocumentApplyStep(Step step, StepApplyMode mode = STEP_APPLY_NORMAL) {
 		UIElementRepaint(canvas, nullptr);
 		step.objectID = step.object.id;
 		step.type = STEP_DELETE_OBJECT;
+	} else if (step.type == STEP_CHANGE_OBJECT_TYPE) {
+		Object *object = ObjectFind(step.object.id, false);
+		ObjectType oldType = object->type;
+		object->type = step.object.type;
+		step.object.type = oldType;
+		InspectorPopulate();
+		UIElementRefresh(canvas);
 	} else if (step.type == STEP_DELETE_OBJECT) {
 		if (selectedObjectID == step.objectID) {
 			ObjectSetSelected(0);
@@ -847,7 +861,7 @@ void TextStyleRemoveDuplicates(void *cp) {
 	// Remove all duplicates of this text style,
 	// and redirect objects that linked to them to this object.
 
-	Object *object = ObjectFind((uintptr_t) cp);
+	Object *object = ObjectFind((uintptr_t) cp, false);
 	if (!object) return;
 
 	// TODO Support undo.
@@ -893,7 +907,7 @@ void TextStyleRemoveDuplicates(void *cp) {
 		uint64_t replaceID = other->id;
 		objects.Delete(i);
 		ObjectLookupRebuild();
-		object = ObjectFind((uintptr_t) cp);
+		object = ObjectFind((uintptr_t) cp, false);
 		assert(object);
 		i--;
 
@@ -954,7 +968,7 @@ void InspectorPickTargetEnd() {
 
 void InspectorUpdateSingleElementEnable(InspectorBindingData *data) {
 	UI_ASSERT(data->cEnablePropertyName);
-	bool enabled = PropertyReadInt32(ObjectFind(data->objectID), data->cEnablePropertyName);
+	bool enabled = PropertyReadInt32(ObjectFind(data->objectID, false), data->cEnablePropertyName);
 	SetBit(&data->element->flags, UI_ELEMENT_DISABLED, !enabled);
 	UIElementRefresh(data->element);
 }
@@ -966,40 +980,40 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 
 	if (data->elementType == INSPECTOR_REMOVE_BUTTON || data->elementType == INSPECTOR_REMOVE_BUTTON_BROADCAST) {
 		UIButton *button = (UIButton *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName);
 		SetBit(&data->element->flags, UI_ELEMENT_DISABLED, !property);
 		button->label[0] = property ? 'X' : '-';
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_BOOLEAN_TOGGLE) {
 		UICheckbox *box = (UICheckbox *) data->element;
-		box->check = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName, 2);
+		box->check = PropertyReadInt32(ObjectFind(data->objectID, false), data->cPropertyName, 2);
 		if ((~box->e.flags & UI_CHECKBOX_ALLOW_INDETERMINATE)) box->check &= 1;
 		UIElementRefresh(&box->e);
 	} else if (data->elementType == INSPECTOR_MASK_BIT_TOGGLE) {
 		UICheckbox *box = (UICheckbox *) data->element;
-		box->check = (PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName) & data->choiceValue) ? UI_CHECK_CHECKED : UI_CHECK_UNCHECKED;
+		box->check = (PropertyReadInt32(ObjectFind(data->objectID, false), data->cPropertyName) & data->choiceValue) ? UI_CHECK_CHECKED : UI_CHECK_UNCHECKED;
 		UIElementRefresh(&box->e);
 	} else if (data->elementType == INSPECTOR_RADIO_SWITCH) {
 		UIButton *button = (UIButton *) data->element;
-		int32_t value = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
+		int32_t value = PropertyReadInt32(ObjectFind(data->objectID, false), data->cPropertyName);
 		SetBit(&button->e.flags, UI_BUTTON_CHECKED, value == data->choiceValue);
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_CURSOR_DROP_DOWN) {
 		UIButton *button = (UIButton *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_INT);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_INT);
 		UI_FREE(button->label);
 		button->label = UIStringCopy(property ? cCursorStrings[property->integer] : "---", (button->labelBytes = -1));
 		UIElementRefresh(&button->e);
 	} else if (data->elementType == INSPECTOR_COLOR_PICKER) {
 		UIColorPicker *colorPicker = (UIColorPicker *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_COLOR);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_COLOR);
 		uint32_t color = property ? property->integer : 0xFFFFFFFF;
 		colorPicker->opacity = (color >> 24) / 255.0f;
 		UIColorToHSV(color, &colorPicker->hue, &colorPicker->saturation, &colorPicker->value);
 		UIElementRefresh(&colorPicker->e);
 	} else if (data->elementType == INSPECTOR_COLOR_TEXTBOX) {
 		UITextbox *textbox = (UITextbox *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_COLOR);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_COLOR);
 		char buffer[32] = "";
 		if (property) snprintf(buffer, sizeof(buffer), "%.8X", (uint32_t) property->integer);
 		UITextboxClear(textbox, false);
@@ -1007,7 +1021,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UIElementRefresh(&textbox->e);
 	} else if (data->elementType == INSPECTOR_INTEGER_TEXTBOX || data->elementType == INSPECTOR_INTEGER_TEXTBOX_BROADCAST) {
 		UITextbox *textbox = (UITextbox *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_INT);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_INT);
 		char buffer[32] = "";
 		if (property) snprintf(buffer, sizeof(buffer), "%d", property->integer);
 		UITextboxClear(textbox, false);
@@ -1015,7 +1029,7 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UIElementRefresh(&textbox->e);
 	} else if (data->elementType == INSPECTOR_FLOAT_TEXTBOX) {
 		UITextbox *textbox = (UITextbox *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_FLOAT);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_FLOAT);
 		char buffer[32] = "";
 		if (property) snprintf(buffer, sizeof(buffer), "%.2f", property->floating);
 		UITextboxClear(textbox, false);
@@ -1023,8 +1037,8 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UIElementRefresh(&textbox->e);
 	} else if (data->elementType == INSPECTOR_LINK || data->elementType == INSPECTOR_LINK_BROADCAST) {
 		UIButton *button = (UIButton *) data->element;
-		Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_OBJECT);
-		Object *target = ObjectFind(property ? property->object : 0);
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_OBJECT);
+		Object *target = ObjectFind(property ? property->object : 0, false);
 		const char *string = target ? (target->cName[0] ? target->cName : "(untitled)") : "---";
 		UI_FREE(button->label);
 		button->label = UIStringCopy(string, (button->labelBytes = -1));
@@ -1180,7 +1194,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 		} else if (data->elementType == INSPECTOR_MASK_BIT_TOGGLE) {
 			UICheckbox *box = (UICheckbox *) element;
 			step.property.type = PROP_INT;
-			step.property.integer = PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
+			step.property.integer = PropertyReadInt32(ObjectFind(data->objectID, false), data->cPropertyName);
 			SetBit((uint32_t *) &step.property.integer, data->choiceValue, box->check == UI_CHECK_UNCHECKED);
 			DocumentApplyStep(step);
 			return 1; // InspectorUpdateSingleElement will update the check.
@@ -1196,13 +1210,13 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			UIMenuShow(menu);
 		} else if (data->elementType == INSPECTOR_ADD_ARRAY_ITEM) {
 			step.property.type = PROP_INT;
-			step.property.integer = 1 + PropertyReadInt32(ObjectFind(data->objectID), data->cPropertyName);
+			step.property.integer = 1 + PropertyReadInt32(ObjectFind(data->objectID, false), data->cPropertyName);
 			step.flags |= STEP_UPDATE_INSPECTOR;
 			DocumentApplyStep(step);
 		} else if (data->elementType == INSPECTOR_SWAP_ARRAY_ITEMS) {
 			char cPrefix0[PROPERTY_NAME_SIZE];
 			char cPrefix1[PROPERTY_NAME_SIZE];
-			Object *object = ObjectFind(data->objectID);
+			Object *object = ObjectFind(data->objectID, false);
 
 			strcpy(cPrefix0, data->cPropertyName);
 			strcpy(cPrefix1, data->cPropertyName);
@@ -1222,7 +1236,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			int32_t index = -1;
 			int32_t count = -1;
 			intptr_t offset = strlen(data->cPropertyName) - 2;
-			Object *object = ObjectFind(data->objectID);
+			Object *object = ObjectFind(data->objectID, false);
 
 			for (; offset >= 0; offset--) {
 				if (data->cPropertyName[offset] == '_') {
@@ -1233,7 +1247,7 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 
 			strcpy(cPrefix0, data->cPropertyName);
 			strcpy(cPrefix0 + offset + 1, "count");
-			count = PropertyReadInt32(ObjectFind(data->objectID), cPrefix0);
+			count = PropertyReadInt32(ObjectFind(data->objectID, false), cPrefix0);
 
 			for (int32_t i = index; i < count - 1; i++) {
 				strcpy(cPrefix0, data->cPropertyName);
@@ -1320,7 +1334,7 @@ void InspectorRenameObject(void *) {
 }
 
 void InspectorAutoNameObject(void *) {
-	Object *object = ObjectFind(selectedObjectID);
+	Object *object = ObjectFind(selectedObjectID, false);
 
 	if (!ObjectIsConditional(object)) {
 		UIDialogShow(window, 0, "Error: The object needs to be conditional to use auto-name.\n%f%b", "OK");
@@ -1357,8 +1371,8 @@ void InspectorPickTargetCommand(void *cp) {
 
 void InspectorFindTargetCommand(void *cp) {
 	InspectorBindingData *data = (InspectorBindingData *) cp;
-	Property *property = PropertyFind(ObjectFind(data->objectID), data->cPropertyName, PROP_OBJECT);
-	Object *target = ObjectFind(property ? property->object : 0);
+	Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_OBJECT);
+	Object *target = ObjectFind(property ? property->object : 0, false);
 
 	if (target) {
 		CanvasSelectObject(target);
@@ -1368,8 +1382,8 @@ void InspectorFindTargetCommand(void *cp) {
 }
 
 void InspectorGoToInstanceStyle(void *) {
-	Property *property = PropertyFind(ObjectFind(selectedObjectID), "style", PROP_OBJECT);
-	Object *target = ObjectFind(property ? property->object : 0);
+	Property *property = PropertyFind(ObjectFind(selectedObjectID, false), "style", PROP_OBJECT);
+	Object *target = ObjectFind(property ? property->object : 0, false);
 
 	if (target) {
 		CanvasSelectObject(target);
@@ -1527,7 +1541,7 @@ void InspectorPopulate() {
 	UIElementDestroyDescendents(inspector);
 	UIParentPush(inspector);
 
-	Object *object = ObjectFind(selectedObjectID);
+	Object *object = ObjectFind(selectedObjectID, false);
 	size_t referenceCount = 0;
 
 	if (object) {
@@ -1552,7 +1566,13 @@ void InspectorPopulate() {
 			UIButtonCreate(0, UI_BUTTON_SMALL, "Rename", -1)->invoke = InspectorRenameObject;
 			UIParentPop();
 			snprintf(buffer, sizeof(buffer), "%ld references", referenceCount);
+			UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_HORIZONTAL);
 			UILabelCreate(0, 0, buffer, -1);
+			UISpacerCreate(0, UI_ELEMENT_H_FILL, 0, 0);
+			UIButton *button = UIButtonCreate(0, UI_BUTTON_SMALL, "Change type \x19", -1);
+			button->invoke = ObjectAddCommand;
+			button->e.cp = (void *) ObjectChangeTypeInternal;
+			UIParentPop();
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE
 				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
@@ -1608,6 +1628,30 @@ void InspectorPopulate() {
 			char buffer[128];
 			snprintf(buffer, sizeof(buffer), "Header ID: %d", PropertyReadInt32(object, "headerID"));
 			UILabelCreate(0, 0, buffer, -1);
+		} else if (object->type == OBJ_SELECTOR) {
+			int32_t optionCount = PropertyReadInt32(object, "options_count");
+			if (optionCount < 0) optionCount = 0;
+			if (optionCount > 100) optionCount = 100;
+
+			for (int32_t i = 0; i < optionCount; i++) {
+				char cPropertyName[PROPERTY_NAME_SIZE];
+				UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_BORDER | UI_PANEL_MEDIUM_SPACING | UI_PANEL_EXPAND);
+				sprintf(cPropertyName, "options_%d_", i);
+				UIPanel *row = UIPanelCreate(0, UI_PANEL_HORIZONTAL);
+				UISpacerCreate(&row->e, UI_ELEMENT_H_FILL, 0, 0);
+				InspectorBind(&UIButtonCreate(&row->e, UI_BUTTON_SMALL, "Delete", -1)->e, object->id, cPropertyName, INSPECTOR_DELETE_ARRAY_ITEM);
+				sprintf(cPropertyName, "options_%d_link", i);
+				InspectorAddLink(object, "Link:", cPropertyName);
+				UIParentPop();
+
+				if (i != optionCount - 1) {
+					sprintf(cPropertyName, "options_%d_", i);
+					InspectorBind(&UIButtonCreate(&UIPanelCreate(0, 0)->e, UI_BUTTON_SMALL, "Swap", -1)->e, 
+							object->id, cPropertyName, INSPECTOR_SWAP_ARRAY_ITEMS);
+				}
+			}
+
+			InspectorBind(&UIButtonCreate(0, 0, "Add option", -1)->e, object->id, "options_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_VAR_COLOR) {
 			InspectorBind(&UIColorPickerCreate(&UIPanelCreate(0, 0)->e, UI_COLOR_PICKER_HAS_OPACITY)->e, object->id, "color", INSPECTOR_COLOR_PICKER);
 			InspectorBind(&UITextboxCreate(0, 0)->e, object->id, "color", INSPECTOR_COLOR_TEXTBOX);
@@ -1693,9 +1737,11 @@ void InspectorPopulate() {
 			InspectorAddLink(object, "Icon color:", "iconColor");
 			InspectorAddInteger(object, "Icon size:", "iconSize");
 
+#if 0
 			UIButton *removeDuplicates = UIButtonCreate(0, 0, "Remove duplicates", -1);
 			removeDuplicates->e.cp = (void *) (uintptr_t) object->id;
 			removeDuplicates->invoke = TextStyleRemoveDuplicates;
+#endif
 		} else if (object->type == OBJ_VAR_CONTOUR_STYLE) {
 			InspectorAddInteger(object, "Internal width:", "internalWidth");
 			InspectorAddInteger(object, "External width:", "externalWidth");
@@ -1892,7 +1938,7 @@ void InspectorPopulate() {
 		}
 	} else if (object && object->type == OBJ_INSTANCE) {
 		Property *property = PropertyFind(object, "style", PROP_OBJECT);
-		Object *style = ObjectFind(property ? property->object : 0);
+		Object *style = ObjectFind(property ? property->object : 0, false);
 		char buffer[128];
 
 		if (style) {
@@ -1964,7 +2010,7 @@ int32_t GraphGetInteger(Object *object, int depth = 0) {
 		return PropertyReadInt32(object, "value");
 	} else if (object->type == OBJ_MOD_MULTIPLY) {
 		Property *property = PropertyFind(object, "base", PROP_OBJECT);
-		int32_t base = GraphGetInteger(ObjectFind(property ? property->object : 0), depth + 1);
+		int32_t base = GraphGetInteger(ObjectFind(property ? property->object : 0, true), depth + 1);
 		int32_t factor = PropertyReadInt32(object, "factor");
 		return base * factor / 100;
 	} else {
@@ -1978,7 +2024,7 @@ int32_t GraphGetIntegerFromProperty(Property *property) {
 	} else if (property->type == PROP_INT) {
 		return property->integer;
 	} else if (property->type == PROP_OBJECT) {
-		return GraphGetInteger(ObjectFind(property->object));
+		return GraphGetInteger(ObjectFind(property->object, true));
 	} else {
 		return 0;
 	}
@@ -1993,7 +2039,7 @@ uint32_t GraphGetColor(Object *object, int depth = 0) {
 		return PropertyReadInt32(object, "color");
 	} else if (object->type == OBJ_MOD_COLOR) {
 		Property *property = PropertyFind(object, "base", PROP_OBJECT);
-		uint32_t base = GraphGetColor(ObjectFind(property ? property->object : 0), depth + 1);
+		uint32_t base = GraphGetColor(ObjectFind(property ? property->object : 0, true), depth + 1);
 		uint32_t alpha = base & 0xFF000000;
 		int32_t brightness = PropertyReadInt32(object, "brightness");
 		int32_t hueShift = PropertyReadInt32(object, "hueShift");
@@ -2014,7 +2060,7 @@ uint32_t GraphGetColorFromProperty(Property *property) {
 	if (!property) {
 		return 0;
 	} else if (property->type == PROP_OBJECT) {
-		return GraphGetColor(ObjectFind(property->object));
+		return GraphGetColor(ObjectFind(property->object, true));
 	} else {
 		return 0;
 	}
@@ -2033,7 +2079,7 @@ Rectangle8 ExportCalculatePaintOutsets(Object *object) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
 		sprintf(cPropertyName, "layers_%d_layer", i);
 		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0, true);
 		if (!layerObject) continue;
 
 #define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
@@ -2061,7 +2107,7 @@ Rectangle8 ExportCalculatePaintOutsets(Object *object) {
 				if (boxOffset2 < offset2) offset2 = boxOffset2;
 				if (boxOffset3 > offset3) offset3 = boxOffset3;
 				Property *property = PropertyFind(object, "_parent", PROP_OBJECT);
-				object = ObjectFind(property ? property->object : 0);
+				object = ObjectFind(property ? property->object : 0, true);
 			}
 		}
 
@@ -2087,7 +2133,7 @@ Rectangle8 ExportCalculateApproximateBorders(Object *object) {
 		char cPropertyName[PROPERTY_NAME_SIZE];
 		sprintf(cPropertyName, "layers_%d_layer", i);
 		Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
-		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+		Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0, true);
 		if (!layerObject) continue;
 
 #define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int8_t x = PropertyReadInt32(object, cPropertyName)
@@ -2168,7 +2214,7 @@ ThemeVariant ExportValue(ExportContext *data, uintptr_t additionalOffset, Object
 
 			// Go to the inheritance parent object.
 			property = PropertyFind(object, "_parent", PROP_OBJECT);
-			object = ObjectFind(property ? property->object : 0);
+			object = ObjectFind(property ? property->object : 0, true);
 		}
 
 		EsBufferWrite(data->overrideData, &themeOverrides[0], themeOverrides.Length() * sizeof(ThemeOverride));
@@ -2505,7 +2551,7 @@ void CanvasDrawLayer(Object *object, UIRectangle bounds, UIPainter *painter, int
 			char cPropertyName[PROPERTY_NAME_SIZE];
 			sprintf(cPropertyName, "layers_%d_layer", i);
 			Property *layerProperty = PropertyFind(object, cPropertyName, PROP_OBJECT);
-			Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+			Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0, true);
 
 #define LAYER_READ_INT32(x) sprintf(cPropertyName, "layers_%d_" #x, i); int32_t x = PropertyReadInt32(object, cPropertyName)
 			LAYER_READ_INT32(offset0);
@@ -2570,8 +2616,8 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 	if (object->type == OBJ_STYLE) {
 		Property *appearance = PropertyFindOrInherit(object, "appearance");
 		Property *textStyle = PropertyFindOrInherit(object, "textStyle");
-		if (appearance) CanvasDrawLayer(ObjectFind(appearance->object), bounds, painter, depth + 1);
-		if (textStyle) CanvasDrawStyle(ObjectFind(textStyle->object), bounds, painter, depth + 1);
+		if (appearance) CanvasDrawLayer(ObjectFind(appearance->object, true), bounds, painter, depth + 1);
+		if (textStyle) CanvasDrawStyle(ObjectFind(textStyle->object, true), bounds, painter, depth + 1);
 	}
 }
 
@@ -2581,7 +2627,7 @@ int ResizeHandleMessage(UIElement *element, UIMessage message, int di, void *dp)
 	if (message == UI_MSG_PAINT) {
 		UIDrawRectangle((UIPainter *) dp, element->bounds, 0xFFF8F8F8, 0xFF404040, UI_RECT_1(1));
 	} else if (message == UI_MSG_LEFT_DOWN) {
-		canvas->originalBounds = CanvasGetObjectBounds(ObjectFind(selectedObjectID));
+		canvas->originalBounds = CanvasGetObjectBounds(ObjectFind(selectedObjectID, false));
 	} else if (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1) {
 		if (side == 0) canvas->resizeOffsets = UI_RECT_4(element->window->cursorX - canvas->originalBounds.l, 0, 0, 0);
 		if (side == 1) canvas->resizeOffsets = UI_RECT_4(0, element->window->cursorX - canvas->originalBounds.r, 0, 0);
@@ -2590,7 +2636,7 @@ int ResizeHandleMessage(UIElement *element, UIMessage message, int di, void *dp)
 		canvas->resizing = true;
 		UIElementRefresh(canvas);
 	} else if (message == UI_MSG_LEFT_UP) {
-		Object *object = ObjectFind(selectedObjectID);
+		Object *object = ObjectFind(selectedObjectID, false);
 		int32_t x = PropertyReadInt32(object, "_graphX");
 		int32_t y = PropertyReadInt32(object, "_graphY");
 		int32_t w = PropertyReadInt32(object, "_graphW");
@@ -2690,6 +2736,12 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				canvas->previewStateBits = PropertyReadInt32(object, "_stateBits");
 			}
 
+			if (object->type == OBJ_SELECTOR) {
+				// Resolve the selector before painting.
+				Object *link = ObjectFind(object->id, true);
+				if (link) object = link;
+			}
+
 			if (object->type == OBJ_VAR_INT || object->type == OBJ_MOD_MULTIPLY) {
 				int32_t value = GraphGetInteger(object);
 				char buffer[32];
@@ -2713,7 +2765,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			} else if (object->type == OBJ_INSTANCE) {
 				Property *style = PropertyFind(object, "style", PROP_OBJECT);
 				canvas->previewStateActive = object->id == selectedObjectID;
-				Object *styleObject = ObjectFind(style ? style->object : 0);
+				Object *styleObject = ObjectFind(style ? style->object : 0, false);
 				Rectangle8 paintOutsets = ExportCalculatePaintOutsets(PropertyFindOrInheritReadObject(styleObject, "appearance"));
 				UIRectangle clip = bounds;
 				clip.l -= ceilf(paintOutsets.l * canvas->zoom);
@@ -2748,7 +2800,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 
 				for (uintptr_t j = 0; j < object->properties.Length(); j++) {
 					if (object->properties[j].type == PROP_OBJECT) {
-						Object *target = ObjectFind(object->properties[j].object);
+						Object *target = ObjectFind(object->properties[j].object, false);
 						if (!target) continue;
 
 						bool sourceIsSelected = object->flags & OBJECT_IS_SELECTED;
@@ -2824,7 +2876,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		InspectorPopulate();
 		InspectorPickTargetEnd();
 	} else if (message == UI_MSG_LEFT_UP && canvas->dragging) {
-		Object *object = ObjectFind(selectedObjectID);
+		Object *object = ObjectFind(selectedObjectID, false);
 		int32_t oldX = PropertyReadInt32(object, "_graphX");
 		int32_t oldY = PropertyReadInt32(object, "_graphY");
 
@@ -2867,8 +2919,8 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			int32_t canvasDragNewX = (element->window->cursorX + canvas->dragOffsetX - canvas->bounds.l) / canvas->zoom + canvas->panX;
 			int32_t canvasDragNewY = (element->window->cursorY + canvas->dragOffsetY - canvas->bounds.t) / canvas->zoom + canvas->panY;
 			if (!canvas->showPrototype) canvasDragNewX -= canvasDragNewX % CANVAS_ALIGN, canvasDragNewY -= canvasDragNewY % CANVAS_ALIGN;
-			canvas->dragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphX");
-			canvas->dragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID), "_graphY");
+			canvas->dragDeltaX = canvasDragNewX - PropertyReadInt32(ObjectFind(selectedObjectID, false), "_graphX");
+			canvas->dragDeltaY = canvasDragNewY - PropertyReadInt32(ObjectFind(selectedObjectID, false), "_graphY");
 			canvas->dragging = true;
 			UIElementRefresh(canvas);
 		}
@@ -2932,7 +2984,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 		UIRectangle bounds = UI_RECT_4(element->bounds.l + 10, element->bounds.l + 10 + width, element->bounds.b - 10 - height, element->bounds.b - 10);
 		UIElementMove(controls, bounds, false);
 
-		Object *object = ObjectFind(selectedObjectID);
+		Object *object = ObjectFind(selectedObjectID, false);
 		bool showHandles = canvas->showPrototype && selectedObjectID && object && (object->flags & OBJECT_IN_PROTOTYPE);
 
 		if (showHandles) {
@@ -2978,6 +3030,11 @@ void CanvasSwitchView(void *) {
 	UIElementRefresh(canvas);
 }
 
+void CanvasSwitchSelectorIndex(void *) {
+	activeSelectorIndex = 1 - activeSelectorIndex;
+	UIElementRefresh(canvas);
+}
+
 void CanvasZoom100(void *) {
 	float factor = 1.0f / canvas->zoom;
 	canvas->zoom *= factor;
@@ -2987,6 +3044,14 @@ void CanvasZoom100(void *) {
 }
 
 //////////////////////////////////////////////////////////////
+
+void ObjectChangeTypeInternal(void *cp) {
+	Step step = {};
+	step.type = STEP_CHANGE_OBJECT_TYPE;
+	step.object.id = selectedObjectID;
+	step.object.type = (ObjectType) (uintptr_t) cp;
+	DocumentApplyStep(step);
+}
 
 void ObjectAddInternal(Object object) {
 	Step step = {};
@@ -3056,7 +3121,7 @@ void ObjectAddCommandInternal(void *cp) {
 void ObjectAddInstanceCommandInternal(void *cp) {
 	Object *style = (Object *) cp;
 	Property *metricsProperty = PropertyFind(style, "metrics", PROP_OBJECT);
-	Object *metrics = ObjectFind(metricsProperty ? metricsProperty->object : 0);
+	Object *metrics = ObjectFind(metricsProperty ? metricsProperty->object : 0, true);
 	int32_t preferredWidth = PropertyReadInt32(metrics, "preferredWidth");
 	int32_t preferredHeight = PropertyReadInt32(metrics, "preferredHeight");
 	Object object = {};
@@ -3076,24 +3141,26 @@ void ObjectAddInstanceCommandInternal(void *cp) {
 	ObjectAddInternal(object);
 }
 
-void ObjectAddCommand(void *) {
-	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | UI_MENU_PLACE_ABOVE);
-	UIMenuAddItem(menu, 0, "Style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_STYLE);
-	UIMenuAddItem(menu, 0, "Comment", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_COMMENT);
-	UIMenuAddItem(menu, 0, "Color variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_COLOR);
-	UIMenuAddItem(menu, 0, "Integer variable", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_INT);
-	UIMenuAddItem(menu, 0, "Text style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_TEXT_STYLE);
-	UIMenuAddItem(menu, 0, "Contour style", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_VAR_CONTOUR_STYLE);
-	UIMenuAddItem(menu, 0, "Metrics", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_METRICS);
-	UIMenuAddItem(menu, 0, "Overwrite paint", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
-	UIMenuAddItem(menu, 0, "Linear gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
-	UIMenuAddItem(menu, 0, "Radial gradient", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_PAINT_RADIAL_GRADIENT);
-	UIMenuAddItem(menu, 0, "Box layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_BOX);
-	UIMenuAddItem(menu, 0, "Path layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_PATH);
-	UIMenuAddItem(menu, 0, "Text layer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_TEXT);
-	UIMenuAddItem(menu, 0, "Layer group", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_LAYER_GROUP);
-	UIMenuAddItem(menu, 0, "Modify color", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_MOD_COLOR);
-	UIMenuAddItem(menu, 0, "Modify integer", -1, ObjectAddCommandInternal, (void *) (uintptr_t) OBJ_MOD_MULTIPLY);
+void ObjectAddCommand(void *cp) {
+	void (*invoke)(void *) = (void (*)(void *)) cp;
+	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL | (invoke == ObjectChangeTypeInternal ? 0 : UI_MENU_PLACE_ABOVE));
+	UIMenuAddItem(menu, 0, "Style", -1, invoke, (void *) (uintptr_t) OBJ_STYLE);
+	UIMenuAddItem(menu, 0, "Comment", -1, invoke, (void *) (uintptr_t) OBJ_COMMENT);
+	UIMenuAddItem(menu, 0, "Selector", -1, invoke, (void *) (uintptr_t) OBJ_SELECTOR);
+	UIMenuAddItem(menu, 0, "Color variable", -1, invoke, (void *) (uintptr_t) OBJ_VAR_COLOR);
+	UIMenuAddItem(menu, 0, "Integer variable", -1, invoke, (void *) (uintptr_t) OBJ_VAR_INT);
+	UIMenuAddItem(menu, 0, "Text style", -1, invoke, (void *) (uintptr_t) OBJ_VAR_TEXT_STYLE);
+	UIMenuAddItem(menu, 0, "Contour style", -1, invoke, (void *) (uintptr_t) OBJ_VAR_CONTOUR_STYLE);
+	UIMenuAddItem(menu, 0, "Metrics", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_METRICS);
+	UIMenuAddItem(menu, 0, "Overwrite paint", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
+	UIMenuAddItem(menu, 0, "Linear gradient", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
+	UIMenuAddItem(menu, 0, "Radial gradient", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_RADIAL_GRADIENT);
+	UIMenuAddItem(menu, 0, "Box layer", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_BOX);
+	UIMenuAddItem(menu, 0, "Path layer", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_PATH);
+	UIMenuAddItem(menu, 0, "Text layer", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_TEXT);
+	UIMenuAddItem(menu, 0, "Layer group", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_GROUP);
+	UIMenuAddItem(menu, 0, "Modify color", -1, invoke, (void *) (uintptr_t) OBJ_MOD_COLOR);
+	UIMenuAddItem(menu, 0, "Modify integer", -1, invoke, (void *) (uintptr_t) OBJ_MOD_MULTIPLY);
 	UIMenuShow(menu);
 }
 
@@ -3149,7 +3216,7 @@ void ObjectDeleteCommand(void *) {
 void ObjectDuplicateCommand(void *) {
 	if (!selectedObjectID) return;
 
-	Object *source = ObjectFind(selectedObjectID);
+	Object *source = ObjectFind(selectedObjectID, false);
 	UI_ASSERT(source);
 
 	Object object = {};
@@ -3379,7 +3446,7 @@ void Export() {
 				char cPropertyName[PROPERTY_NAME_SIZE];
 				sprintf(cPropertyName, "layers_%d_layer", i);
 				Property *layerProperty = PropertyFind(appearance, cPropertyName, PROP_OBJECT);
-				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0, true);
 				if (!layerObject) continue;
 
 				ExportOffset exportOffset = {};
@@ -3470,7 +3537,7 @@ void Export() {
 				char cPropertyName[PROPERTY_NAME_SIZE];
 				sprintf(cPropertyName, "layers_%d_layer", i);
 				Property *layerProperty = PropertyFind(appearance, cPropertyName, PROP_OBJECT);
-				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0);
+				Object *layerObject = ObjectFind(layerProperty ? layerProperty->object : 0, true);
 				if (!layerObject) continue;
 				uint32_t exportOffset = ExportOffsetFindObjectForStyle(layerObject->id, styleObjectID)->offset;
 				fwrite(&exportOffset, 1, sizeof(exportOffset), output);
@@ -3591,6 +3658,7 @@ int main(int argc, char **argv) {
 		UIButtonCreate(0, 0, "Save", -1)->invoke = DocumentSave;
 #endif
 		UIButtonCreate(0, 0, "Switch view", -1)->invoke = CanvasSwitchView;
+		UIButtonCreate(0, 0, "Switch selector index", -1)->invoke = CanvasSwitchSelectorIndex;
 	UIParentPop();
 	UISpacerCreate(0, UI_SPACER_LINE, 0, 1);
 	inspector = &UIPanelCreate(0, UI_ELEMENT_V_FILL | UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL | UI_PANEL_EXPAND)->e;
@@ -3599,7 +3667,9 @@ int main(int argc, char **argv) {
 
 	graphControls = UIPanelCreate(canvas, UI_PANEL_HORIZONTAL | UI_ELEMENT_PARENT_PUSH);
 	graphControls->gap = -1;
-		UIButtonCreate(0, UI_BUTTON_SMALL, "Add object \x18", -1)->invoke = ObjectAddCommand;
+		UIButton *button = UIButtonCreate(0, UI_BUTTON_SMALL, "Add object \x18", -1);
+		button->invoke = ObjectAddCommand;
+		button->e.cp = (void *) ObjectAddCommandInternal;
 		UIButtonCreate(0, UI_BUTTON_SMALL, "Arrow mode \x18", -1)->invoke = CanvasArrowMode;
 	UIParentPop();
 
