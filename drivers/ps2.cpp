@@ -558,8 +558,8 @@ void PS2::Initialise(KDevice *parentDevice) {
 	}
 
 	KDevice *controller = KDeviceCreate("PS/2 controller", parentDevice, sizeof(KDevice));
-	KDeviceSendConnectedMessage(KDeviceCreate("PS/2 keyboard", controller, sizeof(KDevice)), ES_DEVICE_KEYBOARD);
-	if (channels == 2) KDeviceCreate("PS/2 mouse", controller, sizeof(KDevice));
+	KRegisterHIDevice((KHIDevice *) KDeviceCreate("PS/2 keyboard", controller, sizeof(KHIDevice)));
+	if (channels == 2) KRegisterHIDevice((KHIDevice *) KDeviceCreate("PS/2 mouse", controller, sizeof(KHIDevice)));
 
 	KernelLog(LOG_INFO, "PS/2", "controller initialised", "Setup PS/2 controller%z.\n", channels == 2 ? ", with a mouse" : "");
 }

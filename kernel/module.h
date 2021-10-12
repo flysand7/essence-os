@@ -361,34 +361,6 @@ void KTimerSet(KTimer *timer, uint64_t triggerInMs, KAsyncTaskCallback callback 
 void KTimerRemove(KTimer *timer); // Timers with callbacks cannot be removed (it'd race with async task delivery).
 
 // ---------------------------------------------------------------------------------------------------------------
-// Window manager.
-// ---------------------------------------------------------------------------------------------------------------
-
-struct KMouseUpdateData {
-	int32_t xMovement, yMovement;
-	bool xIsAbsolute, yIsAbsolute;
-	int32_t xFrom, xTo, yFrom, yTo;
-	int32_t xScroll, yScroll;
-	uint32_t buttons;
-};
-
-#define K_CURSOR_MOVEMENT_SCALE (0x100)
-void KMouseUpdate(const KMouseUpdateData *data);
-void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount);
-void KKeyPress(uint32_t scancode);
-
-uint64_t KGameControllerConnect();
-void KGameControllerDisconnect(uint64_t id);
-void KGameControllerUpdate(EsGameControllerState *state);
-
-#define K_SCANCODE_KEY_RELEASED (1 << 15)
-#define K_SCANCODE_KEY_PRESSED  (0 << 15)
-
-#define K_LEFT_BUTTON   (1)
-#define K_MIDDLE_BUTTON (2)
-#define K_RIGHT_BUTTON  (4)
-
-// ---------------------------------------------------------------------------------------------------------------
 // Memory manager.
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -622,6 +594,45 @@ uintptr_t KDMABufferGetVirtualAddress(KDMABuffer *buffer); // TODO Temporary.
 size_t KDMABufferGetTotalByteCount(KDMABuffer *buffer);
 KDMASegment KDMABufferNextSegment(KDMABuffer *buffer, bool peek = false); 
 bool KDMABufferIsComplete(KDMABuffer *buffer); // Returns true if the end of the transfer buffer has been reached.
+
+// ---------------------------------------------------------------------------------------------------------------
+// Window manager.
+// ---------------------------------------------------------------------------------------------------------------
+
+struct KMouseUpdateData {
+#define K_CURSOR_MOVEMENT_SCALE (0x100)
+	int32_t xMovement, yMovement;
+	bool xIsAbsolute, yIsAbsolute;
+	int32_t xFrom, xTo, yFrom, yTo;
+	int32_t xScroll, yScroll;
+#define K_LEFT_BUTTON   (1)
+#define K_MIDDLE_BUTTON (2)
+#define K_RIGHT_BUTTON  (4)
+	uint32_t buttons;
+};
+
+struct KHIDevice : KDevice {
+#define K_KEYBOARD_INDICATOR_NUM_LOCK    (1 << 0)
+#define K_KEYBOARD_INDICATOR_CAPS_LOCK   (1 << 1)
+#define K_KEYBOARD_INDICATOR_SCROLL_LOCK (1 << 2)
+#define K_KEYBOARD_INDICATOR_COMPOSE     (1 << 3)
+#define K_KEYBOARD_INDICATOR_KANA        (1 << 4)
+#define K_KEYBOARD_INDICATOR_SHIFT       (1 << 5)
+	void (*setKeyboardIndicators)(KHIDevice *device, uint32_t indicators);
+};
+
+void KMouseUpdate(const KMouseUpdateData *data);
+
+#define K_SCANCODE_KEY_RELEASED (1 << 15)
+#define K_SCANCODE_KEY_PRESSED  (0 << 15)
+void KKeyPress(uint32_t scancode);
+void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount);
+
+uint64_t KGameControllerConnect();
+void KGameControllerDisconnect(uint64_t id);
+void KGameControllerUpdate(EsGameControllerState *state);
+
+void KRegisterHIDevice(KHIDevice *device);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Block devices.

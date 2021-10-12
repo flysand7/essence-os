@@ -77,6 +77,12 @@ Once complete, you can test the operating system in an emulator.
 * If you have Qemu installed, run `t2` in the build system.
 * If you have VirtualBox installed, make a 128MB drive called `vbox.vdi` in the `bin` folder, attach it to a virtual machine called "Essence" (choose "Windows 7 64-bit" as the OS), and run `v` in the build system.
 
+## Keyboard layout
+
+To set the default keyboard layout for use in the emulator to match your current one, run:
+
+    setxkbmap -query | grep layout | awk '{OFS=""; print "General.keyboard_layout=", $2}' >> bin/config.ini
+
 ## Configuration
 
 From within the build system, run the command `config` to open the configuration editor. Click an option to change its value, and then click the `Save` button. You changes are saved locally, and will not be uploaded by Git. Not all configurations are likely to work; if you don't know what you're doing, it's probably best to stick with the defaults.

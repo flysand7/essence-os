@@ -1182,10 +1182,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL) {
 	EsGameControllerState gameControllers[ES_GAME_CONTROLLER_MAX_COUNT];
 	size_t gameControllerCount;
 
-	KMutexAcquire(&windowManager.gameControllersMutex);
+	KMutexAcquire(&windowManager.deviceMutex);
 	gameControllerCount = windowManager.gameControllerCount;
 	EsMemoryCopy(gameControllers, windowManager.gameControllers, sizeof(EsGameControllerState) * gameControllerCount);
-	KMutexRelease(&windowManager.gameControllersMutex);
+	KMutexRelease(&windowManager.deviceMutex);
 
 	SYSCALL_WRITE(argument0, gameControllers, sizeof(EsGameControllerState) * gameControllerCount);
 	SYSCALL_RETURN(gameControllerCount, false);

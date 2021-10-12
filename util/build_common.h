@@ -320,6 +320,7 @@ Option options[] = {
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.installation_state", OPTION_TYPE_STRING, { .s = "0" } },
 	{ "General.ui_scale", OPTION_TYPE_STRING, { .s = "100" } },
+	{ "General.keyboard_layout", OPTION_TYPE_STRING, { .s = "us" } },
 };
 
 char *previousOptionsBuffer;

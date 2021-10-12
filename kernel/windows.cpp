@@ -128,9 +128,12 @@ struct WindowManager {
 
 	EsRectangle workArea;
 
-	// Game controllers:
+	// Devices:
 
-	KMutex gameControllersMutex;
+	KMutex deviceMutex;
+
+	Array<KDevice *, K_FIXED> hiDevices;
+
 	EsGameControllerState gameControllers[ES_GAME_CONTROLLER_MAX_COUNT];
 	size_t gameControllerCount;
 	EsObjectID gameControllerID;
@@ -154,6 +157,44 @@ WindowManager windowManager;
 void SendMessageToWindow(Window *window, EsMessage *message);
 
 #else
+
+void HIDeviceUpdateIndicators() {
+	KMutexAssertLocked(&windowManager.mutex);
+	KMutexAcquire(&windowManager.deviceMutex);
+
+	// TODO Other indicators.
+	uint32_t indicators = windowManager.numlock ? K_KEYBOARD_INDICATOR_NUM_LOCK : 0;
+
+	for (uintptr_t i = 0; i < windowManager.hiDevices.Length(); i++) {
+		KHIDevice *device = (KHIDevice *) windowManager.hiDevices[i]->parent;
+
+		if (device->setKeyboardIndicators) {
+			device->setKeyboardIndicators(device, indicators);
+		}
+	}
+
+	KMutexRelease(&windowManager.deviceMutex);
+}
+
+void HIDeviceRemoved(KDevice *device) {
+	KMutexAcquire(&windowManager.deviceMutex);
+	windowManager.hiDevices.FindAndDeleteSwap(device, true);
+	KMutexRelease(&windowManager.deviceMutex);
+}
+
+void KRegisterHIDevice(KHIDevice *device) {
+	KDevice *child = KDeviceCreate("HID child", device, sizeof(KDevice));
+
+	if (child) {
+		KMutexAcquire(&windowManager.deviceMutex);
+		child->removed = HIDeviceRemoved;
+		windowManager.hiDevices.Add(child);
+		KMutexRelease(&windowManager.deviceMutex);
+		KDeviceCloseHandle(child);
+	}
+	
+	KDeviceCloseHandle(device);
+}
 
 bool Window::IsVisible() {
 	return !hidden && !closed && (id != windowManager.eyedropAvoidID || !windowManager.eyedropping);
@@ -320,6 +361,11 @@ void WindowManager::PressKey(unsigned scancode) {
 	if (scancode == (ES_SCANCODE_RIGHT_ALT | K_SCANCODE_KEY_RELEASED)) alt2 = false;
 	if (scancode == ES_SCANCODE_RIGHT_FLAG) flag2 = true;
 	if (scancode == (ES_SCANCODE_RIGHT_FLAG | K_SCANCODE_KEY_RELEASED)) flag2 = false;
+
+	if (scancode == ES_SCANCODE_NUM_LOCK) {
+		numlock = !numlock;
+		HIDeviceUpdateIndicators();
+	}
 
 	modifiers = (alt ? ES_MODIFIER_ALT : 0) 
 		| (alt2 ? ES_MODIFIER_ALT_GR : 0) 
@@ -1310,7 +1356,7 @@ void KKeyboardUpdate(uint16_t *keysDown, size_t keysDownCount) {
 }
 
 uint64_t KGameControllerConnect() {
-	KMutexAcquire(&windowManager.gameControllersMutex);
+	KMutexAcquire(&windowManager.deviceMutex);
 
 	EsObjectID id = ++windowManager.gameControllerID;
 
@@ -1320,13 +1366,13 @@ uint64_t KGameControllerConnect() {
 		id = 0;
 	}
 
-	KMutexRelease(&windowManager.gameControllersMutex);
+	KMutexRelease(&windowManager.deviceMutex);
 
 	return id;
 }
 
 void KGameControllerDisconnect(uint64_t id) {
-	KMutexAcquire(&windowManager.gameControllersMutex);
+	KMutexAcquire(&windowManager.deviceMutex);
 	
 	for (uintptr_t i = 0; i < windowManager.gameControllerCount; i++) {
 		if (windowManager.gameControllers[i].id == id) {
@@ -1338,11 +1384,11 @@ void KGameControllerDisconnect(uint64_t id) {
 		}
 	}
 
-	KMutexRelease(&windowManager.gameControllersMutex);
+	KMutexRelease(&windowManager.deviceMutex);
 }
 
 void KGameControllerUpdate(EsGameControllerState *state) {
-	KMutexAcquire(&windowManager.gameControllersMutex);
+	KMutexAcquire(&windowManager.deviceMutex);
 	
 	for (uintptr_t i = 0; i < windowManager.gameControllerCount; i++) {
 		if (windowManager.gameControllers[i].id == state->id) {
@@ -1356,7 +1402,7 @@ void KGameControllerUpdate(EsGameControllerState *state) {
 		}
 	}
 
-	KMutexRelease(&windowManager.gameControllersMutex);
+	KMutexRelease(&windowManager.deviceMutex);
 }
 
 #endif

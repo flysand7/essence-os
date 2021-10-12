@@ -41,7 +41,7 @@ struct GameController {
 	uint8_t reportPrefix;
 };
 
-struct HIDDevice : KDevice {
+struct HIDDevice : KHIDevice {
 	KUSBDevice *device;
 
 	Array<ReportItem, K_FIXED> reportItems;
@@ -771,7 +771,7 @@ static void DeviceAttach(KDevice *parent) {
 	device->destroy = DeviceDestroy;
 	device->device = (KUSBDevice *) parent;
 	device->Initialise();
-	KDeviceCloseHandle(device);
+	KRegisterHIDevice(device);
 }
 
 KDriver driverUSBHID = {
