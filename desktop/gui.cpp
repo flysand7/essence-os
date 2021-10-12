@@ -343,7 +343,7 @@ struct ScrollPane {
 	void Setup(EsElement *parent, uint8_t xMode, uint8_t yMode, uint16_t flags);
 	void SetPosition(int axis, double newPosition, bool sendMovedMessage = true);
 	void Refresh();
-	void ReceivedMessage(EsMessage *message);
+	int ReceivedMessage(EsMessage *message);
 
 	inline void SetX(double scrollX, bool sendMovedMessage = true) { SetPosition(0, scrollX, sendMovedMessage); }
 	inline void SetY(double scrollY, bool sendMovedMessage = true) { SetPosition(1, scrollY, sendMovedMessage); }
@@ -2840,7 +2840,7 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 	}
 }
 
-void ScrollPane::ReceivedMessage(EsMessage *message) {
+int ScrollPane::ReceivedMessage(EsMessage *message) {
 	if (message->type == ES_MSG_LAYOUT) {
 		Refresh();
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG || message->type == ES_MSG_MOUSE_RIGHT_DRAG || message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
@@ -2884,7 +2884,11 @@ void ScrollPane::ReceivedMessage(EsMessage *message) {
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		SetPosition(0, position[0] + 60 * message->scrollWheel.dx / ES_SCROLL_WHEEL_NOTCH, true);
 		SetPosition(1, position[1] - 60 * message->scrollWheel.dy / ES_SCROLL_WHEEL_NOTCH, true);
+		if (message->scrollWheel.dx && mode[0]) return ES_HANDLED;
+		if (message->scrollWheel.dy && mode[1]) return ES_HANDLED;
 	}
+
+	return 0;
 }
 
 void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) {
@@ -2990,7 +2994,7 @@ struct EsScrollView : EsElement { ScrollPane scroll; };
 void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags) { view->scroll.Setup(view, xMode, yMode, flags); }
 void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool notify) { view->scroll.SetPosition(axis, newPosition, notify); }
 void EsScrollViewRefresh(EsScrollView *view) { view->scroll.Refresh(); }
-void EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) { view->scroll.ReceivedMessage(message); }
+int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) { return view->scroll.ReceivedMessage(message); }
 int64_t EsScrollViewGetPosition(EsScrollView *view, int axis) { return view->scroll.position[axis]; }
 int64_t EsScrollViewGetLimit(EsScrollView *view, int axis) { return view->scroll.limit[axis]; }
 void EsScrollViewSetFixedViewport(EsScrollView *view, int axis, int32_t value) { view->scroll.fixedViewport[axis] = value; }
@@ -3048,7 +3052,8 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 	EsPanel *panel = (EsPanel *) element;
 	EsRectangle bounds = panel->GetBounds();
 
-	panel->scroll.ReceivedMessage(message);
+	int response = panel->scroll.ReceivedMessage(message);
+	if (response) return response;
 
 	if (message->type == ES_MSG_LAYOUT) {
 		if (panel->flags & ES_PANEL_TABLE) {
@@ -3748,7 +3753,8 @@ EsElement *CanvasPaneGetCanvas(EsElement *element) {
 int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	EsCanvasPane *pane = (EsCanvasPane *) element;
 
-	pane->scroll.ReceivedMessage(message);
+	int response = pane->scroll.ReceivedMessage(message);
+	if (response) return response;
 
 	if (message->type == ES_MSG_LAYOUT) {
 		EsElement *canvas = CanvasPaneGetCanvas(element);
@@ -6879,9 +6885,10 @@ void AccessKeyModeHandleKeyPress(EsMessage *message) {
 
 	EsWindow *window = gui.accessKeys.window;
 
-	int ic, isc;
-	ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, false, false);
-	ic = EsCRTtoupper(ic);
+	const char *inputString = KeyboardLayoutLookup(message->keyboard.scancode, 
+			message->keyboard.modifiers & ES_MODIFIER_SHIFT, message->keyboard.modifiers & ES_MODIFIER_ALT_GR, 
+			false, false);
+	int ic = EsCRTtoupper(inputString ? *inputString : 0);
 
 	bool keepAccessKeyModeActive = false;
 	bool regatherKeys = false;
@@ -6945,7 +6952,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_SHIFT ) gui.leftModifiers  &= ~ES_MODIFIER_SHIFT;
 		if (message->keyboard.scancode == ES_SCANCODE_LEFT_FLAG  ) gui.leftModifiers  &= ~ES_MODIFIER_FLAG;
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL ) gui.rightModifiers &= ~ES_MODIFIER_CTRL;
-		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_ALT  ) gui.rightModifiers &= ~ES_MODIFIER_ALT;
+		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_ALT  ) gui.rightModifiers &= ~ES_MODIFIER_ALT_GR;
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_SHIFT) gui.rightModifiers &= ~ES_MODIFIER_SHIFT;
 		if (message->keyboard.scancode == ES_SCANCODE_RIGHT_FLAG ) gui.rightModifiers &= ~ES_MODIFIER_FLAG;
 
@@ -6973,7 +6980,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 	if (message->keyboard.scancode == ES_SCANCODE_LEFT_SHIFT ) gui.leftModifiers  |= ES_MODIFIER_SHIFT;
 	if (message->keyboard.scancode == ES_SCANCODE_LEFT_FLAG  ) gui.leftModifiers  |= ES_MODIFIER_FLAG;
 	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL ) gui.rightModifiers |= ES_MODIFIER_CTRL;
-	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_ALT  ) gui.rightModifiers |= ES_MODIFIER_ALT;
+	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_ALT  ) gui.rightModifiers |= ES_MODIFIER_ALT_GR;
 	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_SHIFT) gui.rightModifiers |= ES_MODIFIER_SHIFT;
 	if (message->keyboard.scancode == ES_SCANCODE_RIGHT_FLAG ) gui.rightModifiers |= ES_MODIFIER_FLAG;
 
@@ -7065,7 +7072,7 @@ bool UIHandleKeyMessage(EsWindow *window, EsMessage *message) {
 		// TODO Sort out what commands can be used from within dialogs and menus.
 
 		if (!gui.keyboardShortcutNames.itemCount) UIInitialiseKeyboardShortcutNamesTable();
-		const char *shortcutName = (const char *) HashTableGetShort(&gui.keyboardShortcutNames, message->keyboard.scancode);
+		const char *shortcutName = (const char *) HashTableGetShort(&gui.keyboardShortcutNames, ScancodeMapToLabel(message->keyboard.scancode));
 
 		if (shortcutName && window->instance && window->instance->_private) {
 			APIInstance *instance = (APIInstance *) window->instance->_private;

@@ -321,7 +321,8 @@ void WindowManager::PressKey(unsigned scancode) {
 	if (scancode == ES_SCANCODE_RIGHT_FLAG) flag2 = true;
 	if (scancode == (ES_SCANCODE_RIGHT_FLAG | K_SCANCODE_KEY_RELEASED)) flag2 = false;
 
-	modifiers = ((alt | alt2) ? ES_MODIFIER_ALT : 0) 
+	modifiers = (alt ? ES_MODIFIER_ALT : 0) 
+		| (alt2 ? ES_MODIFIER_ALT_GR : 0) 
 		| ((ctrl | ctrl2) ? ES_MODIFIER_CTRL : 0) 
 		| ((shift | shift2) ? ES_MODIFIER_SHIFT : 0)
 		| ((flag | flag2) ? ES_MODIFIER_FLAG : 0);

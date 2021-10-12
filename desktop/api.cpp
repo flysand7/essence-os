@@ -156,6 +156,9 @@ struct {
 	Array<Work> workQueue;
 	Array<EsHandle> workThreads;
 	volatile bool workFinish;
+
+	const uint16_t *keyboardLayout;
+	uint16_t keyboardLayoutIdentifier;
 } api;
 
 ptrdiff_t tlsStorageOffset;

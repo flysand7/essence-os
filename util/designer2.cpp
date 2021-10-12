@@ -3691,6 +3691,7 @@ int main(int argc, char **argv) {
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('Y'), 1 /* ctrl */, 0, 0, DocumentRedoStep, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_LETTER('D'), 1 /* ctrl */, 0, 0, ObjectDuplicateCommand, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(2), 0, 0, 0, CanvasSwitchView, 0));
+	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_FKEY(3), 0, 0, 0, CanvasSwitchSelectorIndex, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DIGIT('1'), 1 /* ctrl */, 0, 0, CanvasZoom100, 0));
 	UIWindowRegisterShortcut(window, UI_SHORTCUT(UI_KEYCODE_DELETE, 0, 0, 0, ObjectDeleteCommand, 0));
 

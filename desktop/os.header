@@ -707,6 +707,7 @@ define ES_MODIFIER_CTRL		(1 << 0)
 define ES_MODIFIER_SHIFT	(1 << 1)
 define ES_MODIFIER_ALT		(1 << 2)
 define ES_MODIFIER_FLAG		(1 << 3)
+define ES_MODIFIER_ALT_GR	(1 << 4)
 
 define ES_PROCESS_CREATE_PAUSED (1 << 0)
 
@@ -1556,7 +1557,7 @@ struct EsMessageMouseButton {
 };
 
 struct EsMessageKeyboard {
-	uint32_t scancode; 
+	uint16_t scancode; 
 	uint8_t modifiers;
 	bool repeat, numpad, numlock, single;
 };
@@ -2419,7 +2420,7 @@ function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = 
 function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 
-function void EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages.
+function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
 function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
 function void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool sendMovedMessage = true);
 function void EsScrollViewRefresh(EsScrollView *view);

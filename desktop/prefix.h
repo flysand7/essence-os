@@ -289,6 +289,7 @@ struct GlobalData {
 	volatile float animationTimeMultiplier;
 	volatile uint64_t schedulerTimeMs;
 	volatile uint64_t schedulerTimeOffset;
+	volatile uint16_t keyboardLayout;
 };
 
 #ifdef KERNEL

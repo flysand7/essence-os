@@ -606,7 +606,7 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 		// Do not process global keyboard shortcuts if the installer is running.
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
-		int scancode = message->keyboard.scancode;
+		int scancode = ScancodeMapToLabel(message->keyboard.scancode);
 
 		if (ctrlOnly && scancode == ES_SCANCODE_N && !message->keyboard.repeat) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
@@ -651,7 +651,7 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 		container->taskBarButton->MaybeRefreshStyle();
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
-		int scancode = message->keyboard.scancode;
+		int scancode = ScancodeMapToLabel(message->keyboard.scancode);
 
 		if (((message->keyboard.modifiers & ~ES_MODIFIER_SHIFT) == ES_MODIFIER_CTRL) && message->keyboard.scancode == ES_SCANCODE_TAB) {
 			int tab = -1;

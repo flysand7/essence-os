@@ -2970,7 +2970,37 @@ void TextboxBufferResize(void **array, uintptr_t *allocated, uintptr_t needed, u
 	*array = newArray;
 }
 
-bool IsScancodeNonTypeable(unsigned scancode) {
+void KeyboardLayoutLoad() {
+	if (api.keyboardLayoutIdentifier != api.global->keyboardLayout) {
+		char buffer[64];
+		api.keyboardLayoutIdentifier = api.global->keyboardLayout;
+		api.keyboardLayout = (const uint16_t *) EsBundleFind(&bundleDesktop, buffer, EsStringFormat(buffer, sizeof(buffer), "Keyboard Layouts/%c%c.dat", 
+					(uint8_t) api.keyboardLayoutIdentifier, (uint8_t) (api.keyboardLayoutIdentifier >> 8)));
+
+		if (!api.keyboardLayout) {
+			// Fallback to the US layout if the specifier layout was not found.
+			api.keyboardLayout = (const uint16_t *) EsBundleFind(&bundleDesktop, buffer, EsStringFormat(buffer, sizeof(buffer), "Keyboard Layouts/us.dat"));
+		}
+	}
+}
+
+const char *KeyboardLayoutLookup(uint32_t scancode, bool isShiftHeld, bool isAltGrHeld, bool enableTabs, bool enableNewline) {
+	KeyboardLayoutLoad();
+	if (scancode >= 0x200) return nullptr;
+	if (scancode == ES_SCANCODE_ENTER || scancode == ES_SCANCODE_NUM_ENTER) return enableNewline ? "\n" : nullptr;
+	if (scancode == ES_SCANCODE_TAB) return enableTabs ? "\t" : nullptr;
+	if (scancode == ES_SCANCODE_BACKSPACE || scancode == ES_SCANCODE_DELETE) return nullptr;
+	uint16_t offset = api.keyboardLayout[scancode + (isShiftHeld ? 0x200 : 0) + (isAltGrHeld ? 0x400 : 0)];
+	return offset ? ((char *) api.keyboardLayout + 0x1000 + offset) : nullptr;
+}
+
+uint32_t ScancodeMapToLabel(uint32_t scancode) {
+	KeyboardLayoutLoad();
+	// TODO.
+	return scancode;
+}
+
+bool ScancodeIsNonTypeable(uint32_t scancode) {
 	switch (scancode) {
 		case ES_SCANCODE_CAPS_LOCK:
 		case ES_SCANCODE_SCROLL_LOCK:
@@ -3025,73 +3055,14 @@ bool IsScancodeNonTypeable(unsigned scancode) {
 	}
 }
 
-void ConvertScancodeToCharacter(unsigned scancode, int *_ic, int *_isc, bool enableTabs, bool enableNewline) {
-	int ic = -1, isc = -1;
-
-	switch (scancode) {
-		case ES_SCANCODE_A: ic = 'a'; isc = 'A'; break;
-		case ES_SCANCODE_B: ic = 'b'; isc = 'B'; break;
-		case ES_SCANCODE_C: ic = 'c'; isc = 'C'; break;
-		case ES_SCANCODE_D: ic = 'd'; isc = 'D'; break;
-		case ES_SCANCODE_E: ic = 'e'; isc = 'E'; break;
-		case ES_SCANCODE_F: ic = 'f'; isc = 'F'; break;
-		case ES_SCANCODE_G: ic = 'g'; isc = 'G'; break;
-		case ES_SCANCODE_H: ic = 'h'; isc = 'H'; break;
-		case ES_SCANCODE_I: ic = 'i'; isc = 'I'; break;
-		case ES_SCANCODE_J: ic = 'j'; isc = 'J'; break;
-		case ES_SCANCODE_K: ic = 'k'; isc = 'K'; break;
-		case ES_SCANCODE_L: ic = 'l'; isc = 'L'; break;
-		case ES_SCANCODE_M: ic = 'm'; isc = 'M'; break;
-		case ES_SCANCODE_N: ic = 'n'; isc = 'N'; break;
-		case ES_SCANCODE_O: ic = 'o'; isc = 'O'; break;
-		case ES_SCANCODE_P: ic = 'p'; isc = 'P'; break;
-		case ES_SCANCODE_Q: ic = 'q'; isc = 'Q'; break;
-		case ES_SCANCODE_R: ic = 'r'; isc = 'R'; break;
-		case ES_SCANCODE_S: ic = 's'; isc = 'S'; break;
-		case ES_SCANCODE_T: ic = 't'; isc = 'T'; break;
-		case ES_SCANCODE_U: ic = 'u'; isc = 'U'; break;
-		case ES_SCANCODE_V: ic = 'v'; isc = 'V'; break;
-		case ES_SCANCODE_W: ic = 'w'; isc = 'W'; break;
-		case ES_SCANCODE_X: ic = 'x'; isc = 'X'; break;
-		case ES_SCANCODE_Y: ic = 'y'; isc = 'Y'; break;
-		case ES_SCANCODE_Z: ic = 'z'; isc = 'Z'; break;
-		case ES_SCANCODE_0: ic = '0'; isc = ')'; break;
-		case ES_SCANCODE_1: ic = '1'; isc = '!'; break;
-		case ES_SCANCODE_2: ic = '2'; isc = '@'; break;
-		case ES_SCANCODE_3: ic = '3'; isc = '#'; break;
-		case ES_SCANCODE_4: ic = '4'; isc = '$'; break;
-		case ES_SCANCODE_5: ic = '5'; isc = '%'; break;
-		case ES_SCANCODE_6: ic = '6'; isc = '^'; break;
-		case ES_SCANCODE_7: ic = '7'; isc = '&'; break;
-		case ES_SCANCODE_8: ic = '8'; isc = '*'; break;
-		case ES_SCANCODE_9: ic = '9'; isc = '('; break;
-		case ES_SCANCODE_SLASH: 	ic = '/';  isc = '?'; break;
-		case ES_SCANCODE_PUNCTUATION_1: ic = '\\'; isc = '|'; break;
-		case ES_SCANCODE_LEFT_BRACE: 	ic = '[';  isc = '{'; break;
-		case ES_SCANCODE_RIGHT_BRACE: 	ic = ']';  isc = '}'; break;
-		case ES_SCANCODE_EQUALS: 	ic = '=';  isc = '+'; break;
-		case ES_SCANCODE_PUNCTUATION_5: ic = '`';  isc = '~'; break;
-		case ES_SCANCODE_HYPHEN: 	ic = '-';  isc = '_'; break;
-		case ES_SCANCODE_PUNCTUATION_3: ic = ';';  isc = ':'; break;
-		case ES_SCANCODE_PUNCTUATION_4: ic = '\''; isc = '"'; break;
-		case ES_SCANCODE_COMMA: 	ic = ',';  isc = '<'; break;
-		case ES_SCANCODE_PERIOD: 	ic = '.';  isc = '>'; break;
-		case ES_SCANCODE_SPACE: 	ic = ' ';  isc = ' '; break;
-		case ES_SCANCODE_ENTER:		if (enableNewline) { ic = '\n'; isc = '\n'; } break;
-		case ES_SCANCODE_TAB:		if (enableTabs) { ic = '\t'; isc = '\t'; } break;
-	}
-
-	*_ic = ic, *_isc = isc;
-}
-
 size_t EsMessageGetInputText(EsMessage *message, char *buffer) {
-	int ic, isc;
-	ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, true, true);
-
-	if (message->keyboard.modifiers & ES_MODIFIER_SHIFT) ic = isc;
-	if (ic == -1) return 0;
-
-	return utf8_encode(ic, buffer);
+	const char *string = KeyboardLayoutLookup(message->keyboard.scancode, 
+			message->keyboard.modifiers & ES_MODIFIER_SHIFT, message->keyboard.modifiers & ES_MODIFIER_ALT_GR, 
+			true, true);
+	size_t bytes = string ? EsCStringLength(string) : 0;
+	EsAssert(bytes < 64);
+	EsMemoryCopy(buffer, string, bytes);
+	return bytes;
 }
 
 enum CharacterType {
@@ -4318,9 +4289,9 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		if (response != 0 && message->type != ES_MSG_DESTROY) return response;
 	}
 
-	textbox->scroll.ReceivedMessage(message);
-
-	int response = ES_HANDLED;
+	int response = textbox->scroll.ReceivedMessage(message);
+	if (response) return response;
+	response = ES_HANDLED;
 
 	if (message->type == ES_MSG_PAINT) {
 		EsPainter *painter = message->painter;
@@ -4418,11 +4389,11 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		EsHeapFree(textbox->activeLine);
 		EsHeapFree(textbox->data);
 		EsHeapFree(textbox->editStartContent);
-	} else if (message->type == ES_MSG_KEY_TYPED && !IsScancodeNonTypeable(message->keyboard.scancode)) {
+	} else if (message->type == ES_MSG_KEY_TYPED && !ScancodeIsNonTypeable(message->keyboard.scancode)) {
 		bool verticalMotion = false;
 		bool ctrl = message->keyboard.modifiers & ES_MODIFIER_CTRL;
 
-		if (message->keyboard.modifiers & ~(ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_SHIFT)) {
+		if (message->keyboard.modifiers & ~(ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_SHIFT | ES_MODIFIER_ALT_GR)) {
 			// Unused modifier.
 			return 0;
 		}
@@ -4498,27 +4469,26 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 				EsTextboxStartEdit(textbox);
 			}
 
-			int ic, isc;
-			ConvertScancodeToCharacter(message->keyboard.scancode, &ic, &isc, true, textbox->flags & ES_TEXTBOX_MULTILINE); 
-			int character = (message->keyboard.modifiers & ES_MODIFIER_SHIFT) ? isc : ic;
+			const char *inputString = KeyboardLayoutLookup(message->keyboard.scancode, 
+					message->keyboard.modifiers & ES_MODIFIER_SHIFT, message->keyboard.modifiers & ES_MODIFIER_ALT_GR, 
+					true, textbox->flags & ES_TEXTBOX_MULTILINE);
 
-			if (ic != -1 && (message->keyboard.modifiers & ~ES_MODIFIER_SHIFT) == 0) {
+			if (inputString && (message->keyboard.modifiers & ~(ES_MODIFIER_SHIFT | ES_MODIFIER_ALT_GR)) == 0) {
 				if (textbox->smartQuotes && api.global->useSmartQuotes) {
 					DocumentLine *currentLine = &textbox->lines[textbox->carets[0].line];
 					const char *buffer = currentLine->GetBuffer(textbox);
 					bool left = !textbox->carets[0].byte || buffer[textbox->carets[0].byte - 1] == ' ';
 
-					if (character == '"') {
-						character = left ? 0x201C : 0x201D;
-					} else if (character == '\'') {
-						character = left ? 0x2018 : 0x2019;
+					if (inputString[0] == '"' && inputString[1] == 0) {
+						inputString = left ? "\u201C" : "\u201D";
+					} else if (inputString[0] == '\'' && inputString[1] == 0) {
+						inputString = left ? "\u2018" : "\u2019";
 					}
 				}
 
-				char buffer[4];
-				EsTextboxInsert(textbox, buffer, utf8_encode(character, buffer));
+				EsTextboxInsert(textbox, inputString, -1);
 
-				if (buffer[0] == '\n' && textbox->carets[0].line) {
+				if (inputString[0] == '\n' && inputString[1] == 0 && textbox->carets[0].line) {
 					// Copy the indentation from the previous line.
 
 					DocumentLine *previousLine = &textbox->lines[textbox->carets[0].line - 1];

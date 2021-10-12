@@ -28,6 +28,7 @@ They licenses may be found in the following files:
 	- shared/stb_image.h, shared/stb_sprintf.h, shared/stb_ds.h and util/stb_truetype.h
 	- res/Fonts/Hack License.txt, res/Fonts/Inter License.txt
 	- res/Icons/elementary Icons License.txt
-	- res/Media/Licenses.txt
+	- res/Sample Images/Licenses.txt
+	- res/Keyboard Layouts/License.txt
 	- Ported applications have their licenses in their respective folders.
 Please tell me if I've forgotten something!

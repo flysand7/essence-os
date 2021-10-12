@@ -575,6 +575,23 @@ void BuildDesktop(Application *application) {
 		}
 	}
 
+	EsINIState s = {};
+	s.buffer = (char *) LoadFile("res/Keyboard Layouts/index.ini", &s.bytes);
+
+	while (EsINIParse(&s)) {
+		EsINIZeroTerminate(&s);
+
+		if (s.key[0] != ';') {
+			char in[128];
+			char name[128];
+			snprintf(in, sizeof(in), "res/Keyboard Layouts/%s.dat", s.key);
+			snprintf(name, sizeof(name), "Keyboard Layouts/%s.dat", s.key);
+			ADD_BUNDLE_INPUT(strdup(in), strdup(name), 16);
+		}
+	}
+
+	ADD_BUNDLE_INPUT("res/Keyboard Layouts/index.ini", "Keyboard Layouts.ini", 16);
+	ADD_BUNDLE_INPUT("res/Keyboard Layouts/License.txt", "Keyboard Layouts License.txt", 16);
 	ADD_BUNDLE_INPUT("res/Theme.dat", "Theme.dat", 16);
 	ADD_BUNDLE_INPUT("res/elementary Icons.dat", "Icons.dat", 16);
 	ADD_BUNDLE_INPUT("res/elementary Icons License.txt", "Icons License.txt", 16);

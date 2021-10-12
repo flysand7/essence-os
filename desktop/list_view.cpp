@@ -95,6 +95,11 @@ struct EsListView : EsElement {
 
 	int maximumItemsPerBand;
 
+	EsListViewIndex ensureVisibleGroupIndex;
+	EsListViewIndex ensureVisibleIndex;
+	uint8_t ensureVisibleAlign;
+	bool ensureVisibleQueued;
+
 	// Fixed item storage:
 	Array<ListViewFixedItem> fixedItems;
 	ptrdiff_t fixedItemSelection;
@@ -300,7 +305,15 @@ struct EsListView : EsElement {
 		*_itemSize = itemSize;
 	}
 
-	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, bool alignTop) {
+	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
+		ensureVisibleQueued = true;
+		ensureVisibleGroupIndex = groupIndex;
+		ensureVisibleIndex = index;
+		ensureVisibleAlign = align;
+		EsElementRelayout(this);
+	}
+
+	void _EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
 		EsRectangle contentBounds = GetListBounds();
 
 		int64_t startInset = flags & ES_LIST_VIEW_HORIZONTAL ? style->insets.l : style->insets.t,
@@ -314,11 +327,17 @@ struct EsListView : EsElement {
 			return;
 		}
 
-		if (alignTop) {
+		if (align == 1) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
 				scroll.SetX(scroll.position[0] + position - startInset);
 			} else {
 				scroll.SetY(scroll.position[1] + position - startInset);
+			}
+		} else if (align == 2) {
+			if (flags & ES_LIST_VIEW_HORIZONTAL) {
+				scroll.SetX(scroll.position[0] + position + itemSize / 2 - contentSize / 2);
+			} else {
+				scroll.SetY(scroll.position[1] + position + itemSize / 2 - contentSize / 2);
 			}
 		} else {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
@@ -1491,15 +1510,15 @@ struct EsListView : EsElement {
 			}
 
 			StartAnimating();
-			searchBufferLastKeyTime = currentTime;
-			int ic, isc;
-			ConvertScancodeToCharacter(scancode, &ic, &isc, false, false);
-			int character = shift ? isc : ic;
 
-			if (character != -1 && searchBufferBytes + 4 < sizeof(searchBuffer)) {
-				utf8_encode(character, searchBuffer + searchBufferBytes);
+			const char *inputString = KeyboardLayoutLookup(scancode, shift, false, false, false);
+			size_t inputStringBytes = EsCStringLength(inputString);
+
+			if (inputString && searchBufferBytes + inputStringBytes < sizeof(searchBuffer)) {
+				searchBufferLastKeyTime = currentTime;
+				EsMemoryCopy(searchBuffer + searchBufferBytes, inputString, inputStringBytes);
 				size_t previousSearchBufferBytes = searchBufferBytes;
-				searchBufferBytes += utf8_length_char(searchBuffer + searchBufferBytes);
+				searchBufferBytes += inputStringBytes;
 				if (!Search()) searchBufferBytes = previousSearchBufferBytes;
 				return true;
 			}
@@ -1574,7 +1593,8 @@ struct EsListView : EsElement {
 	}
 
 	int ProcessMessage(EsMessage *message) {
-		scroll.ReceivedMessage(message);
+		int response = scroll.ReceivedMessage(message);
+		if (response) return response;
 
 		if (message->type == ES_MSG_GET_WIDTH || message->type == ES_MSG_GET_HEIGHT) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
@@ -1590,6 +1610,13 @@ struct EsListView : EsElement {
 		} else if (message->type == ES_MSG_LAYOUT) {
 			firstLayout = true;
 			Wrap(message->layout.sizeChanged);
+
+			if (ensureVisibleQueued) {
+				ensureVisibleQueued = false;
+				_EnsureItemVisible(ensureVisibleGroupIndex, ensureVisibleIndex, ensureVisibleAlign);
+				// TODO _EnsureItemVisible may call Populate; if this happens, we don't need to call it below.
+			}
+
 			Populate();
 
 			if (columnHeader) {
@@ -2432,7 +2459,15 @@ bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data) {
 	EsMessageMutexCheck();
 	EsListViewIndex index;
 	bool found = EsListViewFixedItemFindIndex(view, data, &index);
-	if (found) EsListViewSelect(view, 0, index);
+
+	if (found) {
+		EsListViewSelect(view, 0, index);
+
+		// TODO Maybe you should have to separately call EsListViewFocusItem to get this behaviour.
+		EsListViewFocusItem(view, 0, index);
+		view->EnsureItemVisible(0, index, 2 /* center */);
+	}
+
 	return found;
 }
 
