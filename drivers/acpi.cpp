@@ -769,9 +769,12 @@ void ACPIInitialise2() {
 }
 
 void KPS2SafeToInitialise() {
+	// TODO Qemu sets this to true?
+#if 0
 	if (acpi.ps2ControllerUnavailable) {
 		return;
 	}
+#endif
 
 	// This is only called when either:
 	// - the PCI driver determines there are no USB controllers
