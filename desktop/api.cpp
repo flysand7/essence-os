@@ -1573,10 +1573,10 @@ void EsCommandAddButton(EsCommand *command, EsButton *button) {
 	Array<EsElement *> elements = { command->elements };
 	elements.Add(button);
 	command->elements = elements.array;
-	EsButtonOnCommand(button, command->callback, command);
 	button->state |= UI_STATE_COMMAND_BUTTON;
 	EsElementSetEnabled(button, command->enabled);
-	EsButtonSetCheck(button, command->check);
+	EsButtonSetCheck(button, command->check); // Set the check before setting the callback, so that it doesn't get called.
+	EsButtonOnCommand(button, command->callback, command);
 }
 
 EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, 

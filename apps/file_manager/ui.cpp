@@ -31,13 +31,20 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 
 	instance->issuedPasteTask = nullptr;
 
-	InstanceRemoveContents(instance);
-	FolderAttachInstance(instance, path, false);
-	StringDestroy(&path);
-
 	Task task = {};
 	task.context = historyMode;
 	task.cDescription = interfaceString_FileManagerOpenFolderTask;
+
+	EsListViewIndex focusedIndex;
+
+	if (EsListViewGetFocusedItem(instance->list, nullptr, &focusedIndex)) {
+		String name = instance->listContents[focusedIndex].entry->GetName();
+		task.string = StringDuplicate(name);
+	}
+
+	InstanceRemoveContents(instance);
+	FolderAttachInstance(instance, path, false);
+	StringDestroy(&path);
 
 	task.callback = [] (Instance *instance, Task *) {
 		Folder *folder = instance->folder;
@@ -70,13 +77,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 
 		HistoryEntry historyEntry = {};
 		historyEntry.path = instance->path;
-
-		EsListViewIndex focusedIndex;
-
-		if (EsListViewGetFocusedItem(instance->list, nullptr, &focusedIndex)) {
-			String name = instance->listContents[focusedIndex].entry->GetName();
-			historyEntry.focusedItem = StringDuplicate(name);
-		}
+		historyEntry.focusedItem = task->string;
 
 		if (historyMode == LOAD_FOLDER_BACK) {
 			instance->pathForwardHistory.Add(historyEntry);
