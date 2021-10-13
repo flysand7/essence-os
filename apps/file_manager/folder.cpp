@@ -351,7 +351,8 @@ void FolderDetachInstance(Instance *instance) {
 	Folder *folder = instance->folder;
 	if (!folder) return;
 	instance->folder = nullptr;
-	folder->attachedInstances.FindAndDeleteSwap(instance, true);
+	folder->attachedInstances.FindAndDeleteSwap(instance, false /* in case the instance stopped loading the folder before it was ready */);
+	EsAssert(folder->referenceCount);
 	folder->referenceCount--;
 
 	if (!folder->referenceCount) {

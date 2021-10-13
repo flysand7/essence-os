@@ -3075,9 +3075,9 @@ int _UIColorPickerMessage(UIElement *element, UIMessage message, int di, void *d
 	bool hasOpacity = element->flags & UI_COLOR_PICKER_HAS_OPACITY;
 
 	if (message == UI_MSG_GET_WIDTH) {
-		return (hasOpacity ? 240 : 200) * element->window->scale;
+		return (hasOpacity ? 280 : 240) * element->window->scale;
 	} else if (message == UI_MSG_GET_HEIGHT) {
-		return 160 * element->window->scale;
+		return 200 * element->window->scale;
 	} else if (message == UI_MSG_LAYOUT) {
 		UIRectangle bounds = element->bounds;
 

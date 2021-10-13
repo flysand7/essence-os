@@ -342,7 +342,8 @@ void BlockingTaskQueue(Instance *instance, Task task) {
 
 	if (result == ES_ERROR_TIMEOUT_REACHED) {
 		instance->blockingTaskReachedTimeout = true;
-		EsDialogShow(instance->window, task.cDescription, -1, INTERFACE_STRING(FileManagerOngoingTaskDescription), ES_ICON_TOOLS_TIMER_SYMBOLIC);
+		instance->blockingDialog = EsDialogShow(instance->window, task.cDescription, -1, 
+				INTERFACE_STRING(FileManagerOngoingTaskDescription), ES_ICON_TOOLS_TIMER_SYMBOLIC);
 		// TODO Progress bar; cancelling tasks.
 	} else {
 		instance->blockingTaskReachedTimeout = false;

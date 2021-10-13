@@ -2996,7 +2996,26 @@ const char *KeyboardLayoutLookup(uint32_t scancode, bool isShiftHeld, bool isAlt
 
 uint32_t ScancodeMapToLabel(uint32_t scancode) {
 	KeyboardLayoutLoad();
-	// TODO.
+	const char *string = KeyboardLayoutLookup(scancode, false, false, false, false);
+
+	if (string && string[0] && !string[1]) {
+		char c = string[0];
+		if (c >= 'a' && c <= 'z') return ES_SCANCODE_A + c - 'a';
+		if (c >= 'A' && c <= 'Z') return ES_SCANCODE_A + c - 'A';
+		if (c >= '0' && c <= '9') return ES_SCANCODE_0 + c - '0';
+		if (c == '/')  return ES_SCANCODE_SLASH;
+		if (c == '[')  return ES_SCANCODE_LEFT_BRACE;
+		if (c == ']')  return ES_SCANCODE_RIGHT_BRACE;
+		if (c == '=')  return ES_SCANCODE_EQUALS;
+		if (c == '-')  return ES_SCANCODE_HYPHEN;
+		if (c == ',')  return ES_SCANCODE_COMMA;
+		if (c == '.')  return ES_SCANCODE_PERIOD;
+		if (c == '\\') return ES_SCANCODE_PUNCTUATION_1;
+		if (c == ';')  return ES_SCANCODE_PUNCTUATION_3;
+		if (c == '\'') return ES_SCANCODE_PUNCTUATION_4;
+		if (c == '`')  return ES_SCANCODE_PUNCTUATION_5;
+	}
+
 	return scancode;
 }
 

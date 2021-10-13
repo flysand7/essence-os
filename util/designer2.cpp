@@ -2754,12 +2754,15 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				CanvasDrawColorSwatch(object, bounds, painter);
 			} else if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
 				CanvasDrawColorSwatch(object, bounds, painter);
-				uint32_t color = GraphGetColor(object);
-				bool isLight = EsColorIsLight(color);
-				char buffer[32];
-				snprintf(buffer, sizeof(buffer), "%.8X", color);
-				UIRectangle area = UI_RECT_4(bounds.l, bounds.r, bounds.t, bounds.t + UIMeasureStringHeight());
-				UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
+
+				if (canvas->zoom >= 1.0f) {
+					uint32_t color = GraphGetColor(object);
+					bool isLight = EsColorIsLight(color);
+					char buffer[32];
+					snprintf(buffer, sizeof(buffer), "%.8X", color);
+					UIRectangle area = UI_RECT_4(bounds.l, bounds.r, bounds.t, bounds.t + UIMeasureStringHeight());
+					UIDrawString(painter, area, buffer, -1, isLight ? 0xFF000000 : 0xFFFFFFFF, UI_ALIGN_CENTER, nullptr);
+				}
 			} else if (object->type == OBJ_VAR_TEXT_STYLE || object->type == OBJ_STYLE) {
 				CanvasDrawStyle(object, bounds, painter);
 			} else if (object->type == OBJ_INSTANCE) {

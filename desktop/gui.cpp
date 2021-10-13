@@ -785,7 +785,6 @@ void UIWindowDestroy(EsWindow *window) {
 	EsHandleClose(window->handle);
 	window->checkVisible.Free();
 	window->sizeAlternatives.Free();
-	EsAssert(!window->dialogs.Length());
 	window->dialogs.Free();
 	window->handle = ES_INVALID_HANDLE;
 }
@@ -6631,11 +6630,11 @@ void UIMouseUp(EsWindow *window, EsMessage *message, bool sendClick) {
 			EsRectangle bounds = pressed->GetWindowBounds();
 			message->mouseDown.positionX -= bounds.l;
 			message->mouseDown.positionY -= bounds.t;
-			UIMessageSendPropagateToAncestors(pressed, message);
+			EsMessageSend(pressed, message);
 		} else {
 			EsMessage m = {};
 			m.type = (EsMessageType) (gui.lastClickButton + 1);
-			UIMessageSendPropagateToAncestors(pressed, &m);
+			EsMessageSend(pressed, &m);
 		}
 
 		pressed->state &= ~UI_STATE_LEFT_PRESSED;

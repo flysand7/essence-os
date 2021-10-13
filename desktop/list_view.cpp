@@ -1007,10 +1007,23 @@ struct EsListView : EsElement {
 			int64_t wrapLimit = GetWrapLimit();
 			int64_t fixedMinorSize = (flags & ES_LIST_VIEW_HORIZONTAL) ? fixedHeight : fixedWidth;
 			intptr_t itemsPerBand = GetItemsPerBand();
-			int64_t computedMinorGap = (wrapLimit - itemsPerBand * fixedMinorSize) / (itemsPerBand + 1);
-			int64_t minorStartOffset = computedMinorGap + ((flags & ES_LIST_VIEW_HORIZONTAL) ? style->insets.t : style->insets.l);
-			intptr_t startInBand = (((flags & ES_LIST_VIEW_HORIZONTAL) ? y1 : x1) - minorStartOffset) / (fixedMinorSize + computedMinorGap);
-			intptr_t endInBand = (((flags & ES_LIST_VIEW_HORIZONTAL) ? y2 : x2) - minorStartOffset) / (fixedMinorSize + computedMinorGap);
+			int64_t centerOffset = (flags & ES_LIST_VIEW_CENTER_TILES) ? (wrapLimit - itemsPerBand * (fixedMinorSize + style->gapMinor) + style->gapMinor) / 2 : 0;
+			int64_t minorStartOffset = centerOffset + ((flags & ES_LIST_VIEW_HORIZONTAL) ? style->insets.t : style->insets.l);
+
+			int64_t s0 = (flags & ES_LIST_VIEW_HORIZONTAL) ? y1 : x1;
+			int64_t s1 = (flags & ES_LIST_VIEW_HORIZONTAL) ? y2 : x2;
+
+			int64_t startEdge = minorStartOffset;
+			int64_t endEdge = minorStartOffset + (fixedMinorSize + style->gapMinor) * itemsPerBand - style->gapMinor;
+
+			if (s1 < startEdge || s0 >= endEdge) return;
+			if (s0 < startEdge) s0 = startEdge;
+			if (s1 >= endEdge) s1 = endEdge - 1;
+
+			intptr_t startInBand = (s0 - startEdge + style->gapMinor /* round up if in gap */) / (fixedMinorSize + style->gapMinor);
+			intptr_t endInBand = (s1 - startEdge) / (fixedMinorSize + style->gapMinor);
+
+			if (startInBand > endInBand) return;
 
 			if (adjustStart) {
 				ListViewGroup *group = &groups[start.iterateIndex.group];
@@ -1044,6 +1057,11 @@ struct EsListView : EsElement {
 						IterateForwards(&end);
 					}
 				}
+			}
+
+			if ((start.iterateIndex.group == end.iterateIndex.group && start.iterateIndex.index > end.iterateIndex.index) 
+					|| (start.iterateIndex.group > end.iterateIndex.group)) {
+				return;
 			}
 
 			SetSelected(start.iterateIndex.group, start.iterateIndex.index, end.iterateIndex.group, end.iterateIndex.index, true, toggle,
