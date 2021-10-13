@@ -209,7 +209,7 @@ void SettingsUpdateGlobalAndWindowManager() {
 
 	size_t keyboardLayoutBytes;
 	char *keyboardLayout = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("keyboard_layout"), &keyboardLayoutBytes);
-	api.global->keyboardLayout = keyboardLayout && keyboardLayoutBytes == 2 ? (keyboardLayout[0] | ((uint16_t) keyboardLayout[1] << 8)) : 1;
+	api.global->keyboardLayout = keyboardLayout && keyboardLayoutBytes >= 2 ? (keyboardLayout[0] | ((uint16_t) keyboardLayout[1] << 8)) : 1;
 	EsHeapFree(keyboardLayout);
 
 	{
