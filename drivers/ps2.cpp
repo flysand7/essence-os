@@ -5,7 +5,7 @@
 struct PS2Update {
 	union {
 		struct {
-			volatile int xMovement, yMovement;
+			volatile int xMovement, yMovement, zMovement;
 			volatile unsigned buttons;
 		};
 
@@ -25,6 +25,7 @@ struct PS2 {
 	void WriteByte(KTimeout *timeout, uint8_t value);
 	bool SetupKeyboard(KTimeout *timeout);
 	bool SetupMouse(KTimeout *timeout);
+	bool SetMouseRate(KTimeout *timeout, int rate);
 	bool PollRead(uint8_t *value, bool forMouse);
 	void WaitInputBuffer();
 
@@ -202,6 +203,7 @@ void PS2MouseUpdated(EsGeneric _update) {
 	KMouseUpdateData data = { 
 		.xMovement = update->xMovement * K_CURSOR_MOVEMENT_SCALE, 
 		.yMovement = update->yMovement * K_CURSOR_MOVEMENT_SCALE,
+		.yScroll = update->zMovement * K_CURSOR_MOVEMENT_SCALE,
 		.buttons = update->buttons,
 	};
 
@@ -316,7 +318,7 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 	if (ps2.channels == 1 && interruptIndex == 12) return false;
 
 	if (interruptIndex == 12) {
-		static uint8_t firstByte = 0, secondByte = 0, thirdByte = 0;
+		static uint8_t firstByte = 0, secondByte = 0, thirdByte = 0, fourthByte = 0;
 		static size_t bytesFound = 0;
 
 		if (bytesFound == 0) {
@@ -331,9 +333,13 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 		} else if (bytesFound == 2) {
 			if (!ps2.PollRead(&thirdByte, true)) return false;
 			bytesFound++;
+			if (ps2.mouseType == 3) return true;
+		} else if (bytesFound == 3) {
+			if (!ps2.PollRead(&fourthByte, true)) return false;
+			bytesFound++;
 		}
 
-		KernelLog(LOG_VERBOSE, "PS/2", "mouse data", "Mouse data: %X%X%X\n", firstByte, secondByte, thirdByte);
+		KernelLog(LOG_VERBOSE, "PS/2", "mouse data", "Mouse data: %X%X%X%X\n", firstByte, secondByte, thirdByte, fourthByte);
 
 		KSpinlockAcquire(&ps2.lastUpdatesLock);
 		PS2Update *update = ps2.lastUpdates + ps2.lastUpdatesIndex;
@@ -345,6 +351,7 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 		update->buttons = ((firstByte & (1 << 0)) ? K_LEFT_BUTTON : 0)
 			      	| ((firstByte & (1 << 1)) ? K_RIGHT_BUTTON : 0)
 				| ((firstByte & (1 << 2)) ? K_MIDDLE_BUTTON : 0);
+		update->zMovement = -((int8_t) fourthByte);
 
 		KRegisterAsyncTask(PS2MouseUpdated, update, false);
 
@@ -434,6 +441,20 @@ bool PS2::SetupKeyboard(KTimeout *timeout) {
 	return true;
 }
 
+bool PS2::SetMouseRate(KTimeout *timeout, int rate) {
+	WaitInputBuffer();
+	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	WaitInputBuffer();
+	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_SAMPLE_RATE);
+	if (ReadByte(timeout) != 0xFA) return false;
+	WaitInputBuffer();
+	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	WaitInputBuffer();
+	ProcessorOut8(PS2_PORT_DATA, rate);
+	if (ReadByte(timeout) != 0xFA) return false;
+	return true;
+}
+
 bool PS2::SetupMouse(KTimeout *timeout) {
 	// TODO Mouse with scroll wheel detection.
 
@@ -444,16 +465,16 @@ bool PS2::SetupMouse(KTimeout *timeout) {
 	if (ReadByte(timeout) != 0xFA) return false;
 	if (ReadByte(timeout) != 0xAA) return false;
 	if (ReadByte(timeout) != 0x00) return false;
+	if (!SetMouseRate(timeout, 200)) return false;
+	if (!SetMouseRate(timeout, 100)) return false;
+	if (!SetMouseRate(timeout, 80)) return false;
 	WaitInputBuffer();
 	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_SAMPLE_RATE);
+	ProcessorOut8(PS2_PORT_DATA, 0xF2);
 	if (ReadByte(timeout) != 0xFA) return false;
-	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
-	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, 100);
-	if (ReadByte(timeout) != 0xFA) return false;
+	mouseType = ReadByte(timeout);
+	if (!SetMouseRate(timeout, 100)) return false;
 	WaitInputBuffer();
 	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();

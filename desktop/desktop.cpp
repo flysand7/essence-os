@@ -2946,7 +2946,7 @@ void DesktopMessage(EsMessage *message) {
 			EsDateComponents reading;
 			uint64_t linear;
 
-			if (ES_SUCCESS == EsDeviceControl(message->device.handle, ES_DEVICE_CONTROL_CLOCK_READ, &reading, &linear)) {
+			if (ES_SUCCESS == EsDeviceControl(handle, ES_DEVICE_CONTROL_CLOCK_READ, &reading, &linear)) {
 				// TODO Scheduler timer is not particularly accurate, so we should periodically resynchronize with the clock.
 				api.global->schedulerTimeOffset = (linear ?: DateToLinear(&reading)) - api.global->schedulerTimeMs;
 			}
