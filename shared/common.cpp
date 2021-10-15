@@ -134,6 +134,10 @@ bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y) {
 	return ES_RECT_VALID(a) && a.l <= x && a.r > x && a.t <= y && a.b > y;
 }
 
+bool EsRectangleContainsAll(EsRectangle parent, EsRectangle child) {
+	return ES_RECT_VALID(parent) && child.l >= parent.l && child.r <= parent.r && child.t >= parent.t && child.b <= parent.b;
+}
+
 EsRectangle EsRectangleSplit(EsRectangle *a, int32_t amount, char side, int32_t gap) {
 	EsRectangle b = *a;
 	if (side == 'l') a->l += amount + gap, b.r = a->l - gap;

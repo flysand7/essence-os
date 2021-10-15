@@ -7,7 +7,6 @@
 // Terminology:
 // 	Dynamic resize - flicker-free resizing in container windows with an embedded window owned by a separate process.
 // 	Direct update - paint first onto the video card's framebuffer, then onto the window manager's; used to reduce latency.
-// 	Fast scroll - scrolling by shifting the bits in the window's surface, rather than repainting the entire area.
 
 struct EmbeddedWindow {
 	void Destroy();
@@ -35,7 +34,7 @@ struct Window {
 	// State:
 	EsWindowStyle style;
 	EsRectangle solidOffsets, embedInsets;
-	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, queuedScrollUpdate, activationClick, noBringToFront;
+	bool solid, noClickActivate, hidden, isMaximised, alwaysOnTop, hoveringOverEmbed, activationClick, noBringToFront;
 	volatile bool closed;
 
 	// Appearance:

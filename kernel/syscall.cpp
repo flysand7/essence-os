@@ -500,7 +500,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 	bool isEmbed = _window.type == KERNEL_OBJECT_EMBEDDED_WINDOW;
 	Window *window = isEmbed ? ((EmbeddedWindow *) _window.object)->container : ((Window *) _window.object);
 
-	if (!window || (isEmbed && currentProcess != ((EmbeddedWindow *) _window.object)->owner)) {
+	if (!window || (isEmbed && currentProcess != ((EmbeddedWindow *) _window.object)->owner) || window->closed) {
 		SYSCALL_RETURN(ES_SUCCESS, false);
 	}
 
@@ -511,108 +511,72 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
 		region = Translate(region, insets.l, insets.t);
 	}
 
-	if (argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL || argument3 == WINDOW_SET_BITS_SCROLL_HORIZONTAL) {
-		ptrdiff_t scrollDelta = argument2;
-		bool scrollVertical = argument3 == WINDOW_SET_BITS_SCROLL_VERTICAL;
-		EsRectangle originalRegion = region;
+	SYSCALL_BUFFER(argument2, Width(region) * Height(region) * 4, 1, false);
+	KMutexAcquire(&windowManager.mutex);
 
-		if (scrollVertical) {
-			if (scrollDelta < 0) region.b += scrollDelta;
-			else region.t += scrollDelta;
-		} else {
-			if (scrollDelta < 0) region.r += scrollDelta;
-			else region.l += scrollDelta;
+	bool resizeQueued = false;
+
+	if (argument3 == WINDOW_SET_BITS_AFTER_RESIZE && windowManager.resizeWindow == window) {
+		if (isEmbed) windowManager.resizeReceivedBitsFromEmbed = true;
+		else windowManager.resizeReceivedBitsFromContainer = true;
+
+		if (windowManager.resizeReceivedBitsFromContainer && windowManager.resizeReceivedBitsFromEmbed) {
+			// Resize complete.
+			resizeQueued = windowManager.resizeQueued;
+			windowManager.resizeQueued = false;
+			windowManager.resizeWindow = nullptr;
+			windowManager.resizeSlow = KGetTimeInMs() - windowManager.resizeStartTimeStampMs >= RESIZE_SLOW_THRESHOLD
+				|| windowManager.inspectorWindowCount /* HACK anti-flicker logic interfers with the inspector's logging */;
+			// EsPrint("Resize complete in %dms%z.\n", KGetTimeInMs() - windowManager.resizeStartTimeStampMs, windowManager.resizeSlow ? " (slow)" : "");
 		}
+	}
 
-		KMutexAcquire(&windowManager.mutex);
+	uintptr_t stride = Width(region) * 4;
+	EsRectangle clippedRegion = EsRectangleIntersection(region, ES_RECT_2S(surface->width, surface->height));
 
-		if (window->closed 
-				|| region.l < 0 || region.r > (int32_t) surface->width
-				|| region.t < 0 || region.b > (int32_t) surface->height
-				|| region.l >= region.r || region.t >= region.b) {
-		} else {
-			surface->Scroll(region, scrollDelta, scrollVertical);
-			window->Update(&originalRegion, true);
-			window->queuedScrollUpdate = true;
-			// Don't update the screen until the rest of the window is painted.
-		}
+	EsRectangle directUpdateSubRegion;
 
-		KMutexRelease(&windowManager.mutex);
+	if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
+		directUpdateSubRegion = ES_RECT_4(0, window->width, 0, insets.t);
+	} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
+		directUpdateSubRegion = ES_RECT_4(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
 	} else {
-		bool skipUpdate = false;
-		SYSCALL_BUFFER(argument2, Width(region) * Height(region) * 4, 1, false);
-		KMutexAcquire(&windowManager.mutex);
+		directUpdateSubRegion = ES_RECT_4(0, window->width, 0, window->height);
+	}
 
-		bool resizeQueued = false;
+	bool didDirectUpdate = false;
 
-		if (argument3 == WINDOW_SET_BITS_AFTER_RESIZE && windowManager.resizeWindow == window) {
-			if (isEmbed) windowManager.resizeReceivedBitsFromEmbed = true;
-			else windowManager.resizeReceivedBitsFromContainer = true;
-
-			if (windowManager.resizeReceivedBitsFromContainer && windowManager.resizeReceivedBitsFromEmbed) {
-				// Resize complete.
-				resizeQueued = windowManager.resizeQueued;
-				windowManager.resizeQueued = false;
-				windowManager.resizeWindow = nullptr;
-				windowManager.resizeSlow = KGetTimeInMs() - windowManager.resizeStartTimeStampMs >= RESIZE_SLOW_THRESHOLD
-					|| windowManager.inspectorWindowCount /* HACK anti-flicker logic interfers with the inspector's logging */;
-
-#if 0
-				EsPrint("Resize complete in %dms%z.\n", KGetTimeInMs() - windowManager.resizeStartTimeStampMs, windowManager.resizeSlow ? " (slow)" : "");
-#endif
-			}
-		}
-
-		if (window->closed) {
-			skipUpdate = true;
-		} else {
-			uintptr_t stride = Width(region) * 4;
-			EsRectangle clippedRegion = EsRectangleIntersection(region, ES_RECT_2S(surface->width, surface->height));
-
-			EsRectangle directUpdateSubRegion;
-
-			if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
-				directUpdateSubRegion = ES_RECT_4(0, window->width, 0, insets.t);
-			} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
-				directUpdateSubRegion = ES_RECT_4(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
-			} else {
-				directUpdateSubRegion = ES_RECT_4(0, window->width, 0, window->height);
-			}
-
-			if (argument3 != WINDOW_SET_BITS_AFTER_RESIZE && EsRectangleEquals(region, EsRectangleIntersection(region, directUpdateSubRegion))) {
-				skipUpdate = window->UpdateDirect((K_USER_BUFFER uint32_t *) argument2, stride, clippedRegion);
-			}
+	if (argument3 != WINDOW_SET_BITS_AFTER_RESIZE && EsRectangleEquals(region, EsRectangleIntersection(region, directUpdateSubRegion))) {
+		didDirectUpdate = window->UpdateDirect((K_USER_BUFFER uint32_t *) argument2, stride, clippedRegion);
+	}
 
 #define SET_BITS_REGION(...) { \
-	EsRectangle subRegion = EsRectangleIntersection(clippedRegion, ES_RECT_4(__VA_ARGS__)); \
-	if (ES_RECT_VALID(subRegion)) { surface->SetBits((K_USER_BUFFER const uint8_t *) argument2 \
-	+ stride * (subRegion.t - clippedRegion.t) + 4 * (subRegion.l - clippedRegion.l), stride, subRegion); } }
+EsRectangle subRegion = EsRectangleIntersection(clippedRegion, ES_RECT_4(__VA_ARGS__)); \
+if (ES_RECT_VALID(subRegion)) { surface->SetBits((K_USER_BUFFER const uint8_t *) argument2 \
++ stride * (subRegion.t - clippedRegion.t) + 4 * (subRegion.l - clippedRegion.l), stride, subRegion); } }
 
-			if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
-				SET_BITS_REGION(0, window->width, 0, insets.t);
-				SET_BITS_REGION(0, insets.l, insets.t, window->height - insets.b);
-				SET_BITS_REGION(window->width - insets.r, window->width, insets.t, window->height - insets.b);
-				SET_BITS_REGION(0, window->width, window->height - insets.b, window->height);
-			} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
-				SET_BITS_REGION(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
-			} else {
-				SET_BITS_REGION(0, window->width, 0, window->height);
-			}
-		}
-
-		window->Update(&region, !skipUpdate);
-
-		if (!skipUpdate || window->queuedScrollUpdate) {
-			window->queuedScrollUpdate = false;
-			GraphicsUpdateScreen();
-		}
-
-		if (resizeQueued) {
-			window->Move(windowManager.resizeQueuedRectangle, ES_WINDOW_MOVE_DYNAMIC);
-		}
-
-		KMutexRelease(&windowManager.mutex);
+	if (window->style == ES_WINDOW_CONTAINER && !isEmbed) {
+		SET_BITS_REGION(0, window->width, 0, insets.t);
+		SET_BITS_REGION(0, insets.l, insets.t, window->height - insets.b);
+		SET_BITS_REGION(window->width - insets.r, window->width, insets.t, window->height - insets.b);
+		SET_BITS_REGION(0, window->width, window->height - insets.b, window->height);
+	} else if (window->style == ES_WINDOW_CONTAINER && isEmbed) {
+		SET_BITS_REGION(insets.l, window->width - insets.r, insets.t, window->height - insets.b);
+	} else {
+		SET_BITS_REGION(0, window->width, 0, window->height);
 	}
+
+	window->Update(&region, !didDirectUpdate);
+
+	if (!didDirectUpdate) {
+		GraphicsUpdateScreen();
+	}
+
+	if (resizeQueued) {
+		window->Move(windowManager.resizeQueuedRectangle, ES_WINDOW_MOVE_DYNAMIC);
+	}
+
+	KMutexRelease(&windowManager.mutex);
 
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }

@@ -2896,9 +2896,6 @@ void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) 
 	else if (newScroll > limit[axis]) newScroll = limit[axis];
 	if (newScroll == position[axis]) return;
 
-	// Since we might be about to fast scroll, make sure the bits we are scrolling are valid.
-	UIWindowPaintNow(parent->window, nullptr, false);
-
 	double previous = position[axis];
 	position[axis] = newScroll;
 	if (bar[axis]) ScrollbarSetPosition(bar[axis], position[axis], false, false);
@@ -6500,28 +6497,16 @@ void EsElementRepaint(EsElement *element, const EsRectangle *region) {
 }
 
 void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border) {
-	EsRectangle content = ES_RECT_4(border.l, element->width - border.r, border.t, element->height - border.b);
-	EsRectangle repaint = content;
-	int64_t delta = message->scrollbarMoved.scroll - message->scrollbarMoved.previous;
+	// TODO Improved fast scroll:
+	// 	- Set a scroll rectangle in the window.
+	// 		- If one is already marked, then don't attempt a fast scroll.
+	// 	- When painting, exclude anything containing in the scroll rectangle.
+	// 	- When sending bits to the WM, give it the scroll rectangle to apply first.
 
-	if (message->type == ES_MSG_SCROLL_Y) {
-		if (delta > 0) repaint.t = element->height - delta - border.b;
-		else repaint.b = border.t - delta;
-	} else if (message->type == ES_MSG_SCROLL_X) {
-		if (delta > 0) repaint.l = element->width - delta - border.r;
-		else repaint.r = border.l - delta;
-	} else {
-		EsAssert(false);
-	}
+	EsElementRepaint(element);
 
-	EsRectangle rectangle = element->GetWindowBounds(false);
-	EsRectangle scrollBits = Translate(content, rectangle.l, rectangle.t);
-	EsSyscall(ES_SYSCALL_WINDOW_SET_BITS, element->window->handle, (uintptr_t) &scrollBits, delta, 
-			message->type == ES_MSG_SCROLL_Y ? WINDOW_SET_BITS_SCROLL_VERTICAL : WINDOW_SET_BITS_SCROLL_HORIZONTAL);
-
-	repaint = EsRectangleIntersection(repaint, content);
-	EsElementRepaint(element, &repaint);
-	UIWindowPaintNow(element->window, nullptr, false);
+	(void) message;
+	(void) border;
 }
 
 bool EsElementStartAnimating(EsElement *element) {

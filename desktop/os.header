@@ -1257,7 +1257,7 @@ struct EsProcessState {
 
 struct EsPainter {
 	EsRectangle clip;
-	int offsetX, offsetY, width, height;
+	int32_t offsetX, offsetY, width, height;
 	void *style;
 	EsPaintTarget *target;
 }
@@ -2119,6 +2119,7 @@ function EsRectangle EsRectangleSubtract(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
 function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
 function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
+function bool EsRectangleContainsAll(EsRectangle parent, EsRectangle child); // Returns true iff the child rectangle is entirely contained within parent.
 function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument); 
 function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument, EsSwapCallback swap); 
 
