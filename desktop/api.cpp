@@ -428,6 +428,8 @@ void SystemConfigurationUnload() {
 }
 
 void SystemConfigurationLoad(const char *file, size_t fileBytes) {
+	// TODO Detecting duplicate keys?
+
 	EsINIState s = {};
 	s.buffer = (char *) file;
 	s.bytes = fileBytes;

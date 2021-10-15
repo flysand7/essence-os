@@ -907,6 +907,17 @@ void WriteNewConfiguration() {
 		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general"))
 				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("installation_state"))) {
 			EsBufferFormat(&buffer, "installation_state=0\n");
+		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general"))
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("clock_offset_ms"))) {
+			EsAssert(false);
+		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general"))
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("user_name"))) {
+			EsAssert(false);
+		} else if (!s.sectionClassBytes && 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general")) && !s.keyBytes) {
+			size_t userNameBytes;
+			char *userName = EsTextboxGetContents(userNameTextbox, &userNameBytes);
+			EsBufferFormat(&buffer, "[general]\nclock_offset_ms=%d\nuser_name=%s\n", clockOffsetMs, userNameBytes, userName);
+			EsHeapFree(userName);
 		} else {
 			size_t lineBytes = EsINIFormat(&s, lineBuffer, lineBufferBytes);
 			EsBufferWrite(&buffer, lineBuffer, lineBytes);

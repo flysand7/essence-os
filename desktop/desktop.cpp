@@ -218,6 +218,8 @@ struct {
 	bool inShutdown;
 
 	bool inspectorOpen;
+
+	EsHandle clockReady;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -1217,6 +1219,40 @@ int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
+void TaskBarClockUpdateThread(EsGeneric _clock) {
+	EsWaitSingle(desktop.clockReady);
+
+	EsButton *clock = (EsButton *) _clock.p;
+	static EsDateComponents previousTime = {};
+
+	while (true) {
+		// TODO Use the local time zone.
+		EsDateComponents currentTime;
+		EsDateNowUTC(&currentTime);
+
+		uint8_t secondsUntilNextMinuteChange = 60 - currentTime.second;
+
+		currentTime.second = 0;
+		currentTime.millisecond = 0;
+
+		if (0 == EsMemoryCompare(&currentTime, &previousTime, sizeof(EsDateComponents))) {
+			// The minute or hour hasn't changed. Wait for the next change.
+			EsSleep((secondsUntilNextMinuteChange + 1) * 1000);
+		} else {
+			// Update the clock's label.
+			// TODO Proper clock formatting.
+			char label[32];
+			size_t labelBytes = EsStringFormat(label, sizeof(label), "%d%d:%d%d", 
+					currentTime.hour / 10, currentTime.hour % 10, currentTime.minute / 10, currentTime.minute % 10);
+			EsMessageMutexAcquire();
+			EsButtonSetLabel(clock, label, labelBytes);
+			EsMessageMutexRelease();
+
+			EsMemoryCopy(&previousTime, &currentTime, sizeof(EsDateComponents));
+		}
+	}
+}
+
 void Shutdown(uintptr_t action) {
 	// TODO This doesn't wait for Desktop instances.
 
@@ -1771,6 +1807,7 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartup
 		return instance;
 	} else {
 		if (!hidden) WindowTabDestroy(tab); // TODO Test this.
+		desktop.allApplicationInstances.FindAndDeleteSwap(instance, true);
 		EsHeapFree(instance);
 		return nullptr;
 	}
@@ -2513,6 +2550,14 @@ void DesktopSetup() {
 			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON);
 			desktop.tasksButton->messageUser = TaskBarTasksButtonMessage;
 
+			EsButton *clockButton = EsButtonCreate(panel, ES_BUTTON_TABULAR | ES_BUTTON_COMPACT, ES_STYLE_TASK_BAR_EXTRA);
+			clockButton->cName = "current time";
+			EsThreadCreate(TaskBarClockUpdateThread, nullptr, clockButton); 
+
+			EsButtonOnCommand(clockButton, [] (EsInstance *, EsElement *, EsCommand *) {
+				ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_SETTINGS, nullptr, nullptr);
+			});
+
 			EsButton *shutdownButton = EsButtonCreate(panel, ES_FLAGS_DEFAULT, ES_STYLE_TASK_BAR_EXTRA);
 			EsButtonSetIcon(shutdownButton, ES_ICON_SYSTEM_SHUTDOWN_SYMBOLIC);
 
@@ -2948,7 +2993,10 @@ void DesktopMessage(EsMessage *message) {
 
 			if (ES_SUCCESS == EsDeviceControl(handle, ES_DEVICE_CONTROL_CLOCK_READ, &reading, &linear)) {
 				// TODO Scheduler timer is not particularly accurate, so we should periodically resynchronize with the clock.
-				api.global->schedulerTimeOffset = (linear ?: DateToLinear(&reading)) - api.global->schedulerTimeMs;
+				api.global->schedulerTimeOffset = (linear ?: DateToLinear(&reading)) 
+					- api.global->schedulerTimeMs 
+					+ EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("clock_offset_ms"), 0);
+				EsEventSet(desktop.clockReady);
 			}
 		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
@@ -2992,6 +3040,8 @@ void DesktopMessage(EsMessage *message) {
 
 void DesktopEntry() {
 	ConfigurationLoadApplications();
+
+	desktop.clockReady = EsEventCreate(false);
 
 	EsMessage m = { MSG_SETUP_DESKTOP_UI };
 	EsMessagePost(nullptr, &m);

@@ -10,11 +10,7 @@
 
 set -e
 
-# Duplicated in uefi_to_device.sh.
-CC="clang -target x86_64-unknown-windows -ffreestanding -fshort-wchar -mno-red-zone -I ports/efitoolkit/inc -c -Wall -Wextra"
-LINK="clang -target x86_64-unknown-windows -nostdlib -Wl,-entry:efi_main -Wl,-subsystem:efi_application -fuse-ld=lld-link"
-$CC -o bin/uefi.o boot/x86/uefi.c 
-$LINK -o bin/uefi bin/uefi.o 
+util/uefi_compile.sh
 
 mkdir -p mount
 sudo losetup --offset `fdisk -l bin/uefi_drive | grep 'EFI System' | awk '{print 512*$2}'` --sizelimit `fdisk -l bin/uefi_drive | grep 'EFI System' | awk '{print 512*$4}'` /dev/loop0 bin/uefi_drive

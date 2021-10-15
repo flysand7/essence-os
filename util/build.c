@@ -1119,6 +1119,17 @@ void DoCommand(const char *l) {
 		fwrite(&uncompressed, 1, sizeof(uncompressed), f);
 		fwrite(&crc64, 1, sizeof(crc64), f);
 		fclose(f);
+	} else if (0 == strcmp(l, "make-installer-root")) {
+		DoCommand("make-installer-archive");
+		CallSystem("util/uefi_compile.sh");
+		CallSystem("cp bin/mbr root/mbr.dat");
+		CallSystem("cp bin/stage1 root/stage1.dat");
+		CallSystem("cp bin/stage2 root/stage2.dat");
+		CallSystem("cp bin/uefi root/uefi1.dat");
+		CallSystem("cp bin/uefi_loader root/uefi2.dat");
+		CallSystem("cp LICENSE.md root/installer_licenses.txt");
+		CallSystem("mv bin/installer_archive.dat root");
+		CallSystem("mv bin/installer_metadata.dat root");
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();
 		CallSystem("bin/config_editor");

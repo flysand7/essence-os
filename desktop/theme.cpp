@@ -1883,7 +1883,7 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 	EsRectangle bounds = Translate(EsRectangleAddBorder(rectangle, insets), painter->offsetX, painter->offsetY);
 	EsRectangle textBounds = bounds;
 	EsRectangle oldClip = painter->clip;
-	EsRectangleClip(painter->clip, bounds, &painter->clip);
+	EsRectangleClip(painter->clip, Translate(rectangle, painter->offsetX, painter->offsetY), &painter->clip);
 
 	EsRectangle iconBounds = EsRectangleSplit(&textBounds, metrics->iconSize, metrics->layoutVertical ? 't' : 'l', gapMinor);
 	EsPainter iconPainter = *painter;

@@ -1638,7 +1638,7 @@ void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int des
 
 		for (int i = 0; i < destinationWidth; i++, pixel++) {
 			if (i - cx < 0 || i - cx >= width || j - cy < 0 || j - cy >= height) {
-				*pixel = 0x738393;
+				*pixel = 0x77B9F9;
 			} else {
 				*pixel = image[i - cx + (j - cy) * width];
 			}

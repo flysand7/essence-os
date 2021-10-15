@@ -514,6 +514,7 @@ define ES_BUTTON_CHECKBOX			(1 << 10)
 define ES_BUTTON_RADIOBOX			(1 << 11)
 define ES_BUTTON_CANCEL				(1 << 12)
 define ES_BUTTON_PUSH				(1 << 13)
+define ES_BUTTON_TABULAR			(1 << 14) // Use tabular text figures.
 define ES_MENU_ITEM_CHECKED			(ES_CHECK_CHECKED)
 
 define ES_COLOR_WELL_HAS_OPACITY		(1 << 0)
@@ -2468,7 +2469,6 @@ private function void _EsUISetFont(EsFontFamily id);
 // Buttons.
 
 function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
-
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
 function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);

@@ -3926,7 +3926,8 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 		EsDrawContent(message->painter, element, 
 			ES_RECT_2S(message->painter->width, message->painter->height), 
 			button->label, button->labelBytes, button->iconID, 
-			(button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : ES_FLAGS_DEFAULT);
+			((button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : 0)
+			| ((button->flags & ES_BUTTON_TABULAR) ? ES_DRAW_CONTENT_TABULAR : 0));
 	} else if (message->type == ES_MSG_PAINT_ICON) {
 		if (button->imageDisplay) {
 			EsRectangle imageSize = ES_RECT_2S(button->imageDisplay->width, button->imageDisplay->height);
@@ -4097,6 +4098,15 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 	EsButtonSetCheck(button, (EsCheckState) (flags & 3), false);
 	button->MaybeRefreshStyle();
 	return button;
+}
+
+void EsButtonSetLabel(EsButton *button, const char *label, ptrdiff_t labelBytes) {
+	EsMessageMutexCheck();
+	if (labelBytes == -1) labelBytes = EsCStringLength(label);
+	HeapDuplicate((void **) &button->label, &button->labelBytes, label, labelBytes);
+	button->Repaint(true);
+	button->state &= ~UI_STATE_USE_MEASUREMENT_CACHE;
+	EsElementUpdateContentSize(button->parent);
 }
 
 void EsButtonSetIcon(EsButton *button, uint32_t iconID) {
