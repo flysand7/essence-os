@@ -4579,10 +4579,10 @@ void ColorPickerCreate(EsElement *parent, ColorPickerHost host, uint32_t initial
 				m.colorChanged.newColor = picker->GetColorForHost();
 				m.colorChanged.pickerClosed = true;
 				EsMessageSend(picker->host.well, &m);
+			}
 
-				if (picker->host.well->messageClass == ProcessColorWellMessage) {
-					((EsColorWell *) picker->host.well)->picker = nullptr;
-				}
+			if (picker->host.well && picker->host.well->messageClass == ProcessColorWellMessage) {
+				((EsColorWell *) picker->host.well)->picker = nullptr;
 			}
 
 			EsHeapFree(picker); 

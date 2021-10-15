@@ -2942,6 +2942,10 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 }
 
 void DesktopMessage(EsMessage *message) {
+	if (!desktop.clockReady) {
+		desktop.clockReady = EsEventCreate(false);
+	}
+
 	if (message->type == ES_MSG_POWER_BUTTON_PRESSED) {
 		ShutdownModalCreate();
 	} else if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
@@ -3040,8 +3044,6 @@ void DesktopMessage(EsMessage *message) {
 
 void DesktopEntry() {
 	ConfigurationLoadApplications();
-
-	desktop.clockReady = EsEventCreate(false);
 
 	EsMessage m = { MSG_SETUP_DESKTOP_UI };
 	EsMessagePost(nullptr, &m);

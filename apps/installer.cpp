@@ -784,11 +784,11 @@ EsError Install() {
 	}
 
 	size_t mbrBytes, stage1Bytes, stage2Bytes, uefi1Bytes, uefi2Bytes, kernelBytes;
-	void *mbr = EsFileReadAll(EsLiteral("0:/mbr.dat"), &mbrBytes);
-	void *stage1 = EsFileReadAll(EsLiteral("0:/stage1.dat"), &stage1Bytes);
-	void *stage2 = EsFileReadAll(EsLiteral("0:/stage2.dat"), &stage2Bytes);
-	void *uefi1 = EsFileReadAll(EsLiteral("0:/uefi1.dat"), &uefi1Bytes);
-	void *uefi2 = EsFileReadAll(EsLiteral("0:/uefi2.dat"), &uefi2Bytes);
+	void *mbr = EsFileReadAll(EsLiteral("0:/Installer Data/mbr.dat"), &mbrBytes);
+	void *stage1 = EsFileReadAll(EsLiteral("0:/Installer Data/stage1.dat"), &stage1Bytes);
+	void *stage2 = EsFileReadAll(EsLiteral("0:/Installer Data/stage2.dat"), &stage2Bytes);
+	void *uefi1 = EsFileReadAll(EsLiteral("0:/Installer Data/uefi1.dat"), &uefi1Bytes);
+	void *uefi2 = EsFileReadAll(EsLiteral("0:/Installer Data/uefi2.dat"), &uefi2Bytes);
 
 	if (!mbr || !stage1 || !stage2 || !uefi1 || !uefi2) {
 		return ES_ERROR_FILE_DOES_NOT_EXIST;
@@ -866,7 +866,7 @@ EsError Install() {
 		return ES_ERROR_TIMEOUT_REACHED;
 	}
 
-	error = Extract(EsLiteral("0:/installer_archive.dat"), newFileSystemMountPoint.prefix, newFileSystemMountPoint.prefixBytes);
+	error = Extract(EsLiteral("0:/Installer Data/archive.dat"), newFileSystemMountPoint.prefix, newFileSystemMountPoint.prefixBytes);
 
 	if (error == ES_ERROR_CORRUPT_DATA) {
 		archiveCRCError = true;
@@ -1047,7 +1047,7 @@ int UserNameTextboxMessage(EsElement *, EsMessage *message) {
 void _start() {
 	_init();
 
-	metadata = (InstallerMetadata *) EsFileReadAll(EsLiteral("0:/installer_metadata.dat"), nullptr);
+	metadata = (InstallerMetadata *) EsFileReadAll(EsLiteral("0:/Installer Data/metadata.dat"), nullptr);
 	EsAssert(metadata);
 
 	mountNewFileSystemEvent = EsEventCreate(true);
@@ -1098,7 +1098,7 @@ void _start() {
 		EsTextbox *textbox = EsTextboxCreate(panelLicenses, ES_CELL_FILL | ES_TEXTBOX_MULTILINE);
 		EsElementSetDisabled(textbox);
 		size_t bytes;
-		char *data = (char *) EsFileReadAll(EsLiteral("0:/installer_licenses.txt"), &bytes);
+		char *data = (char *) EsFileReadAll(EsLiteral("0:/Installer Data/licenses.txt"), &bytes);
 		EsTextboxInsert(textbox, data, bytes);
 		EsHeapFree(data);
 		EsButtonOnCommand(EsButtonCreate(panelLicenses, ES_CELL_H_LEFT, 0, INTERFACE_STRING(InstallerGoBack)), ButtonInstallOptions);

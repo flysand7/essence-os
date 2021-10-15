@@ -1120,16 +1120,18 @@ void DoCommand(const char *l) {
 		fwrite(&crc64, 1, sizeof(crc64), f);
 		fclose(f);
 	} else if (0 == strcmp(l, "make-installer-root")) {
+		CallSystem("rm -r root/Installer\\ Data");
 		DoCommand("make-installer-archive");
 		CallSystem("util/uefi_compile.sh");
-		CallSystem("cp bin/mbr root/mbr.dat");
-		CallSystem("cp bin/stage1 root/stage1.dat");
-		CallSystem("cp bin/stage2 root/stage2.dat");
-		CallSystem("cp bin/uefi root/uefi1.dat");
-		CallSystem("cp bin/uefi_loader root/uefi2.dat");
-		CallSystem("cp LICENSE.md root/installer_licenses.txt");
-		CallSystem("mv bin/installer_archive.dat root");
-		CallSystem("mv bin/installer_metadata.dat root");
+		CallSystem("mkdir root/Installer\\ Data");
+		CallSystem("cp bin/mbr root/Installer\\ Data/mbr.dat");
+		CallSystem("cp bin/stage1 root/Installer\\ Data/stage1.dat");
+		CallSystem("cp bin/stage2 root/Installer\\ Data/stage2.dat");
+		CallSystem("cp bin/uefi root/Installer\\ Data/uefi1.dat");
+		CallSystem("cp bin/uefi_loader root/Installer\\ Data/uefi2.dat");
+		CallSystem("cp LICENSE.md root/Installer\\ Data/licenses.txt");
+		CallSystem("mv bin/installer_archive.dat root/Installer\\ Data/archive.dat");
+		CallSystem("mv bin/installer_metadata.dat root/Installer\\ Data/metadata.dat");
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();
 		CallSystem("bin/config_editor");
