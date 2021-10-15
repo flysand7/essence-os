@@ -1734,15 +1734,18 @@ bool FSCheckMBR(KBlockDevice *device) {
 	MBRPartition partitions[4];
 
 	if (MBRGetPartitions(device->signatureBlock, device->information.sectorCount, partitions)) {
+		bool foundAny = false;
+
 		for (uintptr_t i = 0; i < 4; i++) {
 			if (partitions[i].present) {
 				KernelLog(LOG_INFO, "FS", "MBR partition", "Found MBR partition %d with offset %d and count %d.\n", 
 						i, partitions[i].offset, partitions[i].count);
 				FSPartitionDeviceCreate(device, partitions[i].offset, partitions[i].count, ES_FLAGS_DEFAULT, EsLiteral("MBR partition"));
+				foundAny = true;
 			}
 		}
 
-		return true;
+		return foundAny;
 	} else {
 		return false;
 	}
