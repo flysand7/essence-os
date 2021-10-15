@@ -49,6 +49,15 @@ const EsStyle styleButtonsRow = {
 	},
 };
 
+const EsStyle styleTextboxMedium = {
+	.inherit = ES_STYLE_TEXTBOX_BORDERED_SINGLE,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
+		.preferredWidth = 80,
+	},
+};
+
 InstallerMetadata *metadata;
 Array<EsMessageDevice> connectedDrives;
 EsListView *drivesList;
@@ -66,8 +75,10 @@ EsPanel *panelComplete;
 EsPanel *panelError;
 EsPanel *panelNotSupported;
 EsTextbox *userNameTextbox;
+EsTextbox *timeTextbox;
 EsTextDisplay *progressDisplay;
 const char *cSelectedFont;
+int64_t clockOffsetMs;
 uint8_t progress;
 bool onWaitScreen;
 bool startedInstallation;
@@ -972,6 +983,15 @@ void Complete() {
 }
 
 void ButtonFinish(EsInstance *, EsElement *, EsCommand *) {
+	EsDateComponents base, modified;
+	EsDateNowUTC(&base);
+	modified = base;
+	// TODO Proper date/time parsing.
+	int64_t input = EsTextboxGetContentsAsDouble(timeTextbox); 
+	modified.hour = input / 100;
+	modified.minute = (input % 100) % 60;
+	clockOffsetMs = DateToLinear(&modified) - DateToLinear(&base);
+
 	if (progress == 100) {
 		Complete();
 	} else {
@@ -1084,6 +1104,19 @@ void _start() {
 		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(InstallerUserName));
 		userNameTextbox = EsTextboxCreate(table, ES_CELL_H_LEFT);
 		userNameTextbox->messageUser = UserNameTextboxMessage;
+
+		// TODO Proper date formatting.
+		EsDateComponents date;
+		EsDateNowUTC(&date);
+		char timeBuffer[64];
+		ptrdiff_t timeBytes = EsStringFormat(timeBuffer, sizeof(timeBuffer), "%d%d:%d%d", 
+				date.hour / 10, date.hour % 10, date.minute / 10, date.minute % 10); 
+
+		// TODO Make a date/time entry element or textbox overlay.
+		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(InstallerTime));
+		timeTextbox = EsTextboxCreate(table, ES_CELL_H_LEFT, &styleTextboxMedium);
+		EsTextboxInsert(timeTextbox, timeBuffer, timeBytes);
+		// TODO A date field.
 
 		EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_V_TOP, ES_STYLE_TEXT_RADIO_GROUP_LABEL, INTERFACE_STRING(InstallerSystemFont));
 		EsPanel *fonts = EsPanelCreate(table, ES_CELL_H_LEFT | ES_PANEL_RADIO_GROUP);

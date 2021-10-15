@@ -338,6 +338,7 @@ DEFINE_INTERFACE_STRING(InstallerFinish, "Finish");
 DEFINE_INTERFACE_STRING(InstallerCustomizeOptions, "Customize your computer.");
 DEFINE_INTERFACE_STRING(InstallerCustomizeOptionsHint, "More options will be available in Settings.");
 DEFINE_INTERFACE_STRING(InstallerUserName, "User name:");
+DEFINE_INTERFACE_STRING(InstallerTime, "Current time:");
 DEFINE_INTERFACE_STRING(InstallerSystemFont, "System font:");
 DEFINE_INTERFACE_STRING(InstallerFontDefault, "Default");
 DEFINE_INTERFACE_STRING(InstallerProgressMessage, "Installing, please wait" ELLIPSIS "\nDo not turn off your computer.\nProgress: \aw6]");

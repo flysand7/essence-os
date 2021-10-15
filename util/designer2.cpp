@@ -256,9 +256,10 @@ void InspectorPopulate();
 void InspectorPickTargetEnd();
 void CanvasSelectObject(struct Object *object);
 void CanvasSwitchView(void *cp);
-Rectangle8 ExportCalculatePaintOutsets(Object *object);
 void ObjectAddCommand(void *cp);
 void ObjectChangeTypeInternal(void *cp);
+Rectangle8 ExportCalculatePaintOutsets(Object *object);
+Rectangle8 ExportCalculateApproximateBorders(Object *object);
 
 //////////////////////////////////////////////////////////////
 
@@ -1988,9 +1989,12 @@ void InspectorPopulate() {
 		UIParentPop();
 
 		Rectangle8 paintOutsets = ExportCalculatePaintOutsets(PropertyFindOrInheritReadObject(style, "appearance"));
-		char paintOutsetsText[256];
-		snprintf(paintOutsetsText, sizeof(paintOutsetsText), "Paint outsets: %d, %d, %d, %d.", UI_RECT_ALL(paintOutsets));
-		UILabelCreate(0, 0, paintOutsetsText, -1);
+		char text[256];
+		snprintf(text, sizeof(text), "Paint outsets: %d, %d, %d, %d.", UI_RECT_ALL(paintOutsets));
+		UILabelCreate(0, 0, text, -1);
+		Rectangle8 approximateBorders = ExportCalculateApproximateBorders(PropertyFindOrInheritReadObject(style, "appearance"));
+		snprintf(text, sizeof(text), "Approximate borders: %d, %d, %d, %d.", UI_RECT_ALL(approximateBorders));
+		UILabelCreate(0, 0, text, -1);
 	} else {
 		UILabelCreate(0, 0, "Select an object to inspect.", -1);
 	}
@@ -2146,12 +2150,12 @@ Rectangle8 ExportCalculateApproximateBorders(Object *object) {
 
 		if (layerObject->type == OBJ_LAYER_BOX && position0 == 0 && position1 == 100 && position2 == 0 && position3 == 100
 				&& !PropertyReadInt32(layerObject, "shadowHiding") && !PropertyReadInt32(layerObject, "isBlurred")
-				&& mode == THEME_LAYER_MODE_BACKGROUND && PropertyFind(layerObject, "borderPaint")) {
+				&& mode == THEME_LAYER_MODE_BACKGROUND && PropertyFindOrInherit(layerObject, "borderPaint")) {
 			return { 
-				(int8_t) PropertyReadInt32(layerObject, "borders0"),
-				(int8_t) PropertyReadInt32(layerObject, "borders1"),
-				(int8_t) PropertyReadInt32(layerObject, "borders2"),
-				(int8_t) PropertyReadInt32(layerObject, "borders3"),
+				(int8_t) PropertyFindOrInheritReadInt32(layerObject, "borders0"),
+				(int8_t) PropertyFindOrInheritReadInt32(layerObject, "borders1"),
+				(int8_t) PropertyFindOrInheritReadInt32(layerObject, "borders2"),
+				(int8_t) PropertyFindOrInheritReadInt32(layerObject, "borders3"),
 			};
 		}
 	}

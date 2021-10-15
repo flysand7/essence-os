@@ -2239,6 +2239,7 @@ function double EsPerformanceTimerPop(); // Returns value in seconds.
 function double EsTimeStampMs(); // Current value of the performance timer, in ms.
 
 function void EsDateNowUTC(EsDateComponents *date); // Don't rely on the accuracy of the millisecond field.
+private function uint64_t DateToLinear(const EsDateComponents *date);
 
 // Strings.
 
