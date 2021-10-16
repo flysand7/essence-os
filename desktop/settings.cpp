@@ -54,14 +54,14 @@ const EsStyle styleSettingsGroupContainer2 = {
 };
 
 const uint32_t windowColors[][7] = {
-	{ 0xFFFF0032, 0xFFF78399, 0xFFDF6D83, 0xFFC0436B, 0xFFF2D0D6, 0xFFFACCD5, 0xFFDFB5BD },
-	{ 0xFFFF6042, 0xFFF7AEA1, 0xFFDF978A, 0xFFB5525F, 0xFFF2DCD8, 0xFFFADDD7, 0xFFDFC4BF },
-	{ 0xFFFF7F24, 0xFFF7BC93, 0xFFDFA57D, 0xFFC7825F, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
 	{ 0xFF67EFC4, 0xFFA9E7D3, 0xFF94D1BD, 0xFF6BA996, 0xFFD0E2DD, 0xFFD1EAE2, 0xFFBAD1C9 },
 	{ 0xFF54ACE5, 0xFF9BC3DD, 0xFF87AEC8, 0xFF6784A2, 0xFFC5D1D9, 0xFFC6D6E0, 0xFFB0BEC8 },
 	{ 0xFF448CF5, 0xFF9CBDED, 0xFF87A7D6, 0xFF5E7FB8, 0xFFD0DAE8, 0xFFD0DDF0, 0xFFB9C4D6 },
 	{ 0xFF044CF5, 0xFF7FA0ED, 0xFF6A8AD6, 0xFF4065B4, 0xFFC8D1E8, 0xFFC4D1F0, 0xFFAEBAD6 },
 	{ 0xFFAC00FF, 0xFFD183F7, 0xFFB96DDF, 0xFF8F41B5, 0xFFE6D0F2, 0xFFEBCCFA, 0xFFD1B5DF },
+	{ 0xFFFF0032, 0xFFF78399, 0xFFDF6D83, 0xFFC0436B, 0xFFF2D0D6, 0xFFFACCD5, 0xFFDFB5BD },
+	{ 0xFFFF6042, 0xFFF7AEA1, 0xFFDF978A, 0xFFB5525F, 0xFFF2DCD8, 0xFFFADDD7, 0xFFDFC4BF },
+	{ 0xFFFF7F24, 0xFFF7BC93, 0xFFDFA57D, 0xFFC7825F, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
 	{ 0xFFE8ECF9, 0xFFE9EBF1, 0xFFD2D3D9, 0xFFA9AAB0, 0xFFEAEAEC, 0xFFF1F1F4, 0xFFD6D7D9 },
 	{ 0xFFB7BBC5, 0xFFB8BABE, 0xFF9A9BA0, 0xFF85878B, 0xFFE9E9EA, 0xFFDEDFE1, 0xFFB9BABC },
 };
@@ -181,7 +181,7 @@ void SettingsLoadDefaults() {
 	SettingsPutValue("general", "show_cursor_shadow", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "scroll_lines_per_notch", EsLiteral("3"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "ui_scale", EsLiteral("100"), nullptr, nullptr, true, false);
-	SettingsPutValue("general", "window_color", EsLiteral("5"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "window_color", EsLiteral("2"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "use_smart_quotes", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "enable_hover_state", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "enable_animations", EsLiteral("1"), nullptr, nullptr, true, false);

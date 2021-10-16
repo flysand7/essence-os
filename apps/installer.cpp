@@ -998,7 +998,10 @@ void ButtonFinish(EsInstance *, EsElement *, EsCommand *) {
 	EsDateNowUTC(&base);
 	modified = base;
 	// TODO Proper date/time parsing.
-	int64_t input = EsTextboxGetContentsAsDouble(timeTextbox); 
+	size_t contentBytes;
+	char *contents = EsTextboxGetContents(timeTextbox, &contentBytes); 
+	int64_t input = EsIntegerParse(contents, contentBytes);
+	EsHeapFree(contents);
 	modified.hour = input / 100;
 	modified.minute = (input % 100) % 60;
 	clockOffsetMs = DateToLinear(&modified) - DateToLinear(&base);
