@@ -557,6 +557,9 @@ void DocumentSave(void *) {
 #ifdef OS_ESSENCE
 	EsBuffer buffer = { .canGrow = 1 };
 #define fwrite(a, b, c, d) EsBufferWrite(&buffer, (a), (b) * (c))
+#elif defined(UI_WINDOWS)
+	FILE *f = fopen("Theme Source.dat", "wb");
+	if (!f) return;
 #else
 	FILE *f = fopen("res/Theme Source.dat", "wb");
 #endif
@@ -590,6 +593,9 @@ void DocumentLoad() {
 	EsBuffer buffer = {};
 	buffer.out = (uint8_t *) EsFileStoreReadAll(fileStore, &buffer.bytes);
 #define fread(a, b, c, d) EsBufferReadInto(&buffer, (a), (b) * (c))
+#elif defined(UI_WINDOWS)
+	FILE *f = fopen("Theme Source.dat", "rb");
+	if (!f) return;
 #else
 	FILE *f = fopen("res/Theme Source.dat", "rb");
 	if (!f) return;
