@@ -1907,6 +1907,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 		statistics.commitRemaining = MM_REMAINING_COMMIT();
 		statistics.maximumObjectCachePages = MM_OBJECT_CACHE_PAGES_MAXIMUM();
 		statistics.approximateObjectCacheSize = pmm.approximateTotalObjectCacheBytes;
+		statistics.countZeroedPages = pmm.countZeroedPages;
+		statistics.countFreePages = pmm.countFreePages;
+		statistics.countStandbyPages = pmm.countStandbyPages;
+		statistics.countActivePages = pmm.countActivePages;
 		SYSCALL_WRITE(argument1, &statistics, sizeof(statistics));
 	}
 #endif

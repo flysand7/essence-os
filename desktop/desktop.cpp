@@ -89,7 +89,7 @@ struct TaskBar : EsElement {
 
 struct ContainerWindow {
 	WindowTabBand *tabBand;
-	TaskBarButton *taskBarButton;
+	TaskBarButton *taskBarButton; // Might be null. For example, in the installer there is no task bar.
 	EsWindow *window;
 	WindowTab *active;
 };
@@ -521,7 +521,7 @@ void WindowTabActivate(WindowTab *tab, bool force = false) {
 	if (tab->container->active != tab || force) {
 		tab->container->active = tab;
 		EsElementRelayout(tab->container->tabBand);
-		tab->container->taskBarButton->Repaint(true);
+		if (tab->container->taskBarButton) tab->container->taskBarButton->Repaint(true);
 		EsHandle handle = tab->notRespondingInstance ? tab->notRespondingInstance->embeddedWindowHandle : tab->applicationInstance->embeddedWindowHandle;
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, tab->window->handle, handle, 0, ES_WINDOW_PROPERTY_EMBED);
 	}
@@ -532,7 +532,7 @@ void WindowTabDestroy(WindowTab *tab) {
 
 	if (container->tabBand->items.Length() == 1) {
 		EsElementDestroy(container->window);
-		EsElementDestroy(container->taskBarButton);
+		if (container->taskBarButton) EsElementDestroy(container->taskBarButton);
 		desktop.allContainerWindows.FindAndDeleteSwap(container, true);
 	} else {
 		if (container->active == tab) {
@@ -604,18 +604,24 @@ int CursorLocatorMessage(EsElement *element, EsMessage *message) {
 }
 
 int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
-	if (desktop.installationState) {
-		// Do not process global keyboard shortcuts if the installer is running.
-	} else if (message->type == ES_MSG_KEY_DOWN) {
+	if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
-		int scancode = ScancodeMapToLabel(message->keyboard.scancode);
+		uint32_t scancode = ScancodeMapToLabel(message->keyboard.scancode);
 
-		if (ctrlOnly && scancode == ES_SCANCODE_N && !message->keyboard.repeat) {
+		if (ctrlOnly && scancode == ES_SCANCODE_N && !message->keyboard.repeat && !desktop.installationState) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
 		} else if (message->keyboard.modifiers == (ES_MODIFIER_CTRL | ES_MODIFIER_FLAG) && scancode == ES_SCANCODE_D) {
 			if (!desktop.inspectorOpen) {
 				desktop.inspectorOpen = true;
 				EsThreadCreate(DesktopInspectorThread, nullptr, 0);
+			} else {
+				// TODO Close the inspector.
+			}
+		} else if (message->keyboard.modifiers == (ES_MODIFIER_CTRL | ES_MODIFIER_FLAG) && scancode == ES_SCANCODE_DELETE) {
+			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+				if (desktop.installedApplications[i]->cName && 0 == EsCRTstrcmp(desktop.installedApplications[i]->cName, "System Monitor")) {
+					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
+				}
 			}
 		} else {
 			return 0;
@@ -646,11 +652,15 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 	ContainerWindow *container = (ContainerWindow *) element->userData.p;
 
 	if (message->type == ES_MSG_WINDOW_ACTIVATED) {
-		container->taskBarButton->customStyleState |= THEME_STATE_SELECTED;
-		container->taskBarButton->MaybeRefreshStyle();
+		if (container->taskBarButton) {
+			container->taskBarButton->customStyleState |= THEME_STATE_SELECTED;
+			container->taskBarButton->MaybeRefreshStyle();
+		}
 	} else if (message->type == ES_MSG_WINDOW_DEACTIVATED) {
-		container->taskBarButton->customStyleState &= ~THEME_STATE_SELECTED;
-		container->taskBarButton->MaybeRefreshStyle();
+		if (container->taskBarButton) {
+			container->taskBarButton->customStyleState &= ~THEME_STATE_SELECTED;
+			container->taskBarButton->MaybeRefreshStyle();
+		}
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
 		int scancode = ScancodeMapToLabel(message->keyboard.scancode);
@@ -1046,12 +1056,14 @@ ContainerWindow *ContainerWindowCreate() {
 		ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, (ContainerWindow *) element->window->userData.p);
 	});
 
-	container->taskBarButton = (TaskBarButton *) EsHeapAllocate(sizeof(TaskBarButton), true);
-	container->taskBarButton->customStyleState = THEME_STATE_SELECTED;
-	container->taskBarButton->containerWindow = container;
-	container->taskBarButton->Initialise(&desktop.taskBar.taskList, ES_CELL_FILL, 
-			TaskBarButtonMessage, ES_STYLE_TASK_BAR_BUTTON);
-	container->taskBarButton->cName = "task bar button";
+	if (!desktop.installationState) {
+		container->taskBarButton = (TaskBarButton *) EsHeapAllocate(sizeof(TaskBarButton), true);
+		container->taskBarButton->customStyleState = THEME_STATE_SELECTED;
+		container->taskBarButton->containerWindow = container;
+		container->taskBarButton->Initialise(&desktop.taskBar.taskList, ES_CELL_FILL, 
+				TaskBarButtonMessage, ES_STYLE_TASK_BAR_BUTTON);
+		container->taskBarButton->cName = "task bar button";
+	}
 
 	return container;
 }
@@ -2423,7 +2435,9 @@ ApplicationInstance *ApplicationInstanceFindForeground() {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 		WindowTab *tab = instance->tab;
 
-		if (tab && (tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) && tab->container->active == instance->tab) {
+		if (tab && tab->container->taskBarButton
+				&& (tab->container->taskBarButton->customStyleState & THEME_STATE_SELECTED) 
+				&& tab->container->active == instance->tab) {
 			return instance;
 		}
 	}
@@ -2506,6 +2520,12 @@ void DesktopSetup() {
 		}
 	}
 
+	{
+		EsRectangle screen;
+		EsSyscall(ES_SYSCALL_SCREEN_BOUNDS_GET, 0, (uintptr_t) &screen, 0, 0);
+		EsSyscall(ES_SYSCALL_SCREEN_WORK_AREA_SET, 0, (uintptr_t) &screen, 0, 0);
+	}
+
 	if (desktop.installationState == INSTALLATION_STATE_NONE) {
 		// Create the taskbar.
 
@@ -2580,7 +2600,7 @@ void DesktopSetup() {
 			EsHeapFree(firstApplication);
 		}
 	} else if (desktop.installationState == INSTALLATION_STATE_INSTALLER) {
-		// Start the instller.
+		// Start the installer.
 
 		if (!desktop.setupDesktopUIComplete) {
 			ApplicationInstanceCreate(desktop.installer->id, nullptr, nullptr, true /* hidden */);
@@ -2827,7 +2847,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		if (instance->tab) {
 			instance->tab->Repaint(true);
 
-			if (instance->tab == instance->tab->container->active) {
+			if (instance->tab == instance->tab->container->active && instance->tab->container->taskBarButton) {
 				instance->tab->container->taskBarButton->Repaint(true);
 			}
 		}

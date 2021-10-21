@@ -807,6 +807,7 @@ DoContextSwitch:
 	mov	cr3,rsi
 	.cont:
 	mov	rsp,rdi
+	mov	rsi,r8
 	call	PostContextSwitch
 	jmp	ReturnFromInterruptHandler
 

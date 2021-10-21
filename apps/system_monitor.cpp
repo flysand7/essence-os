@@ -300,6 +300,11 @@ void UpdateDisplay(Instance *instance, int index) {
 		ADD_MEMORY_STATISTIC_DISPLAY("Commit fixed limit:", "%D (%d pages)", statistics.commitFixedLimit * ES_PAGE_SIZE, statistics.commitFixedLimit);
 		ADD_MEMORY_STATISTIC_DISPLAY("Commit remaining:", "%D (%d pages)", statistics.commitRemaining * ES_PAGE_SIZE, statistics.commitRemaining);
 
+		ADD_MEMORY_STATISTIC_DISPLAY("Zeroed frames:", "%D (%d pages)", statistics.countZeroedPages * ES_PAGE_SIZE, statistics.countZeroedPages);
+		ADD_MEMORY_STATISTIC_DISPLAY("Free frames:", "%D (%d pages)", statistics.countFreePages * ES_PAGE_SIZE, statistics.countFreePages);
+		ADD_MEMORY_STATISTIC_DISPLAY("Standby frames:", "%D (%d pages)", statistics.countStandbyPages * ES_PAGE_SIZE, statistics.countStandbyPages);
+		ADD_MEMORY_STATISTIC_DISPLAY("Active frames:", "%D (%d pages)", statistics.countActivePages * ES_PAGE_SIZE, statistics.countActivePages);
+
 		EsTimerSet(REFRESH_INTERVAL, [] (EsGeneric context) {
 			Instance *instance = (Instance *) context.p;
 

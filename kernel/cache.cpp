@@ -912,13 +912,15 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 						// Mark the page as active before we map it.
 						MMPhysicalActivatePages(entry / K_PAGE_SIZE, 1, ES_FLAGS_DEFAULT);
 						frame->cacheReference = cachedSection->data + pageInCachedSectionIndex;
+					} else if (frame->state != MMPageFrame::ACTIVE) {
+						KernelPanic("CCSpaceAccess - Page frame %x was neither standby nor active.\n", frame);
 					} else if (!frame->active.references) {
 						KernelPanic("CCSpaceAccess - Active page frame %x had no references.\n", frame);
 					}
 
 					frame->active.references++;
-
 					MMArchMapPage(kernelMMSpace, entry & ~(K_PAGE_SIZE - 1), (uintptr_t) sectionBase + i * K_PAGE_SIZE, MM_MAP_PAGE_FRAME_LOCK_ACQUIRED);
+
 					__sync_synchronize();
 					section->referencedPages[i >> 3] |= 1 << (i & 7);
 					section->referencedPageCount++;
@@ -1095,10 +1097,23 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 				for (uintptr_t i = start; i < end; i += K_PAGE_SIZE) {
 					uintptr_t physicalAddress = MMArchTranslateAddress(kernelMMSpace, (uintptr_t) sectionBase + i, false);
 					KMutexAcquire(&pmm.pageFrameMutex);
-					pmm.pageFrames[physicalAddress / K_PAGE_SIZE].active.references++;
+					MMPageFrame *frame = &pmm.pageFrames[physicalAddress / K_PAGE_SIZE];
+
+					if (frame->state != MMPageFrame::ACTIVE || !frame->active.references) {
+						KernelPanic("CCSpaceAccess - Bad active frame %x; removed while still in use by the active section.\n", frame);
+					}
+					
+					frame->active.references++;
+
+					if (!MMArchMapPage(mapSpace, physicalAddress, (uintptr_t) buffer, 
+							mapFlags | MM_MAP_PAGE_IGNORE_IF_MAPPED /* since this isn't locked */
+							| MM_MAP_PAGE_FRAME_LOCK_ACQUIRED)) {
+						// The page was already mapped.
+						// Don't need to check if this goes to zero, because the page frame mutex is still acquired.
+						frame->active.references--;
+					}
+
 					KMutexRelease(&pmm.pageFrameMutex);
-					MMArchMapPage(mapSpace, physicalAddress, (uintptr_t) buffer, 
-							mapFlags | MM_MAP_PAGE_IGNORE_IF_MAPPED /* since this isn't locked */);
 					buffer += K_PAGE_SIZE;
 				}
 			} else if (flags & CC_ACCESS_READ) {

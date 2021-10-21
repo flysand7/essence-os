@@ -201,6 +201,15 @@ void Device::Initialise() {
 		drive->access = DriveAccess;
 		drive->information.driveType = ES_DRIVE_TYPE_USB_MASS_STORAGE;
 
+		char buffer[256];
+
+		if (parent->GetString(parent->deviceDescriptor.productString, buffer, sizeof(buffer))) {
+			size_t bytes = EsCStringLength(buffer);
+			if (bytes > sizeof(drive->information.model)) bytes = sizeof(drive->information.model);
+			EsMemoryCopy(drive->information.model, buffer, bytes);
+			drive->information.modelBytes = bytes;
+		}
+
 		FSRegisterBlockDevice(drive);
 	}
 }

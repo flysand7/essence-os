@@ -161,9 +161,9 @@ extern "C" size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi = false, int pr
 extern "C" void ProcessorDebugOutputByte(uint8_t byte);
 extern "C" void ProcessorFakeTimerInterrupt();
 extern "C" uint64_t ProcessorReadTimeStamp();
-extern "C" void DoContextSwitch(struct InterruptContext *context, 
-		uintptr_t virtualAddressSpace, uintptr_t threadKernelStack, struct Thread *newThread);
-extern "C" void ProcessorSetAddressSpace(uintptr_t virtualAddressSpaceIdentifier);
+extern "C" void DoContextSwitch(struct InterruptContext *context, uintptr_t virtualAddressSpace, uintptr_t threadKernelStack, 
+		struct Thread *newThread, struct MMSpace *oldAddressSpace);
+extern "C" void ProcessorSetAddressSpace(uintptr_t virtualAddressSpaceIdentifier); // Need to call MMSpaceOpenReference/MMSpaceCloseReference if using this.
 extern "C" uintptr_t ProcessorGetAddressSpace();
 extern "C" void ProcessorFlushCodeCache();
 extern "C" void ProcessorFlushCache();

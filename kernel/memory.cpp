@@ -66,19 +66,22 @@ struct MMRegion {
 // One per process.
 
 struct MMSpace {
-	VIRTUAL_ADDRESS_SPACE_DATA();	// Architecture specific data.
+	VIRTUAL_ADDRESS_SPACE_DATA();	 // Architecture specific data.
 
-	AVLTree<MMRegion>         	// Key =
-		freeRegionsBase, 	// Base address
-		freeRegionsSize, 	// Page count
-		usedRegions;     	// Base address
+	AVLTree<MMRegion>                // Key =
+		freeRegionsBase,         // Base address
+		freeRegionsSize,         // Page count
+		usedRegions;             // Base address
 	LinkedList<MMRegion> usedRegionsNonGuard;
 
-	KMutex reserveMutex; 		// Acquire to Access the region trees.
+	KMutex reserveMutex;             // Acquire to Access the region trees.
 
-	bool user; 			// Regions in the space may be accessed from userspace.
-	uint64_t commit; 		// An *approximate* commit in pages. TODO Better memory usage tracking.
-	uint64_t reserve;		// The number of reserved pages.
+	volatile int32_t referenceCount; // One per CPU using the space, and +1 while the process is alive.
+	                                 // We don't bother tracking for kernelMMSpace.
+
+	bool user; 	                 // Regions in the space may be accessed from userspace.
+	uint64_t commit;                 // An *approximate* commit in pages. TODO Better memory usage tracking.
+	uint64_t reserve;                // The number of reserved pages.
 };
 
 // A physical page of memory.
@@ -158,13 +161,13 @@ struct PMM {
 
 	uintptr_t countZeroedPages, countFreePages, countStandbyPages, countActivePages;
 
-#define MM_REMAINING_COMMIT()			  (pmm.commitLimit - pmm.commitPageable - pmm.commitFixed)
+#define MM_REMAINING_COMMIT() (pmm.commitLimit - pmm.commitPageable - pmm.commitFixed)
 	int64_t commitFixed, commitPageable, 
 		  commitFixedLimit, commitLimit;
 
-	                      			// Acquire to:
-	KMutex commitMutex,    			// (Un)commit pages.
-	      pageFrameMutex; 			// Allocate or free pages.
+	                      // Acquire to:
+	KMutex commitMutex,   // (Un)commit pages.
+	      pageFrameMutex; // Allocate or free pages.
 
 	KMutex pmManipulationLock;
 	KSpinlock pmManipulationProcessorLock;
@@ -177,12 +180,12 @@ struct PMM {
 	KMutex objectCacheListMutex;
 
 	// Events for when the number of available pages is low.
-#define MM_AVAILABLE_PAGES() 			(pmm.countZeroedPages + pmm.countFreePages + pmm.countStandbyPages)
+#define MM_AVAILABLE_PAGES() (pmm.countZeroedPages + pmm.countFreePages + pmm.countStandbyPages)
 	KEvent availableCritical, availableLow;
 	KEvent availableNotCritical;
 
 	// Event for when the object cache should be trimmed.
-#define MM_OBJECT_CACHE_SHOULD_TRIM()             (pmm.approximateTotalObjectCacheBytes / K_PAGE_SIZE > MM_OBJECT_CACHE_PAGES_MAXIMUM())
+#define MM_OBJECT_CACHE_SHOULD_TRIM() (pmm.approximateTotalObjectCacheBytes / K_PAGE_SIZE > MM_OBJECT_CACHE_PAGES_MAXIMUM())
 	uintptr_t approximateTotalObjectCacheBytes;
 	KEvent trimObjectCaches;
 
@@ -246,7 +249,7 @@ extern MMSpace _kernelMMSpace, _coreMMSpace;
 
 // Architecture-dependent functions.
 
-void MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualAddress, unsigned flags);
+bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualAddress, unsigned flags); // Returns false if the page was already mapped.
 void MMArchUnmapPages(MMSpace *space, uintptr_t virtualAddressStart, uintptr_t pageCount, unsigned flags, size_t unmapMaximum = 0, uintptr_t *resumePosition = nullptr);
 void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);
 bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
@@ -263,7 +266,7 @@ void MMFinalizeVAS(MMSpace *space);
 // Forward declarations.
 
 bool MMHandlePageFault(MMSpace *space, uintptr_t address, unsigned flags);
-bool MMUnmapFilePage(uintptr_t frameNumber, bool justLoaded = false); // Returns true if the page became inactive.
+bool MMUnmapFilePage(uintptr_t frameNumber); // Returns true if the page became inactive.
 
 // Public memory manager functions.
 
@@ -991,8 +994,7 @@ void MMUnreserve(MMSpace *space, MMRegion *remove, bool unmapPages, bool guardRe
 	}
 
 	if (unmapPages) {
-		MMArchUnmapPages(space, remove->baseAddress,
-				remove->pageCount, ES_FLAGS_DEFAULT);
+		MMArchUnmapPages(space, remove->baseAddress, remove->pageCount, ES_FLAGS_DEFAULT);
 	}
 	
 	space->reserve += remove->pageCount;
@@ -1573,8 +1575,7 @@ bool MMFree(MMSpace *space, void *address, size_t expectedSize, bool userOnly) {
 		} else if (region->flags & MM_REGION_SHARED) {
 			sharedRegionToFree = region->data.shared.region;
 		} else if (region->flags & MM_REGION_FILE) {
-			MMArchUnmapPages(space, region->baseAddress,
-					region->pageCount, MM_UNMAP_PAGES_FREE_COPIED | MM_UNMAP_PAGES_BALANCE_FILE);
+			MMArchUnmapPages(space, region->baseAddress, region->pageCount, MM_UNMAP_PAGES_FREE_COPIED | MM_UNMAP_PAGES_BALANCE_FILE);
 			unmapPages = false;
 
 			FSFile *node = region->data.file.node;
@@ -1651,58 +1652,58 @@ void MMSpaceDestroy(MMSpace *space) {
 	MMFreeVAS(space);
 }
 
-bool MMUnmapFilePage(uintptr_t frameNumber, bool justLoaded) {
+bool MMUnmapFilePage(uintptr_t frameNumber) {
 	KMutexAssertLocked(&pmm.pageFrameMutex);
-
 	MMPageFrame *frame = pmm.pageFrames + frameNumber;
 
-	if (!justLoaded) {
-		if (frame->state != MMPageFrame::ACTIVE || !frame->active.references) {
-			KernelPanic("MMUnmapFilePage - Corrupt page frame database (%d/%x).\n", frameNumber, frame);
-		}
-
-		// Decrease the reference count.
-		frame->active.references--;
+	if (frame->state != MMPageFrame::ACTIVE || !frame->active.references) {
+		KernelPanic("MMUnmapFilePage - Corrupt page frame database (%d/%x).\n", frameNumber, frame);
 	}
 
-	if (!frame->active.references) {
-		// If there are no more references, then the frame can be moved to the standby or modified list.
+	// Decrease the reference count.
+	frame->active.references--;
 
-		// EsPrint("Unmap file page: %x\n", frameNumber << K_PAGE_BITS);
-
-		{
-			frame->state = MMPageFrame::STANDBY;
-			pmm.countStandbyPages++;
-
-			if (*frame->cacheReference != ((frameNumber << K_PAGE_BITS) | MM_SHARED_ENTRY_PRESENT)) {
-				KernelPanic("MMUnmapFilePage - Corrupt shared reference back pointer in frame %x.\n", frame);
-			}
-
-			frame->list.next = pmm.firstStandbyPage;
-			frame->list.previous = &pmm.firstStandbyPage;
-			if (pmm.firstStandbyPage) pmm.pageFrames[pmm.firstStandbyPage].list.previous = &frame->list.next;
-			if (!pmm.lastStandbyPage) pmm.lastStandbyPage = frameNumber;
-			pmm.firstStandbyPage = frameNumber;
-
-			MMUpdateAvailablePageCount(true);
-		}
-
-		pmm.countActivePages--;
-		return true;
+	if (frame->active.references) {
+		return false;
 	}
 
-	return false;
+	// If there are no more references, then the frame can be moved to the standby or modified list.
+
+	// EsPrint("Unmap file page: %x\n", frameNumber << K_PAGE_BITS);
+
+	frame->state = MMPageFrame::STANDBY;
+	pmm.countStandbyPages++;
+
+	if (*frame->cacheReference != ((frameNumber << K_PAGE_BITS) | MM_SHARED_ENTRY_PRESENT)) {
+		KernelPanic("MMUnmapFilePage - Corrupt shared reference back pointer in frame %x.\n", frame);
+	}
+
+	frame->list.next = pmm.firstStandbyPage;
+	frame->list.previous = &pmm.firstStandbyPage;
+	if (pmm.firstStandbyPage) pmm.pageFrames[pmm.firstStandbyPage].list.previous = &frame->list.next;
+	if (!pmm.lastStandbyPage) pmm.lastStandbyPage = frameNumber;
+	pmm.firstStandbyPage = frameNumber;
+
+	MMUpdateAvailablePageCount(true);
+
+	pmm.countActivePages--;
+	return true;
 }
 
 void MMBalanceThread() {
 	size_t targetAvailablePages = 0;
 
 	while (true) {
+#if 1
 		if (MM_AVAILABLE_PAGES() >= targetAvailablePages) {
 			// Wait for there to be a low number of available pages.
 			KEventWait(&pmm.availableLow);
 			targetAvailablePages = MM_LOW_AVAILABLE_PAGES_THRESHOLD + MM_PAGES_TO_FIND_BALANCE;
 		}
+#else
+		// Test the balance thread works correctly by running it constantly.
+		targetAvailablePages = MM_AVAILABLE_PAGES() * 2;
+#endif
 
 		// EsPrint("--> Balance!\n");
 
@@ -1828,12 +1829,14 @@ void MMZeroPageThread() {
 			for (int j = 0; j < i; j++) pages[j] <<= K_PAGE_BITS;
 			if (i) PMZero(pages, i, false);
 
-			{
-				KMutexAcquire(&pmm.pageFrameMutex);
-				pmm.countActivePages -= i;
-				while (i--) MMPhysicalInsertZeroedPage(pages[i] >> K_PAGE_BITS);
-				KMutexRelease(&pmm.pageFrameMutex);
+			KMutexAcquire(&pmm.pageFrameMutex);
+			pmm.countActivePages -= i;
+
+			while (i--) {
+				MMPhysicalInsertZeroedPage(pages[i] >> K_PAGE_BITS);
 			}
+
+			KMutexRelease(&pmm.pageFrameMutex);
 		}
 	}
 }
@@ -1927,7 +1930,8 @@ void PMCopy(uintptr_t page, void *_source, size_t pageCount) {
 		void *region = pmm.pmManipulationRegion;
 
 		for (uintptr_t i = 0; i < doCount; i++) {
-			MMArchMapPage(vas, page + K_PAGE_SIZE * i, (uintptr_t) region + K_PAGE_SIZE * i, MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES);
+			MMArchMapPage(vas, page + K_PAGE_SIZE * i, (uintptr_t) region + K_PAGE_SIZE * i, 
+					MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES);
 		}
 
 		KSpinlockAcquire(&pmm.pmManipulationProcessorLock);
@@ -1963,7 +1967,8 @@ void PMRead(uintptr_t page, void *_source, size_t pageCount) {
 		void *region = pmm.pmManipulationRegion;
 
 		for (uintptr_t i = 0; i < doCount; i++) {
-			MMArchMapPage(vas, page + K_PAGE_SIZE * i, (uintptr_t) region + K_PAGE_SIZE * i, MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES);
+			MMArchMapPage(vas, page + K_PAGE_SIZE * i, (uintptr_t) region + K_PAGE_SIZE * i, 
+					MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES);
 		}
 
 		KSpinlockAcquire(&pmm.pmManipulationProcessorLock);
@@ -2265,6 +2270,42 @@ void MMObjectCacheTrimThread() {
 	}
 }
 
+void MMSpaceOpenReference(MMSpace *space) {
+	if (space == kernelMMSpace) {
+		return;
+	}
+
+	if (space->referenceCount < 1) {
+		KernelPanic("MMSpaceOpenReference - Space %x has invalid reference count.\n", space);
+	}
+
+	if (space->referenceCount >= K_MAX_PROCESSORS + 1) {
+		KernelPanic("MMSpaceOpenReference - Space %x has too many references (expected a maximum of %d).\n", K_MAX_PROCESSORS + 1);
+	}
+
+	__sync_fetch_and_add(&space->referenceCount, 1);
+}
+
+void MMSpaceCloseReference(MMSpace *space) {
+	if (space == kernelMMSpace) {
+		return;
+	}
+
+	if (space->referenceCount < 1) {
+		KernelPanic("MMSpaceCloseReference - Space %x has invalid reference count.\n", space);
+	}
+
+	if (__sync_fetch_and_sub(&space->referenceCount, 1) > 1) {
+		return;
+	}
+
+	KRegisterAsyncTask([] (EsGeneric _space) { 
+		MMSpace *space = (MMSpace *) _space.p;
+		MMFinalizeVAS(space);
+		scheduler.mmSpacePool.Remove(space);
+	}, space);
+}
+
 void MMInitialise() {
 	{
 		// Initialise coreMMSpace.
@@ -2297,7 +2338,7 @@ void MMInitialise() {
 		pmm.pmManipulationRegion = (void *) MMReserve(kernelMMSpace, PHYSICAL_MEMORY_MANIPULATION_REGION_PAGES * K_PAGE_SIZE, ES_FLAGS_DEFAULT)->baseAddress; 
 		KMutexRelease(&kernelMMSpace->reserveMutex);
 
-		physicalMemoryHighest += K_PAGE_SIZE << 3;
+		physicalMemoryHighest += K_PAGE_SIZE << 3; // 1 extra for the top page, then round up so the page bitset is byte-aligned.
 		pmm.pageFrames = (MMPageFrame *) MMStandardAllocate(kernelMMSpace, (physicalMemoryHighest >> K_PAGE_BITS) * sizeof(MMPageFrame), MM_REGION_FIXED);
 		pmm.freeOrZeroedPageBitset.Initialise(physicalMemoryHighest >> K_PAGE_BITS, true);
 

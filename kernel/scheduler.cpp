@@ -752,6 +752,7 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 	process->id = nextProcessID++;
 	KSpinlockRelease(&scheduler.lock);
 
+	process->vmm->referenceCount = 1;
 	process->allItem.thisItem = process;
 	process->handles = 1;
 	process->handleTable.process = process;
@@ -769,11 +770,18 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 }
 
 void Thread::SetAddressSpace(MMSpace *space) {
-	temporaryAddressSpace = space;
-
-	if (this == GetCurrentThread()) {
-		ProcessorSetAddressSpace(VIRTUAL_ADDRESS_SPACE_IDENTIFIER(space ? space : kernelMMSpace));
+	if (this != GetCurrentThread()) {
+		KernelPanic("Thread::SetAddressSpace - Cannot change another thread's address space.\n");
 	}
+
+	KSpinlockAcquire(&scheduler.lock);
+	MMSpace *oldSpace = temporaryAddressSpace ?: kernelMMSpace;
+	temporaryAddressSpace = space;
+	MMSpace *newSpace = space ?: kernelMMSpace;
+	MMSpaceOpenReference(newSpace);
+	ProcessorSetAddressSpace(VIRTUAL_ADDRESS_SPACE_IDENTIFIER(newSpace));
+	KSpinlockRelease(&scheduler.lock);
+	MMSpaceCloseReference(oldSpace);
 }
 
 void AsyncTaskThread() {
@@ -907,9 +915,7 @@ void Scheduler::RemoveProcess(Process *process) {
 
 	KRegisterAsyncTask([] (EsGeneric _process) { 
 		Process *process = (Process *) _process.p;
-		MMSpace *space = process->vmm;
-		if (process->executableStartRequest) MMFinalizeVAS(space);
-		scheduler.mmSpacePool.Remove(space);
+		MMSpaceCloseReference(process->vmm);
 		scheduler.processPool.Remove(process); 
 	}, process);
 
@@ -1222,12 +1228,13 @@ void Scheduler::Yield(InterruptContext *context) {
 	ProcessorDisableInterrupts(); // We don't want interrupts to get reenabled after the context switch.
 	KSpinlockAcquire(&lock);
 
-	local->currentThread->interruptContext = context;
-
 	if (lock.interruptsEnabled) {
 		KernelPanic("Scheduler::Yield - Interrupts were enabled when scheduler lock was acquired.\n");
 	}
 
+	MMSpace *oldAddressSpace = local->currentThread->temporaryAddressSpace ?: local->currentThread->process->vmm;
+
+	local->currentThread->interruptContext = context;
 	local->currentThread->executing = false;
 
 	bool killThread = local->currentThread->terminatableState == THREAD_TERMINATABLE 
@@ -1345,8 +1352,6 @@ void Scheduler::Yield(InterruptContext *context) {
 	uint64_t nextTimer = 1;
 	ArchNextTimer(nextTimer);
 
-	InterruptContext *newContext = newThread->interruptContext;
-
 	if (!local->processorID) {
 		// Update the scheduler's time.
 #if 1
@@ -1363,9 +1368,11 @@ void Scheduler::Yield(InterruptContext *context) {
 				^ 0x8000000000000000) | ProcessorReadTimeStamp();
 	}
 
-	MMSpace *addressSpace = newThread->process->vmm;
-	if (newThread->temporaryAddressSpace) addressSpace = newThread->temporaryAddressSpace;
-	DoContextSwitch(newContext, VIRTUAL_ADDRESS_SPACE_IDENTIFIER(addressSpace), newThread->kernelStack, newThread);
+	InterruptContext *newContext = newThread->interruptContext;
+	MMSpace *addressSpace = newThread->temporaryAddressSpace ?: newThread->process->vmm;
+	MMSpaceOpenReference(addressSpace);
+	DoContextSwitch(newContext, VIRTUAL_ADDRESS_SPACE_IDENTIFIER(addressSpace), newThread->kernelStack, newThread, oldAddressSpace);
+	KernelPanic("Scheduler::Yield - DoContextSwitch unexpectedly returned.\n");
 }
 
 void Scheduler::Shutdown() {

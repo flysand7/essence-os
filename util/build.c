@@ -308,7 +308,8 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 	}
 
 	if (flags & COMPILE_DO_BUILD) {
-		fprintf(f, "[install]\nfile=bin/drive\npartition_size=%d\npartition_label=%s\n\n", partitionSize, volumeLabel ?: "Essence HD");
+		fprintf(f, "[install]\nfile=bin/drive\npartition_size=%d\npartition_label=%s\n\n", 
+				partitionSize, volumeLabel ?: strcmp(GetOptionString("General.installation_state"), "0") ? "Essence Installer" : "Essence HD");
 	}
 
 	fclose(f);
@@ -431,7 +432,7 @@ void Run(int emulator, int log, int debug) {
 			const char *usbImage = GetOptionString("Emulator.USBImage");
 			char usbFlags[256];
 			if (usbImage && usbImage[0]) {
-				snprintf(usbFlags, sizeof(usbFlags), " -drive if=none,id=stick,file=%s -device usb-storage,bus=xhci.0,drive=stick ", usbImage);
+				snprintf(usbFlags, sizeof(usbFlags), " -drive if=none,format=raw,id=stick,file=%s -device usb-storage,bus=xhci.0,drive=stick ", usbImage);
 			} else {
 				usbFlags[0] = 0;
 			}
@@ -1006,6 +1007,16 @@ void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *p
 	DIR *directory = opendir(path);
 	struct dirent *entry;
 
+	{
+		// Make sure empty folders are preserved.
+		uint64_t length = (uint64_t) -1L;
+		fwrite(&length, 1, sizeof(length), file);
+		uint16_t pathBytes = strlen(path2);
+		fwrite(&pathBytes, 1, sizeof(pathBytes), file);
+		fwrite(path2, 1, pathBytes, file);
+		printf("Directory: %s\n", path2);
+	}
+
 	while ((entry = readdir(directory))) {
 		if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
 			continue;
@@ -1040,13 +1051,13 @@ void GatherFilesForInstallerArchive(FILE *file, const char *path1, const char *p
 	closedir(directory);
 }
 
-void BuildAndRun(int optimise, bool compile, int debug, int emulator) {
+void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 	Build(optimise, compile);
 
 	if (encounteredErrors) {
 		printf("Errors were encountered during the build.\n");
 	} else if (emulator != -1) {
-		Run(emulator, LOG_NORMAL, debug);
+		Run(emulator, log, debug);
 	}
 }
 
@@ -1067,27 +1078,35 @@ void DoCommand(const char *l) {
 	}
 
 	if (0 == strcmp(l, "b") || 0 == strcmp(l, "build")) {
-		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, -1);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, -1, LOG_NORMAL);
 	} else if (0 == strcmp(l, "opt") || 0 == strcmp(l, "build-optimised")) {
-		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, -1);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, -1, LOG_NORMAL);
 	} else if (0 == strcmp(l, "d") || 0 == strcmp(l, "debug")) {
-		BuildAndRun(OPTIMISE_OFF, true /* compile */, true /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, true /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "d3") || 0 == strcmp(l, "debug-without-compile")) {
-		BuildAndRun(OPTIMISE_OFF, false /* compile */, true /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, true /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "v") || 0 == strcmp(l, "vbox")) {
-		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX, LOG_NORMAL);
 	} else if (0 == strcmp(l, "v2") || 0 == strcmp(l, "vbox-without-opt")) {
-		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_VIRTUALBOX, LOG_NORMAL);
 	} else if (0 == strcmp(l, "v3") || 0 == strcmp(l, "vbox-without-compile")) {
-		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_VIRTUALBOX);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_VIRTUALBOX, LOG_NORMAL);
 	} else if (0 == strcmp(l, "t") || 0 == strcmp(l, "qemu-with-opt")) {
-		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "t2") || 0 == strcmp(l, "test")) {
-		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "t3") || 0 == strcmp(l, "qemu-without-compile")) {
-		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "e")) {
+		Run(EMULATOR_QEMU, LOG_NORMAL, DEBUG_LATER);
 	} else if (0 == strcmp(l, "k") || 0 == strcmp(l, "qemu-with-kvm")) {
-		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU);
+		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "kno")) {
+		BuildAndRun(OPTIMISE_ON, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "klv")) {
+		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
+	} else if (0 == strcmp(l, "tlv")) {
+		BuildAndRun(OPTIMISE_ON, true /* compile */, DEBUG_LATER /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
 	} else if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
 		exit(0);
 	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {

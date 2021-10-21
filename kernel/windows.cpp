@@ -372,6 +372,9 @@ void WindowManager::PressKey(unsigned scancode) {
 		| ((shift | shift2) ? ES_MODIFIER_SHIFT : 0)
 		| ((flag | flag2) ? ES_MODIFIER_FLAG : 0);
 
+	KernelLog(LOG_VERBOSE, "WM", "press key", "WindowManager::PressKey - Received key press %x. Modifiers are %X. Keys held: %d/%d%z.\n", 
+			scancode, modifiers, keysHeld, maximumKeysHeld, single ? " (single)" : "");
+
 	{
 		EsMessage message;
 		EsMemoryZero(&message, sizeof(EsMessage));
@@ -395,7 +398,9 @@ void WindowManager::PressKey(unsigned scancode) {
 			keysHeldBitSet[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
 		}
 
-		if (activeWindow) {
+		if ((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) {
+			desktopProcess->messageQueue.SendMessage(nullptr, &message);
+		} else if (activeWindow) {
 			SendMessageToWindow(activeWindow, &message);
 		} else {
 			desktopProcess->messageQueue.SendMessage(nullptr, &message);
@@ -829,6 +834,8 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 		return false;
 	}
 
+	windowManager.resizeQueued = false;
+
 	bool result = true;
 
 	isMaximised = flags & ES_WINDOW_MOVE_MAXIMIZED;
@@ -916,7 +923,7 @@ bool Window::Move(EsRectangle rectangle, uint32_t flags) {
 }
 
 void EmbeddedWindow::Destroy() {
-	KernelLog(LOG_VERBOSE, "Window Manager", "destroy embedded window", "EmbeddedWindow::Destroy - Destroying embedded window.\n");
+	KernelLog(LOG_INFO, "WM", "destroy embedded window", "EmbeddedWindow::Destroy - Destroying embedded window.\n");
 	EsHeapFree(this, sizeof(EmbeddedWindow), K_PAGED);
 }
 

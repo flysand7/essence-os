@@ -1896,6 +1896,10 @@ struct EsMemoryStatistics {
 	size_t commitRemaining;
 	size_t maximumObjectCachePages;
 	size_t approximateObjectCacheSize;
+	size_t countZeroedPages;
+	size_t countFreePages; 
+	size_t countStandbyPages;
+	size_t countActivePages;
 };
 
 struct EsFontInformation {

@@ -176,6 +176,13 @@ EsError Extract(const char *pathIn, size_t pathInBytes, const char *pathOut, siz
 		if (nameBytes > NAME_MAX - pathOutBytes) break;
 		if (!Decompress(e, e->pathBuffer + pathOutBytes, nameBytes)) break;
 
+		if (fileSize == (uint64_t) -1UL) {
+			EsPrint("Creating folder '%s'...\n", pathOutBytes + nameBytes, (const char *) e->pathBuffer);
+			EsPathCreate((const char *) e->pathBuffer, pathOutBytes + nameBytes, ES_NODE_DIRECTORY, true);
+			continue;
+		}
+
+		EsPrint("Copying file '%s' of size %D...\n", pathOutBytes + nameBytes, (const char *) e->pathBuffer, fileSize);
 		EsFileInformation fileOut = EsFileOpen((const char *) e->pathBuffer, pathOutBytes + nameBytes, 
 				ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES | ES_NODE_FAIL_IF_FOUND);
 		EsFileOffset fileOutPosition = 0;
