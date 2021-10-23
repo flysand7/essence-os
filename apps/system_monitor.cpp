@@ -401,6 +401,12 @@ void ProcessApplicationMessage(EsMessage *message) {
 		AddTab(toolbar, DISPLAY_PROCESSES, "Processes", true);
 		AddTab(toolbar, DISPLAY_GENERAL_LOG, "System log");
 		AddTab(toolbar, DISPLAY_MEMORY, "Memory");
+
+		EsSpacerCreate(toolbar, ES_CELL_H_FILL);
+
+		EsButtonOnCommand(EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Shutdown"), [] (Instance *, EsElement *, EsCommand *) {
+			EsSystemShowShutdownDialog();
+		});
 	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 		processes.Free();
 	}

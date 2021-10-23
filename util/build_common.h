@@ -260,6 +260,7 @@ typedef struct Option {
 
 Option options[] = {
 	{ "Driver.ACPI", OPTION_TYPE_BOOL, { .b = true } },
+	{ "Driver.ACPIThermal", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.AHCI", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.BGA", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Driver.EssenceFS", OPTION_TYPE_BOOL, { .b = true } },

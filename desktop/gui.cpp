@@ -1441,7 +1441,6 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 	}
 
 	if (state & UI_STATE_INSPECTING) EsPerformanceTimerPush();
-	double timeChildPaint = 0;
 
 	// Get the interpolated style.
 
@@ -1557,8 +1556,6 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 			// Paint the children.
 			// TODO Optimisation: don't paint children overlapped by an opaque sibling.
 
-			if (state & UI_STATE_INSPECTING) EsPerformanceTimerPush();
-
 			m.type = ES_MSG_PAINT_CHILDREN;
 			m.painter = painter;
 
@@ -1627,19 +1624,12 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 				zOrder.type = ES_MSG_AFTER_Z_ORDER;
 				EsMessageSend(this, &zOrder);
 			}
-
-			if (state & UI_STATE_INSPECTING) timeChildPaint = EsPerformanceTimerPop() * 1000;
 		}
 
 		// Let the inspector draw some decorations over the element.
 
 		painter->clip = oldClip;
 		InspectorNotifyElementPainted(this, painter);
-	}
-
-	if (state & UI_STATE_INSPECTING) {
-		double timeTotalPaint = EsPerformanceTimerPop() * 1000;
-		InspectorNotifyElementEvent(this, "paint", "Paint in %Fms (%Fms with children).", timeTotalPaint - timeChildPaint, timeTotalPaint);
 	}
 
 	*painter = oldPainter;

@@ -1056,3 +1056,13 @@ void KRegisterNetInterface(NetInterface *interface);
 void NetInterfaceReceive(NetInterface *interface, const uint8_t *data, size_t dataBytes, NetPacketType packetType); // NOTE Currently this can be only called on one thread for each NetInterface. (This restriction will hopefully be removed soon.)
 void NetInterfaceSetConnected(NetInterface *interface, bool connected); // NOTE This shouldn't be called by more than one thread.
 void NetInterfaceShutdown(NetInterface *interface); // NOTE This doesn't do any disconnecting/cancelling of tasks. Currently it only sends a DHCP request to release the IP address, and is expected to be called at the final stages of system shutdown.
+
+// ---------------------------------------------------------------------------------------------------------------
+// ACPI.
+// ---------------------------------------------------------------------------------------------------------------
+
+struct KACPIObject;
+typedef void (*KACPINotificationHandler)(KACPIObject *object, uint32_t value, EsGeneric context);
+EsError KACPIObjectEvaluateInteger(KACPIObject *object, const char *pathName, uint64_t *_integer);
+EsError KACPIObjectEvaluateMethodWithInteger(KACPIObject *object, const char *pathName, uint64_t integer);
+EsError KACPIObjectSetDeviceNotificationHandler(KACPIObject *object, KACPINotificationHandler handler, EsGeneric context);

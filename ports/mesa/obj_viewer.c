@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <string.h>
 #include <math.h>
+#include <essence.h>
 
 #define MODERN_GL
 
@@ -75,6 +76,9 @@ static void (*glVertexAttribPointer)(GLuint index, GLint size, GLenum type, GLbo
 uint32_t framesDrawn;
 double lastTime;
 float timeMs;
+float previousTimeMs;
+double lastGLDuration;
+double lastDrawBitmapDuration;
 
 int shaderTransform, shaderNormalTransform;
 size_t triangleCount, vertexCount;
@@ -122,6 +126,13 @@ void Render() {
 		return;
 	}
 
+	if (previousTimeMs == timeMs) {
+		return;
+	}
+
+	previousTimeMs = timeMs;
+	EsPerformanceTimerPush();
+
 	glClearColor(0.21f, 0.2f, 0.2f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #ifdef MODERN_GL
@@ -151,13 +162,15 @@ void Render() {
 	glEnd();
 #endif
 	glFinish();
-}
 
-#include <essence.h>
+	framesDrawn++;
+	lastGLDuration = EsPerformanceTimerPop();
+}
 
 int CanvasCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT_BACKGROUND) {
 		Render();
+		EsPerformanceTimerPush();
 		EsRectangle bounds = EsPainterBoundsInset(message->painter);
 		EsRectangle imageBounds = EsRectangleCenter(bounds, ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsDrawBitmap(message->painter, imageBounds, buffer, IMAGE_WIDTH * 4, ES_DRAW_BITMAP_OPAQUE);
@@ -165,19 +178,18 @@ int CanvasCallback(EsElement *element, EsMessage *message) {
 		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.r, bounds.r, bounds.t, bounds.b), 0xFF333336);
 		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, bounds.t, imageBounds.t), 0xFF333336);
 		EsDrawBlock(message->painter, ES_RECT_4(imageBounds.l, imageBounds.r, imageBounds.b, bounds.b), 0xFF333336);
-		framesDrawn++;
+		lastDrawBitmapDuration = EsPerformanceTimerPop();
 	} else if (message->type == ES_MSG_ANIMATE) {
 		double currentTime = EsTimeStampMs();
 
 		if (currentTime - lastTime > 1000.0) {
-			EsPrint("%d fps\n", framesDrawn);
+			EsPrint("%d fps (last frame: GL %F s, DrawBitmap %F s)\n", framesDrawn, lastGLDuration, lastDrawBitmapDuration);
 			lastTime = currentTime;
 			framesDrawn = 0;
 		}
 
 		message->animate.complete = false;
 		timeMs += message->animate.deltaMs;
-
 		
 		EsRectangle imageBounds = EsRectangleCenter(EsElementGetInsetBounds(element), ES_RECT_2S(IMAGE_WIDTH, IMAGE_HEIGHT));
 		EsElementRepaint(element, &imageBounds);

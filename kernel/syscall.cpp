@@ -1848,18 +1848,22 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
-#ifdef DEBUG_BUILD
-	if (argument0 == 1) {
-		ArchResetCPU();
-	} else if (argument0 == 2) {
-		KernelPanic("Debug command 2.\n");
-	} else if (argument0 == 3) {
+	if (argument0 == 3) {
+		SYSCALL_PERMISSION(ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT);
+		// TODO Temporary: moved out of the DEBUG_BUILD block.
 		extern char kernelLog[];
 		extern uintptr_t kernelLogPosition;
 		size_t bytes = kernelLogPosition;
 		if (argument2 < bytes) bytes = argument2;
 		EsMemoryCopy((void *) argument1, kernelLog, bytes);
 		SYSCALL_RETURN(bytes, false);
+	}
+
+#ifdef DEBUG_BUILD
+	if (argument0 == 1) {
+		ArchResetCPU();
+	} else if (argument0 == 2) {
+		KernelPanic("Debug command 2.\n");
 	} else if (argument0 == 4) {
 		SYSCALL_BUFFER(argument1, 1, 0, false);
 

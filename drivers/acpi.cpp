@@ -1,6 +1,3 @@
-// TODO ACPICA initialisation hangs on my computer when SMP is enabled when it tries to write to IO port 0xB2 (power management, generates SMI).
-// 	This is possibly related to the hang when writing to the keyboard controller IO ports that only occurs with SMP enabled.
-
 #define SIGNATURE_RSDP (0x2052545020445352)
 
 #define SIGNATURE_RSDT (0x54445352)
@@ -418,6 +415,7 @@ ES_EXTERN_C void AcpiOsReleaseLock(ACPI_SPINLOCK handle, ACPI_CPU_FLAGS flags) {
 	KSpinlockRelease(spinlock);
 }
 
+// TODO Can these arrays be made smaller?
 ACPI_OSD_HANDLER acpiInterruptHandlers[256];
 void *acpiInterruptContexts[256];
 
@@ -721,6 +719,100 @@ void ACPIEnumeratePRTEntries(ACPI_HANDLE pciBus) {
 		table = (ACPI_PCI_ROUTING_TABLE *) ((uint8_t *) table + table->Length);
 	}
 }
+
+struct KACPIObject : KDevice {
+	ACPI_HANDLE handle;
+	KACPINotificationHandler notificationHandler;
+	EsGeneric notificationHandlerContext;
+};
+
+void ACPINotificationHandler(ACPI_HANDLE, uint32_t value, void *context) {
+	KernelLog(LOG_INFO, "ACPI", "notification", "Received a notification with value %X.\n", value);
+	KACPIObject *object = (KACPIObject *) context;
+	object->notificationHandler(object, value, object->notificationHandlerContext);
+}
+
+EsError KACPIObjectSetDeviceNotificationHandler(KACPIObject *object, KACPINotificationHandler handler, EsGeneric context) {
+	object->notificationHandler = handler;
+	object->notificationHandlerContext = context;
+	ACPI_STATUS status = AcpiInstallNotifyHandler(object->handle, ACPI_DEVICE_NOTIFY, ACPINotificationHandler, object);
+	if (status == AE_OK) return ES_SUCCESS;
+	else if (status == AE_NO_MEMORY) return ES_ERROR_INSUFFICIENT_RESOURCES;
+	else return ES_ERROR_UNKNOWN;
+}
+
+EsError KACPIObjectEvaluateInteger(KACPIObject *object, const char *pathName, uint64_t *_integer) {
+	ACPI_BUFFER buffer = {};
+	buffer.Length = ACPI_ALLOCATE_BUFFER;
+
+	ACPI_STATUS status = AcpiEvaluateObject(object->handle, (char *) pathName, nullptr, &buffer);
+	EsError error = ES_SUCCESS;
+
+	if (status == AE_OK) {
+		ACPI_OBJECT *result = (ACPI_OBJECT *) buffer.Pointer;
+
+		if (result->Type == ACPI_TYPE_INTEGER) {
+			if (_integer) {
+				*_integer = result->Integer.Value;
+			}
+		} else {
+			error = ES_ERROR_UNKNOWN;
+		}
+
+		ACPI_FREE(buffer.Pointer);
+	} else if (status == AE_NO_MEMORY) {
+		error = ES_ERROR_INSUFFICIENT_RESOURCES;
+	} else if (status == AE_NOT_FOUND) {
+		error = ES_ERROR_FILE_DOES_NOT_EXIST;
+	} else {
+		error = ES_ERROR_UNKNOWN;
+	}
+
+	return error;
+}
+
+EsError KACPIObjectEvaluateMethodWithInteger(KACPIObject *object, const char *pathName, uint64_t integer) {
+	ACPI_OBJECT argument = {};
+	argument.Type = ACPI_TYPE_INTEGER;
+	argument.Integer.Value = integer;
+	ACPI_OBJECT_LIST argumentList = {};
+	argumentList.Count = 1;
+	argumentList.Pointer = &argument;
+	ACPI_STATUS status = AcpiEvaluateObject(object->handle, (char *) pathName, &argumentList, nullptr);
+	if (status == AE_OK) return ES_SUCCESS;
+	else if (status == AE_NO_MEMORY) return ES_ERROR_INSUFFICIENT_RESOURCES;
+	else if (status == AE_NOT_FOUND) return ES_ERROR_FILE_DOES_NOT_EXIST;
+	else return ES_ERROR_UNKNOWN;
+}
+
+ACPI_STATUS ACPIWalkNamespaceCallback(ACPI_HANDLE object, uint32_t depth, void *, void **) {
+	ACPI_DEVICE_INFO *information;
+	AcpiGetObjectInfo(object, &information);
+
+	char name[5];
+	EsMemoryCopy(name, &information->Name, 4);
+	name[4] = 0;
+
+	if (information->Type == ACPI_TYPE_DEVICE) {
+		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%z' at depth %d with HID '%z', UID '%z' and address %x.\n",
+				name, depth,
+				(information->Valid & ACPI_VALID_HID) ? information->HardwareId.String : "??",
+				(information->Valid & ACPI_VALID_UID) ? information->UniqueId.String : "??",
+				(information->Valid & ACPI_VALID_ADR) ? information->Address : 0);
+	}
+
+	if (information->Type == ACPI_TYPE_THERMAL) {
+		KACPIObject *device = (KACPIObject *) KDeviceCreate("ACPI object", acpi.computer, sizeof(KACPIObject));
+
+		if (device) {
+			device->handle = object;
+			KDeviceAttachByName(device, "ACPIThermal");
+		}
+	}
+
+	ACPI_FREE(information);
+	return AE_OK;
+}
 #endif
 
 void ACPIInitialise2() {
@@ -728,8 +820,6 @@ void ACPIInitialise2() {
 	AcpiInitializeSubsystem();
 	AcpiInitializeTables(nullptr, 256, true);
 	AcpiLoadTables();
-	ProcessorDisableInterrupts();
-	ProcessorEnableInterrupts();
 	AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
 	AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
 
@@ -739,23 +829,7 @@ void ACPIInitialise2() {
 	}
 
 	void *result;
-
-	AcpiGetDevices(nullptr, [] (ACPI_HANDLE object, uint32_t, void *, void **) -> ACPI_STATUS {
-		ACPI_DEVICE_INFO *information;
-		AcpiGetObjectInfo(object, &information);
-
-		char name[5];
-		EsMemoryCopy(name, &information->Name, 4);
-		name[4] = 0;
-
-		KernelLog(LOG_INFO, "ACPI", "device object", "Found device object '%z' with HID '%z', UID '%z' and address %x.\n",
-				name, (information->Valid & ACPI_VALID_HID) ? information->HardwareId.String : "??",
-				(information->Valid & ACPI_VALID_UID) ? information->UniqueId.String : "??",
-				(information->Valid & ACPI_VALID_ADR) ? information->Address : 0);
-
-		ACPI_FREE(information);
-		return AE_OK;
-	}, nullptr, &result);
+	AcpiWalkNamespace(ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, 10, ACPIWalkNamespaceCallback, nullptr, nullptr, &result);
 
 	ACPI_HANDLE pciBus;
 	char pciBusPath[] = "\\_SB_.PCI0";

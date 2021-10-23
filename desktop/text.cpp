@@ -2872,9 +2872,9 @@ Array<EsTextRun> TextApplySyntaxHighlighting(const EsTextStyle *baseStyle, int l
 // TODO Unicode grapheme/word boundaries.
 // TODO Selecting lines with the margin.
 
-struct DocumentLine {
-	char *GetBuffer(EsTextbox *textbox);
+#define GET_BUFFER(line) TextboxGetDocumentLineBuffer(textbox, line)
 
+struct DocumentLine {
 	int32_t lengthBytes,
 		lengthWidth, 
 		height,
@@ -3295,11 +3295,11 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 	}
 }
 
-char *DocumentLine::GetBuffer(EsTextbox *textbox) {
-	if (textbox->activeLineIndex == this - textbox->lines.array) {
+char *TextboxGetDocumentLineBuffer(EsTextbox *textbox, DocumentLine *line) {
+	if (textbox->activeLineIndex == line - textbox->lines.array) {
 		return textbox->activeLine;
 	} else {
-		return textbox->data + offset;
+		return textbox->data + line->offset;
 	}
 }
 
@@ -3358,7 +3358,7 @@ void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
 		int scrollX = textbox->scroll.position[0];
 		int viewportWidth = bounds.r;
 		int caretX = TextGetPartialStringWidth(textbox, &textbox->textStyle,
-				line->GetBuffer(textbox), line->lengthBytes, caret.byte) - scrollX + textbox->insets.l;
+				GET_BUFFER(line), line->lengthBytes, caret.byte) - scrollX + textbox->insets.l;
 
 		if (caretX < textbox->insets.l) {
 			scrollX += caretX - textbox->insets.l;
@@ -3386,7 +3386,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 
 		if (textbox->verticalMotionHorizontalDepth == -1) {
 			textbox->verticalMotionHorizontalDepth = TextGetPartialStringWidth(textbox, &textbox->textStyle,
-					textbox->lines[caret->line].GetBuffer(textbox), textbox->lines[caret->line].lengthBytes, caret->byte);
+					GET_BUFFER(&textbox->lines[caret->line]), textbox->lines[caret->line].lengthBytes, caret->byte);
 		}
 
 		if (right) caret->line++; else caret->line--;
@@ -3395,11 +3395,11 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 		DocumentLine *line = &textbox->lines[caret->line];
 		int pointX = textbox->verticalMotionHorizontalDepth ? textbox->verticalMotionHorizontalDepth - 1 : 0;
 		ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
-				line->GetBuffer(textbox), line->lengthBytes, &pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
+				GET_BUFFER(line), line->lengthBytes, &pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 		caret->byte = result == -1 ? line->lengthBytes : result;
 	} else {
 		CharacterType type = CHARACTER_INVALID;
-		char *currentLineBuffer = textbox->lines[caret->line].GetBuffer(textbox);
+		char *currentLineBuffer = GET_BUFFER(&textbox->lines[caret->line]);
 		if (moveType == MOVE_CARET_WORD && right) goto checkCharacterType;
 
 		while (true) {
@@ -3409,7 +3409,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 						caret->byte = utf8_retreat(currentLineBuffer + caret->byte) - currentLineBuffer;
 					} else {
 						caret->byte = textbox->lines[--caret->line].lengthBytes;
-						currentLineBuffer = textbox->lines[caret->line].GetBuffer(textbox);
+						currentLineBuffer = GET_BUFFER(&textbox->lines[caret->line]);
 					}
 				} else {
 					break; // We cannot move any further left.
@@ -3421,7 +3421,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 					} else {
 						caret->line++;
 						caret->byte = 0;
-						currentLineBuffer = textbox->lines[caret->line].GetBuffer(textbox);
+						currentLineBuffer = GET_BUFFER(&textbox->lines[caret->line]);
 					}
 				} else {
 					break; // We cannot move any further right.
@@ -3543,7 +3543,7 @@ void TextboxRefreshVisibleLines(EsTextbox *textbox, bool repaint = true) {
 		}
 
 		line->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle,
-				line->GetBuffer(textbox), line->lengthBytes);
+				GET_BUFFER(line), line->lengthBytes);
 
 		if (textbox->longestLine != -1 && line->lengthWidth > textbox->longestLineWidth) {
 			textbox->longestLine = textbox->firstVisibleLine + i;
@@ -4016,7 +4016,7 @@ char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {
 			}
 		}
 
-		EsMemoryCopy(buffer + position, line->GetBuffer(textbox) + offsetFrom, offsetTo - offsetFrom);
+		EsMemoryCopy(buffer + position, GET_BUFFER(line) + offsetFrom, offsetTo - offsetFrom);
 		position += offsetTo - offsetFrom;
 
 		if (includeNewline && i != lineTo) {
@@ -4058,7 +4058,7 @@ bool EsTextboxFind(EsTextbox *textbox, const char *needle, intptr_t _needleBytes
 
 	while (true) {
 		DocumentLine *line = &textbox->lines[lineIndex];
-		const char *buffer = line->GetBuffer(textbox);
+		const char *buffer = GET_BUFFER(line);
 		size_t bufferBytes = line->lengthBytes;
 		EsAssert(byteIndex <= bufferBytes); // Invalid find byte offset.
 
@@ -4174,7 +4174,7 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 				int pointX = positionX + textbox->scroll.position[0] - textbox->insets.l;
 				if (pointX < 0) pointX = 0;
 				ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
-						line->GetBuffer(textbox), line->lengthBytes, 
+						GET_BUFFER(line), line->lengthBytes, 
 						&pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 				textbox->carets[1].byte = result == -1 ? line->lengthBytes : result;
 			}
@@ -4359,7 +4359,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			if (textbox->syntaxHighlightingLanguage && line->lengthBytes) {
 				if (textRuns.Length()) textRuns.SetLength(0);
 				textRuns = TextApplySyntaxHighlighting(&textbox->textStyle, textbox->syntaxHighlightingLanguage, 
-						textbox->syntaxHighlightingColors, textRuns, line->GetBuffer(textbox), line->lengthBytes);
+						textbox->syntaxHighlightingColors, textRuns, GET_BUFFER(line), line->lengthBytes);
 			} else {
 				textRuns.SetLength(2);
 				textRuns[0].style = textbox->textStyle;
@@ -4376,7 +4376,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			if (!textRuns.Length()) {
 				plan = nullptr;
 			} else if (textRuns[1].offset) {
-				plan = EsTextPlanCreate(element, &properties, lineBounds, line->GetBuffer(textbox), textRuns.array, textRuns.Length() - 1);
+				plan = EsTextPlanCreate(element, &properties, lineBounds, GET_BUFFER(line), textRuns.array, textRuns.Length() - 1);
 			} else {
 				textRuns[1].offset = 1; // Make sure that the caret and selection is draw correctly, even on empty lines.
 				plan = EsTextPlanCreate(element, &properties, lineBounds, " ", textRuns.array, textRuns.Length() - 1);
@@ -4467,6 +4467,10 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			textbox->Repaint(true);
 			verticalMotion = true;
 		} else if (message->keyboard.scancode == ES_SCANCODE_BACKSPACE || message->keyboard.scancode == ES_SCANCODE_DELETE) {
+			if (!textbox->editing) {
+				EsTextboxStartEdit(textbox);
+			}
+
 			if (!TextboxCompareCarets(textbox->carets + 0, textbox->carets + 1)) {
 				TextboxMoveCaret(textbox, textbox->carets + 1, message->keyboard.scancode == ES_SCANCODE_BACKSPACE ? MOVE_CARET_BACKWARDS : MOVE_CARET_FORWARDS, 
 						ctrl ? MOVE_CARET_WORD : MOVE_CARET_SINGLE);
@@ -4495,7 +4499,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			if (inputString && (message->keyboard.modifiers & ~(ES_MODIFIER_SHIFT | ES_MODIFIER_ALT_GR)) == 0) {
 				if (textbox->smartQuotes && api.global->useSmartQuotes) {
 					DocumentLine *currentLine = &textbox->lines[textbox->carets[0].line];
-					const char *buffer = currentLine->GetBuffer(textbox);
+					const char *buffer = GET_BUFFER(currentLine);
 					bool left = !textbox->carets[0].byte || buffer[textbox->carets[0].byte - 1] == ' ';
 
 					if (inputString[0] == '"' && inputString[1] == 0) {
@@ -4511,7 +4515,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 					// Copy the indentation from the previous line.
 
 					DocumentLine *previousLine = &textbox->lines[textbox->carets[0].line - 1];
-					const char *buffer = previousLine->GetBuffer(textbox);
+					const char *buffer = GET_BUFFER(previousLine);
 					int32_t i = 0;
 					
 					for (; i < previousLine->lengthBytes; i++) {
@@ -4609,7 +4613,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 
 				if (selectionTo - selectionFrom == 7) {
 					char buffer[7];
-					EsMemoryCopy(buffer, textbox->lines[textbox->carets[0].line].GetBuffer(textbox) + selectionFrom, 7);
+					EsMemoryCopy(buffer, GET_BUFFER(&textbox->lines[textbox->carets[0].line]) + selectionFrom, 7);
 
 					if (buffer[0] == '#' && EsCRTisxdigit(buffer[1]) && EsCRTisxdigit(buffer[2]) && EsCRTisxdigit(buffer[3])
 							&& EsCRTisxdigit(buffer[4]) && EsCRTisxdigit(buffer[5]) && EsCRTisxdigit(buffer[6])) {
@@ -4662,7 +4666,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		EsElementRepaintForScroll(textbox, message, EsRectangleAdd(element->GetInternalOffset(), element->style->borders));
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {
 		DocumentLine *firstLine = &textbox->lines.First();
-		EsBufferFormat(message->getContent.buffer, "'%s'", firstLine->lengthBytes, firstLine->GetBuffer(textbox));
+		EsBufferFormat(message->getContent.buffer, "'%s'", firstLine->lengthBytes, GET_BUFFER(firstLine));
 	} else if (message->type == ES_MSG_UI_SCALE_CHANGED) {
 		if (textbox->margin) {
 			// Force the margin to update its style now, so that its width can be read correctly by TextboxStyleChanged.
@@ -4959,6 +4963,8 @@ void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uin
 void EsTextboxEnableSmartQuotes(EsTextbox *textbox, bool enabled) {
 	textbox->smartQuotes = enabled;
 }
+
+#undef GET_BUFFER
 
 // --------------------------------- Text displays.
 
