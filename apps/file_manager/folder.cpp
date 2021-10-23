@@ -504,21 +504,11 @@ void FolderPathMoved(String oldPath, String newPath, bool saveConfiguration) {
 		for (uintptr_t j = 0; j < instances[i]->pathBackwardHistory.Length(); j++) {
 			HistoryEntry *entry = &instances[i]->pathBackwardHistory[j];
 			PathReplacePrefix(&entry->path, oldPath, newPath);
-
-			if (StringStartsWith(oldPath, entry->path) && StringEquals(entry->focusedItem, StringSlice(oldPath, entry->path.bytes, -1))) {
-				StringDestroy(&entry->focusedItem);
-				entry->focusedItem = StringDuplicate(StringSlice(newPath, entry->path.bytes, -1));
-			}
 		}
 
 		for (uintptr_t j = 0; j < instances[i]->pathForwardHistory.Length(); j++) {
 			HistoryEntry *entry = &instances[i]->pathForwardHistory[j];
 			PathReplacePrefix(&entry->path, oldPath, newPath);
-
-			if (StringStartsWith(oldPath, entry->path) && StringEquals(entry->focusedItem, StringSlice(oldPath, entry->path.bytes, -1))) {
-				StringDestroy(&entry->focusedItem);
-				entry->focusedItem = StringDuplicate(StringSlice(newPath, entry->path.bytes, -1));
-			}
 		}
 	}
 
