@@ -15,7 +15,8 @@
 #define CC_ACTIVE_SECTION_SIZE                    ((EsFileOffset) 262144)             
 
 // Maximum number of active sections on the modified list. If exceeded, writers will wait for it to drop before retrying.
-#define CC_MAX_MODIFIED                           (33554432 / CC_ACTIVE_SECTION_SIZE) 
+// TODO This should based off the amount of physical memory.
+#define CC_MAX_MODIFIED                           (67108864 / CC_ACTIVE_SECTION_SIZE) 
 										      
 // The size of the kernel's address space used for mapping active sections.
 #if defined(ARCH_32)                                                                  

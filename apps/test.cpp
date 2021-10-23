@@ -144,12 +144,45 @@ int TestCanvasMessage(EsElement *, EsMessage *message) {
 	return 0;
 }
 
+const uint16_t daysBeforeMonthStart[] = { 
+	0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, // Normal year.
+	0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, // Leap year.
+};
+
+uint64_t DateToLinear(const EsDateComponents *components) {
+	uint64_t dayCount = 365 * components->year + daysBeforeMonthStart[components->month - 1] + components->day - 1;
+	uint16_t year = components->month < 3 ? components->year - 1 : components->year;
+	dayCount += 1 + year / 4 - year / 100 + year / 400; // Add additional days for leap years, only including this year's if we're past February.
+	return components->millisecond + 1000 * (components->second + 60 * (components->minute + 60 * (components->hour + 24 * dayCount)));
+}
+
 void InitialiseInstance(EsInstance *instance) {
 	// EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
 	// textbox = EsTextboxCreate(panel, ES_CELL_FILL | ES_TEXTBOX_ALLOW_TABS | ES_TEXTBOX_MULTILINE, ES_STYLE_TEXTBOX_NO_BORDER);
 	// Test();
 
 	EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, &stylePanel);
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Timing"), [] (EsInstance *, EsElement *element, EsCommand *) { 
+		EsDateComponents start, end;
+
+		EsDateNowUTC(&start);
+		EsPerformanceTimerPush();
+
+		for (uintptr_t i = 0; i < 50000000; i++) {
+			EsHeapFree(EsHeapAllocate(10, true));
+		}
+
+		double performanceTime = EsPerformanceTimerPop();
+		EsDateNowUTC(&end);
+
+		char message[4096];
+		size_t messageBytes = EsStringFormat(message, sizeof(message), "Performance time: %F s.\nScheduler time: %F s.\n", 
+				performanceTime, (DateToLinear(&end) - DateToLinear(&start)) / 1000.0);
+		EsDialogShow(element->window, "Timing results", -1, 
+				message, messageBytes, ES_ICON_DIALOG_INFORMATION, ES_DIALOG_ALERT_OK_BUTTON);
+	});
+
 	EsButtonCreate(panel, ES_BUTTON_CHECKBOX, 0, "Checkbox");
 
 	EsTextboxCreate(panel);

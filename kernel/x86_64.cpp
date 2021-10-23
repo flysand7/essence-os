@@ -654,7 +654,9 @@ void ArchCheckAddressInRange(int type, uintptr_t address) {
 	}
 }
 
-uint64_t ArchGetTimeMs() {
+uint64_t ArchGetTimeFromPITMs() {
+	// TODO This isn't working on real hardware, but ArchDelay1Ms is?
+
 	// NOTE This will only work if called at least once every 50 ms.
 	// 	(The PIT only stores a 16-bit counter, which is depleted every 50 ms.)
 

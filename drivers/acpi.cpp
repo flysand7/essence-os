@@ -1,9 +1,9 @@
 #define SIGNATURE_RSDP (0x2052545020445352)
-
 #define SIGNATURE_RSDT (0x54445352)
 #define SIGNATURE_XSDT (0x54445358)
 #define SIGNATURE_MADT (0x43495041)
 #define SIGNATURE_FADT (0x50434146)
+#define SIGNATURE_HPET (0x54455048)
 
 struct RootSystemDescriptorPointer {
 	uint64_t signature;
@@ -91,23 +91,6 @@ struct ACPILapic {
 	size_t ticksPerMs;
 };
 
-void ACPILapic::ArchNextTimer(size_t ms) {
-	WriteRegister(0x320 >> 2, TIMER_INTERRUPT | (1 << 17)); 
-	WriteRegister(0x380 >> 2, ticksPerMs * ms); 
-}
-
-void ACPILapic::EndOfInterrupt() {
-	WriteRegister(0xB0 >> 2, 0);
-}
-
-uint32_t ACPILapic::ReadRegister(uint32_t reg) {
-	return address[reg];
-}
-
-void ACPILapic::WriteRegister(uint32_t reg, uint32_t value) {
-	address[reg] = value;
-}
-
 struct ACPI {
 	void Initialise();
 	void FindRootSystemDescriptorPointer();
@@ -132,12 +115,42 @@ struct ACPI {
 	bool ps2ControllerUnavailable, vgaControllerUnavailable;
 	uint8_t centuryRegisterIndex;
 
+	volatile uint64_t *hpetBaseAddress;
+	uint64_t hpetPeriod; // 10^-15 seconds.
+
 	KDevice *computer;
 };
 
 ACPI acpi;
 
+void ACPILapic::ArchNextTimer(size_t ms) {
+	WriteRegister(0x320 >> 2, TIMER_INTERRUPT | (1 << 17)); 
+	WriteRegister(0x380 >> 2, ticksPerMs * ms); 
+}
+
+void ACPILapic::EndOfInterrupt() {
+	WriteRegister(0xB0 >> 2, 0);
+}
+
+uint32_t ACPILapic::ReadRegister(uint32_t reg) {
+	return address[reg];
+}
+
+void ACPILapic::WriteRegister(uint32_t reg, uint32_t value) {
+	address[reg] = value;
+}
+
 #ifdef ARCH_X86_COMMON
+uint64_t ArchGetTimeMs() {
+	if (acpi.hpetBaseAddress && acpi.hpetPeriod) {
+		__int128 fsToMs = 1000000000000;
+		__int128 reading = acpi.hpetBaseAddress[30];
+		return (uint64_t) (reading * (__int128) acpi.hpetPeriod / fsToMs);
+	} else {
+		return ArchGetTimeFromPITMs();
+	}
+}
+
 void ACPI::FindRootSystemDescriptorPointer() {
 	PhysicalMemoryRegion searchRegions[2];
 
@@ -977,6 +990,29 @@ void ACPI::Initialise() {
 				}
 
 				MMFree(kernelMMSpace, fadt);
+			} else if (header->signature == SIGNATURE_HPET) {
+				ACPIDescriptorTable *hpet = (ACPIDescriptorTable *) MMMapPhysical(kernelMMSpace, address, header->length, ES_FLAGS_DEFAULT);
+				hpet->Check();
+				
+				if (header->length > 52 && ((uint8_t *) header)[52] == 0) {
+					uint64_t baseAddress;
+					EsMemoryCopy(&baseAddress, (uint8_t *) header + 44, sizeof(uint64_t));
+					KernelLog(LOG_INFO, "ACPI", "HPET", "Found primary HPET with base address %x.\n", baseAddress);
+					hpetBaseAddress = (uint64_t *) MMMapPhysical(kernelMMSpace, baseAddress, 1024, ES_FLAGS_DEFAULT);
+
+					if (hpetBaseAddress) {
+						hpetBaseAddress[2] |= 1; // Start the main counter.
+
+						hpetPeriod = hpetBaseAddress[0] >> 32;
+						uint8_t revisionID = hpetBaseAddress[0] & 0xFF;
+						uint64_t initialCount = hpetBaseAddress[30];
+
+						KernelLog(LOG_INFO, "ACPI", "HPET", "HPET has period of %d fs, revision ID %d, and initial count %d.\n",
+								hpetPeriod, revisionID, initialCount);
+					}
+				}
+
+				MMFree(kernelMMSpace, hpet);
 			}
 
 			MMFree(kernelMMSpace, header);

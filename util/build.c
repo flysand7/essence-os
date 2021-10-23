@@ -56,7 +56,7 @@ BuildFont fonts[] = {
 		{ "2i", "Inter Extra Light Italic.otf" },
 		{ "3", "Inter Light.otf" },
 		{ "3i", "Inter Light Italic.otf" },
-		{ "4", "Inter Regular.otf" },
+		{ "4", "Inter Regular.otf", .required = true },
 		{ "4i", "Inter Regular Italic.otf" },
 		{ "5", "Inter Medium.otf" },
 		{ "5i", "Inter Medium Italic.otf" },
@@ -72,7 +72,7 @@ BuildFont fonts[] = {
 	} },
 
 	{ "Hack", "Hack License.md", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
-		{ "4", "Hack Regular.ttf" },
+		{ "4", "Hack Regular.ttf", .required = true },
 		{ "4i", "Hack Regular Italic.ttf" },
 		{ "7", "Hack Bold.ttf" },
 		{ "7i", "Hack Bold Italic.ttf" },
@@ -268,19 +268,39 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 
 	uintptr_t fontIndex = 0;
 
+	bool requiredFontsOnly = IsOptionEnabled("BuildCore.RequiredFontsOnly");
+
 	while (fonts[fontIndex].files) {
 		BuildFont *font = fonts + fontIndex;
-		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
+		fontIndex++;
+
 		uintptr_t fileIndex = 0;
+		bool noRequiredFiles = true;
 
 		while (font->files[fileIndex].path) {
-			FontFile *file = font->files + fileIndex;
-			fprintf(f, ".%s=%s\n", file->type, file->path);
+			if (font->files[fileIndex].required) {
+				noRequiredFiles = false;
+				break;
+			}
+
 			fileIndex++;
 		}
 
+		if (noRequiredFiles) {
+			continue;
+		}
+
+		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
+		fileIndex = 0;
+
+		while (font->files[fileIndex].path) {
+			FontFile *file = font->files + fileIndex;
+			fileIndex++;
+			if (requiredFontsOnly && !file->required) continue;
+			fprintf(f, ".%s=%s\n", file->type, file->path);
+		}
+
 		fprintf(f, "\n");
-		fontIndex++;
 	}
 
 	if (~flags & COMPILE_SKIP_COMPILE) {

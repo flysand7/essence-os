@@ -40,6 +40,7 @@ typedef struct ApplicationDependencies {
 typedef struct FontFile {
 	const char *type;
 	const char *path;
+	bool required;
 } FontFile;
 
 typedef struct BuildFont {
@@ -317,6 +318,7 @@ Option options[] = {
 	{ "Emulator.SerialToFile", OPTION_TYPE_BOOL, { .b = true } },
 	{ "BuildCore.Verbose", OPTION_TYPE_BOOL, { .b = false } },
 	{ "BuildCore.NoImportPOSIX", OPTION_TYPE_BOOL, { .b = false } },
+	{ "BuildCore.RequiredFontsOnly", OPTION_TYPE_BOOL, { .b = false } },
 	{ "General.first_application", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.wallpaper", OPTION_TYPE_STRING, { .s = NULL } },
 	{ "General.installation_state", OPTION_TYPE_STRING, { .s = "0" } },
