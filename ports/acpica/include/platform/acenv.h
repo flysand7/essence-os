@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -270,6 +270,21 @@
 #define ACPI_DISASSEMBLER 1
 #endif
 
+/*
+ * acpisrc CR\LF support
+ * Unix file line endings do not include the carriage return.
+ * If the acpisrc utility is being built using a microsoft compiler, it means
+ * that it will be running on a windows machine which means that the output is
+ * expected to have CR/LF newlines. If the acpisrc utility is built with
+ * anything else, it will likely run on a system with LF newlines. This flag
+ * tells the acpisrc utility that newlines will be in the LF format.
+ */
+#if defined(ACPI_SRC_APP) && !defined(_MSC_VER)
+#define ACPI_SRC_OS_LF_ONLY 1
+#else
+#define ACPI_SRC_OS_LF_ONLY 0
+#endif
+
 /*! [Begin] no source code translation */
 
 /******************************************************************************
@@ -290,10 +305,11 @@
 
 #endif
 
-#include "acessence.h"
-
 #if defined(_LINUX) || defined(__linux__)
 #include "aclinux.h"
+
+#elif defined(OS_ESSENCE)
+#include "acessence.h"
 
 #elif defined(_APPLE) || defined(__APPLE__)
 #include "acmacosx.h"
@@ -349,7 +365,7 @@
 
 /* Unknown environment */
 
-/*#error Unknown target environment*/
+#error Unknown target environment
 #endif
 
 /*! [End] no source code translation !*/

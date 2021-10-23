@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -308,6 +308,7 @@ ACPI_GLOBAL (ACPI_MEMORY_LIST *,        AcpiGbl_GlobalList);
 ACPI_GLOBAL (ACPI_MEMORY_LIST *,        AcpiGbl_NsNodeList);
 ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_DisplayFinalMemStats);
 ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_DisableMemTracking);
+ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_VerboseLeakDump);
 #endif
 
 
@@ -317,16 +318,11 @@ ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_DisableMemTracking);
  *
  ****************************************************************************/
 
-#if !defined (ACPI_NO_METHOD_EXECUTION) || defined (ACPI_CONSTANT_EVAL_ONLY)
 #define NUM_PREDEFINED_NAMES            10
-#else
-#define NUM_PREDEFINED_NAMES            9
-#endif
 
 ACPI_GLOBAL (ACPI_NAMESPACE_NODE,       AcpiGbl_RootNodeStruct);
 ACPI_GLOBAL (ACPI_NAMESPACE_NODE *,     AcpiGbl_RootNode);
 ACPI_GLOBAL (ACPI_NAMESPACE_NODE *,     AcpiGbl_FadtGpeDevice);
-ACPI_GLOBAL (ACPI_OPERAND_OBJECT *,     AcpiGbl_ModuleCodeList);
 
 extern const UINT8                      AcpiGbl_NsProperties [ACPI_NUM_NS_TYPES];
 extern const ACPI_PREDEFINED_NAMES      AcpiGbl_PreDefinedNames [NUM_PREDEFINED_NAMES];
@@ -369,6 +365,8 @@ ACPI_INIT_GLOBAL (ACPI_COMMENT_NODE,   *AcpiGbl_LastListHead, NULL);
 extern ACPI_BIT_REGISTER_INFO           AcpiGbl_BitRegisterInfo[ACPI_NUM_BITREG];
 ACPI_GLOBAL (UINT8,                     AcpiGbl_SleepTypeA);
 ACPI_GLOBAL (UINT8,                     AcpiGbl_SleepTypeB);
+ACPI_GLOBAL (UINT8,                     AcpiGbl_SleepTypeAS0);
+ACPI_GLOBAL (UINT8,                     AcpiGbl_SleepTypeBS0);
 
 
 /*****************************************************************************
@@ -440,6 +438,7 @@ ACPI_GLOBAL (ACPI_EXTERNAL_FILE *,      AcpiGbl_ExternalFileList);
 #ifdef ACPI_DEBUGGER
 ACPI_INIT_GLOBAL (BOOLEAN,              AcpiGbl_AbortMethod, FALSE);
 ACPI_INIT_GLOBAL (ACPI_THREAD_ID,       AcpiGbl_DbThreadId, ACPI_INVALID_THREAD_ID);
+ACPI_INIT_GLOBAL (UINT32,               AcpiGbl_NextCmdNum, 1);
 
 ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_DbOpt_NoIniMethods);
 ACPI_GLOBAL (BOOLEAN,                   AcpiGbl_DbOpt_NoRegionSupport);

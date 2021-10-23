@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -177,13 +177,13 @@
 #define ACPI_SIG_TCPA           "TCPA"      /* Trusted Computing Platform Alliance table */
 #define ACPI_SIG_TPM2           "TPM2"      /* Trusted Platform Module 2.0 H/W interface table */
 #define ACPI_SIG_UEFI           "UEFI"      /* Uefi Boot Optimization Table */
-#define ACPI_SIG_VRTC           "VRTC"      /* Virtual Real Time Clock Table */
+#define ACPI_SIG_VIOT           "VIOT"      /* Virtual I/O Translation Table */
 #define ACPI_SIG_WAET           "WAET"      /* Windows ACPI Emulated devices Table */
 #define ACPI_SIG_WDAT           "WDAT"      /* Watchdog Action Table */
 #define ACPI_SIG_WDDT           "WDDT"      /* Watchdog Timer Description Table */
 #define ACPI_SIG_WDRT           "WDRT"      /* Watchdog Resource Table */
 #define ACPI_SIG_WPBT           "WPBT"      /* Windows Platform Binary Table */
-#define ACPI_SIG_WSMT           "WSMT"      /* Windows SMM Security Migrations Table */
+#define ACPI_SIG_WSMT           "WSMT"      /* Windows SMM Security Mitigations Table */
 #define ACPI_SIG_XENV           "XENV"      /* Xen Environment table */
 #define ACPI_SIG_XXXX           "XXXX"      /* Intermediate AML header for ASL/ASL+ converter */
 
@@ -350,8 +350,10 @@ enum AcpiSratType
     ACPI_SRAT_TYPE_MEMORY_AFFINITY      = 1,
     ACPI_SRAT_TYPE_X2APIC_CPU_AFFINITY  = 2,
     ACPI_SRAT_TYPE_GICC_AFFINITY        = 3,
-    ACPI_SRAT_TYPE_GIC_ITS_AFFINITY     = 4,    /* ACPI 6.2 */
-    ACPI_SRAT_TYPE_RESERVED             = 5     /* 5 and greater are reserved */
+    ACPI_SRAT_TYPE_GIC_ITS_AFFINITY     = 4, /* ACPI 6.2 */
+    ACPI_SRAT_TYPE_GENERIC_AFFINITY     = 5, /* ACPI 6.3 */
+    ACPI_SRAT_TYPE_GENERIC_PORT_AFFINITY = 6, /* ACPI 6.4 */
+    ACPI_SRAT_TYPE_RESERVED              = 7  /* 7 and greater are reserved */
 };
 
 /*
@@ -446,6 +448,28 @@ typedef struct acpi_srat_gic_its_affinity
 
 } ACPI_SRAT_GIC_ITS_AFFINITY;
 
+/*
+ * Common structure for SRAT subtable types:
+ * 5: ACPI_SRAT_TYPE_GENERIC_AFFINITY
+ * 6: ACPI_SRAT_TYPE_GENERIC_PORT_AFFINITY
+ */
+
+typedef struct acpi_srat_generic_affinity
+{
+    ACPI_SUBTABLE_HEADER    Header;
+    UINT8                   Reserved;
+    UINT8                   DeviceHandleType;
+    UINT32                  ProximityDomain;
+    UINT8                   DeviceHandle[16];
+    UINT32                  Flags;
+    UINT32                  Reserved1;
+
+} ACPI_SRAT_GENERIC_AFFINITY;
+
+/* Flags for ACPI_SRAT_GENERIC_AFFINITY */
+
+#define ACPI_SRAT_GENERIC_AFFINITY_ENABLED     (1)      /* 00: Use affinity structure */
+#define ACPI_SRAT_ARCHITECTURAL_TRANSACTIONS   (1<<1)   /* ACPI 6.4 */
 
 /*******************************************************************************
  *
@@ -552,6 +576,34 @@ typedef struct acpi_table_tcpa_server
  *
  ******************************************************************************/
 
+/* Revision 3 */
+
+typedef struct acpi_table_tpm23
+{
+    ACPI_TABLE_HEADER       Header;             /* Common ACPI table header */
+    UINT32                  Reserved;
+    UINT64                  ControlAddress;
+    UINT32                  StartMethod;
+
+} ACPI_TABLE_TPM23;
+
+/* Value for StartMethod above */
+
+#define ACPI_TPM23_ACPI_START_METHOD                 2
+
+/*
+ * Optional trailer for revision 3. If start method is 2, there is a 4 byte
+ * reserved area of all zeros.
+ */
+typedef struct acpi_tmp23_trailer
+{
+    UINT32                  Reserved;
+
+} ACPI_TPM23_TRAILER;
+
+
+/* Revision 4 */
+
 typedef struct acpi_table_tpm2
 {
     ACPI_TABLE_HEADER       Header;             /* Common ACPI table header */
@@ -638,29 +690,82 @@ typedef struct acpi_table_uefi
 
 /*******************************************************************************
  *
- * VRTC - Virtual Real Time Clock Table
+ * VIOT - Virtual I/O Translation Table
  *        Version 1
- *
- * Conforms to "Simple Firmware Interface Specification",
- * Draft 0.8.2, Oct 19, 2010
- * NOTE: The ACPI VRTC is equivalent to The SFI MRTC table.
  *
  ******************************************************************************/
 
-typedef struct acpi_table_vrtc
+typedef struct acpi_table_viot
 {
     ACPI_TABLE_HEADER       Header;             /* Common ACPI table header */
+    UINT16                  NodeCount;
+    UINT16                  NodeOffset;
+    UINT8                   Reserved[8];
 
-} ACPI_TABLE_VRTC;
+} ACPI_TABLE_VIOT;
 
-/* VRTC entry */
+/* VIOT subtable header */
 
-typedef struct acpi_vrtc_entry
+typedef struct acpi_viot_header
 {
-    ACPI_GENERIC_ADDRESS    PhysicalAddress;
-    UINT32                  Irq;
+    UINT8                   Type;
+    UINT8                   Reserved;
+    UINT16                  Length;
 
-} ACPI_VRTC_ENTRY;
+} ACPI_VIOT_HEADER;
+
+/* Values for Type field above */
+
+enum AcpiViotNodeType
+{
+    ACPI_VIOT_NODE_PCI_RANGE            = 0x01,
+    ACPI_VIOT_NODE_MMIO                 = 0x02,
+    ACPI_VIOT_NODE_VIRTIO_IOMMU_PCI     = 0x03,
+    ACPI_VIOT_NODE_VIRTIO_IOMMU_MMIO    = 0x04,
+    ACPI_VIOT_RESERVED                  = 0x05
+};
+
+/* VIOT subtables */
+
+typedef struct acpi_viot_pci_range
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT32                  EndpointStart;
+    UINT16                  SegmentStart;
+    UINT16                  SegmentEnd;
+    UINT16                  BdfStart;
+    UINT16                  BdfEnd;
+    UINT16                  OutputNode;
+    UINT8                   Reserved[6];
+
+} ACPI_VIOT_PCI_RANGE;
+
+typedef struct acpi_viot_mmio
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT32                  Endpoint;
+    UINT64                  BaseAddress;
+    UINT16                  OutputNode;
+    UINT8                   Reserved[6];
+
+} ACPI_VIOT_MMIO;
+
+typedef struct acpi_viot_virtio_iommu_pci
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT16                  Segment;
+    UINT16                  Bdf;
+    UINT8                   Reserved[8];
+
+} ACPI_VIOT_VIRTIO_IOMMU_PCI;
+
+typedef struct acpi_viot_virtio_iommu_mmio
+{
+    ACPI_VIOT_HEADER        Header;
+    UINT8                   Reserved[4];
+    UINT64                  BaseAddress;
+
+} ACPI_VIOT_VIRTIO_IOMMU_MMIO;
 
 
 /*******************************************************************************
@@ -854,13 +959,19 @@ typedef struct acpi_table_wpbt
 
 } ACPI_TABLE_WPBT;
 
+typedef struct acpi_wpbt_unicode
+{
+    UINT16                  *UnicodeString;
+
+} ACPI_WPBT_UNICODE;
+
 
 /*******************************************************************************
  *
- * WSMT - Windows SMM Security Migrations Table
+ * WSMT - Windows SMM Security Mitigations Table
  *        Version 1
  *
- * Conforms to "Windows SMM Security Migrations Table",
+ * Conforms to "Windows SMM Security Mitigations Table",
  * Version 1.0, April 18, 2016
  *
  ******************************************************************************/

@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -287,7 +287,7 @@ typedef struct acpi_resource_irq
     UINT8                           DescriptorLength;
     UINT8                           Triggering;
     UINT8                           Polarity;
-    UINT8                           Sharable;
+    UINT8                           Shareable;
     UINT8                           WakeCapable;
     UINT8                           InterruptCount;
     UINT8                           Interrupts[1];
@@ -534,7 +534,7 @@ typedef struct acpi_resource_extended_irq
     UINT8                           ProducerConsumer;
     UINT8                           Triggering;
     UINT8                           Polarity;
-    UINT8                           Sharable;
+    UINT8                           Shareable;
     UINT8                           WakeCapable;
     UINT8                           InterruptCount;
     ACPI_RESOURCE_SOURCE            ResourceSource;
@@ -558,7 +558,7 @@ typedef struct acpi_resource_gpio
     UINT8                           ConnectionType;
     UINT8                           ProducerConsumer;   /* For values, see Producer/Consumer above */
     UINT8                           PinConfig;
-    UINT8                           Sharable;           /* For values, see Interrupt Attributes above */
+    UINT8                           Shareable;           /* For values, see Interrupt Attributes above */
     UINT8                           WakeCapable;        /* For values, see Interrupt Attributes above */
     UINT8                           IoRestriction;
     UINT8                           Triggering;         /* For values, see Interrupt Attributes above */
@@ -593,7 +593,7 @@ typedef struct acpi_resource_gpio
 #define ACPI_IO_RESTRICT_NONE_PRESERVE          3
 
 
-/* Common structure for I2C, SPI, and UART serial descriptors */
+/* Common structure for I2C, SPI, UART, CSI2 serial descriptors */
 
 #define ACPI_RESOURCE_SERIAL_COMMON \
     UINT8                           RevisionId; \
@@ -618,6 +618,7 @@ typedef struct acpi_resource_common_serialbus
 #define ACPI_RESOURCE_SERIAL_TYPE_I2C           1
 #define ACPI_RESOURCE_SERIAL_TYPE_SPI           2
 #define ACPI_RESOURCE_SERIAL_TYPE_UART          3
+#define ACPI_RESOURCE_SERIAL_TYPE_CSI2          4
 
 /* Values for SlaveMode field above */
 
@@ -732,11 +733,19 @@ typedef struct acpi_resource_uart_serialbus
 #define ACPI_UART_CLEAR_TO_SEND                 (1<<6)
 #define ACPI_UART_REQUEST_TO_SEND               (1<<7)
 
+typedef struct acpi_resource_csi2_serialbus
+{
+    ACPI_RESOURCE_SERIAL_COMMON
+    UINT8                           LocalPortInstance;
+    UINT8                           PhyType;
+
+} ACPI_RESOURCE_CSI2_SERIALBUS;
+
 typedef struct acpi_resource_pin_function
 {
     UINT8                           RevisionId;
     UINT8                           PinConfig;
-    UINT8                           Sharable;           /* For values, see Interrupt Attributes above */
+    UINT8                           Shareable;           /* For values, see Interrupt Attributes above */
     UINT16                          FunctionNumber;
     UINT16                          PinTableLength;
     UINT16                          VendorLength;
@@ -750,7 +759,7 @@ typedef struct acpi_resource_pin_config
 {
     UINT8                           RevisionId;
     UINT8                           ProducerConsumer;   /* For values, see Producer/Consumer above */
-    UINT8                           Sharable;           /* For values, see Interrupt Attributes above */
+    UINT8                           Shareable;           /* For values, see Interrupt Attributes above */
     UINT8                           PinConfigType;
     UINT32                          PinConfigValue;
     UINT16                          PinTableLength;
@@ -794,7 +803,7 @@ typedef struct acpi_resource_pin_group_function
 {
     UINT8                           RevisionId;
     UINT8                           ProducerConsumer;   /* For values, see Producer/Consumer above */
-    UINT8                           Sharable;           /* For values, see Interrupt Attributes above */
+    UINT8                           Shareable;           /* For values, see Interrupt Attributes above */
     UINT16                          FunctionNumber;
     UINT16                          VendorLength;
     ACPI_RESOURCE_SOURCE            ResourceSource;
@@ -807,7 +816,7 @@ typedef struct acpi_resource_pin_group_config
 {
     UINT8                           RevisionId;
     UINT8                           ProducerConsumer;   /* For values, see Producer/Consumer above */
-    UINT8                           Sharable;           /* For values, see Interrupt Attributes above */
+    UINT8                           Shareable;           /* For values, see Interrupt Attributes above */
     UINT8                           PinConfigType;      /* For values, see PinConfigType above */
     UINT32                          PinConfigValue;
     UINT16                          VendorLength;
@@ -872,6 +881,7 @@ typedef union acpi_resource_data
     ACPI_RESOURCE_I2C_SERIALBUS             I2cSerialBus;
     ACPI_RESOURCE_SPI_SERIALBUS             SpiSerialBus;
     ACPI_RESOURCE_UART_SERIALBUS            UartSerialBus;
+    ACPI_RESOURCE_CSI2_SERIALBUS            Csi2SerialBus;
     ACPI_RESOURCE_COMMON_SERIALBUS          CommonSerialBus;
     ACPI_RESOURCE_PIN_FUNCTION              PinFunction;
     ACPI_RESOURCE_PIN_CONFIG                PinConfig;

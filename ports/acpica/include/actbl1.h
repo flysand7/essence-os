@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2018, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -168,10 +168,12 @@
  * file. Useful because they make it more difficult to inadvertently type in
  * the wrong signature.
  */
+#define ACPI_SIG_AEST           "AEST"      /* Arm Error Source Table */
 #define ACPI_SIG_ASF            "ASF!"      /* Alert Standard Format table */
 #define ACPI_SIG_BERT           "BERT"      /* Boot Error Record Table */
 #define ACPI_SIG_BGRT           "BGRT"      /* Boot Graphics Resource Table */
 #define ACPI_SIG_BOOT           "BOOT"      /* Simple Boot Flag Table */
+#define ACPI_SIG_CEDT           "CEDT"      /* CXL Early Discovery Table */
 #define ACPI_SIG_CPEP           "CPEP"      /* Corrected Platform Error Polling table */
 #define ACPI_SIG_CSRT           "CSRT"      /* Core System Resource Table */
 #define ACPI_SIG_DBG2           "DBG2"      /* Debug Port table type 2 */
@@ -494,6 +496,99 @@ typedef struct acpi_table_boot
 
 /*******************************************************************************
  *
+ * CEDT - CXL Early Discovery Table
+ *        Version 1
+ *
+ * Conforms to the "CXL Early Discovery Table" (CXL 2.0)
+ *
+ ******************************************************************************/
+
+typedef struct acpi_table_cedt
+{
+    ACPI_TABLE_HEADER       Header;             /* Common ACPI table header */
+
+} ACPI_TABLE_CEDT;
+
+/* CEDT subtable header (Performance Record Structure) */
+
+typedef struct acpi_cedt_header
+{
+    UINT8                   Type;
+    UINT8                   Reserved;
+    UINT16                  Length;
+
+} ACPI_CEDT_HEADER;
+
+/* Values for Type field above */
+
+enum AcpiCedtType
+{
+    ACPI_CEDT_TYPE_CHBS                 = 0,
+    ACPI_CEDT_TYPE_CFMWS                = 1,
+    ACPI_CEDT_TYPE_RESERVED             = 2,
+};
+
+/* Values for version field above */
+
+#define ACPI_CEDT_CHBS_VERSION_CXL11    (0)
+#define ACPI_CEDT_CHBS_VERSION_CXL20    (1)
+
+/* Values for length field above */
+
+#define ACPI_CEDT_CHBS_LENGTH_CXL11     (0x2000)
+#define ACPI_CEDT_CHBS_LENGTH_CXL20     (0x10000)
+
+/*
+ * CEDT subtables
+ */
+
+/* 0: CXL Host Bridge Structure */
+
+typedef struct acpi_cedt_chbs
+{
+    ACPI_CEDT_HEADER        Header;
+    UINT32                  Uid;
+    UINT32                  CxlVersion;
+    UINT32                  Reserved;
+    UINT64                  Base;
+    UINT64                  Length;
+
+} ACPI_CEDT_CHBS;
+
+
+/* 1: CXL Fixed Memory Window Structure */
+
+typedef struct acpi_cedt_cfmws
+{
+    ACPI_CEDT_HEADER        Header;
+    UINT32                  Reserved1;
+    UINT64                  BaseHpa;
+    UINT64                  WindowSize;
+    UINT8                   InterleaveWays;
+    UINT8                   InterleaveArithmetic;
+    UINT16                  Reserved2;
+    UINT32                  Granularity;
+    UINT16                  Restrictions;
+    UINT16                  QtgId;
+    UINT32                  InterleaveTargets[];
+
+} ACPI_CEDT_CFMWS;
+
+/* Values for Interleave Arithmetic field above */
+
+#define ACPI_CEDT_CFMWS_ARITHMETIC_MODULO	(0)
+
+/* Values for Restrictions field above */
+
+#define ACPI_CEDT_CFMWS_RESTRICT_TYPE2		(1)
+#define ACPI_CEDT_CFMWS_RESTRICT_TYPE3		(1<<1)
+#define ACPI_CEDT_CFMWS_RESTRICT_VOLATILE	(1<<2)
+#define ACPI_CEDT_CFMWS_RESTRICT_PMEM		(1<<3)
+#define ACPI_CEDT_CFMWS_RESTRICT_FIXED		(1<<4)
+
+
+/*******************************************************************************
+ *
  * CPEP - Corrected Platform Error Polling table (ACPI 4.0)
  *        Version 1
  *
@@ -607,7 +702,7 @@ typedef struct acpi_csrt_descriptor
  * DBG2 - Debug Port Table 2
  *        Version 0 (Both main table and subtables)
  *
- * Conforms to "Microsoft Debug Port Table 2 (DBG2)", December 10, 2015
+ * Conforms to "Microsoft Debug Port Table 2 (DBG2)", September 21, 2020
  *
  ******************************************************************************/
 
@@ -664,11 +759,24 @@ typedef struct acpi_dbg2_device
 
 #define ACPI_DBG2_16550_COMPATIBLE  0x0000
 #define ACPI_DBG2_16550_SUBSET      0x0001
+#define ACPI_DBG2_MAX311XE_SPI      0x0002
 #define ACPI_DBG2_ARM_PL011         0x0003
+#define ACPI_DBG2_MSM8X60           0x0004
+#define ACPI_DBG2_16550_NVIDIA      0x0005
+#define ACPI_DBG2_TI_OMAP           0x0006
+#define ACPI_DBG2_APM88XXXX         0x0008
+#define ACPI_DBG2_MSM8974           0x0009
+#define ACPI_DBG2_SAM5250           0x000A
+#define ACPI_DBG2_INTEL_USIF        0x000B
+#define ACPI_DBG2_IMX6              0x000C
 #define ACPI_DBG2_ARM_SBSA_32BIT    0x000D
 #define ACPI_DBG2_ARM_SBSA_GENERIC  0x000E
 #define ACPI_DBG2_ARM_DCC           0x000F
 #define ACPI_DBG2_BCM2835           0x0010
+#define ACPI_DBG2_SDM845_1_8432MHZ  0x0011
+#define ACPI_DBG2_16550_WITH_GAS    0x0012
+#define ACPI_DBG2_SDM845_7_372MHZ   0x0013
+#define ACPI_DBG2_INTEL_LPSS        0x0014
 
 #define ACPI_DBG2_1394_STANDARD     0x0000
 
@@ -797,7 +905,7 @@ typedef struct acpi_dmar_hardware_unit
 #define ACPI_DMAR_INCLUDE_ALL       (1)
 
 
-/* 1: Reserved Memory Defininition */
+/* 1: Reserved Memory Definition */
 
 typedef struct acpi_dmar_reserved_memory
 {
@@ -1149,7 +1257,7 @@ enum AcpiErstInstructions
 
 enum AcpiErstCommandStatus
 {
-    ACPI_ERST_SUCESS                = 0,
+    ACPI_ERST_SUCCESS                = 0,
     ACPI_ERST_NO_SPACE              = 1,
     ACPI_ERST_NOT_AVAILABLE         = 2,
     ACPI_ERST_FAILURE               = 3,
@@ -1318,6 +1426,12 @@ typedef struct acpi_table_gtdt
 #define ACPI_GTDT_INTERRUPT_MODE        (1)
 #define ACPI_GTDT_INTERRUPT_POLARITY    (1<<1)
 #define ACPI_GTDT_ALWAYS_ON             (1<<2)
+
+typedef struct acpi_gtdt_el2
+{
+    UINT32                  VirtualEL2TimerGsiv;
+    UINT32                  VirtualEL2TimerFlags;
+} ACPI_GTDT_EL2;
 
 
 /* Common GTDT subtable header */
@@ -1761,8 +1875,7 @@ typedef struct acpi_hest_ia_deferred_check
 
 /*******************************************************************************
  *
- * HMAT - Heterogeneous Memory Attributes Table (ACPI 6.2)
- *        Version 1
+ * HMAT - Heterogeneous Memory Attributes Table (ACPI 6.3)
  *
  ******************************************************************************/
 
@@ -1778,7 +1891,7 @@ typedef struct acpi_table_hmat
 
 enum AcpiHmatType
 {
-    ACPI_HMAT_TYPE_ADDRESS_RANGE        = 0,   /* Memory subystem address range */
+    ACPI_HMAT_TYPE_ADDRESS_RANGE        = 0,   /* Memory subsystem address range */
     ACPI_HMAT_TYPE_LOCALITY             = 1,   /* System locality latency and bandwidth information */
     ACPI_HMAT_TYPE_CACHE                = 2,   /* Memory side cache information */
     ACPI_HMAT_TYPE_RESERVED             = 3    /* 3 and greater are reserved */
@@ -1797,26 +1910,24 @@ typedef struct acpi_hmat_structure
  * HMAT Structures, correspond to Type in ACPI_HMAT_STRUCTURE
  */
 
-/* 0: Memory subystem address range */
+/* 0: Memory proximity domain attributes */
 
-typedef struct acpi_hmat_address_range
+typedef struct acpi_hmat_proximity_domain
 {
     ACPI_HMAT_STRUCTURE     Header;
     UINT16                  Flags;
     UINT16                  Reserved1;
-    UINT32                  ProcessorPD;            /* Processor proximity domain */
+    UINT32                  InitiatorPD;            /* Attached Initiator proximity domain */
     UINT32                  MemoryPD;               /* Memory proximity domain */
     UINT32                  Reserved2;
-    UINT64                  PhysicalAddressBase;    /* Physical address range base */
-    UINT64                  PhysicalAddressLength;  /* Physical address range length */
+    UINT64                  Reserved3;
+    UINT64                  Reserved4;
 
-} ACPI_HMAT_ADDRESS_RANGE;
+} ACPI_HMAT_PROXIMITY_DOMAIN;
 
 /* Masks for Flags field above */
 
-#define ACPI_HMAT_PROCESSOR_PD_VALID    (1)     /* 1: ProcessorPD field is valid */
-#define ACPI_HMAT_MEMORY_PD_VALID       (1<<1)  /* 1: MemoryPD field is valid */
-#define ACPI_HMAT_RESERVATION_HINT      (1<<2)  /* 1: Reservation hint */
+#define ACPI_HMAT_INITIATOR_PD_VALID    (1)     /* 1: InitiatorPD field is valid */
 
 
 /* 1: System locality latency and bandwidth information */
@@ -1826,7 +1937,8 @@ typedef struct acpi_hmat_locality
     ACPI_HMAT_STRUCTURE     Header;
     UINT8                   Flags;
     UINT8                   DataType;
-    UINT16                  Reserved1;
+    UINT8                   MinTransferSize;
+    UINT8                   Reserved1;
     UINT32                  NumberOfInitiatorPDs;
     UINT32                  NumberOfTargetPDs;
     UINT32                  Reserved2;
@@ -1836,15 +1948,17 @@ typedef struct acpi_hmat_locality
 
 /* Masks for Flags field above */
 
-#define ACPI_HMAT_MEMORY_HIERARCHY  (0x0F)
+#define ACPI_HMAT_MEMORY_HIERARCHY  (0x0F)      /* Bits 0-3 */
 
-/* Values for Memory Hierarchy flag */
+/* Values for Memory Hierarchy flags */
 
 #define ACPI_HMAT_MEMORY            0
-#define ACPI_HMAT_LAST_LEVEL_CACHE  1
-#define ACPI_HMAT_1ST_LEVEL_CACHE   2
-#define ACPI_HMAT_2ND_LEVEL_CACHE   3
-#define ACPI_HMAT_3RD_LEVEL_CACHE   4
+#define ACPI_HMAT_1ST_LEVEL_CACHE   1
+#define ACPI_HMAT_2ND_LEVEL_CACHE   2
+#define ACPI_HMAT_3RD_LEVEL_CACHE   3
+#define ACPI_HMAT_MINIMUM_XFER_SIZE 0x10        /* Bit 4: ACPI 6.4 */
+#define ACPI_HMAT_NON_SEQUENTIAL_XFERS 0x20     /* Bit 5: ACPI 6.4 */
+
 
 /* Values for DataType field above */
 
