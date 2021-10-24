@@ -8,8 +8,12 @@
 
 // TODO Determine the best values for these constants.
 
-// Wait 1 second before running the write behind thread. (Ignored if MM_AVAILABLE_PAGES() is below the low threshold.)
+// Interval between write behinds. (Assuming no low memory conditions are in effect.)
 #define CC_WAIT_FOR_WRITE_BEHIND                  (1000)                              
+
+// Divisor of the modified list size for each write behind batch.
+// That is, every CC_WAIT_FOR_WRITE_BEHIND ms, 1/CC_WRITE_BACK_DIVISORth of the modified list is written back.
+#define CC_WRITE_BACK_DIVISOR                     (8)
                                                                                       
 // Describes the virtual memory covering a section of a file.  
 #define CC_ACTIVE_SECTION_SIZE                    ((EsFileOffset) 262144)             
@@ -17,6 +21,10 @@
 // Maximum number of active sections on the modified list. If exceeded, writers will wait for it to drop before retrying.
 // TODO This should based off the amount of physical memory.
 #define CC_MAX_MODIFIED                           (67108864 / CC_ACTIVE_SECTION_SIZE) 
+
+// The size at which the modified list is determined to be getting worryingly full;
+// passing this threshold causes the write back thread to immediately start working.
+#define CC_MODIFIED_GETTING_FULL                  (CC_MAX_MODIFIED * 2 / 3)
 										      
 // The size of the kernel's address space used for mapping active sections.
 #if defined(ARCH_32)                                                                  

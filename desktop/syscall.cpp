@@ -475,6 +475,12 @@ ptrdiff_t EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, Es
 		node.directoryChildren = 4194304 / sizeof(EsDirectoryChild); // TODO Grow the buffer until all entries fit.
 	}
 
+	if (node.directoryChildren == 0) {
+		// Empty directory.
+		*buffer = nullptr;
+		return 0;
+	}
+
 	*buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
 	ptrdiff_t result;
 

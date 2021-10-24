@@ -286,7 +286,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 			fileIndex++;
 		}
 
-		if (noRequiredFiles) {
+		if (requiredFontsOnly && noRequiredFiles) {
 			continue;
 		}
 

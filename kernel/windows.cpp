@@ -319,26 +319,20 @@ void WindowManager::PressKey(unsigned scancode) {
 		return;
 	}
 
-	bool moveCursorNone = false;
-
 	KMutexAcquire(&mutex);
 
 	if (scancode == ES_SCANCODE_NUM_DIVIDE) {
 		KernelPanic("WindowManager::PressKey - Panic key pressed.\n");
 	}
 
-	bool single = (scancode & K_SCANCODE_KEY_RELEASED) && maximumKeysHeld == 1;
-	keysHeld += (scancode & K_SCANCODE_KEY_RELEASED) ? -1 : 1;
-	keysHeld = MaximumInteger(keysHeld, 0); // Prevent negative keys held count.
-	maximumKeysHeld = (!keysHeld || keysHeld > maximumKeysHeld) ? keysHeld : maximumKeysHeld;
-
 	if (eyedropping) {
 		if (scancode == (ES_SCANCODE_ESCAPE | K_SCANCODE_KEY_RELEASED)) {
 			EndEyedrop(true);
-			moveCursorNone = true;
 		}
 
-		goto done;
+		MoveCursor(0, 0);
+		KMutexRelease(&mutex);
+		return;
 	}
 
 	// TODO Caps lock.
@@ -372,43 +366,43 @@ void WindowManager::PressKey(unsigned scancode) {
 		| ((shift | shift2) ? ES_MODIFIER_SHIFT : 0)
 		| ((flag | flag2) ? ES_MODIFIER_FLAG : 0);
 
-	KernelLog(LOG_VERBOSE, "WM", "press key", "WindowManager::PressKey - Received key press %x. Modifiers are %X. Keys held: %d/%d%z.\n", 
-			scancode, modifiers, keysHeld, maximumKeysHeld, single ? " (single)" : "");
+	EsMessage message;
+	EsMemoryZero(&message, sizeof(EsMessage));
+	message.type = (scancode & K_SCANCODE_KEY_RELEASED) ? ES_MSG_KEY_UP : ES_MSG_KEY_DOWN;
+	message.keyboard.modifiers = modifiers;
+	message.keyboard.scancode = scancode & ~K_SCANCODE_KEY_RELEASED;
+	message.keyboard.numlock = numlock;
 
-	{
-		EsMessage message;
-		EsMemoryZero(&message, sizeof(EsMessage));
-		message.type = (scancode & K_SCANCODE_KEY_RELEASED) ? ES_MSG_KEY_UP : ES_MSG_KEY_DOWN;
-		message.keyboard.modifiers = modifiers;
-		message.keyboard.scancode = scancode & ~K_SCANCODE_KEY_RELEASED;
-		message.keyboard.numlock = numlock;
-		message.keyboard.single = single;
-
-		if (message.keyboard.scancode >= 512) {
-			KernelPanic("WindowManager::PressKey - Scancode outside valid range.\n");
-		}
-
-		if (message.type == ES_MSG_KEY_DOWN && (keysHeldBitSet[message.keyboard.scancode / 8] & (1 << (message.keyboard.scancode % 8)))) {
-			message.keyboard.repeat = true;
-		}
-
-		if (message.type == ES_MSG_KEY_DOWN) {
-			keysHeldBitSet[message.keyboard.scancode / 8] |= (1 << (message.keyboard.scancode % 8));
-		} else {
-			keysHeldBitSet[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
-		}
-
-		if ((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) {
-			desktopProcess->messageQueue.SendMessage(nullptr, &message);
-		} else if (activeWindow) {
-			SendMessageToWindow(activeWindow, &message);
-		} else {
-			desktopProcess->messageQueue.SendMessage(nullptr, &message);
-		}
+	if (message.keyboard.scancode >= 512) {
+		KernelPanic("WindowManager::PressKey - Scancode outside valid range.\n");
 	}
 
-	done:;
-	if (moveCursorNone) MoveCursor(0, 0);
+	if (message.type == ES_MSG_KEY_DOWN && (keysHeldBitSet[message.keyboard.scancode / 8] & (1 << (message.keyboard.scancode % 8)))) {
+		message.keyboard.repeat = true;
+	}
+
+	if (message.type == ES_MSG_KEY_DOWN) {
+		keysHeldBitSet[message.keyboard.scancode / 8] |= (1 << (message.keyboard.scancode % 8));
+	} else {
+		keysHeldBitSet[message.keyboard.scancode / 8] &= ~(1 << (message.keyboard.scancode % 8));
+	}
+
+	message.keyboard.single = (scancode & K_SCANCODE_KEY_RELEASED) && maximumKeysHeld == 1;
+	if (!message.keyboard.repeat) keysHeld += (scancode & K_SCANCODE_KEY_RELEASED) ? -1 : 1;
+	keysHeld = MaximumInteger(keysHeld, 0); // Prevent negative keys held count.
+	maximumKeysHeld = (!keysHeld || keysHeld > maximumKeysHeld) ? keysHeld : maximumKeysHeld;
+
+	KernelLog(LOG_VERBOSE, "WM", "press key", "WindowManager::PressKey - Received key press %x. Modifiers are %X. Keys held: %d/%d%z.\n", 
+			scancode, modifiers, keysHeld, maximumKeysHeld, message.keyboard.single ? " (single)" : "");
+
+	if ((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) {
+		desktopProcess->messageQueue.SendMessage(nullptr, &message);
+	} else if (activeWindow) {
+		SendMessageToWindow(activeWindow, &message);
+	} else {
+		desktopProcess->messageQueue.SendMessage(nullptr, &message);
+	}
+
 	KMutexRelease(&mutex);
 }
 

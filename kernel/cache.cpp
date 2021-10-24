@@ -43,7 +43,7 @@ struct MMActiveSectionManager {
 	KMutex mutex;
 	LinkedList<CCActiveSection> lruList;
 	LinkedList<CCActiveSection> modifiedList;
-	KEvent modifiedNonEmpty, modifiedNonFull;
+	KEvent modifiedNonEmpty, modifiedNonFull, modifiedGettingFull;
 	Thread *writeBackThread;
 };
 
@@ -245,6 +245,9 @@ void CCWriteSectionPrepare(CCActiveSection *section) {
 	section->flush = false;
 	KEventReset(&section->writeCompleteEvent);
 	section->accessors = 1;
+	if (!activeSectionManager.modifiedList.count) KEventReset(&activeSectionManager.modifiedNonEmpty);
+	if (activeSectionManager.modifiedList.count < CC_MODIFIED_GETTING_FULL) KEventReset(&activeSectionManager.modifiedGettingFull);
+	KEventSet(&activeSectionManager.modifiedNonFull, false, true);
 }
 
 void CCWriteSection(CCActiveSection *section) {
@@ -368,12 +371,19 @@ void CCActiveSectionReturnToLists(CCActiveSection *section, bool writeBack) {
 				if (activeSectionManager.modifiedList.count > CC_MAX_MODIFIED) {
 					waitNonFull = true;
 					continue;
-				} else if (activeSectionManager.modifiedList.count == CC_MAX_MODIFIED) {
+				}
+
+				if (activeSectionManager.modifiedList.count == CC_MAX_MODIFIED) {
 					KEventReset(&activeSectionManager.modifiedNonFull);
 				}
 
-				activeSectionManager.modifiedList.InsertEnd(&section->listItem);
+				if (activeSectionManager.modifiedList.count >= CC_MODIFIED_GETTING_FULL) {
+					KEventSet(&activeSectionManager.modifiedGettingFull, false, true);
+				}
+
 				KEventSet(&activeSectionManager.modifiedNonEmpty, false, true);
+
+				activeSectionManager.modifiedList.InsertEnd(&section->listItem);
 			} else {
 				activeSectionManager.lruList.InsertEnd(&section->listItem);
 			}
@@ -1156,10 +1166,30 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 	return ES_SUCCESS;
 }
 
-void CCWriteBehindThread() {
-	while (true) {
-		// Wait for an active section to be modified, and have no accessors.
+bool CCWriteBehindSection() {
+	CCActiveSection *section = nullptr;
+	KMutexAcquire(&activeSectionManager.mutex);
 
+	if (activeSectionManager.modifiedList.count) {
+		section = activeSectionManager.modifiedList.firstItem->thisItem;
+		CCWriteSectionPrepare(section);
+	}
+
+	KMutexRelease(&activeSectionManager.mutex);
+
+	if (section) {
+		CCWriteSection(section);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+void CCWriteBehindThread() {
+	uintptr_t lastWriteMs = 0;
+
+	while (true) {
+#if 0
 		KEventWait(&activeSectionManager.modifiedNonEmpty);
 
 		if (MM_AVAILABLE_PAGES() > MM_LOW_AVAILABLE_PAGES_THRESHOLD && !scheduler.shutdown) {
@@ -1167,26 +1197,32 @@ void CCWriteBehindThread() {
 			KEventWait(&pmm.availableLow, CC_WAIT_FOR_WRITE_BEHIND);
 		}
 
-		while (true) {
-			// Take a section, and mark it as being written.
+		while (CCWriteBehindSection());
+#else
+		// Wait until the modified list is non-empty.
+		KEventWait(&activeSectionManager.modifiedNonEmpty); 
 
-			CCActiveSection *section = nullptr;
-			KMutexAcquire(&activeSectionManager.mutex);
-
-			if (activeSectionManager.modifiedList.count) {
-				section = activeSectionManager.modifiedList.firstItem->thisItem;
-				CCWriteSectionPrepare(section);
-			}
-
-			KEventSet(&activeSectionManager.modifiedNonFull, false, true);
-			KMutexRelease(&activeSectionManager.mutex);
-
-			if (!section) {
-				break;
-			} else {
-				CCWriteSection(section);
-			}
+		if (lastWriteMs < CC_WAIT_FOR_WRITE_BEHIND) {
+			// Wait for a reason to want to write behind.
+			// - The CC_WAIT_FOR_WRITE_BEHIND timer expires.
+			// - The number of available page frames is low (pmm.availableLow).
+			// - The system is shutting down and so the cache must be flushed (scheduler.killedEvent).
+			// - The modified list is getting full (activeSectionManager.modifiedGettingFull).
+			KTimer timer = {};
+			KTimerSet(&timer, CC_WAIT_FOR_WRITE_BEHIND - lastWriteMs);
+			KEvent *events[] = { &timer.event, &pmm.availableLow, &scheduler.killedEvent, &activeSectionManager.modifiedGettingFull };
+			scheduler.WaitEvents(events, sizeof(events) / sizeof(events[0]));
+			KTimerRemove(&timer);
 		}
+
+		// Write back 1/CC_WRITE_BACK_DIVISORth of the modified list.
+		lastWriteMs = scheduler.timeMs;
+		KMutexAcquire(&activeSectionManager.mutex);
+		uintptr_t writeCount = (activeSectionManager.modifiedList.count + CC_WRITE_BACK_DIVISOR - 1) / CC_WRITE_BACK_DIVISOR;
+		KMutexRelease(&activeSectionManager.mutex);
+		while (writeCount && CCWriteBehindSection()) writeCount--;
+		lastWriteMs = scheduler.timeMs - lastWriteMs;
+#endif
 	}
 }
 
@@ -1206,7 +1242,6 @@ void CCInitialise() {
 	KernelLog(LOG_INFO, "Memory", "cache initialised", "MMInitialise - Active section manager initialised with a maximum of %d of entries.\n", 
 			activeSectionManager.sectionCount);
 
-	activeSectionManager.modifiedNonEmpty.autoReset = true;
 	KEventSet(&activeSectionManager.modifiedNonFull);
 	activeSectionManager.writeBackThread = scheduler.SpawnThread("CCWriteBehind", (uintptr_t) CCWriteBehindThread, 0, ES_FLAGS_DEFAULT);
 	activeSectionManager.writeBackThread->isPageGenerator = true;
