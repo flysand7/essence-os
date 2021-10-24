@@ -11,10 +11,10 @@ uint8_t RTCRead(uint8_t index, bool convertFromBCD, bool convertFrom12Hour) {
 
 	for (uint8_t i = 0; i < 10; i++) {
 		// Write the index a few times to delay before reading.
-		ProcessorOut8(0x70, index);
+		ProcessorOut8(IO_RTC_INDEX, index);
 	}
 
-	uint8_t value = ProcessorIn8(0x71);
+	uint8_t value = ProcessorIn8(IO_RTC_DATA);
 
 	if (convertFromBCD) {
 		value = (value >> 4) * 10 + (value & 0xF);

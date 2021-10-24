@@ -664,16 +664,16 @@ uint64_t ArchGetTimeFromPITMs() {
 	static uint64_t cumulative = 0, last = 0;
 
 	if (!started) {
-		ProcessorOut8(0x43, 0x30);
-		ProcessorOut8(0x40, 0xFF);
-		ProcessorOut8(0x40, 0xFF);
+		ProcessorOut8(IO_PIT_COMMAND, 0x30);
+		ProcessorOut8(IO_PIT_DATA, 0xFF);
+		ProcessorOut8(IO_PIT_DATA, 0xFF);
 		started = true;
 		last = 0xFFFF;
 		return 0;
 	} else {
-		ProcessorOut8(0x43, 0x00);
-		uint16_t x = ProcessorIn8(0x40);
-		x |= (ProcessorIn8(0x40)) << 8;
+		ProcessorOut8(IO_PIT_COMMAND, 0x00);
+		uint16_t x = ProcessorIn8(IO_PIT_DATA);
+		x |= (ProcessorIn8(IO_PIT_DATA)) << 8;
 		cumulative += last - x;
 		if (x > last) cumulative += 0x10000;
 		last = x;
@@ -682,14 +682,14 @@ uint64_t ArchGetTimeFromPITMs() {
 }
 
 void ArchDelay1Ms() {
-	ProcessorOut8(0x43, 0x30);
-	ProcessorOut8(0x40, 0xA9);
-	ProcessorOut8(0x40, 0x04);
+	ProcessorOut8(IO_PIT_COMMAND, 0x30);
+	ProcessorOut8(IO_PIT_DATA, 0xA9);
+	ProcessorOut8(IO_PIT_DATA, 0x04);
 
 	while (true) {
-		ProcessorOut8(0x43, 0xE2);
+		ProcessorOut8(IO_PIT_COMMAND, 0xE2);
 
-		if (ProcessorIn8(0x40) & (1 << 7)) {
+		if (ProcessorIn8(IO_PIT_DATA) & (1 << 7)) {
 			break;
 		}
 	}
@@ -1305,6 +1305,32 @@ bool HasSSSE3Support() {
 
 uintptr_t GetBootloaderInformationOffset() {
 	return bootloaderInformationOffset;
+}
+
+// Spinlock since some drivers need to access it in IRQs (e.g. ACPICA).
+static KSpinlock pciConfigSpinlock; 
+
+uint32_t KPCIReadConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, int size) {
+	KSpinlockAcquire(&pciConfigSpinlock);
+	EsDefer(KSpinlockRelease(&pciConfigSpinlock));
+	if (offset & 3) KernelPanic("KPCIReadConfig - offset is not 4-byte aligned.");
+	ProcessorOut32(IO_PCI_CONFIG, (uint32_t) (0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset));
+	if (size == 8) return ProcessorIn8(IO_PCI_DATA);
+	if (size == 16) return ProcessorIn16(IO_PCI_DATA);
+	if (size == 32) return ProcessorIn32(IO_PCI_DATA);
+	KernelPanic("PCIController::ReadConfig - Invalid size %d.\n", size);
+	return 0;
+}
+
+void KPCIWriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value, int size) {
+	KSpinlockAcquire(&pciConfigSpinlock);
+	EsDefer(KSpinlockRelease(&pciConfigSpinlock));
+	if (offset & 3) KernelPanic("KPCIWriteConfig - offset is not 4-byte aligned.");
+	ProcessorOut32(IO_PCI_CONFIG, (uint32_t) (0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset));
+	if (size == 8) ProcessorOut8(IO_PCI_DATA, value);
+	else if (size == 16) ProcessorOut16(IO_PCI_DATA, value);
+	else if (size == 32) ProcessorOut32(IO_PCI_DATA, value);
+	else KernelPanic("PCIController::WriteConfig - Invalid size %d.\n", size);
 }
 
 #endif

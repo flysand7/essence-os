@@ -1,6 +1,7 @@
 // TODO Scrolling.
 
 #include <module.h>
+#include <kernel/x86_64.h>
 
 struct PS2Update {
 	union {
@@ -176,11 +177,6 @@ uint16_t scancodeConversionTable2[] = {
 #define PS2_FIRST_IRQ 		(1)
 #define PS2_SECOND_IRQ		(12)
 
-// Ports.
-#define PS2_PORT_DATA		(0x60)
-#define PS2_PORT_STATUS		(0x64)
-#define PS2_PORT_COMMAND	(0x64)
-
 // Keyboard commands.
 #define PS2_KEYBOARD_RESET	(0xFF)
 #define PS2_KEYBOARD_ENABLE	(0xF4)
@@ -217,16 +213,16 @@ void PS2KeyboardUpdated(EsGeneric _update) {
 }
 
 void PS2::WaitInputBuffer() {
-	while (ProcessorIn8(PS2_PORT_STATUS) & PS2_INPUT_FULL);
+	while (ProcessorIn8(IO_PS2_STATUS) & PS2_INPUT_FULL);
 }
 
 bool PS2::PollRead(uint8_t *value, bool forMouse) {
-	uint8_t status = ProcessorIn8(PS2_PORT_STATUS);
+	uint8_t status = ProcessorIn8(IO_PS2_STATUS);
 	if (status & PS2_MOUSE_BYTE && !forMouse) return false;
 	if (!(status & PS2_MOUSE_BYTE) && forMouse) return false;
 
 	if (status & PS2_OUTPUT_FULL) {
-		*value = ProcessorIn8(PS2_PORT_DATA);
+		*value = ProcessorIn8(IO_PS2_DATA);
 
 		if (*value == 0xE1 && !forMouse) {
 			KDebugKeyPressed();
@@ -382,60 +378,60 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 void PS2::DisableDevices(unsigned which) {
 	WaitInputBuffer();
 	// EsPrint("ps2 first write...\n");
-	if (which & 1) ProcessorOut8(PS2_PORT_COMMAND, PS2_DISABLE_FIRST);
+	if (which & 1) ProcessorOut8(IO_PS2_COMMAND, PS2_DISABLE_FIRST);
 	// EsPrint("ps2 first write end\n");
 	WaitInputBuffer();
-	if (which & 2) ProcessorOut8(PS2_PORT_COMMAND, PS2_DISABLE_SECOND);
+	if (which & 2) ProcessorOut8(IO_PS2_COMMAND, PS2_DISABLE_SECOND);
 }
 
 void PS2::EnableDevices(unsigned which) {
 	WaitInputBuffer();
-	if (which & 1) ProcessorOut8(PS2_PORT_COMMAND, PS2_ENABLE_FIRST);
+	if (which & 1) ProcessorOut8(IO_PS2_COMMAND, PS2_ENABLE_FIRST);
 	WaitInputBuffer();
-	if (which & 2) ProcessorOut8(PS2_PORT_COMMAND, PS2_ENABLE_SECOND);
+	if (which & 2) ProcessorOut8(IO_PS2_COMMAND, PS2_ENABLE_SECOND);
 }
 
 void PS2::FlushOutputBuffer() {
-	while (ProcessorIn8(PS2_PORT_STATUS) & PS2_OUTPUT_FULL) {
-		ProcessorIn8(PS2_PORT_DATA);
+	while (ProcessorIn8(IO_PS2_STATUS) & PS2_OUTPUT_FULL) {
+		ProcessorIn8(IO_PS2_DATA);
 	}
 }
 
 void PS2::SendCommand(uint8_t command) {
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, command);
+	ProcessorOut8(IO_PS2_COMMAND, command);
 }
 
 uint8_t PS2::ReadByte(KTimeout *timeout) {
-	while (!(ProcessorIn8(PS2_PORT_STATUS) & PS2_OUTPUT_FULL) && !timeout->Hit());
-	return ProcessorIn8(PS2_PORT_DATA);
+	while (!(ProcessorIn8(IO_PS2_STATUS) & PS2_OUTPUT_FULL) && !timeout->Hit());
+	return ProcessorIn8(IO_PS2_DATA);
 }
 
 void PS2::WriteByte(KTimeout *timeout, uint8_t value) {
-	while ((ProcessorIn8(PS2_PORT_STATUS) & PS2_INPUT_FULL) && !timeout->Hit());
+	while ((ProcessorIn8(IO_PS2_STATUS) & PS2_INPUT_FULL) && !timeout->Hit());
 	if (timeout->Hit()) return;
-	ProcessorOut8(PS2_PORT_DATA, value);
+	ProcessorOut8(IO_PS2_DATA, value);
 }
 
 bool PS2::SetupKeyboard(KTimeout *timeout) {
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_KEYBOARD_ENABLE);
+	ProcessorOut8(IO_PS2_DATA, PS2_KEYBOARD_ENABLE);
 	if (ReadByte(timeout) != 0xFA) return false;
 
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_KEYBOARD_SCANCODE_SET);
+	ProcessorOut8(IO_PS2_DATA, PS2_KEYBOARD_SCANCODE_SET);
 	if (ReadByte(timeout) != 0xFA) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, 0);
+	ProcessorOut8(IO_PS2_DATA, 0);
 	if (ReadByte(timeout) != 0xFA) return false;
 	scancodeSet = ReadByte(timeout) & 3;
 	KernelLog(LOG_INFO, "PS/2", "scancode set", "Keyboard reports it is using scancode set %d.\n", scancodeSet);
 
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_KEYBOARD_REPEAT);
+	ProcessorOut8(IO_PS2_DATA, PS2_KEYBOARD_REPEAT);
 	if (ReadByte(timeout) != 0xFA) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, 0);
+	ProcessorOut8(IO_PS2_DATA, 0);
 	if (ReadByte(timeout) != 0xFA) return false;
 
 	return true;
@@ -443,14 +439,14 @@ bool PS2::SetupKeyboard(KTimeout *timeout) {
 
 bool PS2::SetMouseRate(KTimeout *timeout, int rate) {
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_SAMPLE_RATE);
+	ProcessorOut8(IO_PS2_DATA, PS2_MOUSE_SAMPLE_RATE);
 	if (ReadByte(timeout) != 0xFA) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, rate);
+	ProcessorOut8(IO_PS2_DATA, rate);
 	if (ReadByte(timeout) != 0xFA) return false;
 	return true;
 }
@@ -459,9 +455,9 @@ bool PS2::SetupMouse(KTimeout *timeout) {
 	// TODO Mouse with scroll wheel detection.
 
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_RESET);
+	ProcessorOut8(IO_PS2_DATA, PS2_MOUSE_RESET);
 	if (ReadByte(timeout) != 0xFA) return false;
 	if (ReadByte(timeout) != 0xAA) return false;
 	if (ReadByte(timeout) != 0x00) return false;
@@ -469,26 +465,26 @@ bool PS2::SetupMouse(KTimeout *timeout) {
 	if (!SetMouseRate(timeout, 100)) return false;
 	if (!SetMouseRate(timeout, 80)) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, 0xF2);
+	ProcessorOut8(IO_PS2_DATA, 0xF2);
 	if (ReadByte(timeout) != 0xFA) return false;
 	mouseType = ReadByte(timeout);
 	if (!SetMouseRate(timeout, 100)) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_RESOLUTION);
+	ProcessorOut8(IO_PS2_DATA, PS2_MOUSE_RESOLUTION);
 	if (ReadByte(timeout) != 0xFA) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, 3);
+	ProcessorOut8(IO_PS2_DATA, 3);
 	if (ReadByte(timeout) != 0xFA) return false;
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_SECOND);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_SECOND);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_DATA, PS2_MOUSE_ENABLE);
+	ProcessorOut8(IO_PS2_DATA, PS2_MOUSE_ENABLE);
 	if (ReadByte(timeout) != 0xFA) return false;
 
 	return true;
@@ -515,10 +511,10 @@ void PS2::Initialise(KDevice *parentDevice) {
 	FlushOutputBuffer();
 
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_READ_CONFIG);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_READ_CONFIG);
 	uint8_t configurationByte = ReadByte(&timeout);
 	WaitInputBuffer();
-	ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_CONFIG);
+	ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_CONFIG);
 	WriteByte(&timeout, configurationByte & ~(PS2_FIRST_IRQ_MASK | PS2_SECOND_IRQ_MASK | PS2_TRANSLATION));
 	if (timeout.Hit()) return;
 
@@ -529,7 +525,7 @@ void PS2::Initialise(KDevice *parentDevice) {
 	if (configurationByte & PS2_SECOND_CLOCK) {
 		EnableDevices(2);
 		WaitInputBuffer();
-		ProcessorOut8(PS2_PORT_COMMAND, PS2_READ_CONFIG);
+		ProcessorOut8(IO_PS2_COMMAND, PS2_READ_CONFIG);
 		configurationByte = ReadByte(&timeout);
 		if (!(configurationByte & PS2_SECOND_CLOCK)) {
 			hasMouse = true;
@@ -539,7 +535,7 @@ void PS2::Initialise(KDevice *parentDevice) {
 
 	{
 		WaitInputBuffer();
-		ProcessorOut8(PS2_PORT_COMMAND, PS2_TEST_FIRST);
+		ProcessorOut8(IO_PS2_COMMAND, PS2_TEST_FIRST);
 		uint8_t b = ReadByte(&timeout);
 		if (b) return;
 		if (timeout.Hit()) return;
@@ -548,7 +544,7 @@ void PS2::Initialise(KDevice *parentDevice) {
 
 	if (hasMouse) {
 		WaitInputBuffer();
-		ProcessorOut8(PS2_PORT_COMMAND, PS2_TEST_SECOND);
+		ProcessorOut8(IO_PS2_COMMAND, PS2_TEST_SECOND);
 		if (!ReadByte(&timeout) && !timeout.Hit()) channels = 2;
 	}
 
@@ -565,10 +561,10 @@ void PS2::Initialise(KDevice *parentDevice) {
 
 	{
 		WaitInputBuffer();
-		ProcessorOut8(PS2_PORT_COMMAND, PS2_READ_CONFIG);
+		ProcessorOut8(IO_PS2_COMMAND, PS2_READ_CONFIG);
 		uint8_t configurationByte = ReadByte(&timeout);
 		WaitInputBuffer();
-		ProcessorOut8(PS2_PORT_COMMAND, PS2_WRITE_CONFIG);
+		ProcessorOut8(IO_PS2_COMMAND, PS2_WRITE_CONFIG);
 		WriteByte(&timeout, configurationByte | PS2_FIRST_IRQ_MASK | PS2_SECOND_IRQ_MASK);
 	}
 

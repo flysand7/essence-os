@@ -129,28 +129,6 @@ void InitialiseVBE(KDevice *parent) {
 
 #if 0
 
-#define VGA_AC_INDEX 0x3C0
-#define VGA_AC_WRITE 0x3C0
-#define VGA_AC_READ  0x3C1
-
-#define VGA_MISC_WRITE 0x3C2
-#define VGA_MISC_READ  0x3CC
-
-#define VGA_SEQ_INDEX 0x3C4
-#define VGA_SEQ_DATA  0x3C5
-
-#define VGA_DAC_READ_INDEX  0x3C7
-#define VGA_DAC_WRITE_INDEX 0x3C8
-#define VGA_DAC_DATA        0x3C9
-
-#define VGA_GC_INDEX 0x3CE
-#define VGA_GC_DATA  0x3CF
-
-#define VGA_CRTC_INDEX 0x3D4
-#define VGA_CRTC_DATA  0x3D5
-
-#define VGA_INSTAT_READ 0x3DA
-
 uint8_t vgaMode18[] = {
 	0xE3, 0x03, 0x01, 0x08, 0x00, 0x06, 0x5F, 0x4F,
 	0x50, 0x82, 0x54, 0x80, 0x0B, 0x3E, 0x00, 0x40,
@@ -182,8 +160,8 @@ void VGAUpdateScreen(uint8_t *_source, uint8_t *modifiedScanlineBitset, KModifie
 	for (int plane = 0; plane < 4; plane++) {
 		uint8_t *source = _source;
 
-		ProcessorOut8(VGA_SEQ_INDEX, 2);
-		ProcessorOut8(VGA_SEQ_DATA, 1 << plane);
+		ProcessorOut8(IO_VGA_SEQ_INDEX, 2);
+		ProcessorOut8(IO_VGA_SEQ_DATA, 1 << plane);
 
 		for (uintptr_t y_ = 0; y_ < VGA_SCREEN_HEIGHT / 8; y_++) {
 			if (modifiedScanlineBitset[y_] == 0) {
@@ -227,8 +205,8 @@ void VGAUpdateScreen(uint8_t *_source, uint8_t *modifiedScanlineBitset, KModifie
 
 void VGAPutBlock(uintptr_t x, uintptr_t y, bool toggle) {
 	for (int plane = 0; plane < 4; plane++) {
-		ProcessorOut8(VGA_SEQ_INDEX, 2);
-		ProcessorOut8(VGA_SEQ_DATA, 1 << plane);
+		ProcessorOut8(IO_VGA_SEQ_INDEX, 2);
+		ProcessorOut8(IO_VGA_SEQ_DATA, 1 << plane);
 		
 		if (toggle) {
 			vgaAddress[y * 80 + x / 8] ^= 1 << (7 - (x & 7));
@@ -240,8 +218,8 @@ void VGAPutBlock(uintptr_t x, uintptr_t y, bool toggle) {
 
 void VGAClearScreen() {
 	for (int plane = 0; plane < 4; plane++) {
-		ProcessorOut8(VGA_SEQ_INDEX, 2);
-		ProcessorOut8(VGA_SEQ_DATA, 1 << plane);
+		ProcessorOut8(IO_VGA_SEQ_INDEX, 2);
+		ProcessorOut8(IO_VGA_SEQ_DATA, 1 << plane);
 		EsMemoryZero((void *) vgaAddress, VGA_SCREEN_WIDTH / 8 * VGA_SCREEN_HEIGHT);
 	}
 }
@@ -253,19 +231,19 @@ void InitialiseVGA(KDevice *parent) {
 
 	vgaAddress = (uint8_t *) MMMapPhysical(MMGetKernelSpace(), 0xA0000, 0x10000, MM_REGION_WRITE_COMBINING);
 	uint8_t *registers = vgaMode18;
-	ProcessorOut8(VGA_MISC_WRITE, *registers++);
-	for (int i = 0; i < 5; i++) { ProcessorOut8(VGA_SEQ_INDEX, i); ProcessorOut8(VGA_SEQ_DATA, *registers++); }
-	ProcessorOut8(VGA_CRTC_INDEX, 0x03);
-	ProcessorOut8(VGA_CRTC_DATA, ProcessorIn8(VGA_CRTC_DATA) | 0x80);
-	ProcessorOut8(VGA_CRTC_INDEX, 0x11);
-	ProcessorOut8(VGA_CRTC_DATA, ProcessorIn8(VGA_CRTC_DATA) & ~0x80);
+	ProcessorOut8(IO_VGA_MISC_WRITE, *registers++);
+	for (int i = 0; i < 5; i++) { ProcessorOut8(IO_VGA_SEQ_INDEX, i); ProcessorOut8(IO_VGA_SEQ_DATA, *registers++); }
+	ProcessorOut8(IO_VGA_CRTC_INDEX, 0x03);
+	ProcessorOut8(IO_VGA_CRTC_DATA, ProcessorIn8(IO_VGA_CRTC_DATA) | 0x80);
+	ProcessorOut8(IO_VGA_CRTC_INDEX, 0x11);
+	ProcessorOut8(IO_VGA_CRTC_DATA, ProcessorIn8(IO_VGA_CRTC_DATA) & ~0x80);
 	registers[0x03] |= 0x80;
 	registers[0x11] &= ~0x80;
-	for (int i = 0; i < 25; i++) { ProcessorOut8(VGA_CRTC_INDEX, i); ProcessorOut8(VGA_CRTC_DATA, *registers++); }
-	for (int i = 0; i < 9; i++) { ProcessorOut8(VGA_GC_INDEX, i); ProcessorOut8(VGA_GC_DATA, *registers++); }
-	for (int i = 0; i < 21; i++) { ProcessorIn8(VGA_INSTAT_READ); ProcessorOut8(VGA_AC_INDEX, i); ProcessorOut8(VGA_AC_WRITE, *registers++); }
-	ProcessorIn8(VGA_INSTAT_READ);
-	ProcessorOut8(VGA_AC_INDEX, 0x20);
+	for (int i = 0; i < 25; i++) { ProcessorOut8(IO_VGA_CRTC_INDEX, i); ProcessorOut8(IO_VGA_CRTC_DATA, *registers++); }
+	for (int i = 0; i < 9; i++) { ProcessorOut8(IO_VGA_GC_INDEX, i); ProcessorOut8(IO_VGA_GC_DATA, *registers++); }
+	for (int i = 0; i < 21; i++) { ProcessorIn8(IO_VGA_INSTAT_READ); ProcessorOut8(IO_VGA_AC_INDEX, i); ProcessorOut8(IO_VGA_AC_WRITE, *registers++); }
+	ProcessorIn8(IO_VGA_INSTAT_READ);
+	ProcessorOut8(IO_VGA_AC_INDEX, 0x20);
 
 	KGraphicsTarget *target = (KGraphicsTarget *) KDeviceCreate("VGA", parent, sizeof(KGraphicsTarget));
 	target->screenWidth = VGA_SCREEN_WIDTH;

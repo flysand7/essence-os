@@ -1,4 +1,5 @@
 #include <module.h>
+#include <kernel/x86_64.h>
 
 struct BGADisplay : KGraphicsTarget {
 };
@@ -38,8 +39,8 @@ void BGADeviceAttached(KDevice *_parent) {
 		return;
 	}
 
-	ProcessorOut16(0x01CE, 0 /* version */);
-	uint16_t version = ProcessorIn16(0x01CF);
+	ProcessorOut16(IO_BGA_INDEX, 0 /* version */);
+	uint16_t version = ProcessorIn16(IO_BGA_DATA);
 	KernelLog(LOG_INFO, "BGA", "version", "Detected version %X%X.\n", version >> 8, version);
 
 	if (version < 0xB0C0 || version > 0xB0C5) {
@@ -48,25 +49,25 @@ void BGADeviceAttached(KDevice *_parent) {
 	}
 
 	// Set the mode.
-	ProcessorOut16(0x01CE, 4 /* enable */);
-	ProcessorOut16(0x01CF, 0);
-	ProcessorOut16(0x01CE, 1 /* x resolution */);
-	ProcessorOut16(0x01CF, BGA_RESOLUTION_WIDTH);
-	ProcessorOut16(0x01CE, 2 /* y resolution */);
-	ProcessorOut16(0x01CF, BGA_RESOLUTION_HEIGHT);
-	ProcessorOut16(0x01CE, 3 /* bpp */);
-	ProcessorOut16(0x01CF, 32);
-	ProcessorOut16(0x01CE, 4 /* enable */);
-	ProcessorOut16(0x01CF, 0x41 /* linear frame-buffer */);
+	ProcessorOut16(IO_BGA_INDEX, 4 /* enable */);
+	ProcessorOut16(IO_BGA_DATA, 0);
+	ProcessorOut16(IO_BGA_INDEX, 1 /* x resolution */);
+	ProcessorOut16(IO_BGA_DATA, BGA_RESOLUTION_WIDTH);
+	ProcessorOut16(IO_BGA_INDEX, 2 /* y resolution */);
+	ProcessorOut16(IO_BGA_DATA, BGA_RESOLUTION_HEIGHT);
+	ProcessorOut16(IO_BGA_INDEX, 3 /* bpp */);
+	ProcessorOut16(IO_BGA_DATA, 32);
+	ProcessorOut16(IO_BGA_INDEX, 4 /* enable */);
+	ProcessorOut16(IO_BGA_DATA, 0x41 /* linear frame-buffer */);
 
 	// Setup the graphics target.
 	device->updateScreen = BGAUpdateScreen;
 	device->debugPutBlock = BGADebugPutBlock;
 	device->debugClearScreen = BGADebugClearScreen;
-	ProcessorOut16(0x01CE, 1 /* x resolution */);
-	device->screenWidth = ProcessorIn16(0x01CF);
-	ProcessorOut16(0x01CE, 2 /* y resolution */);
-	device->screenHeight = ProcessorIn16(0x01CF);
+	ProcessorOut16(IO_BGA_INDEX, 1 /* x resolution */);
+	device->screenWidth = ProcessorIn16(IO_BGA_DATA);
+	ProcessorOut16(IO_BGA_INDEX, 2 /* y resolution */);
+	device->screenHeight = ProcessorIn16(IO_BGA_DATA);
 
 	// Register the display.
 	KernelLog(LOG_INFO, "BGA", "register target", 

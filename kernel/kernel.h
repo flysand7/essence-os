@@ -153,12 +153,11 @@ KSpinlock ipiLock;
 #include "files.cpp"
 #include "windows.cpp"
 #include "networking.cpp"
+#include "terminal.cpp"
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
 #include "posix.cpp"
 #endif
-
-#include "terminal.cpp"
 
 #ifdef IMPLEMENTATION
 

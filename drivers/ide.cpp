@@ -2,6 +2,7 @@
 // TODO Inserting/removing ATAPI devices.
 
 #include <module.h>
+#include <kernel/x86_64.h>
 
 #define ATA_BUSES 2
 #define ATA_DRIVES (ATA_BUSES * 2)
@@ -9,7 +10,7 @@
 #define ATA_TIMEOUT (10000)
 #define ATAPI_SECTOR_SIZE (2048)
 
-#define ATA_REGISTER(_bus, _reg) (_reg != -1 ? ((_bus ? 0x170 : 0x1F0) + _reg) : (_bus ? 0x376 : 0x3F6))
+#define ATA_REGISTER(_bus, _reg) (_reg != -1 ? ((_bus ? IO_ATA_1 : IO_ATA_2) + _reg) : (_bus ? IO_ATA_3 : IO_ATA_4))
 #define ATA_IRQ(_bus) (_bus ? 15 : 14)
 #define ATA_DATA 0
 #define ATA_FEATURES 1

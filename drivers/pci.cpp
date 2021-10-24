@@ -2,13 +2,7 @@
 
 #include <module.h>
 
-#define PCI_CONFIG	(0xCF8)
-#define PCI_DATA	(0xCFC)
-
 struct PCIController : KDevice {
-	inline uint32_t ReadConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, int size = 32);
-	inline void WriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value, int size = 32);
-
 #define PCI_BUS_DO_NOT_SCAN 0
 #define PCI_BUS_SCAN_NEXT 1
 #define PCI_BUS_SCANNED 2
@@ -174,65 +168,30 @@ void KPCIDevice::WriteBAR64(uintptr_t index, uintptr_t offset, uint64_t value) {
 	}
 }
 
-// Spinlock since some drivers need to access it in IRQs (e.g. ACPICA).
-// Also can't be part of PCIController since PCI is initialised after ACPICA.
-static KSpinlock configSpaceSpinlock; 
-
 static PCIController *pci;
 
-uint32_t KPCIReadConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, int size) {
-	return pci->ReadConfig(bus, device, function, offset, size);
-}
-
-void KPCIWriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value, int size) {
-	pci->WriteConfig(bus, device, function, offset, value, size);
-}
-
-uint32_t PCIController::ReadConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, int size) {
-	KSpinlockAcquire(&configSpaceSpinlock);
-	EsDefer(KSpinlockRelease(&configSpaceSpinlock));
-	if (offset & 3) KernelPanic("PCIController::ReadConfig - offset is not 4-byte aligned.");
-	ProcessorOut32(PCI_CONFIG, (uint32_t) (0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset));
-	if (size == 8) return ProcessorIn8(PCI_DATA);
-	if (size == 16) return ProcessorIn16(PCI_DATA);
-	if (size == 32) return ProcessorIn32(PCI_DATA);
-	KernelPanic("PCIController::ReadConfig - Invalid size %d.\n", size);
-	return 0;
-}
-
-void PCIController::WriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value, int size) {
-	KSpinlockAcquire(&configSpaceSpinlock);
-	EsDefer(KSpinlockRelease(&configSpaceSpinlock));
-	if (offset & 3) KernelPanic("PCIController::WriteConfig - offset is not 4-byte aligned.");
-	ProcessorOut32(PCI_CONFIG, (uint32_t) (0x80000000 | (bus << 16) | (device << 11) | (function << 8) | offset));
-	if (size == 8) ProcessorOut8(PCI_DATA, value);
-	else if (size == 16) ProcessorOut16(PCI_DATA, value);
-	else if (size == 32) ProcessorOut32(PCI_DATA, value);
-	else KernelPanic("PCIController::WriteConfig - Invalid size %d.\n", size);
-}
-
 void KPCIDevice::WriteConfig8(uintptr_t offset, uint8_t value) {
-	pci->WriteConfig(bus, slot, function, offset, value, 8);
+	KPCIWriteConfig(bus, slot, function, offset, value, 8);
 }
 
 uint8_t KPCIDevice::ReadConfig8(uintptr_t offset) {
-	return pci->ReadConfig(bus, slot, function, offset, 8);
+	return KPCIReadConfig(bus, slot, function, offset, 8);
 }
 
 void KPCIDevice::WriteConfig16(uintptr_t offset, uint16_t value) {
-	pci->WriteConfig(bus, slot, function, offset, value, 16);
+	KPCIWriteConfig(bus, slot, function, offset, value, 16);
 }
 
 uint16_t KPCIDevice::ReadConfig16(uintptr_t offset) {
-	return pci->ReadConfig(bus, slot, function, offset, 16);
+	return KPCIReadConfig(bus, slot, function, offset, 16);
 }
 
 void KPCIDevice::WriteConfig32(uintptr_t offset, uint32_t value) {
-	pci->WriteConfig(bus, slot, function, offset, value, 32);
+	KPCIWriteConfig(bus, slot, function, offset, value, 32);
 }
 
 uint32_t KPCIDevice::ReadConfig32(uintptr_t offset) {
-	return pci->ReadConfig(bus, slot, function, offset, 32);
+	return KPCIReadConfig(bus, slot, function, offset, 32);
 }
 
 bool KPCIDevice::EnableSingleInterrupt(KIRQHandler irqHandler, void *context, const char *cOwnerName) {
@@ -440,11 +399,11 @@ bool EnumeratePCIDrivers(KInstalledDriver *driver, KDevice *_device) {
 }
 
 void PCIController::EnumerateFunction(int bus, int device, int function, int *busesToScan) {
-	uint32_t deviceID = ReadConfig(bus, device, function, 0x00);
+	uint32_t deviceID = KPCIReadConfig(bus, device, function, 0x00);
 	if ((deviceID & 0xFFFF) == 0xFFFF) return;
 
-	uint32_t deviceClass = ReadConfig(bus, device, function, 0x08);
-	uint32_t interruptInformation = ReadConfig(bus, device, function, 0x3C);
+	uint32_t deviceClass = KPCIReadConfig(bus, device, function, 0x08);
+	uint32_t interruptInformation = KPCIReadConfig(bus, device, function, 0x3C);
 
 	KPCIDevice *pciDevice = (KPCIDevice *) KDeviceCreate("PCI function", this, sizeof(KPCIDevice));
 	if (!pciDevice) return;
@@ -460,8 +419,8 @@ void PCIController::EnumerateFunction(int bus, int device, int function, int *bu
 	pciDevice->interruptPin = (interruptInformation >> 8) & 0xFF;
 	pciDevice->interruptLine = (interruptInformation >> 0) & 0xFF;
 
-	pciDevice->deviceID = ReadConfig(bus, device, function, 0);
-	pciDevice->subsystemID = ReadConfig(bus, device, function, 0x2C);
+	pciDevice->deviceID = KPCIReadConfig(bus, device, function, 0);
+	pciDevice->subsystemID = KPCIReadConfig(bus, device, function, 0x2C);
 
 	for (int i = 0; i < 6; i++) {
 		pciDevice->baseAddresses[i] = pciDevice->ReadConfig32(0x10 + 4 * i);
@@ -485,7 +444,7 @@ void PCIController::EnumerateFunction(int bus, int device, int function, int *bu
 			pciDevice->interruptPin, pciDevice->interruptLine);
 
 	if (pciDevice->classCode == 0x06 && pciDevice->subclassCode == 0x04 /* PCI bridge */) {
-		uint8_t secondaryBus = (ReadConfig(bus, device, function, 0x18) >> 8) & 0xFF; 
+		uint8_t secondaryBus = (KPCIReadConfig(bus, device, function, 0x18) >> 8) & 0xFF; 
 
 		if (busScanStates[secondaryBus] == PCI_BUS_DO_NOT_SCAN) {
 			KernelLog(LOG_INFO, "PCI", "PCI bridge", "PCI bridge to bus %d.\n", secondaryBus);
@@ -504,13 +463,13 @@ void PCIController::EnumerateFunction(int bus, int device, int function, int *bu
 }
 
 void PCIController::Enumerate() {
-	uint32_t baseHeaderType = ReadConfig(0, 0, 0, 0x0C);
+	uint32_t baseHeaderType = KPCIReadConfig(0, 0, 0, 0x0C);
 	int baseBuses = (baseHeaderType & 0x80) ? 8 : 1;
 
 	int busesToScan = 0;
 
 	for (int baseBus = 0; baseBus < baseBuses; baseBus++) {
-		uint32_t deviceID = ReadConfig(0, 0, baseBus, 0x00);
+		uint32_t deviceID = KPCIReadConfig(0, 0, baseBus, 0x00);
 		if ((deviceID & 0xFFFF) == 0xFFFF) continue;
 		busScanStates[baseBus] = PCI_BUS_SCAN_NEXT;
 		busesToScan++;
@@ -530,10 +489,10 @@ void PCIController::Enumerate() {
 			busesToScan--;
 
 			for (int device = 0; device < 32; device++) {
-				uint32_t deviceID = ReadConfig(bus, device, 0, 0x00);
+				uint32_t deviceID = KPCIReadConfig(bus, device, 0, 0x00);
 				if ((deviceID & 0xFFFF) == 0xFFFF) continue;
 
-				uint32_t headerType = (ReadConfig(bus, device, 0, 0x0C) >> 16) & 0xFF;
+				uint32_t headerType = (KPCIReadConfig(bus, device, 0, 0x0C) >> 16) & 0xFF;
 				int functions = (headerType & 0x80) ? 8 : 1;
 
 				for (int function = 0; function < functions; function++) {
