@@ -66,7 +66,7 @@ struct MMRegion {
 // One per process.
 
 struct MMSpace {
-	VIRTUAL_ADDRESS_SPACE_DATA();	 // Architecture specific data.
+	MMArchVAS data;                  // Architecture specific data.
 
 	AVLTree<MMRegion>                // Key =
 		freeRegionsBase,         // Base address
@@ -173,7 +173,7 @@ struct PMM {
 	KSpinlock pmManipulationProcessorLock;
 	void *pmManipulationRegion;
 
-	Thread *zeroPageThread, *balanceThread;
+	Thread *zeroPageThread;
 	KEvent zeroPageEvent;
 
 	LinkedList<MMObjectCache> objectCacheList;
@@ -191,7 +191,7 @@ struct PMM {
 
 	// These variables will be cleared if the object they point to is removed.
 	// See MMUnreserve and Scheduler::RemoveProcess.
-	Process *nextProcessToBalance;
+	struct Process *nextProcessToBalance;
 	MMRegion *nextRegionToBalance;
 	uintptr_t balanceResumePosition;
 };
@@ -247,22 +247,6 @@ extern MMSpace _kernelMMSpace, _coreMMSpace;
 
 #define MM_SHARED_ENTRY_PRESENT 		(1)
 
-// Architecture-dependent functions.
-
-bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualAddress, unsigned flags); // Returns false if the page was already mapped.
-void MMArchUnmapPages(MMSpace *space, uintptr_t virtualAddressStart, uintptr_t pageCount, unsigned flags, size_t unmapMaximum = 0, uintptr_t *resumePosition = nullptr);
-void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);
-bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
-uintptr_t MMArchTranslateAddress(MMSpace *space, uintptr_t virtualAddress, bool writeAccess);
-void MMArchInitialiseVAS();
-bool MMArchInitialiseUserSpace(MMSpace *space);
-bool MMArchCommitPageTables(MMSpace *space, MMRegion *region);
-bool MMArchMakePageWritable(MMSpace *space, uintptr_t virtualAddress);
-bool MMArchIsBufferInUserRange(uintptr_t baseAddress, size_t byteCount);
-extern "C" bool MMArchSafeCopy(uintptr_t destinationAddress, uintptr_t sourceAddress, size_t byteCount); // Returns false if a page fault occured during the copy.
-void MMFreeVAS(MMSpace *space);
-void MMFinalizeVAS(MMSpace *space);
-
 // Forward declarations.
 
 bool MMHandlePageFault(MMSpace *space, uintptr_t address, unsigned flags);
@@ -292,22 +276,6 @@ void MMUnreserve(MMSpace *space, MMRegion *remove, bool unmapPages, bool guardRe
 MMRegion *MMFindRegion(MMSpace *space, uintptr_t address);
 void *MMMapFile(MMSpace *space, struct FSFile *node, EsFileOffset offset, size_t bytes, 
 		int protection, void *baseAddress, size_t zeroedBytes = 0, uint32_t additionalFlags = ES_FLAGS_DEFAULT);
-
-// Physical memory information from the bootloader.
-
-struct PhysicalMemoryRegion {
-	uint64_t baseAddress;
-
-	// The memory map the BIOS provides gives the information in pages.
-	uint64_t pageCount;
-};
-
-extern PhysicalMemoryRegion *physicalMemoryRegions;
-extern size_t physicalMemoryRegionsCount;
-extern size_t physicalMemoryRegionsPagesCount;
-extern size_t physicalMemoryOriginalPagesCount;
-extern size_t physicalMemoryRegionsIndex;
-extern uintptr_t physicalMemoryHighest;
 
 // Physical memory manipulation.
 
@@ -1649,7 +1617,7 @@ void MMSpaceDestroy(MMSpace *space) {
 		EsHeapFree(item->thisItem, sizeof(MMRegion), K_CORE);
 	}
 
-	MMFreeVAS(space);
+	MMArchFreeVAS(space);
 }
 
 bool MMUnmapFilePage(uintptr_t frameNumber) {
@@ -2301,7 +2269,7 @@ void MMSpaceCloseReference(MMSpace *space) {
 
 	KRegisterAsyncTask([] (EsGeneric _space) { 
 		MMSpace *space = (MMSpace *) _space.p;
-		MMFinalizeVAS(space);
+		MMArchFinalizeVAS(space);
 		scheduler.mmSpacePool.Remove(space);
 	}, space);
 }
@@ -2374,8 +2342,7 @@ void MMInitialise() {
 		pmm.zeroPageEvent.autoReset = true;
 		MMCommit(PHYSICAL_MEMORY_MANIPULATION_REGION_PAGES * K_PAGE_SIZE, true);
 		pmm.zeroPageThread = scheduler.SpawnThread("MMZero", (uintptr_t) MMZeroPageThread, 0, SPAWN_THREAD_LOW_PRIORITY);
-		pmm.balanceThread = scheduler.SpawnThread("MMBalance", (uintptr_t) MMBalanceThread, 0, ES_FLAGS_DEFAULT);
-		pmm.balanceThread->isPageGenerator = true;
+		scheduler.SpawnThread("MMBalance", (uintptr_t) MMBalanceThread, 0, ES_FLAGS_DEFAULT)->isPageGenerator = true;
 		scheduler.SpawnThread("MMObjTrim", (uintptr_t) MMObjectCacheTrimThread, 0, ES_FLAGS_DEFAULT);
 	}
 

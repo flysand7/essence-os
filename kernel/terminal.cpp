@@ -4,7 +4,6 @@
 #ifdef IMPLEMENTATION
 
 #include <shared/vga_font.cpp>
-#include "x86_64.h"
 
 #define TERMINAL_ADDRESS ((uint16_t *) (LOW_MEMORY_MAP_START + 0xB8000))
 
@@ -17,6 +16,8 @@ KMutex printLock;
 #endif
 
 void DebugWriteCharacter(uintptr_t character);
+extern "C" void ProcessorDebugOutputByte(uint8_t byte);
+int KWaitKey();
 
 #ifdef ARCH_X86_COMMON
 bool printToDebugger = false;
@@ -250,7 +251,13 @@ void KernelPanic(const char *format, ...) {
 #ifdef POST_PANIC_DEBUGGING
 	uintptr_t kernelLogEnd = kernelLogPosition;
 	EsPrint("Press 'D' to enter debugger.\n");
-	while (KWaitKey() != ES_SCANCODE_D);
+
+	while (true) {
+		int key = KWaitKey();
+		if (key == ES_SCANCODE_D) break;
+		if (key == -1) ProcessorHalt();
+	}
+
 	graphics.debuggerActive = true;
 
 	while (true) {

@@ -139,14 +139,9 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 				}
 			}
 
-#ifdef ARCH_X86_64
-			if (header.mapAddress > 0x8000000000000000UL || header.mapAddress < 0x1000 || fileSize > 0x1000000000000UL
-					|| header.mapAddress & (K_PAGE_SIZE - 1)) {
+			if (ArchCheckBundleHeader() || header.mapAddress & (K_PAGE_SIZE - 1)) {
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
-#else
-#error Unimplemented.
-#endif
 
 			if (header.version != 1) {
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
@@ -162,12 +157,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			// Look for the executable in the bundle.
 
-#ifdef ARCH_X86_64
-			uint64_t name = CalculateCRC64(EsLiteral("$Executables/x86_64"));
-#else
-#error Unimplemented.
-#endif
-
+			uint64_t name = CalculateCRC64(EsLiteral("$Executables/" K_ARCH_NAME));
 			BundleFile *files = (BundleFile *) ((BundleHeader *) header.mapAddress + 1);
 
 			bool found = false;
@@ -214,13 +204,9 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 		ElfProgramHeader *header = (ElfProgramHeader *) ((uint8_t *) programHeaders + programHeaderEntrySize * i);
 
 		if (header->type == 1 /* PT_LOAD */) {
-#ifdef ARCH_X86_64
-			if (header->virtualAddress > 0x8000000000000000UL || header->virtualAddress < 0x1000 || header->segmentSize > 0x1000000000000UL) {
+			if (ArchCheckELFHeader()) {
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
-#else
-#error Unimplemented.
-#endif
 
 #if 0
 			EsPrint("FileOffset %x    VirtualAddress %x    SegmentSize %x    DataInFile %x\n",
@@ -403,17 +389,8 @@ EsError KLoadELFModule(KModule *module) {
 			// EsPrint("\t%d: %z (%x), %d, %x, %x\n", i, buffer + symbol->name + strings->offset, symbol->value, type, offset, relocation->addend);
 
 			uintptr_t result = symbol->value + relocation->addend;
-
-#ifdef ARCH_X86_64
-			if (type == 0) {}
-			else if (type == 10 /* R_X86_64_32 */)    *((uint32_t *) (buffer + offset)) = result; 
-			else if (type == 11 /* R_X86_64_32S */)   *((uint32_t *) (buffer + offset)) = result; 
-			else if (type == 1  /* R_X86_64_64 */)    *((uint64_t *) (buffer + offset)) = result;
-			else if (type == 2  /* R_X86_64_PC32 */)  *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
-			else if (type == 24 /* R_X86_64_PC64 */)  *((uint64_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
-			else if (type == 4  /* R_X86_64_PLT32 */) *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
-#endif
-			else return ES_ERROR_UNSUPPORTED_FEATURE;
+			EsError error = ArchApplyRelocation(type, buffer, offset, result);
+			if (error != ES_SUCCESS) return error;
 		}
 	}
 

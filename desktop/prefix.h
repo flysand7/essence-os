@@ -63,7 +63,7 @@ typedef struct EsElementPublic EsElementPublic;
 #ifdef ARCH_X86_64
 #define ES_API_BASE ((void **) 0x1000)
 #define ES_SHARED_MEMORY_MAXIMUM_SIZE ((size_t) (1024) * 1024 * 1024 * 1024)
-#define ES_PAGE_SIZE (4096)
+#define ES_PAGE_SIZE ((uintptr_t) 4096)
 #define ES_PAGE_BITS (12)
 
 typedef struct EsCRTjmp_buf {

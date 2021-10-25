@@ -214,7 +214,13 @@ bool KPCIDevice::EnableSingleInterrupt(KIRQHandler irqHandler, void *context, co
 	// If we booted from EFI, we need to get the interrupt line from ACPI.
 	// See the comment in InterruptHandler for what happens when passing -1.
 
-	if (KRegisterIRQ(KBootedFromEFI() ? -1 : interruptLine, irqHandler, context, cOwnerName, this)) {
+	intptr_t line = interruptLine;
+#ifdef ARCH_X86_COMMON
+	extern uint32_t bootloaderID;
+	if (bootloaderID == 2) line = -1;
+#endif
+
+	if (KRegisterIRQ(line, irqHandler, context, cOwnerName, this)) {
 		return true;
 	}
 

@@ -10,7 +10,7 @@
 #include "kernel.h"
 
 extern "C" void KernelMain() {										
-	scheduler.SpawnProcess(PROCESS_KERNEL);				// Spawn the kernel process.
+	kernelProcess = scheduler.SpawnProcess(PROCESS_KERNEL);		// Spawn the kernel process.
 	ArchInitialise(); 						// Start processors and initialise CPULocalStorage. 
 	scheduler.started = true;					// Start the pre-emptive scheduler.
 	// Continues in KernelInitialise.

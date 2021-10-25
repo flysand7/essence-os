@@ -2,24 +2,6 @@
 
 typedef struct ACPIProcessor ArchCPU;
 
-// Interrupt vectors:
-// 	0x00 - 0x1F: CPU exceptions
-// 	0x20 - 0x2F: PIC (disabled, spurious)
-// 	0x30 - 0x4F: Timers and low-priority IPIs.
-// 	0x50 - 0x6F: APIC (standard)
-// 	0x70 - 0xAF: MSI
-// 	0xF0 - 0xFE: High-priority IPIs
-// 	0xFF:        APIC (spurious interrupt)
-
-#define TIMER_INTERRUPT (0x40)
-#define YIELD_IPI (0x41)
-#define IRQ_BASE (0x50)
-#define CALL_FUNCTION_ON_ALL_PROCESSORS_IPI (0xF0)
-#define KERNEL_PANIC_IPI (0) // NMIs ignore the interrupt vector.
-
-#define INTERRUPT_VECTOR_MSI_START (0x70)
-#define INTERRUPT_VECTOR_MSI_COUNT (0x40)
-
 struct InterruptContext {
 	uint64_t cr2, ds;
 	uint8_t  fxsave[512 + 16];
@@ -30,7 +12,8 @@ struct InterruptContext {
 	uint64_t rip, cs, flags, rsp, ss;
 };
 
-struct VirtualAddressSpaceData {
+struct MMArchVAS {
+	// NOTE Must be first in the structure. See ProcessorSetAddressSpace and ArchSwitchContext.
 	uintptr_t cr3;
 
 	// Each process has a 47-bit address space.
@@ -57,9 +40,6 @@ struct VirtualAddressSpaceData {
 	KMutex mutex; // Acquire to modify the page tables.
 };
 
-#define VIRTUAL_ADDRESS_SPACE_DATA() VirtualAddressSpaceData data
-#define VIRTUAL_ADDRESS_SPACE_IDENTIFIER(x) ((x)->data.cr3)
-
 #define MM_CORE_SPACE_START   (0xFFFF800100000000)
 #define MM_CORE_SPACE_SIZE    (0xFFFF8001F0000000 - 0xFFFF800100000000)
 #define MM_CORE_REGIONS_START (0xFFFF8001F0000000)
@@ -71,11 +51,12 @@ struct VirtualAddressSpaceData {
 #define MM_USER_SPACE_START   (0x100000000000)
 #define MM_USER_SPACE_SIZE    (0xF00000000000 - 0x100000000000)
 
+#define ArchCheckBundleHeader()       (header.mapAddress > 0x800000000000UL || header.mapAddress < 0x1000 || fileSize > 0x1000000000000UL)
+#define ArchCheckELFHeader()          (header->virtualAddress > 0x800000000000UL || header->virtualAddress < 0x1000 || header->segmentSize > 0x1000000000000UL)
 #define ArchIsAddressInKernelSpace(x) ((uintptr_t) (x) >= 0xFFFF800000000000)
 
-uint8_t coreL1Commit[(0xFFFF800200000000 - 0xFFFF800100000000) >> (/* ENTRIES_PER_PAGE_TABLE_BITS */ 9 + K_PAGE_BITS + 3)];
-
-uint8_t pciIRQLines[0x100 /* slots */][4 /* pins */];
+#define K_ARCH_STACK_GROWS_DOWN
+#define K_ARCH_NAME "x86_64"
 
 #endif
 
@@ -94,18 +75,18 @@ struct IRQHandler {
 	const char *cOwnerName;
 };
 
+uint8_t pciIRQLines[0x100 /* slots */][4 /* pins */];
+
 MSIHandler msiHandlers[INTERRUPT_VECTOR_MSI_COUNT];
 IRQHandler irqHandlers[0x40];
 KSpinlock irqHandlersLock; // Also for msiHandlers.
 
-extern uintptr_t bootloaderInformationOffset;
-extern "C" bool simdSSE3Support;
-extern "C" bool simdSSSE3Support;
+KSpinlock ipiLock;
+
+uint8_t coreL1Commit[(0xFFFF800200000000 - 0xFFFF800100000000) >> (/* ENTRIES_PER_PAGE_TABLE_BITS */ 9 + K_PAGE_BITS + 3)];
 
 volatile uintptr_t tlbShootdownVirtualAddress;
 volatile size_t tlbShootdownPageCount;
-
-extern "C" uintptr_t _KThreadTerminate;
 
 typedef void (*CallFunctionOnAllProcessorsCallbackFunction)();
 volatile CallFunctionOnAllProcessorsCallbackFunction callFunctionOnAllProcessorsCallback;
@@ -119,10 +100,14 @@ volatile uintptr_t callFunctionOnAllProcessorsRemaining;
 #define ENTRIES_PER_PAGE_TABLE (512)
 #define ENTRIES_PER_PAGE_TABLE_BITS (9)
 
+void ArchSetPCIIRQLine(uint8_t slot, uint8_t pin, uint8_t line) {
+	pciIRQLines[slot][pin] = line;
+}
+
 bool MMArchCommitPageTables(MMSpace *space, MMRegion *region) {
 	KMutexAssertLocked(&space->reserveMutex);
 
-	VirtualAddressSpaceData *data = &space->data;
+	MMArchVAS *data = &space->data;
 
 	uintptr_t base = (region->baseAddress - (space == coreMMSpace ? MM_CORE_SPACE_START : 0)) & 0x7FFFFFFFF000;
 	uintptr_t end = base + (region->pageCount << K_PAGE_BITS);
@@ -589,13 +574,7 @@ bool MMArchInitialiseUserSpace(MMSpace *space) {
 	return true;
 }
 
-void ArchCleanupVirtualAddressSpace(void *argument) {
-	KernelLog(LOG_VERBOSE, "Arch", "remove virtual address space page", "Removing virtual address space page %x...\n", argument);
-	MMPhysicalFree((uintptr_t) argument); 
-	MMDecommit(K_PAGE_SIZE, true);
-}
-
-void MMFreeVAS(MMSpace *space) {
+void MMArchFreeVAS(MMSpace *space) {
 	for (uintptr_t i = 0; i < 256; i++) {
 		if (!PAGE_TABLE_L4[i]) continue;
 
@@ -617,7 +596,7 @@ void MMFreeVAS(MMSpace *space) {
 	}
 
 	if (space->data.pageTablesActive) {
-		KernelPanic("MMFreeVAS - Space %x still has %d page tables active.\n", space, space->data.pageTablesActive);
+		KernelPanic("MMArchFreeVAS - Space %x still has %d page tables active.\n", space, space->data.pageTablesActive);
 	}
 
 	KMutexAcquire(&coreMMSpace->reserveMutex);
@@ -628,30 +607,14 @@ void MMFreeVAS(MMSpace *space) {
 	MMDecommit(space->data.pageTablesCommitted * K_PAGE_SIZE, true);
 }
 
-void MMFinalizeVAS(MMSpace *space) {
+void MMArchFinalizeVAS(MMSpace *space) {
 	if (!space->data.cr3) return;
 	// Freeing the L4 page table has to be done in the kernel process, since it's the page CR3 would points to!
 	// Therefore, this function only is called in an async task.
-	if (space->data.cr3 == ProcessorReadCR3()) KernelPanic("MMFinalizeVAS - Space %x is active.\n", space);
+	if (space->data.cr3 == ProcessorReadCR3()) KernelPanic("MMArchFinalizeVAS - Space %x is active.\n", space);
 	PMZero(&space->data.cr3, 1, true); // Fail as fast as possible if someone's still using this page.
 	MMPhysicalFree(space->data.cr3); 
 	MMDecommit(K_PAGE_SIZE, true); 
-}
-
-void ArchCheckAddressInRange(int type, uintptr_t address) {
-	if (type == 1) {
-		if ((uintptr_t) address < 0xFFFF900000000000) {
-			KernelPanic("ArchCheckAddressInRange - Address out of expected range.\n");
-		}
-	} else if (type == 2) {
-		if ((uintptr_t) address < 0xFFFF8F8000000000 || (uintptr_t) address >= 0xFFFF900000000000) {
-			KernelPanic("ArchCheckAddressInRange - Address out of expected range.\n");
-		}
-	} else {
-		if ((uintptr_t) address >= 0xFFFF800000000000) {
-			KernelPanic("ArchCheckAddressInRange - Address out of expected range.\n");
-		}
-	}
 }
 
 uint64_t ArchGetTimeFromPITMs() {
@@ -884,6 +847,14 @@ size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi, int processorID) {
 	return ignored;
 }
 
+void ProcessorSendYieldIPI(Thread *thread) {
+	thread->receivedYieldIPI = false;
+	KSpinlockAcquire(&ipiLock);
+	ProcessorSendIPI(YIELD_IPI, false);
+	KSpinlockRelease(&ipiLock);
+	while (!thread->receivedYieldIPI); // Spin until the thread gets the IPI.
+}
+
 void ArchNextTimer(size_t ms) {
 	while (!scheduler.started);               // Wait until the scheduler is ready.
 	GetLocalStorage()->schedulerReady = true; // Make sure this CPU can be scheduled.
@@ -901,7 +872,7 @@ NewProcessorStorage AllocateNewProcessorStorage(ACPIProcessor *archCPU) {
 	return storage;
 }
 
-extern "C" void SetupProcessor2(NewProcessorStorage *storage) {
+void SetupProcessor2(NewProcessorStorage *storage) {
 	// Setup the local interrupts for the current processor.
 		
 	for (uintptr_t i = 0; i < acpi.lapicNMICount; i++) {
@@ -1299,10 +1270,6 @@ extern "C" uintptr_t Syscall(uintptr_t argument0, uintptr_t argument1, uintptr_t
 	return DoSyscall((EsSyscallType) argument0, argument1, argument2, argument3, argument4, false, nullptr, userStackPointer);
 }
 
-bool HasSSSE3Support() {
-	return simdSSSE3Support;
-}
-
 uintptr_t GetBootloaderInformationOffset() {
 	return bootloaderInformationOffset;
 }
@@ -1331,6 +1298,18 @@ void KPCIWriteConfig(uint8_t bus, uint8_t device, uint8_t function, uint8_t offs
 	else if (size == 16) ProcessorOut16(IO_PCI_DATA, value);
 	else if (size == 32) ProcessorOut32(IO_PCI_DATA, value);
 	else KernelPanic("PCIController::WriteConfig - Invalid size %d.\n", size);
+}
+
+EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, uintptr_t result) {
+	if (type == 0) {}
+	else if (type == 10 /* R_X86_64_32 */)    *((uint32_t *) (buffer + offset)) = result; 
+	else if (type == 11 /* R_X86_64_32S */)   *((uint32_t *) (buffer + offset)) = result; 
+	else if (type == 1  /* R_X86_64_64 */)    *((uint64_t *) (buffer + offset)) = result;
+	else if (type == 2  /* R_X86_64_PC32 */)  *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
+	else if (type == 24 /* R_X86_64_PC64 */)  *((uint64_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
+	else if (type == 4  /* R_X86_64_PLT32 */) *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
+	else return ES_ERROR_UNSUPPORTED_FEATURE;
+	return ES_SUCCESS;
 }
 
 #endif

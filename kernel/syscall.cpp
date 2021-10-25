@@ -9,9 +9,7 @@ KMutex eventForwardMutex;
 uintptr_t DoSyscall(EsSyscallType index,
 		uintptr_t argument0, uintptr_t argument1,
 		uintptr_t argument2, uintptr_t argument3,
-		uint64_t flags, bool *fatal, uintptr_t *userStackPointer);
-
-#define DO_SYSCALL_BATCHED (2)
+		bool batched, bool *fatal, uintptr_t *userStackPointer);
 
 struct MessageQueue {
 	bool SendMessage(void *target, EsMessage *message); // Returns false if the message queue is full.
@@ -1244,7 +1242,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_STACK_SIZE) {
 		KMutexAcquire(&currentVMM->reserveMutex);
 
 		if (thread->userStackCommit <= argument3 && argument3 <= thread->userStackReserve && !(argument3 & (K_PAGE_BITS - 1)) && region) {
-#ifdef K_STACK_GROWS_DOWN
+#ifdef K_ARCH_STACK_GROWS_DOWN
 			success = MMCommitRange(currentVMM, region, (thread->userStackReserve - argument3) / K_PAGE_SIZE, argument3 / K_PAGE_SIZE); 
 #else
 			success = MMCommitRange(currentVMM, region, 0, argument3 / K_PAGE_SIZE); 
@@ -1293,7 +1291,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_BATCH) {
 		EsBatchCall call = calls[i];
 		bool fatal = false;
 		uintptr_t _returnValue = calls[i].returnValue = DoSyscall(call.index, call.argument0, call.argument1, call.argument2, call.argument3, 
-				DO_SYSCALL_BATCHED, &fatal, userStackPointer);
+				true /* batched */, &fatal, userStackPointer);
 		if (fatal) SYSCALL_RETURN(_returnValue, true);
 		if (calls[i].stopBatchIfError && ES_CHECK_ERROR(_returnValue)) break;
 		if (currentThread->terminating) break;
@@ -1928,12 +1926,8 @@ SyscallFunction syscallFunctions[ES_SYSCALL_COUNT + 1] {
 
 #pragma GCC diagnostic pop
 
-uintptr_t DoSyscall(EsSyscallType index,
-		uintptr_t argument0, uintptr_t argument1,
-		uintptr_t argument2, uintptr_t argument3,
-		uint64_t flags, bool *fatal, uintptr_t *userStackPointer) {
-	bool batched = flags & DO_SYSCALL_BATCHED;
-
+uintptr_t DoSyscall(EsSyscallType index, uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t argument3,
+		bool batched, bool *fatal, uintptr_t *userStackPointer) {
 	// Interrupts need to be enabled during system calls,
 	// because many of them block on mutexes or events.
 	ProcessorEnableInterrupts();

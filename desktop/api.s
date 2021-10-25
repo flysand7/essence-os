@@ -55,13 +55,6 @@ _EsCRTlongjmp:
 	.return:
 	ret
 
-[global ProcessorReadTimeStamp]
-ProcessorReadTimeStamp:
-	rdtsc
-	shl	rdx,32
-	or	rax,rdx
-	ret
-
 [global EsCRTsqrt]
 EsCRTsqrt:
 	sqrtsd	xmm0,xmm0
@@ -70,6 +63,13 @@ EsCRTsqrt:
 [global EsCRTsqrtf]
 EsCRTsqrtf:
 	sqrtss	xmm0,xmm0
+	ret
+
+[global ProcessorReadTimeStamp]
+ProcessorReadTimeStamp:
+	rdtsc
+	shl	rdx,32
+	or	rax,rdx
 	ret
 
 [global ProcessorCheckStackAlignment]
@@ -93,12 +93,4 @@ ProcessorTLSRead:
 [global ProcessorTLSWrite]
 ProcessorTLSWrite:
 	mov	[fs:rdi],rsi
-	ret
-
-[global __cyg_profile_func_enter]
-__cyg_profile_func_enter:
-	ret
-
-[global __cyg_profile_func_exit]
-__cyg_profile_func_exit:
 	ret

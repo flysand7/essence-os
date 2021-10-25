@@ -163,9 +163,6 @@ struct Process {
 #endif
 };
 
-Process _kernelProcess;
-Process *kernelProcess = &_kernelProcess;
-
 struct Scheduler {
 	// External API:
 
@@ -176,7 +173,7 @@ struct Scheduler {
 #define SPAWN_THREAD_LOW_PRIORITY	(4)
 #define SPAWN_THREAD_PAUSED             (8)
 	Thread *SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
-			unsigned flags = ES_FLAGS_DEFAULT, Process *process = kernelProcess, uintptr_t argument2 = 0);
+			uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
 	void TerminateThread(Thread *thread, bool lockAlreadyAcquired = false);
 	void PauseThread(Thread *thread, bool resume /*true to resume, false to pause*/, bool lockAlreadyAcquired = false);
 
@@ -237,6 +234,10 @@ struct Scheduler {
 	volatile size_t threadEventLogAllocated;
 #endif
 };
+
+Process _kernelProcess;
+Process *kernelProcess = &_kernelProcess;
+Process *desktopProcess;
 
 extern Scheduler scheduler;
 
@@ -364,8 +365,12 @@ void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *o
 	allThreads.InsertStart(&thread->allItem);
 }
 
-Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1, unsigned flags, Process *process, uintptr_t argument2) {
+Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1, uint32_t flags, Process *process, uintptr_t argument2) {
 	bool userland = flags & SPAWN_THREAD_USERLAND;
+
+	if (!process) {
+		process = kernelProcess;
+	}
 
 	if (userland && process == kernelProcess) {
 		KernelPanic("Scheduler::SpawnThread - Cannot add userland thread to kernel process.\n");
@@ -403,7 +408,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 
 		MMRegion *region = MMFindAndPinRegion(process->vmm, stack, userStackReserve);
 		KMutexAcquire(&process->vmm->reserveMutex);
-#ifdef K_STACK_GROWS_DOWN
+#ifdef K_ARCH_STACK_GROWS_DOWN
 		bool success = MMCommitRange(process->vmm, region, (userStackReserve - userStackCommit) / K_PAGE_SIZE, userStackCommit / K_PAGE_SIZE); 
 #else
 		bool success = MMCommitRange(process->vmm, region, 0, userStackCommit / K_PAGE_SIZE); 
@@ -779,7 +784,7 @@ void Thread::SetAddressSpace(MMSpace *space) {
 	temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
 	MMSpaceOpenReference(newSpace);
-	ProcessorSetAddressSpace(VIRTUAL_ADDRESS_SPACE_IDENTIFIER(newSpace));
+	ProcessorSetAddressSpace(&newSpace->data);
 	KSpinlockRelease(&scheduler.lock);
 	MMSpaceCloseReference(oldSpace);
 }
@@ -1020,11 +1025,7 @@ void Scheduler::PauseThread(Thread *thread, bool resume, bool lockAlreadyAcquire
 				} else {
 					// The thread is executing, but on a different processor.
 					// Send them an IPI to stop.
-					thread->receivedYieldIPI = false;
-					KSpinlockAcquire(&ipiLock);
-					ProcessorSendIPI(YIELD_IPI, false);
-					KSpinlockRelease(&ipiLock);
-					while (!thread->receivedYieldIPI); // Spin until the thread gets the IPI.
+					ProcessorSendYieldIPI(thread);
 					// TODO The interrupt context might not be set at this point.
 				}
 			} else {
@@ -1349,29 +1350,18 @@ void Scheduler::Yield(InterruptContext *context) {
 	else newThread->process->cpuTimeSlices++;
 
 	// Prepare the next timer interrupt.
-	uint64_t nextTimer = 1;
-	ArchNextTimer(nextTimer);
+	ArchNextTimer(1 /* ms */);
 
 	if (!local->processorID) {
 		// Update the scheduler's time.
-#if 1
 		timeMs = ArchGetTimeMs();
 		globalData->schedulerTimeMs = timeMs;
-#else
-		// This drifts by roughly a second every minute.
-		timeMs = ProcessorReadTimeStamp() / KGetTimeStampTicksPerMs(); 
-#endif
-
-		// Update the time stamp counter synchronization value.
-		extern volatile uint64_t timeStampCounterSynchronizationValue;
-		timeStampCounterSynchronizationValue = ((timeStampCounterSynchronizationValue & 0x8000000000000000) 
-				^ 0x8000000000000000) | ProcessorReadTimeStamp();
 	}
 
 	InterruptContext *newContext = newThread->interruptContext;
 	MMSpace *addressSpace = newThread->temporaryAddressSpace ?: newThread->process->vmm;
 	MMSpaceOpenReference(addressSpace);
-	DoContextSwitch(newContext, VIRTUAL_ADDRESS_SPACE_IDENTIFIER(addressSpace), newThread->kernelStack, newThread, oldAddressSpace);
+	ArchSwitchContext(newContext, &addressSpace->data, newThread->kernelStack, newThread, oldAddressSpace);
 	KernelPanic("Scheduler::Yield - DoContextSwitch unexpectedly returned.\n");
 }
 

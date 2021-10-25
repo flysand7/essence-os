@@ -468,7 +468,7 @@ namespace POSIX {
 				// Save the state of the user's stack.
 				currentThread->posixData->forkStackSize = currentThread->userStackCommit;
 				currentThread->posixData->forkStack = (void *) EsHeapAllocate(currentThread->posixData->forkStackSize, false, K_PAGED);
-#ifdef K_STACK_GROWS_DOWN
+#ifdef K_ARCH_STACK_GROWS_DOWN
 				EsMemoryCopy(currentThread->posixData->forkStack, 
 						(void *) (currentThread->userStackBase + currentThread->userStackReserve - currentThread->posixData->forkStackSize), 
 						currentThread->posixData->forkStackSize);
@@ -533,7 +533,7 @@ namespace POSIX {
 				CloseHandleToObject(process->executableMainThread, KERNEL_OBJECT_THREAD);
 
 				// Restore the state of our stack.
-#ifdef K_STACK_GROWS_DOWN
+#ifdef K_ARCH_STACK_GROWS_DOWN
 				EsMemoryCopy((void *) (currentThread->userStackBase + currentThread->userStackReserve - currentThread->posixData->forkStackSize),
 						currentThread->posixData->forkStack, currentThread->posixData->forkStackSize);
 #else
@@ -560,7 +560,7 @@ namespace POSIX {
 				// Are we vforking?
 				if (currentThread->posixData->forkStack) {
 					// Restore the state of our stack.
-#ifdef K_STACK_GROWS_DOWN
+#ifdef K_ARCH_STACK_GROWS_DOWN
 					EsMemoryCopy((void *) (currentThread->userStackBase + currentThread->userStackReserve - currentThread->posixData->forkStackSize),
 							currentThread->posixData->forkStack, currentThread->posixData->forkStackSize);
 #else

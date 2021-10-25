@@ -303,7 +303,7 @@ int PS2ReadKey() {
 }
 
 int KWaitKey() {
-	if (!ps2.channels) ProcessorHalt();
+	if (!ps2.channels) return -1;
 	int scancode;
 	while (!(scancode = PS2ReadKey()));
 	return scancode;

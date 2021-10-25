@@ -12,7 +12,6 @@ idt_data: resb idt_size
 
 %define cpu_local_storage_size 8192
 ; Array of pointers to the CPU local states
-[global cpu_local_storage]
 cpu_local_storage: resb cpu_local_storage_size
 
 [section .data]
@@ -581,7 +580,6 @@ ProcessorInvalidateAllPages:
 	mov	cr4,rax
 	ret
 
-[global ProcessorIdle]
 ProcessorIdle:
 	sti
 	hlt
@@ -773,16 +771,12 @@ ReturnFromInterruptHandler:
 
 [global ProcessorSetAddressSpace]
 ProcessorSetAddressSpace:
+	mov	rdi,[rdi]
 	mov	rax,cr3
 	cmp	rax,rdi
 	je	.cont
 	mov	cr3,rdi
 	.cont:
-	ret
-
-[global ProcessorGetAddressSpace]
-ProcessorGetAddressSpace:
-	mov	rax,cr3
 	ret
 
 [global ProcessorGetRSP]
@@ -796,11 +790,12 @@ ProcessorGetRBP:
 	ret
 
 [extern PostContextSwitch]
-[global DoContextSwitch]
-DoContextSwitch:
+[global ArchSwitchContext]
+ArchSwitchContext:
 	cli
 	mov	[gs:16],rcx
 	mov	[gs:8],rdx
+	mov	rsi,[rsi]
 	mov	rax,cr3
 	cmp	rax,rsi
 	je	.cont
@@ -811,36 +806,9 @@ DoContextSwitch:
 	call	PostContextSwitch
 	jmp	ReturnFromInterruptHandler
 
-[global ProcessorMagicBreakpoint]
-ProcessorMagicBreakpoint:
-	xchg	bx,bx
-[global ProcessorBreakpointHelper]
-ProcessorBreakpointHelper:
-	ret
-
 [global ProcessorReadCR3]
 ProcessorReadCR3:
 	mov	rax,cr3
-	ret
-
-[global ArchSpeakerBeep]
-ArchSpeakerBeep:
-	; Beep!!!
-	mov	rdi,0x43
-	mov	rsi,0xB6
-	call	ProcessorOut8
-	mov	rdi,0x42
-	mov	rsi,0x97
-	call	ProcessorOut8
-	mov	rdi,0x42
-	mov	rsi,0x0A
-	call	ProcessorOut8
-	mov	rdi,0x61
-	call	ProcessorIn8
-	mov	rsi,rax
-	or	rsi,3
-	mov	rdi,0x61
-	call	ProcessorOut8
 	ret
 
 [global ProcessorDebugOutputByte]
@@ -1083,11 +1051,3 @@ CALL_REGISTER_INDIRECT r12
 CALL_REGISTER_INDIRECT r13
 CALL_REGISTER_INDIRECT r14
 CALL_REGISTER_INDIRECT r15
-
-[global __cyg_profile_func_enter]
-__cyg_profile_func_enter:
-	ret
-
-[global __cyg_profile_func_exit]
-__cyg_profile_func_exit:
-	ret

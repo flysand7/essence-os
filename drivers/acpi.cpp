@@ -142,6 +142,10 @@ void ACPILapic::WriteRegister(uint32_t reg, uint32_t value) {
 
 #ifdef ARCH_X86_COMMON
 uint64_t ArchGetTimeMs() {
+	// Update the time stamp counter synchronization value.
+	timeStampCounterSynchronizationValue = ((timeStampCounterSynchronizationValue & 0x8000000000000000) 
+			^ 0x8000000000000000) | ProcessorReadTimeStamp();
+
 	if (acpi.hpetBaseAddress && acpi.hpetPeriod) {
 		__int128 fsToMs = 1000000000000;
 		__int128 reading = acpi.hpetBaseAddress[30];
@@ -724,7 +728,7 @@ void ACPIEnumeratePRTEntries(ACPI_HANDLE pciBus) {
 				} else if (table->Pin > 3) {
 					KernelLog(LOG_ERROR, "ACPI", "unexpected pin", "Pin %d was larger than expected.\n", table->Pin);
 				} else {
-					pciIRQLines[table->Address >> 16][table->Pin] = irq;
+					ArchSetPCIIRQLine(table->Address >> 16, table->Pin, irq);
 				}
 			}
 		}

@@ -78,6 +78,8 @@ void KernelLog(KLogLevel level, const char *subsystem, const char *event, const 
 void KernelPanic(const char *format, ...);
 void EsPrint(const char *format, ...);
 
+void StartDebugOutput(); // Causes the output to be directly displayed on the screen. For debugging only.
+
 #define EsPanic KernelPanic
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -133,71 +135,32 @@ void KRegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, bool ne
 #endif
 
 // ---------------------------------------------------------------------------------------------------------------
-// Processor instruction wrappers.
+// Processor IO.
 // ---------------------------------------------------------------------------------------------------------------
 
-extern "C" struct CPULocalStorage *GetLocalStorage();
-extern "C" struct Thread *GetCurrentThread();
-
-extern "C" void ProcessorDisableInterrupts();
-extern "C" void ProcessorEnableInterrupts();
-extern "C" bool ProcessorAreInterruptsEnabled();
-extern "C" void ProcessorHalt();
-extern "C" void ProcessorIdle();
 extern "C" void ProcessorOut8(uint16_t port, uint8_t value);
 extern "C" uint8_t ProcessorIn8(uint16_t port);
 extern "C" void ProcessorOut16(uint16_t port, uint16_t value);
 extern "C" uint16_t ProcessorIn16(uint16_t port);
 extern "C" void ProcessorOut32(uint16_t port, uint32_t value);
 extern "C" uint32_t ProcessorIn32(uint16_t port);
-extern "C" void ProcessorInvalidatePage(uintptr_t virtualAddress);
-extern "C" void ProcessorInvalidateAllPages();
-extern "C" void ProcessorAPStartup();
-extern "C" void ProcessorMagicBreakpoint(...);
-extern "C" void ProcessorBreakpointHelper(...);
-extern "C" void ProcessorSetLocalStorage(struct CPULocalStorage *cls);
-extern "C" void ProcessorSetThreadStorage(uintptr_t tls);
-extern "C" size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi = false, int processorID = -1); // Returns the number of processors the IPI was *not* sent to.
-extern "C" void ProcessorDebugOutputByte(uint8_t byte);
-extern "C" void ProcessorFakeTimerInterrupt();
-extern "C" uint64_t ProcessorReadTimeStamp();
-extern "C" void DoContextSwitch(struct InterruptContext *context, uintptr_t virtualAddressSpace, uintptr_t threadKernelStack, 
-		struct Thread *newThread, struct MMSpace *oldAddressSpace);
-extern "C" void ProcessorSetAddressSpace(uintptr_t virtualAddressSpaceIdentifier); // Need to call MMSpaceOpenReference/MMSpaceCloseReference if using this.
-extern "C" uintptr_t ProcessorGetAddressSpace();
-extern "C" void ProcessorFlushCodeCache();
-extern "C" void ProcessorFlushCache();
-
-#ifdef ARCH_X86_64
-extern "C" uintptr_t ProcessorGetRSP();
-extern "C" uintptr_t ProcessorGetRBP();
-extern "C" uint64_t ProcessorReadMXCSR();
-#endif
 
 // ---------------------------------------------------------------------------------------------------------------
 // Kernel core.
 // ---------------------------------------------------------------------------------------------------------------
 
-extern "C" uint64_t KGetTimeInMs(); // Scheduler time.
-
+uint64_t KGetTimeInMs(); // Scheduler time.
+EsUniqueIdentifier KGetBootIdentifier();
 size_t KGetCPUCount();
-CPULocalStorage *KGetCPULocal(uintptr_t index);
+struct CPULocalStorage *KGetCPULocal(uintptr_t index);
 uint64_t KCPUCurrentID();
-uint64_t KGetTimeStampTicksPerMs();
-uint64_t KGetTimeStampTicksPerUs();
-
-bool KBootedFromEFI();
 bool KInIRQ();
 void KSwitchThreadAfterIRQ();
-
 void KDebugKeyPressed();
-int KWaitKey();
 
 #ifdef ARCH_X86_COMMON
 void KPS2SafeToInitialise();
 #endif
-
-EsUniqueIdentifier KGetBootIdentifier();
 
 struct KTimeout { 
 	uint64_t end; 
@@ -364,15 +327,8 @@ void KTimerRemove(KTimer *timer); // Timers with callbacks cannot be removed (it
 // Memory manager.
 // ---------------------------------------------------------------------------------------------------------------
 
-#ifdef ARCH_X86_64
-#define K_PAGE_BITS (12)
-#define K_PAGE_SIZE ((uintptr_t) 1 << K_PAGE_BITS)
-#define K_USER_ADDRESS_SPACE_START 	(0x0000000000000000ULL)
-#define K_USER_ADDRESS_SPACE_END 	(0x0000800000000000ULL)
-#define K_KERNEL_ADDRESS_SPACE_START 	(0xFFFF800000000000ULL)
-#define K_KERNEL_ADDRESS_SPACE_END 	(0xFFFFFFFFFFFFFFFFULL)
-#define K_STACK_GROWS_DOWN
-#endif
+#define K_PAGE_BITS ES_PAGE_BITS
+#define K_PAGE_SIZE ES_PAGE_SIZE
 
 struct MMSpace;
 MMSpace *MMGetKernelSpace();
@@ -398,9 +354,6 @@ uint64_t MMNumberOfUsablePhysicalPages();
 
 // Returns 0 if not mapped. Rounds address down to nearest page.
 uintptr_t MMArchTranslateAddress(MMSpace *space, uintptr_t virtualAddress, bool writeAccess = false /* if true, return 0 if address not writable */); 
-
-// Must be done with interrupts disabled; does not invalidate the page on other processors.
-void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress);
 
 #define MM_PHYSICAL_ALLOCATE_CAN_FAIL		(1 << 0)	// Don't panic if the allocation fails.
 #define MM_PHYSICAL_ALLOCATE_COMMIT_NOW 	(1 << 1)	// Commit (fixed) the allocated pages.
