@@ -90,7 +90,7 @@ struct CPULocalStorage {
 	unsigned processorID;
 	size_t spinlockCount;
 
-	ArchCPU *archCPU;
+	struct ArchCPU *archCPU;
 
 	// TODO Have separate interrupt task threads and system worker threads (with no task limit).
 #define MAX_ASYNC_TASKS (256)
@@ -121,53 +121,44 @@ extern "C" {
 	InterruptContext *ArchInitialiseThread(uintptr_t kernelStack, uintptr_t kernelStackSize, struct Thread *thread, 
 			uintptr_t startAddress, uintptr_t argument1, uintptr_t argument2,
 			bool userland, uintptr_t stack, uintptr_t userStackSize);
-	EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, uintptr_t result);
 	void ArchSwitchContext(struct InterruptContext *context, struct MMArchVAS *virtualAddressSpace, uintptr_t threadKernelStack, 
 			struct Thread *newThread, struct MMSpace *oldAddressSpace);
+	EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, uintptr_t result);
 
-	void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress); // Must be done with interrupts disabled; does not invalidate on other processors.
 	bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualAddress, unsigned flags); // Returns false if the page was already mapped.
 	void MMArchUnmapPages(MMSpace *space, uintptr_t virtualAddressStart, uintptr_t pageCount, unsigned flags, size_t unmapMaximum = 0, uintptr_t *resumePosition = nullptr);
-	void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);
-	bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
-	void MMArchInitialiseVAS();
-	bool MMArchInitialiseUserSpace(MMSpace *space);
-	bool MMArchCommitPageTables(MMSpace *space, struct MMRegion *region);
+	void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress); // Must be done with interrupts disabled; does not invalidate on other processors.
 	bool MMArchMakePageWritable(MMSpace *space, uintptr_t virtualAddress);
+	bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
+	void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);
 	bool MMArchIsBufferInUserRange(uintptr_t baseAddress, size_t byteCount);
 	bool MMArchSafeCopy(uintptr_t destinationAddress, uintptr_t sourceAddress, size_t byteCount); // Returns false if a page fault occured during the copy.
+	bool MMArchCommitPageTables(MMSpace *space, struct MMRegion *region);
+	bool MMArchInitialiseUserSpace(MMSpace *space, struct MMRegion *firstRegion);
+	void MMArchInitialise();
 	void MMArchFreeVAS(MMSpace *space);
 	void MMArchFinalizeVAS(MMSpace *space);
+	uintptr_t MMArchEarlyAllocatePage();
+	uint64_t MMArchPopulatePageFrameDatabase();
+	uintptr_t MMArchGetPhysicalMemoryHighest();
 
 	void ProcessorDisableInterrupts();
 	void ProcessorEnableInterrupts();
 	bool ProcessorAreInterruptsEnabled();
-
-	void ArchResetCPU();
 	void ProcessorHalt();
 	void ProcessorSendYieldIPI(Thread *thread);
 	void ProcessorFakeTimerInterrupt();
-
 	void ProcessorInvalidatePage(uintptr_t virtualAddress);
 	void ProcessorInvalidateAllPages();
 	void ProcessorFlushCodeCache();
 	void ProcessorFlushCache();
-
 	void ProcessorSetLocalStorage(struct CPULocalStorage *cls);
 	void ProcessorSetThreadStorage(uintptr_t tls);
 	void ProcessorSetAddressSpace(struct MMArchVAS *virtualAddressSpace); // Need to call MMSpaceOpenReference/MMSpaceCloseReference if using this.
-
 	uint64_t ProcessorReadTimeStamp();
 
 	struct CPULocalStorage *GetLocalStorage();
 	struct Thread *GetCurrentThread();
-
-	extern PhysicalMemoryRegion *physicalMemoryRegions;
-	extern size_t physicalMemoryRegionsCount;
-	extern size_t physicalMemoryRegionsPagesCount;
-	extern size_t physicalMemoryOriginalPagesCount;
-	extern size_t physicalMemoryRegionsIndex;
-	extern uintptr_t physicalMemoryHighest;
 
 	// From module.h: 
 	// uintptr_t MMArchTranslateAddress(MMSpace *space, uintptr_t virtualAddress, bool writeAccess); 
@@ -176,6 +167,16 @@ extern "C" {
 	// bool KRegisterIRQ(intptr_t interruptIndex, KIRQHandler handler, void *context, const char *cOwnerName, struct KPCIDevice *pciDevice);
 	// KMSIInformation KRegisterMSI(KIRQHandler handler, void *context, const char *cOwnerName);
 	// void KUnregisterMSI(uintptr_t tag);
+	// size_t KGetCPUCount();
+	// struct CPULocalStorage *KGetCPULocal(uintptr_t index);
+
+	// The architecture layer must also define:
+	// - MM_CORE_REGIONS_START and MM_CORE_REGIONS_COUNT.
+	// - MM_KERNEL_SPACE_START and MM_KERNEL_SPACE_SIZE.
+	// - MM_MODULES_START and MM_MODULES_SIZE.
+	// - ArchCheckBundleHeader, ArchCheckELFHeader and ArchIsAddressInKernelSpace.
+	// - K_ARCH_STACK_GROWS_DOWN or K_ARCH_STACK_GROWS_UP.
+	// - K_ARCH_NAME.
 }
 
 #endif
@@ -253,7 +254,7 @@ void EsAssertionFailure(const char *file, int line) {
 
 #if defined(ARCH_X86_64) && defined(IMPLEMENTATION)
 #include "x86_64.h"
-#include "terminal.cpp"
 #include <drivers/acpi.cpp>
 #include "x86_64.cpp"
+#include "terminal.cpp"
 #endif

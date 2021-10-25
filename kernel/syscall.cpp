@@ -1859,7 +1859,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 
 #ifdef DEBUG_BUILD
 	if (argument0 == 1) {
-		ArchResetCPU();
 	} else if (argument0 == 2) {
 		KernelPanic("Debug command 2.\n");
 	} else if (argument0 == 4) {

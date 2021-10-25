@@ -892,11 +892,11 @@ MMArchSafeCopy:
 	mov	al,0
 	ret
 
-[global ArchResetCPU]
-ArchResetCPU:
+[global ProcessorReset]
+ProcessorReset:
 	in	al,0x64
 	test	al,2
-	jne	ArchResetCPU
+	jne	ProcessorReset
 	mov	al,0xFE
 	out	0x64,al
 	jmp	$

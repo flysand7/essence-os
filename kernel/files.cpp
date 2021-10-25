@@ -1906,14 +1906,11 @@ void FSRegisterFileSystem(KFileSystem *fileSystem) {
 }
 
 void FSRegisterBlockDevice(KBlockDevice *device) {
-#ifdef SERIAL_STARTUP
-	FSDetectFileSystem(device);
-#else
 	KThreadCreate("FSDetect", [] (uintptr_t context) {
-		FSDetectFileSystem((KBlockDevice *) context);
+		KBlockDevice *device = (KBlockDevice *) context;
+		FSDetectFileSystem(device);
+		KDeviceSendConnectedMessage(device, ES_DEVICE_BLOCK);
 	}, (uintptr_t) device);
-#endif
-	KDeviceSendConnectedMessage(device, ES_DEVICE_BLOCK);
 }
 
 void FSShutdown() {

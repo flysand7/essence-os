@@ -153,6 +153,8 @@ struct Pool {
 
 struct PMM {
 	MMPageFrame *pageFrames;
+	bool pageFrameDatabaseInitialised;
+	uintptr_t pageFrameDatabaseCount;
 
 	uintptr_t firstFreePage;
 	uintptr_t firstZeroedPage;
@@ -426,39 +428,23 @@ uintptr_t MMPhysicalAllocate(unsigned flags, uintptr_t count, uintptr_t align, u
 
 	bool simple = count == 1 && align == 1 && below == 0;
 
-	if (physicalMemoryRegionsPagesCount) {
+	if (!pmm.pageFrameDatabaseInitialised) {
 		// Early page allocation before the page frame database is initialised.
 
 		if (!simple) {
 			KernelPanic("MMPhysicalAllocate - Non-simple allocation before initialisation of the page frame database.\n");
 		}
 
-		uintptr_t i = physicalMemoryRegionsIndex;
-
-		while (!physicalMemoryRegions[i].pageCount) {
-			i++;
-
-			if (i == physicalMemoryRegionsCount) {
-				KernelPanic("MMPhysicalAllocate - Expected more pages in physical regions.\n");
-			}
-		}
-
-		PhysicalMemoryRegion *region = physicalMemoryRegions + i;
-		uintptr_t returnValue = region->baseAddress;
-
-		region->baseAddress += K_PAGE_SIZE;
-		region->pageCount--;
-		physicalMemoryRegionsPagesCount--;
-		physicalMemoryRegionsIndex = i;
+		uintptr_t page = MMArchEarlyAllocatePage();
 
 		if (flags & MM_PHYSICAL_ALLOCATE_ZEROED) {
 			// TODO Hack!
-			MMArchMapPage(coreMMSpace, returnValue, (uintptr_t) earlyZeroBuffer, 
+			MMArchMapPage(coreMMSpace, page, (uintptr_t) earlyZeroBuffer, 
 					MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES | MM_MAP_PAGE_FRAME_LOCK_ACQUIRED);
 			EsMemoryZero(earlyZeroBuffer, K_PAGE_SIZE);
 		}
 
-		return returnValue;
+		return page;
 	} else if (!simple) {
 		// Slow path.
 		// TODO Use standby pages.
@@ -524,7 +510,7 @@ void MMPhysicalFree(uintptr_t page, bool mutexAlreadyAcquired, size_t count) {
 	if (!page) KernelPanic("MMPhysicalFree - Invalid page.\n");
 	if (mutexAlreadyAcquired) KMutexAssertLocked(&pmm.pageFrameMutex);
 	else KMutexAcquire(&pmm.pageFrameMutex);
-	if (physicalMemoryRegionsPagesCount) KernelPanic("MMPhysicalFree - PMM not yet initialised.\n");
+	if (!pmm.pageFrameDatabaseInitialised) KernelPanic("MMPhysicalFree - PMM not yet initialised.\n");
 
 	page >>= K_PAGE_BITS;
 
@@ -551,7 +537,7 @@ void MMPhysicalFree(uintptr_t page, bool mutexAlreadyAcquired, size_t count) {
 
 void MMCheckUnusable(uintptr_t physicalStart, size_t bytes) {
 	for (uintptr_t i = physicalStart / K_PAGE_SIZE; i < (physicalStart + bytes + K_PAGE_SIZE - 1) / K_PAGE_SIZE
-			&& i < physicalMemoryHighest / K_PAGE_SIZE; i++) {
+			&& i < pmm.pageFrameDatabaseCount; i++) {
 		if (pmm.pageFrames[i].state != MMPageFrame::UNUSABLE) {
 			KernelPanic("MMCheckUnusable - Page frame at address %x should be unusable.\n", i * K_PAGE_SIZE);
 		}
@@ -1587,13 +1573,11 @@ bool MMSpaceInitialise(MMSpace *space) {
 		return false;
 	}
 
-	if (!MMArchInitialiseUserSpace(space)) {
+	if (!MMArchInitialiseUserSpace(space, region)) {
 		EsHeapFree(region, sizeof(MMRegion), K_CORE);
 		return false;
 	}
 
-	region->baseAddress = MM_USER_SPACE_START; 
-	region->pageCount = MM_USER_SPACE_SIZE / K_PAGE_SIZE;
 	TreeInsert(&space->freeRegionsBase, &region->itemBase, region, MakeShortKey(region->baseAddress));
 	TreeInsert(&space->freeRegionsSize, &region->itemSize, region, MakeShortKey(region->pageCount), AVL_DUPLICATE_KEYS_ALLOW);
 
@@ -2276,21 +2260,11 @@ void MMSpaceCloseReference(MMSpace *space) {
 
 void MMInitialise() {
 	{
-		// Initialise coreMMSpace.
+		// Initialise coreMMSpace and kernelMMSpace.
 
-		MMArchInitialiseVAS();
-		mmCoreRegions[0].baseAddress = MM_CORE_SPACE_START;
-		mmCoreRegions[0].pageCount = MM_CORE_SPACE_SIZE / K_PAGE_SIZE;
 		mmCoreRegions[0].core.used = false;
 		mmCoreRegionCount = 1;
-	}
-
-	{
-		// Initialise kernelMMSpace.
-
-		KMutexAcquire(&coreMMSpace->reserveMutex);
-		kernelMMSpace->data.l1Commit = (uint8_t *) MMReserve(coreMMSpace, L1_COMMIT_SIZE_BYTES, MM_REGION_NORMAL | MM_REGION_NO_COMMIT_TRACKING | MM_REGION_FIXED)->baseAddress;
-		KMutexRelease(&coreMMSpace->reserveMutex);
+		MMArchInitialise();
 
 		MMRegion *region = (MMRegion *) EsHeapAllocate(sizeof(MMRegion), true, K_CORE);
 		region->baseAddress = MM_KERNEL_SPACE_START; 
@@ -2306,25 +2280,16 @@ void MMInitialise() {
 		pmm.pmManipulationRegion = (void *) MMReserve(kernelMMSpace, PHYSICAL_MEMORY_MANIPULATION_REGION_PAGES * K_PAGE_SIZE, ES_FLAGS_DEFAULT)->baseAddress; 
 		KMutexRelease(&kernelMMSpace->reserveMutex);
 
-		physicalMemoryHighest += K_PAGE_SIZE << 3; // 1 extra for the top page, then round up so the page bitset is byte-aligned.
-		pmm.pageFrames = (MMPageFrame *) MMStandardAllocate(kernelMMSpace, (physicalMemoryHighest >> K_PAGE_BITS) * sizeof(MMPageFrame), MM_REGION_FIXED);
-		pmm.freeOrZeroedPageBitset.Initialise(physicalMemoryHighest >> K_PAGE_BITS, true);
+		// 1 extra for the top page, then round up so the page bitset is byte-aligned.
+		pmm.pageFrameDatabaseCount = (MMArchGetPhysicalMemoryHighest() + (K_PAGE_SIZE << 3)) >> K_PAGE_BITS; 
 
-		uint64_t commitLimit = 0;
+		pmm.pageFrames = (MMPageFrame *) MMStandardAllocate(kernelMMSpace, pmm.pageFrameDatabaseCount * sizeof(MMPageFrame), MM_REGION_FIXED);
+		pmm.freeOrZeroedPageBitset.Initialise(pmm.pageFrameDatabaseCount, true);
+
 		MMPhysicalInsertFreePagesStart();
-
-		for (uintptr_t i = 0; i < physicalMemoryRegionsCount; i++) {
-			uintptr_t base = physicalMemoryRegions[i].baseAddress >> K_PAGE_BITS;
-			uintptr_t count = physicalMemoryRegions[i].pageCount;
-			commitLimit += count;
-
-			for (uintptr_t j = 0; j < count; j++) {
-				MMPhysicalInsertFreePagesNext(base + j);
-			}
-		}
-
+		uint64_t commitLimit = MMArchPopulatePageFrameDatabase();
 		MMPhysicalInsertFreePagesEnd();
-		physicalMemoryRegionsPagesCount = 0;
+		pmm.pageFrameDatabaseInitialised = true;
 
 		pmm.commitLimit = pmm.commitFixedLimit = commitLimit;
 		KernelLog(LOG_INFO, "Memory", "pmm initialised", "MMInitialise - PMM initialised with a fixed commit limit of %d pages.\n", pmm.commitLimit);
@@ -2337,7 +2302,7 @@ void MMInitialise() {
 	}
 
 	{
-		// Thread initialisation.
+		// Create threads.
 
 		pmm.zeroPageEvent.autoReset = true;
 		MMCommit(PHYSICAL_MEMORY_MANIPULATION_REGION_PAGES * K_PAGE_SIZE, true);

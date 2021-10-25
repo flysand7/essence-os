@@ -77,6 +77,7 @@ extern "C" uintptr_t ProcessorGetRBP();
 extern "C" uint64_t ProcessorReadMXCSR();
 extern "C" void ProcessorInstallTSS(uint32_t *gdt, uint32_t *tss);
 extern "C" void ProcessorAPStartup();
+extern "C" void ProcessorReset();
 
 extern "C" void SSSE3Framebuffer32To24Copy(volatile uint8_t *destination, volatile uint8_t *source, size_t pixelGroups);
 extern "C" uintptr_t _KThreadTerminate;
@@ -98,7 +99,7 @@ struct NewProcessorStorage {
 	uint32_t *gdt;
 };
 
-NewProcessorStorage AllocateNewProcessorStorage(struct ACPIProcessor *archCPU);
+NewProcessorStorage AllocateNewProcessorStorage(struct ArchCPU *archCPU);
 extern "C" void SetupProcessor2(struct NewProcessorStorage *);
 uintptr_t GetBootloaderInformationOffset();
 void ArchDelay1Ms(); // Spin for approximately 1ms. Use only during initialisation. Not thread-safe.
@@ -107,5 +108,15 @@ void *ACPIGetRSDP();
 uint8_t ACPIGetCenturyRegisterIndex();
 size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi = false, int processorID = -1); // Returns the number of processors the IPI was *not* sent to.
 void ArchSetPCIIRQLine(uint8_t slot, uint8_t pin, uint8_t line);
+
+struct InterruptContext {
+	uint64_t cr2, ds;
+	uint8_t  fxsave[512 + 16];
+	uint64_t _check, cr8;
+	uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
+	uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
+	uint64_t interruptNumber, errorCode;
+	uint64_t rip, cs, flags, rsp, ss;
+};
 
 #endif

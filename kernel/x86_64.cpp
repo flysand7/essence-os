@@ -1,17 +1,5 @@
 #ifndef IMPLEMENTATION
 
-typedef struct ACPIProcessor ArchCPU;
-
-struct InterruptContext {
-	uint64_t cr2, ds;
-	uint8_t  fxsave[512 + 16];
-	uint64_t _check, cr8;
-	uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
-	uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
-	uint64_t interruptNumber, errorCode;
-	uint64_t rip, cs, flags, rsp, ss;
-};
-
 struct MMArchVAS {
 	// NOTE Must be first in the structure. See ProcessorSetAddressSpace and ArchSwitchContext.
 	uintptr_t cr3;
@@ -40,16 +28,12 @@ struct MMArchVAS {
 	KMutex mutex; // Acquire to modify the page tables.
 };
 
-#define MM_CORE_SPACE_START   (0xFFFF800100000000)
-#define MM_CORE_SPACE_SIZE    (0xFFFF8001F0000000 - 0xFFFF800100000000)
 #define MM_CORE_REGIONS_START (0xFFFF8001F0000000)
 #define MM_CORE_REGIONS_COUNT ((0xFFFF800200000000 - 0xFFFF8001F0000000) / sizeof(MMRegion))
 #define MM_KERNEL_SPACE_START (0xFFFF900000000000)
 #define MM_KERNEL_SPACE_SIZE  (0xFFFFF00000000000 - 0xFFFF900000000000)
 #define MM_MODULES_START      (0xFFFFFFFF90000000)
 #define MM_MODULES_SIZE	      (0xFFFFFFFFC0000000 - 0xFFFFFFFF90000000)
-#define MM_USER_SPACE_START   (0x100000000000)
-#define MM_USER_SPACE_SIZE    (0xF00000000000 - 0x100000000000)
 
 #define ArchCheckBundleHeader()       (header.mapAddress > 0x800000000000UL || header.mapAddress < 0x1000 || fileSize > 0x1000000000000UL)
 #define ArchCheckELFHeader()          (header->virtualAddress > 0x800000000000UL || header->virtualAddress < 0x1000 || header->segmentSize > 0x1000000000000UL)
@@ -61,6 +45,11 @@ struct MMArchVAS {
 #endif
 
 #ifdef IMPLEMENTATION
+
+#define MM_CORE_SPACE_START   (0xFFFF800100000000)
+#define MM_CORE_SPACE_SIZE    (0xFFFF8001F0000000 - 0xFFFF800100000000)
+#define MM_USER_SPACE_START   (0x100000000000)
+#define MM_USER_SPACE_SIZE    (0xF00000000000 - 0x100000000000)
 
 struct MSIHandler {
 	KIRQHandler callback;
@@ -74,6 +63,13 @@ struct IRQHandler {
 	KPCIDevice *pciDevice;
 	const char *cOwnerName;
 };
+
+extern PhysicalMemoryRegion *physicalMemoryRegions;
+extern size_t physicalMemoryRegionsCount;
+extern size_t physicalMemoryRegionsPagesCount;
+extern size_t physicalMemoryOriginalPagesCount;
+extern size_t physicalMemoryRegionsIndex;
+extern uintptr_t physicalMemoryHighest;
 
 uint8_t pciIRQLines[0x100 /* slots */][4 /* pins */];
 
@@ -194,7 +190,7 @@ bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualA
 		KernelPanic("MMArchMapPage - Physical address not page aligned.\n");
 	}
 
-	if (pmm.pageFrames && physicalAddress < physicalMemoryHighest) {
+	if (pmm.pageFrames && (physicalAddress >> K_PAGE_BITS) < pmm.pageFrameDatabaseCount) {
 		if (pmm.pageFrames[physicalAddress >> K_PAGE_BITS].state != MMPageFrame::ACTIVE
 				&& pmm.pageFrames[physicalAddress >> K_PAGE_BITS].state != MMPageFrame::UNUSABLE) {
 			KernelPanic("MMArchMapPage - Physical page frame %x not marked as ACTIVE or UNUSABLE.\n", physicalAddress);
@@ -361,9 +357,12 @@ bool MMArchHandlePageFault(uintptr_t address, uint32_t flags) {
 	return false;
 }
 
-void MMArchInitialiseVAS() {
+void MMArchInitialise() {
 	coreMMSpace->data.cr3 = kernelMMSpace->data.cr3 = ProcessorReadCR3();
 	coreMMSpace->data.l1Commit = coreL1Commit;
+
+	mmCoreRegions[0].baseAddress = MM_CORE_SPACE_START;
+	mmCoreRegions[0].pageCount = MM_CORE_SPACE_SIZE / K_PAGE_SIZE;
 
 	for (uintptr_t i = 0x100; i < 0x200; i++) {
 		if (PAGE_TABLE_L4[i] == 0) {
@@ -372,6 +371,10 @@ void MMArchInitialiseVAS() {
 			EsMemoryZero((void *) (PAGE_TABLE_L3 + i * 0x200), K_PAGE_SIZE);
 		}
 	}
+
+	KMutexAcquire(&coreMMSpace->reserveMutex);
+	kernelMMSpace->data.l1Commit = (uint8_t *) MMReserve(coreMMSpace, L1_COMMIT_SIZE_BYTES, MM_REGION_NORMAL | MM_REGION_NO_COMMIT_TRACKING | MM_REGION_FIXED)->baseAddress;
+	KMutexRelease(&coreMMSpace->reserveMutex);
 }
 
 uintptr_t MMArchTranslateAddress(MMSpace *, uintptr_t virtualAddress, bool writeAccess) {
@@ -549,7 +552,10 @@ InterruptContext *ArchInitialiseThread(uintptr_t kernelStack, uintptr_t kernelSt
 	return context;
 }
 
-bool MMArchInitialiseUserSpace(MMSpace *space) {
+bool MMArchInitialiseUserSpace(MMSpace *space, MMRegion *region) {
+	region->baseAddress = MM_USER_SPACE_START; 
+	region->pageCount = MM_USER_SPACE_SIZE / K_PAGE_SIZE;
+
 	if (!MMCommit(K_PAGE_SIZE, true)) {
 		return false;
 	}
@@ -700,7 +706,7 @@ bool SetupInterruptRedirectionEntry(uintptr_t _line) {
 
 	for (uintptr_t i = 0; i < acpi.ioapicCount; i++) {
 		ioApic = acpi.ioApics + i;
-		if (line >= ioApic->gsiBase && line < (ioApic->gsiBase + (0xFF & (ioApic->ReadRegister(1) >> 16)))) {
+		if (line >= ioApic->gsiBase && line < (ioApic->gsiBase + (0xFF & (ACPIIoApicReadRegister(ioApic, 1) >> 16)))) {
 			foundIoApic = true;
 			line -= ioApic->gsiBase;
 			break;
@@ -723,9 +729,9 @@ bool SetupInterruptRedirectionEntry(uintptr_t _line) {
 
 	// Send the interrupt to the processor that registered the interrupt.
 
-	ioApic->WriteRegister(redirectionTableIndex, 1 << 16); // Mask the interrupt while we modify the entry.
-	ioApic->WriteRegister(redirectionTableIndex + 1, GetLocalStorage()->archCPU->apicID << 24); 
-	ioApic->WriteRegister(redirectionTableIndex, redirectionEntry);
+	ACPIIoApicWriteRegister(ioApic, redirectionTableIndex, 1 << 16); // Mask the interrupt while we modify the entry.
+	ACPIIoApicWriteRegister(ioApic, redirectionTableIndex + 1, GetLocalStorage()->archCPU->apicID << 24); 
+	ACPIIoApicWriteRegister(ioApic, redirectionTableIndex, redirectionEntry);
 
 	alreadySetup |= 1 << _line;
 	return true;
@@ -821,7 +827,7 @@ size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi, int processorID) {
 	size_t ignored = 0;
 
 	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
-		ACPIProcessor *processor = acpi.processors + i;
+		ArchCPU *processor = acpi.processors + i;
 
 		if (processorID != -1) {
 			if (processorID != processor->kernelProcessorID) {
@@ -837,11 +843,11 @@ size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi, int processorID) {
 
 		uint32_t destination = acpi.processors[i].apicID << 24;
 		uint32_t command = interrupt | (1 << 14) | (nmi ? 0x400 : 0);
-		acpi.lapic.WriteRegister(0x310 >> 2, destination);
-		acpi.lapic.WriteRegister(0x300 >> 2, command); 
+		ACPILapicWriteRegister(0x310 >> 2, destination);
+		ACPILapicWriteRegister(0x300 >> 2, command); 
 
 		// Wait for the interrupt to be sent.
-		while (acpi.lapic.ReadRegister(0x300 >> 2) & (1 << 12));
+		while (ACPILapicReadRegister(0x300 >> 2) & (1 << 12));
 	}
 
 	return ignored;
@@ -858,10 +864,10 @@ void ProcessorSendYieldIPI(Thread *thread) {
 void ArchNextTimer(size_t ms) {
 	while (!scheduler.started);               // Wait until the scheduler is ready.
 	GetLocalStorage()->schedulerReady = true; // Make sure this CPU can be scheduled.
-	acpi.lapic.ArchNextTimer(ms);             // Set the next timer.
+	ACPILapicNextTimer(ms);                   // Set the next timer.
 }
 
-NewProcessorStorage AllocateNewProcessorStorage(ACPIProcessor *archCPU) {
+NewProcessorStorage AllocateNewProcessorStorage(ArchCPU *archCPU) {
 	NewProcessorStorage storage = {};
 	storage.local = (CPULocalStorage *) EsHeapAllocate(sizeof(CPULocalStorage), true, K_FIXED);
 	storage.gdt = (uint32_t *) MMMapPhysical(kernelMMSpace, MMPhysicalAllocate(MM_PHYSICAL_ALLOCATE_COMMIT_NOW), K_PAGE_SIZE, ES_FLAGS_DEFAULT);
@@ -882,19 +888,19 @@ void SetupProcessor2(NewProcessorStorage *storage) {
 			uint32_t value = 2 | (1 << 10); // NMI exception interrupt vector.
 			if (acpi.lapicNMIs[i].activeLow) value |= 1 << 13;
 			if (acpi.lapicNMIs[i].levelTriggered) value |= 1 << 15;
-			acpi.lapic.WriteRegister(registerIndex, value);
+			ACPILapicWriteRegister(registerIndex, value);
 		}
 	}
 
-	acpi.lapic.WriteRegister(0x350 >> 2, acpi.lapic.ReadRegister(0x350 >> 2) & ~(1 << 16));
-	acpi.lapic.WriteRegister(0x360 >> 2, acpi.lapic.ReadRegister(0x360 >> 2) & ~(1 << 16));
-	acpi.lapic.WriteRegister(0x080 >> 2, 0);
-	if (acpi.lapic.ReadRegister(0x30 >> 2) & 0x80000000) acpi.lapic.WriteRegister(0x410 >> 2, 0);
-	acpi.lapic.EndOfInterrupt();
+	ACPILapicWriteRegister(0x350 >> 2, ACPILapicReadRegister(0x350 >> 2) & ~(1 << 16));
+	ACPILapicWriteRegister(0x360 >> 2, ACPILapicReadRegister(0x360 >> 2) & ~(1 << 16));
+	ACPILapicWriteRegister(0x080 >> 2, 0);
+	if (ACPILapicReadRegister(0x30 >> 2) & 0x80000000) ACPILapicWriteRegister(0x410 >> 2, 0);
+	ACPILapicEndOfInterrupt();
 
 	// Configure the LAPIC's timer.
 
-	acpi.lapic.WriteRegister(0x3E0 >> 2, 2); // Divisor = 16
+	ACPILapicWriteRegister(0x3E0 >> 2, 2); // Divisor = 16
 
 	// Create the processor's local storage.
 
@@ -1130,7 +1136,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			__sync_fetch_and_sub(&callFunctionOnAllProcessorsRemaining, 1);
 		}
 
-		acpi.lapic.EndOfInterrupt();
+		ACPILapicEndOfInterrupt();
 	} else if (interrupt >= INTERRUPT_VECTOR_MSI_START && interrupt < INTERRUPT_VECTOR_MSI_START + INTERRUPT_VECTOR_MSI_COUNT && local) {
 		KSpinlockAcquire(&irqHandlersLock);
 		MSIHandler handler = msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
@@ -1143,7 +1149,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			handler.callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler.context);
 		}
 
-		acpi.lapic.EndOfInterrupt();
+		ACPILapicEndOfInterrupt();
 
 		if (local->irqSwitchThread && scheduler.started && local->schedulerReady) {
 			scheduler.Yield(context);
@@ -1203,7 +1209,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			GetLocalStorage()->inIRQ = false;
 		}
 
-		acpi.lapic.EndOfInterrupt();
+		ACPILapicEndOfInterrupt();
 
 		if (local->irqSwitchThread && scheduler.started && local->schedulerReady) {
 			scheduler.Yield(context);
@@ -1235,7 +1241,7 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 		KernelLog(LOG_VERBOSE, "Arch", "executing new thread", "Executing new thread %x at %x\n", currentThread, context->rip);
 	}
 
-	acpi.lapic.EndOfInterrupt();
+	ACPILapicEndOfInterrupt();
 	ContextSanityCheck(context);
 
 	if (ProcessorAreInterruptsEnabled()) {
@@ -1310,6 +1316,49 @@ EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, u
 	else if (type == 4  /* R_X86_64_PLT32 */) *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
 	else return ES_ERROR_UNSUPPORTED_FEATURE;
 	return ES_SUCCESS;
+}
+
+uintptr_t MMArchEarlyAllocatePage() {
+	uintptr_t i = physicalMemoryRegionsIndex;
+
+	while (!physicalMemoryRegions[i].pageCount) {
+		i++;
+
+		if (i == physicalMemoryRegionsCount) {
+			KernelPanic("MMArchEarlyAllocatePage - Expected more pages in physical regions.\n");
+		}
+	}
+
+	PhysicalMemoryRegion *region = physicalMemoryRegions + i;
+	uintptr_t returnValue = region->baseAddress;
+
+	region->baseAddress += K_PAGE_SIZE;
+	region->pageCount--;
+	physicalMemoryRegionsPagesCount--;
+	physicalMemoryRegionsIndex = i;
+
+	return returnValue;
+}
+
+uint64_t MMArchPopulatePageFrameDatabase() {
+	uint64_t commitLimit = 0;
+
+	for (uintptr_t i = 0; i < physicalMemoryRegionsCount; i++) {
+		uintptr_t base = physicalMemoryRegions[i].baseAddress >> K_PAGE_BITS;
+		uintptr_t count = physicalMemoryRegions[i].pageCount;
+		commitLimit += count;
+
+		for (uintptr_t j = 0; j < count; j++) {
+			MMPhysicalInsertFreePagesNext(base + j);
+		}
+	}
+
+	physicalMemoryRegionsPagesCount = 0;
+	return commitLimit;
+}
+
+uintptr_t MMArchGetPhysicalMemoryHighest() {
+	return physicalMemoryHighest;
 }
 
 #endif

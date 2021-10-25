@@ -356,7 +356,7 @@ void KernelPanic(const char *format, ...) {
 
 			KWaitKey();
 		} else if (key == ES_SCANCODE_1) {
-			ArchResetCPU();
+			ProcessorReset();
 		} else if (key == ES_SCANCODE_2) {
 			EsPrint("Enter address: ");
 			uintptr_t address = DebugReadNumber();
