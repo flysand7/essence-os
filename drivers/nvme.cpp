@@ -325,7 +325,7 @@ bool NVMeController::Access(struct NVMeDrive *drive, uint64_t offsetBytes, size_
 
 		if (!prp2) {
 			prp2 = prpListPages[ioSubmissionQueueTail];
-			MMArchRemap(MMGetKernelSpace(), prpListVirtual, prp2);
+			MMRemapPhysical(MMGetKernelSpace(), prpListVirtual, prp2);
 			uintptr_t index = 0;
 
 			while (!KDMABufferIsComplete(buffer)) {

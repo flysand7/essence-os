@@ -2091,9 +2091,9 @@ bool MMFaultRange(uintptr_t address, uintptr_t byteCount, uint32_t flags = ES_FL
 	return true;
 }
 
-void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress) {
+void MMRemapPhysical(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress) {
 	if (ProcessorAreInterruptsEnabled()) {
-		KernelPanic("MMArchRemap - Cannot remap address with interrupts enabled (does not invalidate the page on other processors).\n");
+		KernelPanic("MMRemapPhysical - Cannot remap address with interrupts enabled (does not invalidate the page on other processors).\n");
 	}
 
 	MMArchMapPage(space, newPhysicalAddress, (uintptr_t) virtualAddress, MM_MAP_PAGE_OVERWRITE | MM_MAP_PAGE_NO_NEW_TABLES);

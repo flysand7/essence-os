@@ -345,6 +345,7 @@ MMSpace *MMGetCurrentProcessSpace();
 // Limited by region type flags.
 
 void *MMMapPhysical(MMSpace *space, uintptr_t address, size_t bytes, uint64_t caching);
+void MMRemapPhysical(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress); // Must be done with interrupts disabled; does not invalidate on other processors.
 void *MMStandardAllocate(MMSpace *space, size_t bytes, uint32_t flags, void *baseAddress = nullptr, bool commitAll = true);
 bool MMFree(MMSpace *space, void *address, size_t expectedSize = 0, bool userOnly = false);
 void MMAllowWriteCombiningCaching(MMSpace *space, void *virtualAddress);

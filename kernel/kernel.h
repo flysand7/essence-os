@@ -127,7 +127,6 @@ extern "C" {
 
 	bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualAddress, unsigned flags); // Returns false if the page was already mapped.
 	void MMArchUnmapPages(MMSpace *space, uintptr_t virtualAddressStart, uintptr_t pageCount, unsigned flags, size_t unmapMaximum = 0, uintptr_t *resumePosition = nullptr);
-	void MMArchRemap(MMSpace *space, const void *virtualAddress, uintptr_t newPhysicalAddress); // Must be done with interrupts disabled; does not invalidate on other processors.
 	bool MMArchMakePageWritable(MMSpace *space, uintptr_t virtualAddress);
 	bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
 	void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);

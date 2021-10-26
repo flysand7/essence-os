@@ -361,7 +361,7 @@ void KernelPanic(const char *format, ...) {
 			EsPrint("Enter address: ");
 			uintptr_t address = DebugReadNumber();
 			uintptr_t offset = address & (K_PAGE_SIZE - 1);
-			MMArchRemap(kernelMMSpace, pmm.pmManipulationRegion, address - offset);
+			MMRemapPhysical(kernelMMSpace, pmm.pmManipulationRegion, address - offset);
 			uintptr_t *data = (uintptr_t *) ((uint8_t *) pmm.pmManipulationRegion + offset);
 
 			for (uintptr_t i = 0; i < 8 && (offset + 8 * sizeof(uintptr_t) < K_PAGE_SIZE); i++) {
