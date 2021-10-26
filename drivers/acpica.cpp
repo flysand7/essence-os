@@ -36,16 +36,7 @@ ES_EXTERN_C ACPI_STATUS AcpiOsTerminate() {
 }
 
 ES_EXTERN_C ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer() {
-	ACPI_PHYSICAL_ADDRESS address = 0;
-
-	uint64_t uefiRSDP = *((uint64_t *) (LOW_MEMORY_MAP_START + GetBootloaderInformationOffset() + 0x7FE8));
-
-	if (uefiRSDP) {
-		return uefiRSDP;
-	}
-
-	AcpiFindRootPointer(&address);
-	return address;
+	return ArchFindRootSystemDescriptorPointer();
 }
 
 ES_EXTERN_C ACPI_STATUS AcpiOsPredefinedOverride(const ACPI_PREDEFINED_NAMES *predefinedObject, ACPI_STRING *newValue) {
@@ -72,12 +63,6 @@ ES_EXTERN_C void *AcpiOsMapMemory(ACPI_PHYSICAL_ADDRESS physicalAddress, ACPI_SI
 }
 
 ES_EXTERN_C void AcpiOsUnmapMemory(void *address, ACPI_SIZE length) {
-#ifdef ARCH_X86_COMMON
-	if ((uintptr_t) address - (uintptr_t) LOW_MEMORY_MAP_START < (uintptr_t) LOW_MEMORY_LIMIT) {
-		return;
-	}
-#endif
-
 	(void) length;
 	MMFree(kernelMMSpace, address);
 }

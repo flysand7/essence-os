@@ -98,23 +98,6 @@ void ACPIIoApicWriteRegister(ACPIIoApic *apic, uint32_t reg, uint32_t value) {
 	apic->address[4] = value;
 }
 
-uint32_t ACPILapicReadRegister(uint32_t reg) {
-	return acpi.lapicAddress[reg];
-}
-
-void ACPILapicWriteRegister(uint32_t reg, uint32_t value) {
-	acpi.lapicAddress[reg] = value;
-}
-
-void ACPILapicNextTimer(size_t ms) {
-	ACPILapicWriteRegister(0x320 >> 2, TIMER_INTERRUPT | (1 << 17)); 
-	ACPILapicWriteRegister(0x380 >> 2, acpi.lapicTicksPerMs * ms); 
-}
-
-void ACPILapicEndOfInterrupt() {
-	ACPILapicWriteRegister(0xB0 >> 2, 0);
-}
-
 void ACPICheckTable(const ACPIDescriptorTable *table) {
 	if (!EsMemorySumBytes((uint8_t *) table, table->length)) {
 		return;
@@ -126,71 +109,15 @@ void ACPICheckTable(const ACPIDescriptorTable *table) {
 			table->oemRevision, 4, &table->creatorID, table->creatorRevision);
 }
 
-#ifdef ARCH_X86_COMMON
-uint64_t ArchGetTimeMs() {
-	// Update the time stamp counter synchronization value.
-	timeStampCounterSynchronizationValue = ((timeStampCounterSynchronizationValue & 0x8000000000000000) 
-			^ 0x8000000000000000) | ProcessorReadTimeStamp();
-
-	if (acpi.hpetBaseAddress && acpi.hpetPeriod) {
-		__int128 fsToMs = 1000000000000;
-		__int128 reading = acpi.hpetBaseAddress[30];
-		return (uint64_t) (reading * (__int128) acpi.hpetPeriod / fsToMs);
-	} else {
-		return ArchGetTimeFromPITMs();
-	}
-}
-
-RootSystemDescriptorPointer *ACPIFindRootSystemDescriptorPointer() {
-	PhysicalMemoryRegion searchRegions[2];
-
-	searchRegions[0].baseAddress = (uintptr_t) (((uint16_t *) LOW_MEMORY_MAP_START)[0x40E] << 4) + LOW_MEMORY_MAP_START;
-	searchRegions[0].pageCount = 0x400;
-	searchRegions[1].baseAddress = (uintptr_t) 0xE0000 + LOW_MEMORY_MAP_START;
-	searchRegions[1].pageCount = 0x20000;
-
-	for (uintptr_t i = 0; i < 2; i++) {
-		for (uintptr_t address = searchRegions[i].baseAddress;
-				address < searchRegions[i].baseAddress + searchRegions[i].pageCount;
-				address += 16) {
-			RootSystemDescriptorPointer *rsdp = (RootSystemDescriptorPointer *) address;
-
-			if (rsdp->signature != SIGNATURE_RSDP) {
-				continue;
-			}
-
-			if (rsdp->revision == 0) {
-				if (EsMemorySumBytes((uint8_t *) rsdp, 20)) {
-					continue;
-				}
-
-				return rsdp;
-			} else if (rsdp->revision == 2) {
-				if (EsMemorySumBytes((uint8_t *) rsdp, sizeof(RootSystemDescriptorPointer))) {
-					continue;
-				}
-
-				return rsdp;
-			}
-		}
-	}
-
-	return nullptr;
-}
-#endif
-
 void *ACPIMapPhysicalMemory(uintptr_t physicalAddress, size_t length) {
-#ifdef ARCH_X86_COMMON
-	if ((uintptr_t) physicalAddress + (uintptr_t) length < (uintptr_t) LOW_MEMORY_LIMIT) {
-		return (void *) (LOW_MEMORY_MAP_START + physicalAddress);
-	}
-#endif
-
-	void *address = MMMapPhysical(kernelMMSpace, physicalAddress, length, MM_REGION_NOT_CACHEABLE);
-	return address;
+	return MMMapPhysical(kernelMMSpace, physicalAddress, length, MM_REGION_NOT_CACHEABLE);
 }
 
 void KPS2SafeToInitialise() {
+	// This is only called when either:
+	// - the PCI driver determines there are no USB controllers
+	// - the USB controller disables USB emulation
+
 	// TODO Qemu sets this to true?
 #if 0
 	if (acpi.ps2ControllerUnavailable) {
@@ -198,10 +125,9 @@ void KPS2SafeToInitialise() {
 	}
 #endif
 
-	// This is only called when either:
-	// - the PCI driver determines there are no USB controllers
-	// - the USB controller disables USB emulation
-	KThreadCreate("InitPS2", [] (uintptr_t) { KDeviceAttachByName(acpi.computer, "PS2"); });
+	KThreadCreate("InitPS2", [] (uintptr_t) { 
+		KDeviceAttachByName(acpi.computer, "PS2"); 
+	});
 }
 
 void *ACPIGetRSDP() {
@@ -212,14 +138,8 @@ uint8_t ACPIGetCenturyRegisterIndex() {
 	return acpi.centuryRegisterIndex;
 }
 
-void ArchInitialise() {
-	uint64_t uefiRSDP = *((uint64_t *) (LOW_MEMORY_MAP_START + GetBootloaderInformationOffset() + 0x7FE8));
-
-	if (!uefiRSDP) {
-		acpi.rsdp = ACPIFindRootSystemDescriptorPointer();
-	} else {
-		acpi.rsdp = (RootSystemDescriptorPointer *) MMMapPhysical(kernelMMSpace, (uintptr_t) uefiRSDP, 16384, ES_FLAGS_DEFAULT);
-	}
+void ACPIParseTables() {
+	acpi.rsdp = (RootSystemDescriptorPointer *) MMMapPhysical(kernelMMSpace, ArchFindRootSystemDescriptorPointer(), 16384, ES_FLAGS_DEFAULT);
 
 	ACPIDescriptorTable *madtHeader = nullptr;
 	ACPIDescriptorTable *sdt = nullptr; 
@@ -315,8 +235,6 @@ void ArchInitialise() {
 		MMFree(kernelMMSpace, header);
 	}
 
-	// Set up the APIC.
-	
 	MultipleAPICDescriptionTable *madt = (MultipleAPICDescriptionTable *) ((uint8_t *) madtHeader + ACPI_DESCRIPTOR_TABLE_HEADER_LENGTH);
 
 	if (!madt) {
@@ -391,143 +309,6 @@ void ArchInitialise() {
 			    "                    and LAPIC NMIs (%d/%d)\n", 
 			    acpi.processorCount, 256, acpi.ioapicCount, 16, acpi.interruptOverrideCount, 256, acpi.lapicNMICount, 32);
 	}
-
-	uint8_t bootstrapLapicID = (ACPILapicReadRegister(0x20 >> 2) >> 24); 
-
-	ArchCPU *currentCPU = nullptr;
-
-	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
-		if (acpi.processors[i].apicID == bootstrapLapicID) {
-			// That's us!
-			currentCPU = acpi.processors + i;
-			currentCPU->bootProcessor = true;
-			break;
-		}
-	}
-
-	if (!currentCPU) {
-		KernelPanic("ACPIInitialise - Could not find the bootstrap processor\n");
-	}
-
-	// Calibrate the LAPIC's timer and processor's timestamp counter.
-	ProcessorDisableInterrupts();
-	uint64_t start = ProcessorReadTimeStamp();
-	ACPILapicWriteRegister(0x380 >> 2, (uint32_t) -1); 
-	for (int i = 0; i < 8; i++) ArchDelay1Ms(); // Average over 8ms
-	acpi.lapicTicksPerMs = ((uint32_t) -1 - ACPILapicReadRegister(0x390 >> 2)) >> 4;
-	EsRandomAddEntropy(ACPILapicReadRegister(0x390 >> 2));
-	uint64_t end = ProcessorReadTimeStamp();
-	timeStampTicksPerMs = (end - start) >> 3;
-	ProcessorEnableInterrupts();
-	// EsPrint("timeStampTicksPerMs = %d\n", timeStampTicksPerMs);
-
-	// Finish processor initialisation.
-	// This sets up interrupts, the timer, CPULocalStorage, the GDT and TSS,
-	// and registers the processor with the scheduler.
-
-	NewProcessorStorage storage = AllocateNewProcessorStorage(currentCPU);
-	SetupProcessor2(&storage);
-}
-
-void ACPIStartupApplicationProcessors() {
-#ifdef USE_SMP
-	// TODO How do we know that this address is usable?
-#define AP_TRAMPOLINE 0x10000
-
-	KEvent delay = {};
-
-	uint8_t *startupData = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE);
-
-	// Put the trampoline code in memory.
-	EsMemoryCopy(startupData, (void *) ProcessorAPStartup, 0x1000); // Assume that the AP trampoline code <=4KB.
-
-	// Put the paging table location at AP_TRAMPOLINE + 0xFF0.
-	*((uint64_t *) (startupData + 0xFF0)) = ProcessorReadCR3();
-
-	// Put the 64-bit GDTR at AP_TRAMPOLINE + 0xFE0.
-	EsMemoryCopy(startupData + 0xFE0, (void *) processorGDTR, 0x10);
-
-	// Put the GDT at AP_TRAMPOLINE + 0x1000.
-	EsMemoryCopy(startupData + 0x1000, (void *) gdt_data, 0x1000);
-
-	// Put the startup flag at AP_TRAMPOLINE + 0xFC0
-	uint8_t volatile *startupFlag = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE + 0xFC0);
-
-	// Temporarily identity map 2 pages in at 0x10000.
-	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE, AP_TRAMPOLINE, MM_MAP_PAGE_COMMIT_TABLES_NOW);
-	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE + 0x1000, AP_TRAMPOLINE + 0x1000, MM_MAP_PAGE_COMMIT_TABLES_NOW);
-
-	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
-		ArchCPU *processor = acpi.processors + i;
-		if (processor->bootProcessor) continue;
-
-		// Allocate state for the processor.
-		NewProcessorStorage storage = AllocateNewProcessorStorage(processor);
-
-		// Clear the startup flag.
-		*startupFlag = 0;
-
-		// Put the stack at AP_TRAMPOLINE + 0xFD0, and the address of the NewProcessorStorage at AP_TRAMPOLINE + 0xFB0.
-		void *stack = (void *) ((uintptr_t) MMStandardAllocate(kernelMMSpace, 0x1000, MM_REGION_FIXED) + 0x1000);
-		*((void **) (startupData + 0xFD0)) = stack;
-		*((NewProcessorStorage **) (startupData + 0xFB0)) = &storage;
-
-		KernelLog(LOG_INFO, "ACPI", "starting processor", "Starting processor %d with local storage %x...\n", i, storage.local);
-
-		// Send an INIT IPI.
-		ProcessorDisableInterrupts(); // Don't be interrupted between writes...
-		ACPILapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-		ACPILapicWriteRegister(0x300 >> 2, 0x4500);
-		ProcessorEnableInterrupts();
-		KEventWait(&delay, 10);
-
-		// Send a startup IPI.
-		ProcessorDisableInterrupts();
-		ACPILapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-		ACPILapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
-		ProcessorEnableInterrupts();
-		for (uintptr_t i = 0; i < 100 && *startupFlag == 0; i++) KEventWait(&delay, 1);
-
-		if (*startupFlag) {
-			// The processor started correctly.
-		} else {
-			// Send a startup IPI, again.
-			ProcessorDisableInterrupts();
-			ACPILapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-			ACPILapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
-			ProcessorEnableInterrupts();
-			for (uintptr_t i = 0; i < 1000 && *startupFlag == 0; i++) KEventWait(&delay, 1); // Wait longer this time.
-
-			if (*startupFlag) {
-				// The processor started correctly.
-			} else {
-				// The processor could not be started.
-				KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
-						"ACPIInitialise - Could not start processor %d\n", processor->processorID);
-				continue;
-			}
-		}
-
-		// EsPrint("Startup flag 1 reached!\n");
-
-		for (uintptr_t i = 0; i < 10000 && *startupFlag != 2; i++) KEventWait(&delay, 1);
-
-		if (*startupFlag == 2) {
-			// The processor started!
-		} else {
-			// The processor did not report it completed initilisation, worringly.
-			// Don't let it continue.
-
-			KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
-					"ACPIInitialise - Could not initialise processor %d\n", processor->processorID);
-
-			// TODO Send IPI to stop the processor.
-		}
-	}
-	
-	// Remove the identity pages needed for the trampoline code.
-	MMArchUnmapPages(kernelMMSpace, AP_TRAMPOLINE, 2, ES_FLAGS_DEFAULT);
-#endif
 }
 
 size_t KGetCPUCount() {
@@ -558,7 +339,9 @@ void ACPIDeviceAttach(KDevice *parentDevice) {
 #ifdef USE_ACPICA
 		ACPICAInitialise(); 
 #endif
-		ACPIStartupApplicationProcessors();
+#ifdef USE_SMP
+		ArchStartupApplicationProcessors();
+#endif
 	});
 
 	if (!acpi.vgaControllerUnavailable) {

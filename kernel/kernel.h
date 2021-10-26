@@ -174,7 +174,7 @@ extern "C" {
 	// - MM_CORE_REGIONS_START and MM_CORE_REGIONS_COUNT.
 	// - MM_KERNEL_SPACE_START and MM_KERNEL_SPACE_SIZE.
 	// - MM_MODULES_START and MM_MODULES_SIZE.
-	// - ArchCheckBundleHeader, ArchCheckELFHeader and ArchIsAddressInKernelSpace.
+	// - ArchCheckBundleHeader and ArchCheckELFHeader.
 	// - K_ARCH_STACK_GROWS_DOWN or K_ARCH_STACK_GROWS_UP.
 	// - K_ARCH_NAME.
 }

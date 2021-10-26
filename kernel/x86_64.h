@@ -1,9 +1,6 @@
 #ifndef ARCH_X86_64_HEADER
 #define ARCH_X86_64_HEADER
 
-#define LOW_MEMORY_MAP_START (0xFFFFFE0000000000)
-#define LOW_MEMORY_LIMIT (0x100000) // The first 1MB is mapped here.
-
 // --------------------------------- Standardised IO ports.
 
 #define IO_PIC_1_COMMAND		(0x0020)
@@ -108,6 +105,8 @@ void *ACPIGetRSDP();
 uint8_t ACPIGetCenturyRegisterIndex();
 size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi = false, int processorID = -1); // Returns the number of processors the IPI was *not* sent to.
 void ArchSetPCIIRQLine(uint8_t slot, uint8_t pin, uint8_t line);
+uintptr_t ArchFindRootSystemDescriptorPointer();
+void ArchStartupApplicationProcessors();
 
 struct InterruptContext {
 	uint64_t cr2, ds;

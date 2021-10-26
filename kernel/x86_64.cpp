@@ -37,7 +37,6 @@ struct MMArchVAS {
 
 #define ArchCheckBundleHeader()       (header.mapAddress > 0x800000000000UL || header.mapAddress < 0x1000 || fileSize > 0x1000000000000UL)
 #define ArchCheckELFHeader()          (header->virtualAddress > 0x800000000000UL || header->virtualAddress < 0x1000 || header->segmentSize > 0x1000000000000UL)
-#define ArchIsAddressInKernelSpace(x) ((uintptr_t) (x) >= 0xFFFF800000000000)
 
 #define K_ARCH_STACK_GROWS_DOWN
 #define K_ARCH_NAME "x86_64"
@@ -50,6 +49,8 @@ struct MMArchVAS {
 #define MM_CORE_SPACE_SIZE    (0xFFFF8001F0000000 - 0xFFFF800100000000)
 #define MM_USER_SPACE_START   (0x100000000000)
 #define MM_USER_SPACE_SIZE    (0xF00000000000 - 0x100000000000)
+#define LOW_MEMORY_MAP_START (0xFFFFFE0000000000)
+#define LOW_MEMORY_LIMIT (0x100000000) // The first 4GB is mapped here.
 
 struct MSIHandler {
 	KIRQHandler callback;
@@ -95,6 +96,23 @@ volatile uintptr_t callFunctionOnAllProcessorsRemaining;
 #define PAGE_TABLE_L1 ((volatile uint64_t *) 0xFFFFFF0000000000)
 #define ENTRIES_PER_PAGE_TABLE (512)
 #define ENTRIES_PER_PAGE_TABLE_BITS (9)
+
+uint32_t LapicReadRegister(uint32_t reg) {
+	return acpi.lapicAddress[reg];
+}
+
+void LapicWriteRegister(uint32_t reg, uint32_t value) {
+	acpi.lapicAddress[reg] = value;
+}
+
+void LapicNextTimer(size_t ms) {
+	LapicWriteRegister(0x320 >> 2, TIMER_INTERRUPT | (1 << 17)); 
+	LapicWriteRegister(0x380 >> 2, acpi.lapicTicksPerMs * ms); 
+}
+
+void LapicEndOfInterrupt() {
+	LapicWriteRegister(0xB0 >> 2, 0);
+}
 
 void ArchSetPCIIRQLine(uint8_t slot, uint8_t pin, uint8_t line) {
 	pciIRQLines[slot][pin] = line;
@@ -207,8 +225,7 @@ bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualA
 
 	uintptr_t cr3 = space->data.cr3;
 
-	if (!ArchIsAddressInKernelSpace(virtualAddress) 
-			&& ProcessorReadCR3() != cr3) {
+	if (virtualAddress < 0xFFFF800000000000 && ProcessorReadCR3() != cr3) {
 		KernelPanic("MMArchMapPage - Attempt to map page into other address space.\n");
 	} else if (!physicalAddress) {
 		KernelPanic("MMArchMapPage - Attempt to map physical page 0.\n");
@@ -331,7 +348,7 @@ bool MMArchHandlePageFault(uintptr_t address, uint32_t flags) {
 	}
 
 	if (address < K_PAGE_SIZE) {
-	} else if (address >= LOW_MEMORY_MAP_START && address < LOW_MEMORY_MAP_START + 0x100000000 && forSupervisor) {
+	} else if (address >= LOW_MEMORY_MAP_START && address < LOW_MEMORY_MAP_START + LOW_MEMORY_LIMIT && forSupervisor) {
 		// We want to access a physical page within the first 4GB.
 		// This is used for device IO, so the page can't be cacheable.
 		MMArchMapPage(kernelMMSpace, address - LOW_MEMORY_MAP_START, address, MM_MAP_PAGE_NOT_CACHEABLE | MM_MAP_PAGE_COMMIT_TABLES_NOW);
@@ -843,11 +860,11 @@ size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi, int processorID) {
 
 		uint32_t destination = acpi.processors[i].apicID << 24;
 		uint32_t command = interrupt | (1 << 14) | (nmi ? 0x400 : 0);
-		ACPILapicWriteRegister(0x310 >> 2, destination);
-		ACPILapicWriteRegister(0x300 >> 2, command); 
+		LapicWriteRegister(0x310 >> 2, destination);
+		LapicWriteRegister(0x300 >> 2, command); 
 
 		// Wait for the interrupt to be sent.
-		while (ACPILapicReadRegister(0x300 >> 2) & (1 << 12));
+		while (LapicReadRegister(0x300 >> 2) & (1 << 12));
 	}
 
 	return ignored;
@@ -864,7 +881,7 @@ void ProcessorSendYieldIPI(Thread *thread) {
 void ArchNextTimer(size_t ms) {
 	while (!scheduler.started);               // Wait until the scheduler is ready.
 	GetLocalStorage()->schedulerReady = true; // Make sure this CPU can be scheduled.
-	ACPILapicNextTimer(ms);                   // Set the next timer.
+	LapicNextTimer(ms);                       // Set the next timer.
 }
 
 NewProcessorStorage AllocateNewProcessorStorage(ArchCPU *archCPU) {
@@ -888,19 +905,19 @@ void SetupProcessor2(NewProcessorStorage *storage) {
 			uint32_t value = 2 | (1 << 10); // NMI exception interrupt vector.
 			if (acpi.lapicNMIs[i].activeLow) value |= 1 << 13;
 			if (acpi.lapicNMIs[i].levelTriggered) value |= 1 << 15;
-			ACPILapicWriteRegister(registerIndex, value);
+			LapicWriteRegister(registerIndex, value);
 		}
 	}
 
-	ACPILapicWriteRegister(0x350 >> 2, ACPILapicReadRegister(0x350 >> 2) & ~(1 << 16));
-	ACPILapicWriteRegister(0x360 >> 2, ACPILapicReadRegister(0x360 >> 2) & ~(1 << 16));
-	ACPILapicWriteRegister(0x080 >> 2, 0);
-	if (ACPILapicReadRegister(0x30 >> 2) & 0x80000000) ACPILapicWriteRegister(0x410 >> 2, 0);
-	ACPILapicEndOfInterrupt();
+	LapicWriteRegister(0x350 >> 2, LapicReadRegister(0x350 >> 2) & ~(1 << 16));
+	LapicWriteRegister(0x360 >> 2, LapicReadRegister(0x360 >> 2) & ~(1 << 16));
+	LapicWriteRegister(0x080 >> 2, 0);
+	if (LapicReadRegister(0x30 >> 2) & 0x80000000) LapicWriteRegister(0x410 >> 2, 0);
+	LapicEndOfInterrupt();
 
 	// Configure the LAPIC's timer.
 
-	ACPILapicWriteRegister(0x3E0 >> 2, 2); // Divisor = 16
+	LapicWriteRegister(0x3E0 >> 2, 2); // Divisor = 16
 
 	// Create the processor's local storage.
 
@@ -1136,7 +1153,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			__sync_fetch_and_sub(&callFunctionOnAllProcessorsRemaining, 1);
 		}
 
-		ACPILapicEndOfInterrupt();
+		LapicEndOfInterrupt();
 	} else if (interrupt >= INTERRUPT_VECTOR_MSI_START && interrupt < INTERRUPT_VECTOR_MSI_START + INTERRUPT_VECTOR_MSI_COUNT && local) {
 		KSpinlockAcquire(&irqHandlersLock);
 		MSIHandler handler = msiHandlers[interrupt - INTERRUPT_VECTOR_MSI_START];
@@ -1149,7 +1166,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			handler.callback(interrupt - INTERRUPT_VECTOR_MSI_START, handler.context);
 		}
 
-		ACPILapicEndOfInterrupt();
+		LapicEndOfInterrupt();
 
 		if (local->irqSwitchThread && scheduler.started && local->schedulerReady) {
 			scheduler.Yield(context);
@@ -1209,7 +1226,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			GetLocalStorage()->inIRQ = false;
 		}
 
-		ACPILapicEndOfInterrupt();
+		LapicEndOfInterrupt();
 
 		if (local->irqSwitchThread && scheduler.started && local->schedulerReady) {
 			scheduler.Yield(context);
@@ -1241,7 +1258,7 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 		KernelLog(LOG_VERBOSE, "Arch", "executing new thread", "Executing new thread %x at %x\n", currentThread, context->rip);
 	}
 
-	ACPILapicEndOfInterrupt();
+	LapicEndOfInterrupt();
 	ContextSanityCheck(context);
 
 	if (ProcessorAreInterruptsEnabled()) {
@@ -1359,6 +1376,202 @@ uint64_t MMArchPopulatePageFrameDatabase() {
 
 uintptr_t MMArchGetPhysicalMemoryHighest() {
 	return physicalMemoryHighest;
+}
+
+void ArchStartupApplicationProcessors() {
+	// TODO How do we know that this address is usable?
+#define AP_TRAMPOLINE 0x10000
+
+	KEvent delay = {};
+
+	uint8_t *startupData = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE);
+
+	// Put the trampoline code in memory.
+	EsMemoryCopy(startupData, (void *) ProcessorAPStartup, 0x1000); // Assume that the AP trampoline code <=4KB.
+
+	// Put the paging table location at AP_TRAMPOLINE + 0xFF0.
+	*((uint64_t *) (startupData + 0xFF0)) = ProcessorReadCR3();
+
+	// Put the 64-bit GDTR at AP_TRAMPOLINE + 0xFE0.
+	EsMemoryCopy(startupData + 0xFE0, (void *) processorGDTR, 0x10);
+
+	// Put the GDT at AP_TRAMPOLINE + 0x1000.
+	EsMemoryCopy(startupData + 0x1000, (void *) gdt_data, 0x1000);
+
+	// Put the startup flag at AP_TRAMPOLINE + 0xFC0
+	uint8_t volatile *startupFlag = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE + 0xFC0);
+
+	// Temporarily identity map 2 pages in at 0x10000.
+	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE, AP_TRAMPOLINE, MM_MAP_PAGE_COMMIT_TABLES_NOW);
+	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE + 0x1000, AP_TRAMPOLINE + 0x1000, MM_MAP_PAGE_COMMIT_TABLES_NOW);
+
+	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
+		ArchCPU *processor = acpi.processors + i;
+		if (processor->bootProcessor) continue;
+
+		// Allocate state for the processor.
+		NewProcessorStorage storage = AllocateNewProcessorStorage(processor);
+
+		// Clear the startup flag.
+		*startupFlag = 0;
+
+		// Put the stack at AP_TRAMPOLINE + 0xFD0, and the address of the NewProcessorStorage at AP_TRAMPOLINE + 0xFB0.
+		void *stack = (void *) ((uintptr_t) MMStandardAllocate(kernelMMSpace, 0x1000, MM_REGION_FIXED) + 0x1000);
+		*((void **) (startupData + 0xFD0)) = stack;
+		*((NewProcessorStorage **) (startupData + 0xFB0)) = &storage;
+
+		KernelLog(LOG_INFO, "ACPI", "starting processor", "Starting processor %d with local storage %x...\n", i, storage.local);
+
+		// Send an INIT IPI.
+		ProcessorDisableInterrupts(); // Don't be interrupted between writes...
+		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+		LapicWriteRegister(0x300 >> 2, 0x4500);
+		ProcessorEnableInterrupts();
+		KEventWait(&delay, 10);
+
+		// Send a startup IPI.
+		ProcessorDisableInterrupts();
+		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+		LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
+		ProcessorEnableInterrupts();
+		for (uintptr_t i = 0; i < 100 && *startupFlag == 0; i++) KEventWait(&delay, 1);
+
+		if (*startupFlag) {
+			// The processor started correctly.
+		} else {
+			// Send a startup IPI, again.
+			ProcessorDisableInterrupts();
+			LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+			LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
+			ProcessorEnableInterrupts();
+			for (uintptr_t i = 0; i < 1000 && *startupFlag == 0; i++) KEventWait(&delay, 1); // Wait longer this time.
+
+			if (*startupFlag) {
+				// The processor started correctly.
+			} else {
+				// The processor could not be started.
+				KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
+						"ACPIInitialise - Could not start processor %d\n", processor->processorID);
+				continue;
+			}
+		}
+
+		// EsPrint("Startup flag 1 reached!\n");
+
+		for (uintptr_t i = 0; i < 10000 && *startupFlag != 2; i++) KEventWait(&delay, 1);
+
+		if (*startupFlag == 2) {
+			// The processor started!
+		} else {
+			// The processor did not report it completed initilisation, worringly.
+			// Don't let it continue.
+
+			KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
+					"ACPIInitialise - Could not initialise processor %d\n", processor->processorID);
+
+			// TODO Send IPI to stop the processor.
+		}
+	}
+	
+	// Remove the identity pages needed for the trampoline code.
+	MMArchUnmapPages(kernelMMSpace, AP_TRAMPOLINE, 2, ES_FLAGS_DEFAULT);
+}
+
+uint64_t ArchGetTimeMs() {
+	// Update the time stamp counter synchronization value.
+	timeStampCounterSynchronizationValue = ((timeStampCounterSynchronizationValue & 0x8000000000000000) 
+			^ 0x8000000000000000) | ProcessorReadTimeStamp();
+
+	if (acpi.hpetBaseAddress && acpi.hpetPeriod) {
+		__int128 fsToMs = 1000000000000;
+		__int128 reading = acpi.hpetBaseAddress[30];
+		return (uint64_t) (reading * (__int128) acpi.hpetPeriod / fsToMs);
+	} else {
+		return ArchGetTimeFromPITMs();
+	}
+}
+
+uintptr_t ArchFindRootSystemDescriptorPointer() {
+	uint64_t uefiRSDP = *((uint64_t *) (LOW_MEMORY_MAP_START + GetBootloaderInformationOffset() + 0x7FE8));
+
+	if (uefiRSDP) {
+		return uefiRSDP;
+	}
+
+	PhysicalMemoryRegion searchRegions[2];
+
+	searchRegions[0].baseAddress = (uintptr_t) (((uint16_t *) LOW_MEMORY_MAP_START)[0x40E] << 4) + LOW_MEMORY_MAP_START;
+	searchRegions[0].pageCount = 0x400;
+	searchRegions[1].baseAddress = (uintptr_t) 0xE0000 + LOW_MEMORY_MAP_START;
+	searchRegions[1].pageCount = 0x20000;
+
+	for (uintptr_t i = 0; i < 2; i++) {
+		for (uintptr_t address = searchRegions[i].baseAddress;
+				address < searchRegions[i].baseAddress + searchRegions[i].pageCount;
+				address += 16) {
+			RootSystemDescriptorPointer *rsdp = (RootSystemDescriptorPointer *) address;
+
+			if (rsdp->signature != SIGNATURE_RSDP) {
+				continue;
+			}
+
+			if (rsdp->revision == 0) {
+				if (EsMemorySumBytes((uint8_t *) rsdp, 20)) {
+					continue;
+				}
+
+				return (uintptr_t) rsdp - LOW_MEMORY_MAP_START;
+			} else if (rsdp->revision == 2) {
+				if (EsMemorySumBytes((uint8_t *) rsdp, sizeof(RootSystemDescriptorPointer))) {
+					continue;
+				}
+
+				return (uintptr_t) rsdp - LOW_MEMORY_MAP_START;
+			}
+		}
+	}
+
+	return 0;
+}
+
+void ArchInitialise() {
+	ACPIParseTables();
+
+	uint8_t bootstrapLapicID = (LapicReadRegister(0x20 >> 2) >> 24); 
+
+	ArchCPU *currentCPU = nullptr;
+
+	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
+		if (acpi.processors[i].apicID == bootstrapLapicID) {
+			// That's us!
+			currentCPU = acpi.processors + i;
+			currentCPU->bootProcessor = true;
+			break;
+		}
+	}
+
+	if (!currentCPU) {
+		KernelPanic("ACPIInitialise - Could not find the bootstrap processor\n");
+	}
+
+	// Calibrate the LAPIC's timer and processor's timestamp counter.
+	ProcessorDisableInterrupts();
+	uint64_t start = ProcessorReadTimeStamp();
+	LapicWriteRegister(0x380 >> 2, (uint32_t) -1); 
+	for (int i = 0; i < 8; i++) ArchDelay1Ms(); // Average over 8ms
+	acpi.lapicTicksPerMs = ((uint32_t) -1 - LapicReadRegister(0x390 >> 2)) >> 4;
+	EsRandomAddEntropy(LapicReadRegister(0x390 >> 2));
+	uint64_t end = ProcessorReadTimeStamp();
+	timeStampTicksPerMs = (end - start) >> 3;
+	ProcessorEnableInterrupts();
+	// EsPrint("timeStampTicksPerMs = %d\n", timeStampTicksPerMs);
+
+	// Finish processor initialisation.
+	// This sets up interrupts, the timer, CPULocalStorage, the GDT and TSS,
+	// and registers the processor with the scheduler.
+
+	NewProcessorStorage storage = AllocateNewProcessorStorage(currentCPU);
+	SetupProcessor2(&storage);
 }
 
 #endif
