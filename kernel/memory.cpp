@@ -1453,7 +1453,7 @@ void MMSharedDestroyRegion(MMSharedRegion *region) {
 	EsHeapFree(region, 0, K_CORE);
 }
 
-void *MMStandardAllocate(MMSpace *space, size_t bytes, unsigned flags, void *baseAddress, bool commitAll) {
+void *MMStandardAllocate(MMSpace *space, size_t bytes, uint32_t flags, void *baseAddress, bool commitAll) {
 	if (!space) space = kernelMMSpace;
 
 	KMutexAcquire(&space->reserveMutex);
@@ -1533,8 +1533,8 @@ bool MMFree(MMSpace *space, void *address, size_t expectedSize, bool userOnly) {
 			unmapPages = false;
 
 			FSFile *node = region->data.file.node;
-			EsFileOffset removeStart = RoundDown(region->data.file.offset, K_PAGE_SIZE);
-			EsFileOffset removeEnd = RoundUp(removeStart + (region->pageCount << K_PAGE_BITS) - region->data.file.zeroedBytes, K_PAGE_SIZE);
+			EsFileOffset removeStart = RoundDown(region->data.file.offset, (EsFileOffset) K_PAGE_SIZE);
+			EsFileOffset removeEnd = RoundUp(removeStart + (region->pageCount << K_PAGE_BITS) - region->data.file.zeroedBytes, (EsFileOffset) K_PAGE_SIZE);
 			nodeToFree = node;
 			fileHandleFlags = region->data.file.fileHandleFlags;
 

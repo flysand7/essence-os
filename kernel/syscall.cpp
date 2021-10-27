@@ -886,7 +886,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_RESET) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SLEEP) {
 	KTimer timer = {};
+#ifdef ARCH_64
 	KTimerSet(&timer, (argument0 << 32) | argument1);
+#else
+	KTimerSet(&timer, argument1);
+#endif
 	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
 	KEventWait(&timer.event, ES_WAIT_NO_TIMEOUT);
 	currentThread->terminatableState = THREAD_IN_SYSCALL;

@@ -297,6 +297,7 @@ uint8_t *AllocateForModule(size_t size) {
 }
 
 EsError KLoadELFModule(KModule *module) {
+#ifdef ARCH_X86_64
 	KMutexAcquire(&modulesMutex);
 	EsDefer(KMutexRelease(&modulesMutex));
 
@@ -403,6 +404,10 @@ EsError KLoadELFModule(KModule *module) {
 	}
 
 	return ES_SUCCESS;
+#else
+	(void) module;
+	return ES_ERROR_UNSUPPORTED_FEATURE;
+#endif
 }
 
 #endif

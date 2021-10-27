@@ -612,13 +612,21 @@ void BuildCrossCompiler() {
 
 		{
 			char *originalPath = getenv("PATH");
+
 			if (strlen(originalPath) > 32768) {
 				printf("PATH too long\n");
 				goto fail;
 			}
+
 			strcpy(path, compilerPath);
 			strcat(path, ":");
 			strcat(path, originalPath);
+
+			if (strstr(path, "::")) {
+				printf("PATH contains double colon\n");
+				goto fail;
+			}
+
 			setenv("PATH", path, 1);
 		}
 

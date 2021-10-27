@@ -2352,11 +2352,11 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		int sCursorX = cursorX, selectionStartX = -1, selectionEndX = -1;
 
 		for (uintptr_t i = 0; i < piece->glyphCount; i++) {
-			if (selectionStartX == -1 && glyphs[i].cluster >= selection->caret0) {
+			if (selectionStartX == -1 && (int32_t) glyphs[i].cluster >= selection->caret0) {
 				selectionStartX = sCursorX;
 			}
 
-			if (selectionEndX == -1 && glyphs[i].cluster >= selection->caret1) {
+			if (selectionEndX == -1 && (int32_t) glyphs[i].cluster >= selection->caret1) {
 				selectionEndX = sCursorX;
 			}
 
@@ -2431,7 +2431,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		}
 
 		if (selection->caret0 != selection->caret1 && !selection->hideCaret 
-				&& glyphs[i].cluster >= selection->caret0 && glyphs[i].cluster < selection->caret1
+				&& (int32_t) glyphs[i].cluster >= selection->caret0 && (int32_t) glyphs[i].cluster < selection->caret1
 				&& selection->foreground) {
 			color = selection->foreground;
 		}

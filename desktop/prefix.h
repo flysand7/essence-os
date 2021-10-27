@@ -76,6 +76,13 @@ ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int 
 #define EsCRTlongjmp(x, y) _EsCRTlongjmp(&(x), (y))
 #endif
 
+#ifdef ARCH_X86_32
+#define ES_API_BASE ((void **) 0x1000)
+#define ES_SHARED_MEMORY_MAXIMUM_SIZE ((size_t) 1024 * 1024 * 1024)
+#define ES_PAGE_SIZE ((uintptr_t) 4096)
+#define ES_PAGE_BITS (12)
+#endif
+
 #define _ES_C_PREPROCESSOR_JOIN(x, y) x ## y
 #define ES_C_PREPROCESSOR_JOIN(x, y) _ES_C_PREPROCESSOR_JOIN(x, y)
 
@@ -257,6 +264,11 @@ struct _EsPOSIXSyscall {
 #ifdef ARCH_X86_64
 #define BUNDLE_FILE_MAP_ADDRESS (0x100000000UL)
 #define BUNDLE_FILE_DESKTOP_MAP_ADDRESS (0xF0000000UL)
+#endif
+
+#ifdef ARCH_X86_32
+#define BUNDLE_FILE_MAP_ADDRESS (0xA0000000UL)
+#define BUNDLE_FILE_DESKTOP_MAP_ADDRESS (0xBC000000UL)
 #endif
 
 struct BundleHeader {

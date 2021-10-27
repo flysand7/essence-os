@@ -775,14 +775,14 @@ void StringFormatCallback(int character, void *_fsi) {
 	size_t bytes = utf8_encode(character, data);
 
 	if (fsi->buffer) {
-		if (fsi->bytesRemaining < bytes && fsi->bytesRemaining != ES_STRING_FORMAT_ENOUGH_SPACE) {
+		if (fsi->bytesRemaining < bytes && fsi->bytesRemaining != (size_t) ES_STRING_FORMAT_ENOUGH_SPACE) {
 			fsi->full = true;
 			return;
 		} else {
 			utf8_encode(character, fsi->buffer);
 			fsi->buffer += bytes;
 			fsi->bytesWritten += bytes;
-			if (fsi->bytesRemaining != ES_STRING_FORMAT_ENOUGH_SPACE) fsi->bytesRemaining -= bytes;
+			if (fsi->bytesRemaining != (size_t) ES_STRING_FORMAT_ENOUGH_SPACE) fsi->bytesRemaining -= bytes;
 		}
 	}
 }

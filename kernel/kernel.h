@@ -68,8 +68,10 @@
 // Core definitions.
 // ---------------------------------------------------------------------------------------------------------------
 
-#ifdef ARCH_X86_64
+#if defined(ARCH_X86_64)
 #include "x86_64.cpp"
+#elif defined(ARCH_X86_32)
+#include "x86_32.cpp"
 #endif
 
 struct AsyncTask {

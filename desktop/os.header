@@ -413,7 +413,7 @@ define ES_MAP_OBJECT_READ_WRITE         (0)
 define ES_MAP_OBJECT_READ_ONLY          (1)
 define ES_MAP_OBJECT_COPY_ON_WRITE      (2)
 
-define ES_STRING_FORMAT_ENOUGH_SPACE	((_EsLongConstant) (-1))
+define ES_STRING_FORMAT_ENOUGH_SPACE	(-1)
 
 // Flags set with %f.
 define ES_STRING_FORMAT_SIMPLE		(1 << 0)
@@ -1950,7 +1950,7 @@ function_pointer void EsMenuCallback(EsMenu *menu, EsGeneric context);
 function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
 function_pointer void EsMountPointEnumerationCallback(const char *prefix, size_t prefixBytes, EsGeneric context);
 function_pointer void EsDeviceEnumerationCallback(EsMessageDevice device, EsGeneric context);
-function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsGeneric index);
+function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsListViewIndex index);
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
 function_pointer void EsUserTaskCallback(EsUserTask *task, EsGeneric data);
 function_pointer bool EsFileCopyCallback(EsFileOffset bytesCopied, EsFileOffset totalBytes, EsGeneric data); // Return false to cancel.

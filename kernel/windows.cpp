@@ -314,7 +314,7 @@ void WindowManager::EndEyedrop(bool cancelled) {
 	Redraw(ES_POINT(0, 0), graphics.width, graphics.height);
 }
 
-void WindowManager::PressKey(unsigned scancode) {
+void WindowManager::PressKey(uint32_t scancode) {
 	if (!initialised) {
 		return;
 	}
@@ -541,7 +541,7 @@ bool WindowManager::ActivateWindow(Window *window) {
 	return result;
 }
 
-void WindowManager::ClickCursor(unsigned buttons) {
+void WindowManager::ClickCursor(uint32_t buttons) {
 	KMutexAcquire(&mutex);
 
 	unsigned delta = lastButtons ^ buttons;
@@ -1299,7 +1299,7 @@ void KMouseUpdate(const KMouseUpdateData *data) {
 	windowManager.ClickCursor(data->buttons);
 }
 
-void KKeyPress(unsigned scancode) {
+void KKeyPress(uint32_t scancode) {
 	windowManager.PressKey(scancode);
 }
 

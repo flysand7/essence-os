@@ -14,8 +14,8 @@ struct Handle {
 
 struct ConstantBuffer {
 	volatile size_t handles;
-	size_t bytes : 48,
-	       isPaged : 1;
+	size_t bytes;
+	bool isPaged;
 	// Data follows.
 };
 

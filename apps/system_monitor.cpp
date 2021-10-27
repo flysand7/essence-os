@@ -23,20 +23,20 @@ struct Instance : EsInstance {
 #define DISPLAY_MEMORY (12)
 
 EsListViewColumn listViewProcessesColumns[] = {
-	{ EsLiteral("Name"), 0, 150 },
-	{ EsLiteral("PID"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ EsLiteral("Memory"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ EsLiteral("CPU"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ EsLiteral("Handles"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ EsLiteral("Threads"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "Name", -1, 0, 150 },
+	{ "PID", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "Memory", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "CPU", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "Handles", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "Threads", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
 };
 
 EsListViewColumn listViewContextSwitchesColumns[] = {
-	{ EsLiteral("Time stamp (ms)"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ EsLiteral("CPU"), ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ EsLiteral("Process"), 0, 150 },
-	{ EsLiteral("Thread"), 0, 150 },
-	{ EsLiteral("Count"), 0, 150 },
+	{ "Time stamp (ms)", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
+	{ "CPU", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
+	{ "Process", -1, 0, 150 },
+	{ "Thread", -1, 0, 150 },
+	{ "Count", -1, 0, 150 },
 };
 
 const EsStyle styleMonospacedTextbox = {

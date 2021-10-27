@@ -112,8 +112,8 @@ bool CCSpaceCover(CCSpace *cache, EsFileOffset insertStart, EsFileOffset insertE
 	// TODO Test this thoroughly.
 	// TODO Break up really large sections. (maybe into GBs?)
 
-	insertStart = RoundDown(insertStart, K_PAGE_SIZE);
-	insertEnd = RoundUp(insertEnd, K_PAGE_SIZE);
+	insertStart = RoundDown(insertStart, (EsFileOffset) K_PAGE_SIZE);
+	insertEnd = RoundUp(insertEnd, (EsFileOffset) K_PAGE_SIZE);
 	EsFileOffset position = insertStart, lastEnd = 0;
 	CCCachedSection *result = nullptr;
 
@@ -209,8 +209,8 @@ bool CCSpaceCover(CCSpace *cache, EsFileOffset insertStart, EsFileOffset insertE
 void CCSpaceUncover(CCSpace *cache, EsFileOffset removeStart, EsFileOffset removeEnd) {
 	KMutexAssertLocked(&cache->cachedSectionsMutex);
 
-	removeStart = RoundDown(removeStart, K_PAGE_SIZE);
-	removeEnd = RoundUp(removeEnd, K_PAGE_SIZE);
+	removeStart = RoundDown(removeStart, (EsFileOffset) K_PAGE_SIZE);
+	removeEnd = RoundUp(removeEnd, (EsFileOffset) K_PAGE_SIZE);
 
 	CCCachedSection *first = CCFindCachedSectionContaining(cache, removeStart);
 
@@ -678,8 +678,8 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 		EsFileOffset start = sectionOffset < offset ? offset - sectionOffset : 0;
 		EsFileOffset   end = sectionOffset + CC_ACTIVE_SECTION_SIZE > offset + count ? offset + count - sectionOffset : CC_ACTIVE_SECTION_SIZE;
 
-		EsFileOffset pageStart = RoundDown(start, K_PAGE_SIZE) / K_PAGE_SIZE;
-		EsFileOffset   pageEnd =   RoundUp(end,   K_PAGE_SIZE) / K_PAGE_SIZE;
+		EsFileOffset pageStart = RoundDown(start, (EsFileOffset) K_PAGE_SIZE) / K_PAGE_SIZE;
+		EsFileOffset   pageEnd =   RoundUp(end,   (EsFileOffset) K_PAGE_SIZE) / K_PAGE_SIZE;
 
 		// Find the section in the active sections list.
 

@@ -17,8 +17,8 @@ void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder) {
 	EsWindowSetTitle(instance->window, (char *) buffer.out, buffer.position);
 	EsWindowSetIcon(instance->window, knownFileTypes[instance->folder->containerHandler->getFileType(instance->path)].iconID);
 
-	EsListViewEnumerateVisibleItems(instance->list, [] (EsListView *, EsElement *item, uint32_t, EsGeneric index) {
-		ListItemCreated(item, index.u, true);
+	EsListViewEnumerateVisibleItems(instance->list, [] (EsListView *, EsElement *item, uint32_t, EsListViewIndex index) {
+		ListItemCreated(item, index, true);
 	});
 }
 

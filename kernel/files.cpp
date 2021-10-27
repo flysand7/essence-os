@@ -329,7 +329,7 @@ void _FSFileResize(FSFile *file, EsFileOffset newSize) {
 EsError FSFileResize(KNode *node, EsFileOffset newSize) {
 	if (fs.shutdown) KernelPanic("FSFileResize - Attempting to resize a file after FSShutdown called.\n");
 
-	if (newSize > 1UL << 60) {
+	if (newSize > (EsFileOffset) 1 << 60) {
 		return ES_ERROR_INSUFFICIENT_RESOURCES;
 	}
 
