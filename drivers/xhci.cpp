@@ -958,7 +958,7 @@ void XHCIController::Initialise() {
 	contextSize64 = (hccp1 & (1 << 2)) ? true : false;
 	extendedCapabilitiesOffset = ((hccp1 >> 16) & 0xFFFF) << 2;
 
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 	if (~hccp1 & (1 << 0)) {
 		KernelLog(LOG_ERROR, "xHCI", "missing feature", "xHCI controller does not support 64-bit addresses.\n");
 		return;
@@ -1081,7 +1081,7 @@ void XHCIController::Initialise() {
 
 	KernelLog(LOG_INFO, "xHCI", "reset controller", "Controller successfully reset.\n");
 
-#ifdef ARCH_X86_COMMON
+#if defined(ES_ARCH_X86_32) || defined(ES_ARCH_X86_64)
 	// Any PS/2 emulation should have been disabled, so its controller is safe to initialise.
 	KPS2SafeToInitialise();
 #endif

@@ -329,6 +329,18 @@ void ArchShutdown(uintptr_t action) {
 	ProcessorDisableInterrupts();
 	ProcessorHalt();
 }
+
+EsError KACPIObjectSetDeviceNotificationHandler(KACPIObject *, KACPINotificationHandler, EsGeneric) {
+	return ES_ERROR_UNSUPPORTED_FEATURE;
+}
+
+EsError KACPIObjectEvaluateInteger(KACPIObject *, const char *, uint64_t *) {
+	return ES_ERROR_UNSUPPORTED_FEATURE;
+}
+
+EsError KACPIObjectEvaluateMethodWithInteger(KACPIObject *, const char *, uint64_t) {
+	return ES_ERROR_UNSUPPORTED_FEATURE;
+}
 #endif
 
 void ACPIDeviceAttach(KDevice *parentDevice) {

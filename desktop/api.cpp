@@ -4,9 +4,6 @@
 #define ES_DIRECT_API
 #include <essence.h>
 
-#define alloca __builtin_alloca
-#define FT_EXPORT(x) extern "C" x
-
 #ifdef USE_STB_IMAGE
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_MALLOC(sz) EsCRTmalloc(sz)

@@ -405,7 +405,7 @@ void CCActiveSectionReturnToLists(CCActiveSection *section, bool writeBack) {
 	}
 }
 
-void CCSpaceTruncate(CCSpace *cache, size_t newSize) {
+void CCSpaceTruncate(CCSpace *cache, EsFileOffset newSize) {
 	// Concurrent calls to CCSpaceAccess must be prevented;
 	// this only handles concurrent calls to CCWriteSection.
 

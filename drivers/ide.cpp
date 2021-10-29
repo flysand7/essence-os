@@ -2,7 +2,7 @@
 // TODO Inserting/removing ATAPI devices.
 
 #include <module.h>
-#include <kernel/x86_64.h>
+#include <arch/x86_pc.h>
 
 #define ATA_BUSES 2
 #define ATA_DRIVES (ATA_BUSES * 2)

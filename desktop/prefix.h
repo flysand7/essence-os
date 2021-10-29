@@ -11,6 +11,18 @@
 #endif
 #include <stdarg.h>
 
+// --------- Architecture defines:
+
+#if defined(__i386__)
+#define ES_ARCH_X86_32
+#define ES_BITS_32
+#elif defined(__x86_64__)
+#define ES_ARCH_X86_64
+#define ES_BITS_64
+#else
+#error Architecture is not supported.
+#endif
+
 // --------- C++/C differences:
 
 #ifdef __cplusplus
@@ -33,8 +45,10 @@ union EsGeneric {
 
 	inline EsGeneric() = default;
 
+#ifdef ES_BITS_64
 	inline EsGeneric(uintptr_t y) { u = y; }
 	inline EsGeneric( intptr_t y) { i = y; }
+#endif
 	inline EsGeneric(unsigned  y) { u = y; }
 	inline EsGeneric(     int  y) { i = y; }
 	inline EsGeneric(    void *y) { p = y; }
@@ -60,7 +74,7 @@ typedef struct EsElementPublic EsElementPublic;
 
 // --------- Macros:
 
-#ifdef ARCH_X86_64
+#ifdef ES_ARCH_X86_64
 #define ES_API_BASE ((void **) 0x1000)
 #define ES_SHARED_MEMORY_MAXIMUM_SIZE ((size_t) (1024) * 1024 * 1024 * 1024)
 #define ES_PAGE_SIZE ((uintptr_t) 4096)
@@ -69,19 +83,23 @@ typedef struct EsElementPublic EsElementPublic;
 typedef struct EsCRTjmp_buf {
 	uintptr_t rsp, rbp, rbx, r12, r13, r14, r15, rip;
 } EsCRTjmp_buf;
+#endif
+
+#ifdef ES_ARCH_X86_32
+#define ES_API_BASE ((void **) 0x1000)
+#define ES_SHARED_MEMORY_MAXIMUM_SIZE ((size_t) 1024 * 1024 * 1024)
+#define ES_PAGE_SIZE ((uintptr_t) 4096)
+#define ES_PAGE_BITS (12)
+
+typedef struct EsCRTjmp_buf {
+	uintptr_t esp, ebp, ebx, eip, esi, edi;
+} EsCRTjmp_buf;
+#endif
 
 ES_EXTERN_C int _EsCRTsetjmp(EsCRTjmp_buf *env);
 ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int val);
 #define EsCRTsetjmp(x) _EsCRTsetjmp(&(x))
 #define EsCRTlongjmp(x, y) _EsCRTlongjmp(&(x), (y))
-#endif
-
-#ifdef ARCH_X86_32
-#define ES_API_BASE ((void **) 0x1000)
-#define ES_SHARED_MEMORY_MAXIMUM_SIZE ((size_t) 1024 * 1024 * 1024)
-#define ES_PAGE_SIZE ((uintptr_t) 4096)
-#define ES_PAGE_BITS (12)
-#endif
 
 #define _ES_C_PREPROCESSOR_JOIN(x, y) x ## y
 #define ES_C_PREPROCESSOR_JOIN(x, y) _ES_C_PREPROCESSOR_JOIN(x, y)
@@ -261,12 +279,12 @@ struct _EsPOSIXSyscall {
 #define BLEND_WINDOW_MATERIAL_GLASS      (1)
 #define BLEND_WINDOW_MATERIAL_LIGHT_BLUR (2)
 
-#ifdef ARCH_X86_64
+#ifdef ES_ARCH_X86_64
 #define BUNDLE_FILE_MAP_ADDRESS (0x100000000UL)
 #define BUNDLE_FILE_DESKTOP_MAP_ADDRESS (0xF0000000UL)
 #endif
 
-#ifdef ARCH_X86_32
+#ifdef ES_ARCH_X86_32
 #define BUNDLE_FILE_MAP_ADDRESS (0xA0000000UL)
 #define BUNDLE_FILE_DESKTOP_MAP_ADDRESS (0xBC000000UL)
 #endif

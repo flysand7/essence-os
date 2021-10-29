@@ -11,6 +11,7 @@
 #endif
 
 #ifdef USE_FREETYPE
+#define FT_EXPORT(x) extern "C" x
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/ftoutln.h>
@@ -1815,7 +1816,7 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 
 	int32_t ellipsisWidth = 0;
 
-	uint32_t glyphCount, glyphCount2;
+	unsigned int glyphCount, glyphCount2;
 	hb_glyph_info_t *glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, &glyphCount);
 	hb_glyph_position_t *glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, &glyphCount2);
 	EsAssert(glyphCount == glyphCount2);
@@ -2062,7 +2063,7 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 
 		HB_SHAPE(plan, features, featureCount);
 
-		uint32_t glyphCount, glyphCount2;
+		unsigned int glyphCount, glyphCount2;
 		hb_glyph_info_t *glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, &glyphCount);
 		hb_glyph_position_t *glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, &glyphCount2);
 		EsAssert(glyphCount == glyphCount2);

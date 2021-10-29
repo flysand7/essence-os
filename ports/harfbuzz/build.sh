@@ -1,43 +1,4 @@
-if [ ! -d "bin/harfbuzz" ]; then
-	echo "Downloading and building Harfbuzz..."
-
-	if [ ! -f "bin/harfbuzz-2.6.4.tar" ]; then
-		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/harfbuzz-2.6.4.tar.xz 2> bin/harfbuzz_dl.txt
-		xz -d bin/harfbuzz-2.6.4.tar.xz
-	fi
-
-	tar -xf bin/harfbuzz-2.6.4.tar
-	mv harfbuzz-2.6.4 bin/harfbuzz
-
-	cd bin/harfbuzz
-	./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared \
-		CFLAGS="-g -O3 -DHB_TINY" CXXFLAGS="-g -O3 -DHB_TINY" > ../harfbuzz_configure.txt
-	cd ../..
-
-	cp ports/harfbuzz/essence-config.h bin/harfbuzz/config.h
-
-	cd bin/harfbuzz/src
-
-	SED=sed
-
-	if [[ "$OSTYPE" == "darwin"* ]]; then
-		SED=gsed
-	fi
-
-	find . -type f -exec $SED -i 's/#include <assert.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <atomic.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <builtins.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <float.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <locale.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <math.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <stdio.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <stdlib.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <string.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <unistd.h>/#include <essence.h>/g' {} \;
-	find . -type f -exec $SED -i 's/#include <xlocale.h>/#include <essence.h>/g' {} \;
-
-	CC="x86_64-essence-g++ -DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O2 -DHB_TINY -fno-exceptions -fno-threadsafe-statics -fvisibility-inlines-hidden"
-
+function CompileHarfbuzz() {
 	$CC -c hb-aat-layout.cc -o hb-aat-layout.o
 	$CC -c hb-aat-map.cc -o hb-aat-map.o
 	$CC -c hb-blob.cc -o hb-blob.o
@@ -86,11 +47,82 @@ if [ ! -d "bin/harfbuzz" ]; then
 	$CC -c hb-unicode.cc -o hb-unicode.o
 	$CC -c hb-ft.cc -o hb-ft.o
 
-	x86_64-essence-ar cr libharfbuzz.a hb-aat-layout.o hb-aat-map.o hb-blob.o hb-buffer-serialize.o hb-buffer.o hb-common.o hb-face.o hb-fallback-shape.o hb-font.o hb-map.o hb-number.o hb-ot-cff1-table.o hb-ot-cff2-table.o hb-ot-color.o hb-ot-face.o hb-ot-font.o hb-ot-layout.o hb-ot-map.o hb-ot-math.o hb-ot-meta.o hb-ot-metrics.o hb-ot-name.o hb-ot-shape-complex-arabic.o hb-ot-shape-complex-default.o hb-ot-shape-complex-hangul.o hb-ot-shape-complex-hebrew.o hb-ot-shape-complex-indic-table.o hb-ot-shape-complex-indic.o hb-ot-shape-complex-khmer.o hb-ot-shape-complex-myanmar.o hb-ot-shape-complex-thai.o hb-ot-shape-complex-use-table.o hb-ot-shape-complex-use.o hb-ot-shape-complex-vowel-constraints.o hb-ot-shape-fallback.o hb-ot-shape-normalize.o hb-ot-shape.o hb-ot-tag.o hb-ot-var.o hb-set.o hb-shape-plan.o hb-shape.o hb-shaper.o hb-static.o hb-ucd.o hb-unicode.o hb-ft.o
+	$AR libharfbuzz.a hb-aat-layout.o hb-aat-map.o hb-blob.o hb-buffer-serialize.o hb-buffer.o hb-common.o hb-face.o hb-fallback-shape.o hb-font.o hb-map.o hb-number.o hb-ot-cff1-table.o hb-ot-cff2-table.o hb-ot-color.o hb-ot-face.o hb-ot-font.o hb-ot-layout.o hb-ot-map.o hb-ot-math.o hb-ot-meta.o hb-ot-metrics.o hb-ot-name.o hb-ot-shape-complex-arabic.o hb-ot-shape-complex-default.o hb-ot-shape-complex-hangul.o hb-ot-shape-complex-hebrew.o hb-ot-shape-complex-indic-table.o hb-ot-shape-complex-indic.o hb-ot-shape-complex-khmer.o hb-ot-shape-complex-myanmar.o hb-ot-shape-complex-thai.o hb-ot-shape-complex-use-table.o hb-ot-shape-complex-use.o hb-ot-shape-complex-vowel-constraints.o hb-ot-shape-fallback.o hb-ot-shape-normalize.o hb-ot-shape.o hb-ot-tag.o hb-ot-var.o hb-set.o hb-shape-plan.o hb-shape.o hb-shaper.o hb-static.o hb-ucd.o hb-unicode.o hb-ft.o
+}
+
+CFLAGS="-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-exceptions -fno-threadsafe-statics \
+	-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR"
+
+if [ ! -d "bin/harfbuzz" ]; then
+	echo "Downloading Harfbuzz..."
+
+	if [ ! -f "bin/cache/harfbuzz-2.6.4.tar" ]; then
+		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/cache/harfbuzz-2.6.4.tar.xz 2> bin/harfbuzz_dl.txt
+		xz -d bin/cache/harfbuzz-2.6.4.tar.xz
+	fi
+
+	tar -xf bin/cache/harfbuzz-2.6.4.tar
+	mv harfbuzz-2.6.4 bin/harfbuzz
+
+	cd bin/harfbuzz
+	./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared \
+		CFLAGS="-g -O3 -DHB_TINY" CXXFLAGS="-g -O3 -DHB_TINY" > ../harfbuzz_configure.txt
+	cd ../..
+
+	cp ports/harfbuzz/essence-config.h bin/harfbuzz/config.h
+
+	cd bin/harfbuzz/src
+
+	SED=sed
+
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		SED=gsed
+	fi
+
+	find . -type f -exec $SED -i 's/#include <assert.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <atomic.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <builtins.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <float.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <locale.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <math.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <stdio.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <stdlib.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <string.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <unistd.h>/#include <essence.h>/g' {} \;
+	find . -type f -exec $SED -i 's/#include <xlocale.h>/#include <essence.h>/g' {} \;
 
 	cd ../../..
 fi
 
-cp -p bin/harfbuzz/src/libharfbuzz.a root/Applications/POSIX/lib
+if [ "$1" = "x86_64" ]; then
+	if [ ! -f "bin/harfbuzz/libharfbuzz_x86_64.a" ]; then
+		cd bin/harfbuzz/src
+		CC="x86_64-essence-g++ $CFLAGS"
+		AR="x86_64-essence-ar cr"
+		echo "Building Harfbuzz for x86_64..."
+		CompileHarfbuzz
+		cp libharfbuzz.a ../libharfbuzz_x86_64.a
+		cd ../../..
+	fi
+
+	cp -p bin/harfbuzz/libharfbuzz_x86_64.a root/Applications/POSIX/lib/libharfbuzz.a
+fi
+
+if [ "$1" = "x86_32" ]; then
+	if [ ! -f "bin/harfbuzz/libharfbuzz_x86_32.a" ]; then
+		INC=`realpath root/Applications/POSIX/include`
+		cd bin/harfbuzz/src
+		CC="i686-elf-g++ $CFLAGS -I$INC"
+		AR="i686-elf-ar cr"
+		echo "Building Harfbuzz for x86_32..."
+		CompileHarfbuzz
+		i686-elf-ranlib libharfbuzz.a
+		cp libharfbuzz.a ../libharfbuzz_x86_32.a
+		cd ../../..
+	fi
+
+	cp -p bin/harfbuzz/libharfbuzz_x86_32.a root/Applications/POSIX/lib/libharfbuzz.a
+fi
+
 mkdir -p root/Applications/POSIX/include/harfbuzz
 cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz

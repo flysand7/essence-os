@@ -29,9 +29,9 @@
 #define CC_MODIFIED_GETTING_FULL                  (CC_MAX_MODIFIED * 2 / 3)
 										      
 // The size of the kernel's address space used for mapping active sections.
-#if defined(ARCH_32)                                                                  
+#if defined(ES_BITS_32)                                                                  
 #define CC_SECTION_BYTES                          (ClampIntptr(0, 64L * 1024 * 1024, pmm.commitFixedLimit * K_PAGE_SIZE / 4)) 
-#elif defined(ARCH_64)
+#elif defined(ES_BITS_64)
 #define CC_SECTION_BYTES                          (ClampIntptr(0, 1024L * 1024 * 1024, pmm.commitFixedLimit * K_PAGE_SIZE / 4)) 
 #endif
 
@@ -68,11 +68,7 @@
 // Core definitions.
 // ---------------------------------------------------------------------------------------------------------------
 
-#if defined(ARCH_X86_64)
-#include "x86_64.cpp"
-#elif defined(ARCH_X86_32)
-#include "x86_32.cpp"
-#endif
+#include ARCH_KERNEL_SOURCE
 
 struct AsyncTask {
 	KAsyncTaskCallback callback;
@@ -107,6 +103,10 @@ struct PhysicalMemoryRegion {
 
 void KernelInitialise();
 void KernelShutdown(uintptr_t action);
+
+uintptr_t DoSyscall(EsSyscallType index,
+		uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t argument3,
+		bool batched, bool *fatal, uintptr_t *userStackPointer);
 
 uint64_t timeStampTicksPerMs;
 EsUniqueIdentifier installationID; // The identifier of this OS installation, given to us by the bootloader.
@@ -170,6 +170,7 @@ extern "C" {
 	// void KUnregisterMSI(uintptr_t tag);
 	// size_t KGetCPUCount();
 	// struct CPULocalStorage *KGetCPULocal(uintptr_t index);
+	// ProcessorOut/ProcessorIn functions.
 
 	// The architecture layer must also define:
 	// - MM_CORE_REGIONS_START and MM_CORE_REGIONS_COUNT.
@@ -190,18 +191,18 @@ extern "C" {
 #include <shared/bitset.cpp>
 #include <shared/range_set.cpp>
 
-#include "memory.cpp"
 #include "objects.cpp"
-#include "syscall.cpp"
+#include "memory.cpp"
+#include "cache.cpp"
 #include "scheduler.cpp"
 #include "synchronisation.cpp"
-#include "cache.cpp"
-#include "elf.cpp"
-#include "graphics.cpp"
 #include "files.cpp"
+#include "graphics.cpp"
 #include "windows.cpp"
 #include "networking.cpp"
 #include "drivers.cpp"
+#include "elf.cpp"
+#include "syscall.cpp"
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
 #include "posix.cpp"
@@ -247,15 +248,6 @@ void EsAssertionFailure(const char *file, int line) {
 	KernelPanic("%z:%d - EsAssertionFailure called.\n", file, line);
 }
 
-#endif
+#include ARCH_KERNEL_SOURCE
 
-// ---------------------------------------------------------------------------------------------------------------
-// Architecture specific layer implementation.
-// ---------------------------------------------------------------------------------------------------------------
-
-#if defined(ARCH_X86_64) && defined(IMPLEMENTATION)
-#include "x86_64.h"
-#include <drivers/acpi.cpp>
-#include "x86_64.cpp"
-#include "terminal.cpp"
 #endif

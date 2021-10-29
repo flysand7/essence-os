@@ -158,7 +158,7 @@ bool KInIRQ();
 void KSwitchThreadAfterIRQ();
 void KDebugKeyPressed();
 
-#ifdef ARCH_X86_COMMON
+#if defined(ES_ARCH_X86_32) || defined(ES_ARCH_X86_64)
 void KPS2SafeToInitialise();
 #endif
 

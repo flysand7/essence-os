@@ -253,6 +253,7 @@ extern MMSpace _kernelMMSpace, _coreMMSpace;
 
 bool MMHandlePageFault(MMSpace *space, uintptr_t address, unsigned flags);
 bool MMUnmapFilePage(uintptr_t frameNumber); // Returns true if the page became inactive.
+void MMSharedDestroyRegion(MMSharedRegion *region);
 
 // Public memory manager functions.
 
@@ -2021,11 +2022,11 @@ bool MMPhysicalAllocateAndMap(size_t sizeBytes, size_t alignmentBytes, size_t ma
 
 	bool noBelow = false;
 
-#ifdef ARCH_32
+#ifdef ES_BITS_32
 	if (!maximumBits || maximumBits >= 32) noBelow = true;
 #endif
 
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 	if (!maximumBits || maximumBits >= 64) noBelow = true;
 #endif
 

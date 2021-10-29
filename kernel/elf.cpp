@@ -15,7 +15,7 @@ struct ElfHeader {
 	uint16_t instructionSet; // 0x03 = x86, 0x28 = ARM, 0x3E = x86-64, 0xB7 = AArch64
 	uint32_t version2;
 
-#ifdef ARCH_32
+#ifdef ES_BITS_32
 	uint32_t entry;
 	uint32_t programHeaderTable;
 	uint32_t sectionHeaderTable;
@@ -40,7 +40,7 @@ struct ElfHeader {
 #endif
 };
 
-#ifdef ARCH_32
+#ifdef ES_BITS_32
 struct ElfSectionHeader {
 	uint32_t name;
 	uint32_t type;
@@ -297,7 +297,7 @@ uint8_t *AllocateForModule(size_t size) {
 }
 
 EsError KLoadELFModule(KModule *module) {
-#ifdef ARCH_X86_64
+#ifdef ES_ARCH_X86_64
 	KMutexAcquire(&modulesMutex);
 	EsDefer(KMutexRelease(&modulesMutex));
 

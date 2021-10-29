@@ -381,11 +381,15 @@ void Controller::Initialise() {
 	}
 
 	for (uintptr_t i = 0; i < RECEIVE_DESCRIPTOR_COUNT; i++) {
+		uintptr_t address;
+
 		if (!MMPhysicalAllocateAndMap(RECEIVE_BUFFER_SIZE + TRANSFER_BUFFER_EXTRA, 
-					16, 64, false, 0, receiveBuffers + i, &receiveDescriptors[i].address)) {
+					16, 64, false, 0, receiveBuffers + i, &address)) {
 			KernelLog(LOG_ERROR, "I8254x", "allocation failure", "Could not allocate receive buffers.\n");
 			return;
 		}
+
+		receiveDescriptors[i].address = address;
 	}
 
 	// Disable flow control.

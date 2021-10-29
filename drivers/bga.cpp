@@ -1,5 +1,5 @@
 #include <module.h>
-#include <kernel/x86_64.h>
+#include <arch/x86_pc.h>
 
 struct BGADisplay : KGraphicsTarget {
 };

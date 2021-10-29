@@ -51,6 +51,25 @@ struct EventSinkTable {
 	EsGeneric data;
 };
 
+struct MessageQueue {
+	bool SendMessage(void *target, EsMessage *message); // Returns false if the message queue is full.
+	bool SendMessage(_EsMessageWithObject *message); // Returns false if the message queue is full.
+	bool GetMessage(_EsMessageWithObject *message);
+
+#define MESSAGE_QUEUE_MAX_LENGTH (4096)
+	Array<_EsMessageWithObject, K_FIXED> messages;
+
+	uintptr_t mouseMovedMessage, 
+		  windowResizedMessage, 
+		  eyedropResultMessage,
+		  keyRepeatMessage;
+
+	bool pinged;
+
+	KMutex mutex;
+	KEvent notEmpty;
+};
+
 size_t totalHandleCount;
 
 struct HandleTableL2 {
@@ -67,7 +86,7 @@ struct HandleTableL1 {
 struct HandleTable {
 	HandleTableL1 l1r;
 	KMutex lock;
-	Process *process;
+	struct Process *process;
 	bool destroyed;
 	uint32_t handleCount;
 
@@ -699,6 +718,85 @@ size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 	done:;
 	// EsPrint("<-- %d (%d remaining, %z)\n", amount, bytes, write ? "Write" : "Read");
 	return amount;
+}
+
+bool MessageQueue::SendMessage(void *object, EsMessage *_message) {
+	// TODO Remove unnecessary copy.
+	_EsMessageWithObject message = { object, *_message };
+	return SendMessage(&message);
+}
+
+bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
+	// TODO Don't send messages if the process has been terminated.
+
+	KMutexAcquire(&mutex);
+	EsDefer(KMutexRelease(&mutex));
+
+	if (messages.Length() == MESSAGE_QUEUE_MAX_LENGTH) {
+		KernelLog(LOG_ERROR, "Messages", "message dropped", "Message of type %d and target %x has been dropped because queue %x was full.\n",
+				_message->message.type, _message->object, this);
+		return false;
+	}
+
+#define MERGE_MESSAGES(variable, change) \
+	do { \
+		if (variable && messages[variable - 1].object == _message->object) { \
+			if (change) EsMemoryCopy(&messages[variable - 1], _message, sizeof(_EsMessageWithObject)); \
+		} else if (messages.AddPointer(_message)) { \
+			variable = messages.Length(); \
+		} else { \
+			return false; \
+		} \
+	} while (0)
+
+	// NOTE Don't forget to update GetMessage with the merged messages!
+
+	if (_message->message.type == ES_MSG_MOUSE_MOVED) {
+		MERGE_MESSAGES(mouseMovedMessage, true);
+	} else if (_message->message.type == ES_MSG_WINDOW_RESIZED) {
+		MERGE_MESSAGES(windowResizedMessage, true);
+	} else if (_message->message.type == ES_MSG_EYEDROP_REPORT) {
+		MERGE_MESSAGES(eyedropResultMessage, true);
+	} else if (_message->message.type == ES_MSG_KEY_DOWN && _message->message.keyboard.repeat) {
+		MERGE_MESSAGES(keyRepeatMessage, false);
+	} else {
+		if (!messages.AddPointer(_message)) {
+			return false;
+		}
+
+		if (_message->message.type == ES_MSG_PING) {
+			pinged = true;
+		}
+	}
+
+	KEventSet(&notEmpty, false, true);
+
+	return true;
+}
+
+bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
+	KMutexAcquire(&mutex);
+	EsDefer(KMutexRelease(&mutex));
+
+	if (!messages.Length()) {
+		return false;
+	}
+
+	*_message = messages[0];
+	messages.Delete(0);
+
+	if (mouseMovedMessage)    mouseMovedMessage--;
+	if (windowResizedMessage) windowResizedMessage--;
+	if (eyedropResultMessage) eyedropResultMessage--;
+	if (keyRepeatMessage)     keyRepeatMessage--;
+
+	pinged = false;
+
+	if (!messages.Length()) {
+		KEventReset(&notEmpty);
+	}
+
+	return true;
 }
 
 #endif

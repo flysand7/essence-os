@@ -140,17 +140,18 @@ File FileOpen(const char *path, char mode) {
 // Toolchain flags:
 
 const char *commonCompileFlagsFreestanding = " -ffreestanding -fno-exceptions ";
-char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address -Wno-unused-function -Wno-format-truncation -g -I. -fdiagnostics-column-unit=byte ";
+char commonCompileFlags[4096] = " -Wall -Wextra -Wno-missing-field-initializers -Wno-frame-address -Wno-unused-function -Wno-format-truncation "
+	" -g -I. -Iroot/Applications/POSIX/include -fdiagnostics-column-unit=byte ";
 char commonCompileFlagsWithCStdLib[4096];
 char cCompileFlags[4096] = "";
 char cppCompileFlags[4096] = " -std=c++14 -Wno-pmf-conversions -Wno-invalid-offsetof -fno-rtti ";
-char kernelCompileFlags[4096] = " -mno-red-zone -mcmodel=kernel -fno-omit-frame-pointer ";
+char kernelCompileFlags[4096] = " -fno-omit-frame-pointer ";
 char applicationLinkFlags[4096] = " -ffreestanding -nostdlib -lgcc -g -z max-page-size=0x1000 ";
-char apiLinkFlags1[4096] = " -T util/linker/api64.ld -ffreestanding -nostdlib -g -z max-page-size=0x1000 -Wl,--start-group ";
+char apiLinkFlags1[4096] = " -T util/linker/api64.ld -ffreestanding -nostdlib -g -z max-page-size=0x1000 -Wl,--start-group "; // TODO Don't hardcode the target.
 char apiLinkFlags2[4096] = " -lgcc ";
 char apiLinkFlags3[4096] = " -Wl,--end-group -Lroot/Applications/POSIX/lib ";
 char kernelLinkFlags[4096] = " -ffreestanding -nostdlib -lgcc -g -z max-page-size=0x1000 ";
-char kernelAssemblyFlags[4096] = " -felf64 -Fdwarf ";
+char commonAssemblyFlags[4096] = " -Fdwarf ";
 
 // Specific configuration options:
 
@@ -159,6 +160,7 @@ bool useColoredOutput;
 bool forEmulator, bootUseVBE, noImportPOSIX;
 bool systemBuild;
 bool convertFonts = true;
+bool hasNativeToolchain;
 EsINIState *fontLines;
 EsINIState *generalOptions;
 
@@ -166,6 +168,7 @@ EsINIState *generalOptions;
 
 char *builtinModules;
 volatile uint8_t encounteredErrors;
+volatile uint8_t encounteredErrorsInKernelModules;
 
 //////////////////////////////////
 
@@ -183,6 +186,8 @@ const char *toolchainNasm = "/Applications/POSIX/bin/nasm";
 const char *toolchainConvertSVG = "/Applications/POSIX/bin/render_svg";
 const char *toolchainLinkerScripts = "/Applications/POSIX/lib";
 const char *toolchainCRTObjects = "/Applications/POSIX/lib";
+const char *toolchainCompilerObjects = "/Applications/POSIX/lib/gcc/x86_64-essence/" GCC_VERSION;
+const char *target = "x86_64"; // TODO Don't hardcode the target.
 
 char *executeEnvironment[3] = {
 	(char *) "PATH=/Applications/POSIX/bin",
@@ -559,7 +564,10 @@ const char **kernelModules;
 } while (0)
 
 void BuildDesktop(Application *application) {
-	ExecuteForApp(application, toolchainNasm, "-felf64", "desktop/api.s", "-MD", "bin/api1.d", "-o", "bin/api1.o", "-Fdwarf");
+	char buffer[4096];
+
+	snprintf(buffer, sizeof(buffer), "arch/%s/api.s", target);
+	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/api1.d", "-o", "bin/api1.o", ArgString(commonAssemblyFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/posix.cpp", "-o", "bin/api3.o", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/crti.o", "bin/crtbegin.o", 
@@ -569,7 +577,6 @@ void BuildDesktop(Application *application) {
 
 	for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
 		if (fontLines[i].key[0] == '.' || 0 == strcmp(fontLines[i].key, "license")) {
-			char buffer[4096];
 			snprintf(buffer, sizeof(buffer), "res/Fonts/%s", fontLines[i].value);
 			ADD_BUNDLE_INPUT(strdup(buffer), fontLines[i].value, 16);
 		}
@@ -596,7 +603,7 @@ void BuildDesktop(Application *application) {
 	ADD_BUNDLE_INPUT("res/elementary Icons.dat", "Icons.dat", 16);
 	ADD_BUNDLE_INPUT("res/elementary Icons License.txt", "Icons License.txt", 16);
 	ADD_BUNDLE_INPUT("res/Cursors.png", "Cursors.png", 16);
-	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000);
+	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000); // TODO Don't hardcode the target.
 
 	MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 }
@@ -615,7 +622,7 @@ void BuildApplication(Application *application) {
 
 	snprintf(symbolFile, sizeof(symbolFile), "bin/%s", application->name);
 	snprintf(strippedFile, sizeof(strippedFile), "bin/%s.no_symbols", application->name);
-	snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts);
+	snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts); // TODO Don't hardcode the target.
 	snprintf(crti, sizeof(crti), "%s/crti.o", toolchainCRTObjects);
 	snprintf(crtbegin, sizeof(crtbegin), "%s/crtbegin.o", toolchainCRTObjects);
 	snprintf(crtend, sizeof(crtend), "%s/crtend.o", toolchainCRTObjects);
@@ -665,7 +672,7 @@ void BuildApplication(Application *application) {
 
 		ExecuteForApp(application, toolchainStrip, "-o", strippedFile, "--strip-all", symbolFile);
 
-		ADD_BUNDLE_INPUT(strippedFile, "$Executables/x86_64", 0x1000);
+		ADD_BUNDLE_INPUT(strippedFile, "$Executables/x86_64", 0x1000); // TODO Don't hardcode the target.
 
 		// Convert any files for the bundle marked with a '!'.
 
@@ -716,6 +723,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 	s.buffer = manifest;
 
 	const char *require = "";
+	bool needsNativeToolchain = false;
 	bool disabled = false;
 
 	Application application = {};
@@ -742,6 +750,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 		} else if (0 == strcmp(s.section, "general")) {
 			INI_READ_STRING_PTR(name, application.name);
 			else INI_READ_BOOL(disabled, disabled);
+			else INI_READ_BOOL(needs_native_toolchain, needsNativeToolchain);
 			else if (s.keyBytes && s.valueBytes) arrput(application.properties, s);
 		} else if (0 == strcmp(s.sectionClass, "handler")) {
 			if (!s.keyBytes) {
@@ -773,7 +782,8 @@ void ParseApplicationManifest(const char *manifestPath) {
 		}
 	}
 
-	if (disabled || (require[0] && !FileExists(require))) {
+	if (disabled || (require[0] && !FileExists(require))
+			|| (needsNativeToolchain && !hasNativeToolchain)) {
 		return;
 	}
 
@@ -913,6 +923,8 @@ void BuildModule(Application *application) {
 		MakeDirectory("root/" SYSTEM_FOLDER_NAME "/Modules");
 		MoveFile(output, target);
 	}
+
+	if (application->error) __sync_fetch_and_or(&encounteredErrorsInKernelModules, 1);
 }
 
 bool IsModuleEnabled(const char *name, size_t nameBytes) {
@@ -983,7 +995,7 @@ void ParseKernelConfiguration() {
 			anyArchitecturesListed = true;
 
 			if (IsStringEqual(s.value, s.valueBytes, "x86_common")
-					|| IsStringEqual(s.value, s.valueBytes, "x86_64")) {
+					|| IsStringEqual(s.value, s.valueBytes, "x86_64")) { // TODO Don't hardcode the target.
 				foundMatchingArchitecture = true;
 			}
 		}
@@ -1024,9 +1036,13 @@ void ParseKernelConfiguration() {
 }
 
 void LinkKernel() {
+	if (encounteredErrorsInKernelModules) {
+		return;
+	}
+
 	arrput(builtinModules, 0);
 
-	if (Execute(toolchainLD, "-r", "bin/kernel.o", "bin/kernel_x86_64.o", ArgString(builtinModules), "-o" "bin/kernel_all.o")) {
+	if (Execute(toolchainLD, "-r", "bin/kernel.o", "bin/kernel_arch.o", ArgString(builtinModules), "-o" "bin/kernel_all.o")) {
 		return;
 	}
 	
@@ -1062,15 +1078,22 @@ void LinkKernel() {
 		}
 	}
 
-	Execute(toolchainCXX, "-T", "util/linker/kernel64.ld", "-o", "bin/Kernel", "bin/kernel_symbols.o", "bin/kernel_all.o", "-mno-red-zone", ArgString(kernelLinkFlags));
+	if (Execute(toolchainCXX, "-o", "bin/Kernel", "bin/kernel_symbols.o", "bin/kernel_all.o", ArgString(kernelLinkFlags))) {
+		return;
+	}
+
 	Execute(toolchainStrip, "-o", "bin/Kernel.esx", "--strip-all", "bin/Kernel");
 	CopyFile("bin/Kernel.esx", "root/" SYSTEM_FOLDER_NAME "/Kernel.esx", false);
 }
 
 void BuildKernel(Application *application) {
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/kernel2.d", "kernel/x86_64.s", "-o", "bin/kernel_x86_64.o", ArgString(kernelAssemblyFlags));
+	char buffer[4096];
+	snprintf(buffer, sizeof(buffer), "arch/%s/kernel.s", target);
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/kernel2.d", buffer, "-o", "bin/kernel_arch.o", ArgString(commonAssemblyFlags));
+	snprintf(buffer, sizeof(buffer), "-DARCH_KERNEL_SOURCE=<arch/%s/kernel.cpp>", target);
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "kernel/main.cpp", "-o", "bin/kernel.o", 
-			ArgString(kernelCompileFlags), ArgString(cppCompileFlags), ArgString(commonCompileFlags));
+			ArgString(kernelCompileFlags), ArgString(cppCompileFlags), ArgString(commonCompileFlags), buffer);
+	if (application->error) __sync_fetch_and_or(&encounteredErrorsInKernelModules, 1);
 }
 
 void BuildBootloader(Application *application) {
@@ -1298,6 +1321,8 @@ int main(int argc, char **argv) {
 					toolchainLinkerScripts = s.value;
 				} else if (0 == strcmp(s.key, "crt_objects")) {
 					toolchainCRTObjects = s.value;
+				} else if (0 == strcmp(s.key, "compiler_objects")) {
+					toolchainCompilerObjects = s.value;
 				}
 			} else if (0 == strcmp(s.sectionClass, "application")) {
 				if (0 == strcmp(s.key, "manifest")) {
@@ -1323,7 +1348,7 @@ int main(int argc, char **argv) {
 				} else if (0 == strcmp(s.key, "Flag._ALWAYS_USE_VBE")) {
 					bootUseVBE = !!atoi(s.value);
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
-					strcat(kernelAssemblyFlags, " -DCOM_OUTPUT ");
+					strcat(commonAssemblyFlags, " -DCOM_OUTPUT ");
 				} else if (0 == strcmp(s.key, "BuildCore.NoImportPOSIX")) {
 					noImportPOSIX = !!atoi(s.value);
 				} else if (0 == memcmp(s.key, "General.", 8)) {
@@ -1365,6 +1390,35 @@ int main(int argc, char **argv) {
 #endif
 				} else if (0 == strcmp(s.key, "without_kernel")) {
 					withoutKernel = atoi(s.value);
+				} else if (0 == strcmp(s.key, "target")) {
+					target = s.value;
+
+					char buffer[4096];
+					snprintf(buffer, sizeof(buffer), "arch/%s/config.ini", target);
+
+					EsINIState s2 = {};
+					s2.buffer = (char *) LoadFile(buffer, &s2.bytes);
+
+					if (!s2.buffer) {
+						Log("Error: could not load target configuration file '%s'.\n", buffer);
+						return 1;
+					}
+
+					while (EsINIParse(&s2)) {
+						EsINIZeroTerminate(&s2);
+
+						if (0 == strcmp(s2.key, "additional_kernel_compile_flags")) {
+							strcat(kernelCompileFlags, s2.value);
+						} else if (0 == strcmp(s2.key, "additional_kernel_link_flags")) {
+							strcat(kernelLinkFlags, s2.value);
+						} else if (0 == strcmp(s2.key, "additional_common_assembly_flags")) {
+							strcat(commonAssemblyFlags, s2.value);
+						} else if (0 == strcmp(s2.key, "additional_common_compile_flags")) {
+							strcat(commonCompileFlags, s2.value);
+						} else if (0 == strcmp(s2.key, "has_native_toolchain")) {
+							hasNativeToolchain = atoi(s2.value);
+						}
+					}
 				}
 			} else if (0 == strcmp(s.section, "install")) {
 				if (0 == strcmp(s.key, "file")) {
@@ -1463,8 +1517,18 @@ int main(int argc, char **argv) {
 
 	if (!skipCompile) {
 		if (systemBuild) {
-			Execute(toolchainNasm, "-felf64", "desktop/crti.s", "-o", "bin/crti.o", "-Fdwarf");
-			Execute(toolchainNasm, "-felf64", "desktop/crtn.s", "-o", "bin/crtn.o", "-Fdwarf");
+			char buffer[4096];
+
+			snprintf(buffer, sizeof(buffer), "arch/%s/crti.s", target);
+			Execute(toolchainNasm, buffer, "-o", "bin/crti.o", ArgString(commonAssemblyFlags));
+			snprintf(buffer, sizeof(buffer), "arch/%s/crtn.s", target);
+			Execute(toolchainNasm, buffer, "-o", "bin/crtn.o", ArgString(commonAssemblyFlags));
+
+			snprintf(buffer, sizeof(buffer), "%s/crtbegin.o", toolchainCompilerObjects);
+			CopyFile(buffer, "bin/crtbegin.o", false);
+			snprintf(buffer, sizeof(buffer), "%s/crtend.o", toolchainCompilerObjects);
+			CopyFile(buffer, "bin/crtend.o", false);
+
 			Execute(toolchainCC, "-c", "desktop/crt1.c", "-o", "bin/crt1.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
 			Execute(toolchainCC, "-c", "desktop/crtglue.c", "-o" "bin/crtglue.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
 			CopyFile("bin/crti.o", "root/Applications/POSIX/lib/crti.o", false);
@@ -1473,14 +1537,15 @@ int main(int argc, char **argv) {
 			CopyFile("bin/crtn.o", "root/Applications/POSIX/lib/crtn.o", false);
 			CopyFile("bin/crt1.o", "root/Applications/POSIX/lib/crt1.o", false);
 			CopyFile("bin/crtglue.o", "root/Applications/POSIX/lib/crtglue.o", false);
-			CopyFile("bin/crt1.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crt1.o", true);
+			CopyFile("bin/crt1.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crt1.o", true); // TODO Don't hardcode the target.
 			CopyFile("bin/crtglue.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crtglue.o", true);
 			CopyFile("util/linker/userland64.ld", "root/Applications/POSIX/lib/linker/userland64.ld", false);
 
-			char linkerScript[256];
-			snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts);
-			Execute(toolchainCC, "util/build_core.c", "-o", "root/Applications/POSIX/bin/build_core", "-g", 
-					"-nostdlib", "bin/crti.o", "bin/crtbegin.o", "bin/crtend.o", "bin/crtn.o", "-T", linkerScript);
+			if (hasNativeToolchain) {
+				snprintf(buffer, sizeof(buffer), "%s/linker/userland64.ld", toolchainLinkerScripts); // TODO Don't hardcode the target.
+				Execute(toolchainCC, "util/build_core.c", "-o", "root/Applications/POSIX/bin/build_core", "-g", 
+						"-nostdlib", "bin/crti.o", "bin/crtbegin.o", "bin/crtend.o", "bin/crtn.o", "-T", buffer);
+			}
 		}
 
 #define ADD_DEPENDENCY_FILE(application, _path, _name) \

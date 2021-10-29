@@ -746,7 +746,7 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 
 	// Add the auxillary vectors.
 
-#ifdef ARCH_X86_64
+#ifdef ES_ARCH_X86_64
 	Elf64_Phdr *tlsHeader = (Elf64_Phdr *) EsHeapAllocate(sizeof(Elf64_Phdr), true);
 	tlsHeader->p_type = PT_TLS;
 	tlsHeader->p_flags = 4 /* read */;

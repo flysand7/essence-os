@@ -13,10 +13,7 @@
 #define ENDFILE_SPEC " crtend.o%s crtn.o%s "
 /* Additional predefined macros. */
 #undef TARGET_OS_CPP_BUILTINS
-#define TARGET_OS_CPP_BUILTINS()      \
-  do {                                \
-    builtin_define ("ARCH_64");      \
-    builtin_define ("ARCH_X86_64");      \
-    builtin_define ("ARCH_X86_COMMON");      \
+#define TARGET_OS_CPP_BUILTINS()        \
+  do {                                  \
     builtin_define ("OS_ESSENCE");      \
   } while(0)

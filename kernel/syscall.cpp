@@ -2,116 +2,9 @@
 // TODO Clean up the return values for system calls; with FATAL_ERRORs there should need to be less error codes returned.
 // TODO If a file system call fails with an error indicating the file system is corrupted, or a drive is failing, report the problem to the user.
 
-#ifndef IMPLEMENTATION
-
-KMutex eventForwardMutex;
-
-uintptr_t DoSyscall(EsSyscallType index,
-		uintptr_t argument0, uintptr_t argument1,
-		uintptr_t argument2, uintptr_t argument3,
-		bool batched, bool *fatal, uintptr_t *userStackPointer);
-
-struct MessageQueue {
-	bool SendMessage(void *target, EsMessage *message); // Returns false if the message queue is full.
-	bool SendMessage(_EsMessageWithObject *message); // Returns false if the message queue is full.
-	bool GetMessage(_EsMessageWithObject *message);
-
-#define MESSAGE_QUEUE_MAX_LENGTH (4096)
-	Array<_EsMessageWithObject, K_FIXED> messages;
-
-	uintptr_t mouseMovedMessage, 
-		  windowResizedMessage, 
-		  eyedropResultMessage,
-		  keyRepeatMessage;
-
-	bool pinged;
-
-	KMutex mutex;
-	KEvent notEmpty;
-};
-
-#endif
-
 #ifdef IMPLEMENTATION
 
-bool MessageQueue::SendMessage(void *object, EsMessage *_message) {
-	// TODO Remove unnecessary copy.
-	_EsMessageWithObject message = { object, *_message };
-	return SendMessage(&message);
-}
-
-bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
-	// TODO Don't send messages if the process has been terminated.
-
-	KMutexAcquire(&mutex);
-	EsDefer(KMutexRelease(&mutex));
-
-	if (messages.Length() == MESSAGE_QUEUE_MAX_LENGTH) {
-		KernelLog(LOG_ERROR, "Messages", "message dropped", "Message of type %d and target %x has been dropped because queue %x was full.\n",
-				_message->message.type, _message->object, this);
-		return false;
-	}
-
-#define MERGE_MESSAGES(variable, change) \
-	do { \
-		if (variable && messages[variable - 1].object == _message->object) { \
-			if (change) EsMemoryCopy(&messages[variable - 1], _message, sizeof(_EsMessageWithObject)); \
-		} else if (messages.AddPointer(_message)) { \
-			variable = messages.Length(); \
-		} else { \
-			return false; \
-		} \
-	} while (0)
-
-	// NOTE Don't forget to update GetMessage with the merged messages!
-
-	if (_message->message.type == ES_MSG_MOUSE_MOVED) {
-		MERGE_MESSAGES(mouseMovedMessage, true);
-	} else if (_message->message.type == ES_MSG_WINDOW_RESIZED) {
-		MERGE_MESSAGES(windowResizedMessage, true);
-	} else if (_message->message.type == ES_MSG_EYEDROP_REPORT) {
-		MERGE_MESSAGES(eyedropResultMessage, true);
-	} else if (_message->message.type == ES_MSG_KEY_DOWN && _message->message.keyboard.repeat) {
-		MERGE_MESSAGES(keyRepeatMessage, false);
-	} else {
-		if (!messages.AddPointer(_message)) {
-			return false;
-		}
-
-		if (_message->message.type == ES_MSG_PING) {
-			pinged = true;
-		}
-	}
-
-	KEventSet(&notEmpty, false, true);
-
-	return true;
-}
-
-bool MessageQueue::GetMessage(_EsMessageWithObject *_message) {
-	KMutexAcquire(&mutex);
-	EsDefer(KMutexRelease(&mutex));
-
-	if (!messages.Length()) {
-		return false;
-	}
-
-	*_message = messages[0];
-	messages.Delete(0);
-
-	if (mouseMovedMessage)    mouseMovedMessage--;
-	if (windowResizedMessage) windowResizedMessage--;
-	if (eyedropResultMessage) eyedropResultMessage--;
-	if (keyRepeatMessage)     keyRepeatMessage--;
-
-	pinged = false;
-
-	if (!messages.Length()) {
-		KEventReset(&notEmpty);
-	}
-
-	return true;
-}
+KMutex eventForwardMutex;
 
 #define SYSCALL_BUFFER_LIMIT (64 * 1024 * 1024) // To prevent overflow and DOS attacks.
 #define SYSCALL_BUFFER(address, length, index, write) \
@@ -886,7 +779,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_RESET) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SLEEP) {
 	KTimer timer = {};
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 	KTimerSet(&timer, (argument0 << 32) | argument1);
 #else
 	KTimerSet(&timer, argument1);
@@ -1872,9 +1765,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 			KernelPanic("Commit page count mismatch.\n");
 		}
 
+#ifdef ES_BITS_64
 		if (_region0->data.normal.commit.Contains(argument2) != (argument3 >> 63)) {
 			KernelPanic("Commit contains mismatch at %x.\n", argument1);
 		}
+#endif
 	} else if (argument0 == 6) {
 		// SYSCALL_RETURN(DriversDebugGetEnumeratedPCIDevices((EsPCIDevice *) argument1, argument2), false);
 	} else if (argument0 == 7) {

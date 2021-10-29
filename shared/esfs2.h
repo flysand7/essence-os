@@ -1112,11 +1112,11 @@ bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 		superblock.requiredReadVersion = ESFS_DRIVER_VERSION;
 		superblock.requiredWriteVersion = ESFS_DRIVER_VERSION;
 
-		if (driveSize < 2048l * 1024 * 1024) { // < 2GB
+		if (driveSize < 2048ll * 1024 * 1024) { // < 2GB
 			superblock.blockSize = 2048; // Must be >= sizeof(DirectoryEntry).
-		} else if (driveSize < 2l * 1024 * 1024 * 1024 * 1024) { // < 2TB
+		} else if (driveSize < 2ll * 1024 * 1024 * 1024 * 1024) { // < 2TB
 			superblock.blockSize = 4096;
-		} else if (driveSize < 256l * 1024 * 1024 * 1024 * 1024) { // < 256TB
+		} else if (driveSize < 256ll * 1024 * 1024 * 1024 * 1024) { // < 256TB
 			superblock.blockSize = 8192;
 		} else {
 			superblock.blockSize = 16384;

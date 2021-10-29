@@ -2,6 +2,16 @@
 #define _GNU_SOURCE
 #endif
 
+#if 1
+#define TOOLCHAIN_PREFIX "x86_64-essence"
+#define TARGET_NAME "x86_64"
+#define TOOLCHAIN_HAS_RED_ZONE
+#define TOOLCHAIN_HAS_CSTDLIB
+#else
+#define TOOLCHAIN_PREFIX "i686-elf"
+#define TARGET_NAME "x86_32"
+#endif
+
 #define WARNING_FLAGS \
 	" -Wall -Wextra -Wno-missing-field-initializers -Wno-pmf-conversions -Wno-frame-address -Wno-unused-function -Wno-format-truncation -Wno-invalid-offsetof "
 #define WARNING_FLAGS_C \
@@ -137,13 +147,9 @@ void BuildAPIDependencies() {
 		ParseDependencies("bin/api_header.d", "API Header", false);
 	}
 
-	CallSystem("cp `x86_64-essence-gcc -print-file-name=\"crtbegin.o\"` bin/crtbegin.o");
-	CallSystem("cp `x86_64-essence-gcc -print-file-name=\"crtend.o\"` bin/crtend.o");
-
-	CallSystem("ports/musl/build.sh > /dev/null");
-
-	CallSystem("ports/freetype/build.sh");
-	CallSystem("ports/harfbuzz/build.sh");
+	CallSystem("ports/musl/build.sh " TARGET_NAME);
+	CallSystem("ports/freetype/build.sh " TARGET_NAME);
+	CallSystem("ports/harfbuzz/build.sh " TARGET_NAME);
 
 	CallSystem("cp -p kernel/module.h root/Applications/POSIX/include");
 }
@@ -158,19 +164,21 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 
 	fprintf(f, "[toolchain]\npath=%s\ntmpdir=%s\n"
 			"ar=%s/x86_64-essence-ar\n"
-			"cc=%s/x86_64-essence-gcc\n"
-			"cxx=%s/x86_64-essence-g++\n"
-			"ld=%s/x86_64-essence-ld\n"
-			"nm=%s/x86_64-essence-nm\n"
-			"strip=%s/x86_64-essence-strip\n"
+			"cc=%s/" TOOLCHAIN_PREFIX "-gcc\n"
+			"cxx=%s/" TOOLCHAIN_PREFIX "-g++\n"
+			"ld=%s/" TOOLCHAIN_PREFIX "-ld\n"
+			"nm=%s/" TOOLCHAIN_PREFIX "-nm\n"
+			"strip=%s/" TOOLCHAIN_PREFIX "-strip\n"
 			"nasm=%s\n"
 			"convert_svg=bin/render_svg\n"
 			"linker_scripts=util/\n"
 			"crt_objects=bin/\n"
-			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\nskip_header_generation=1\nverbose=%d\ncommon_compile_flags=",
+			"compiler_objects=%s/../lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "\n"
+			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\n"
+			"target=" TARGET_NAME "\nskip_header_generation=1\nverbose=%d\ncommon_compile_flags=",
 			compilerPath, getenv("TMPDIR") ?: "",
-			compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, 
-			buffer, coloredOutput, (int) sysconf(_SC_NPROCESSORS_CONF), IsOptionEnabled("BuildCore.Verbose"));
+			compilerPath, compilerPath, compilerPath, compilerPath, compilerPath, compilerPath,
+			buffer, compilerPath, coloredOutput, (int) sysconf(_SC_NPROCESSORS_CONF), IsOptionEnabled("BuildCore.Verbose"));
 
 	for (uintptr_t i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
 		Option *option = &options[i];
@@ -337,7 +345,9 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 	fflush(stdout);
 	CallSystem("bin/build_core standard bin/build.ini");
 
-	CallSystem("x86_64-essence-gcc -o root/Applications/POSIX/bin/hello ports/gcc/hello.c");
+#ifdef TOOLCHAIN_HAS_CSTDLIB
+	CallSystem(TOOLCHAIN_PREFIX "-gcc -o root/Applications/POSIX/bin/hello ports/gcc/hello.c");
+#endif
 
 	forceRebuild = false;
 }
@@ -654,7 +664,7 @@ void BuildCrossCompiler() {
 		{
 			CallSystem("echo Preparing C standard library headers... >> bin/build_cross.log");
 			CallSystem("mkdir -p root/" SYSTEM_FOLDER_NAME " root/Applications/POSIX/include root/Applications/POSIX/lib root/Applications/POSIX/bin");
-			CallSystem("ports/musl/build.sh >> bin/build_cross.log 2>&1");
+			CallSystem("ports/musl/build.sh " TARGET_NAME ">> bin/build_cross.log 2>&1");
 		}
 
 		printf("Downloading and extracting source...\n");
@@ -671,12 +681,12 @@ void BuildCrossCompiler() {
 			if (CallSystem("mkdir bin/build-binutils")) goto fail;
 			if (CallSystem("mkdir bin/build-gcc")) goto fail;
 			if (chdir("bin/build-binutils")) goto fail;
-			if (CallSystemF("../binutils-src/configure --target=x86_64-essence --prefix=\"%s\" --with-sysroot=%s --disable-nls --disable-werror >> ../build_cross.log 2>&1", 
+			if (CallSystemF("../binutils-src/configure --target=" TOOLCHAIN_PREFIX " --prefix=\"%s\" --with-sysroot=%s --disable-nls --disable-werror >> ../build_cross.log 2>&1", 
 						installationFolder, sysrootFolder)) goto fail;
 			if (chdir("../..")) goto fail;
 			if (chdir("bin/build-gcc")) goto fail;
 			// Add --without-headers for a x86_64-elf build.
-			if (CallSystemF("../gcc-src/configure --target=x86_64-essence --prefix=\"%s\" --enable-languages=c,c++ --with-sysroot=%s --disable-nls >> ../build_cross.log 2>&1", 
+			if (CallSystemF("../gcc-src/configure --target=" TOOLCHAIN_PREFIX " --prefix=\"%s\" --enable-languages=c,c++ --with-sysroot=%s --disable-nls >> ../build_cross.log 2>&1", 
 						installationFolder, sysrootFolder)) goto fail;
 			if (chdir("../..")) goto fail;
 		}
@@ -704,12 +714,12 @@ void BuildCrossCompiler() {
 		{
 			CallSystem("echo Removing debug symbols... >> bin/build_cross.log");
 			CallSystemF("strip %s/bin/* >> bin/build_cross.log 2>&1", installationFolder);
-			CallSystemF("strip %s/libexec/gcc/x86_64-essence/" GCC_VERSION "/* >> bin/build_cross.log 2>&1", installationFolder);
+			CallSystemF("strip %s/libexec/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/* >> bin/build_cross.log 2>&1", installationFolder);
 		}
 
 		{
 			CallSystem("echo Modifying headers... >> bin/build_cross.log");
-			sprintf(path, "%s/lib/gcc/x86_64-essence/" GCC_VERSION "/include/mm_malloc.h", installationFolder);
+			sprintf(path, "%s/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/include/mm_malloc.h", installationFolder);
 			FILE *file = fopen(path, "w");
 			if (!file) {
 				printf("Couldn't modify header files\n");
@@ -771,6 +781,7 @@ void SaveConfig() {
 }
 
 const char *folders[] = {
+	"arch",
 	"apps",
 	"desktop",
 	"kernel",
@@ -1599,7 +1610,7 @@ int main(int _argc, char **_argv) {
 
 	const char *runFirstCommand = NULL;
 
-	if (CallSystem("x86_64-essence-gcc --version > /dev/null 2>&1 ")) {
+	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
 		BuildCrossCompiler();
 		runFirstCommand = "b";
 		foundValidCrossCompiler = true;
@@ -1616,8 +1627,9 @@ int main(int _argc, char **_argv) {
 		printf("Please rebuild the compiler using the command " ColorHighlight "build-cross" ColorNormal " before attempting to build the OS.\n");
 	}
 
+#ifdef TOOLCHAIN_HAS_RED_ZONE
 	{
-		CallSystem("x86_64-essence-gcc -mno-red-zone -print-libgcc-file-name > bin/valid_compiler.txt");
+		CallSystem("" TOOLCHAIN_PREFIX "-gcc -mno-red-zone -print-libgcc-file-name > bin/valid_compiler.txt");
 		FILE *f = fopen("bin/valid_compiler.txt", "r");
 		char buffer[256];
 		buffer[fread(buffer, 1, 256, f)] = 0;
@@ -1630,6 +1642,7 @@ int main(int _argc, char **_argv) {
 
 		unlink("bin/valid_compiler.txt");
 	}
+#endif
 
 	printf("Enter 'help' to get a list of commands.\n");
 	char *prev = NULL;

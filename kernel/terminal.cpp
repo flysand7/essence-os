@@ -19,7 +19,7 @@ void DebugWriteCharacter(uintptr_t character);
 extern "C" void ProcessorDebugOutputByte(uint8_t byte);
 int KWaitKey();
 
-#ifdef ARCH_X86_COMMON
+#if defined(ES_ARCH_X86_32) || defined(ES_ARCH_X86_64)
 bool printToDebugger = false;
 uintptr_t terminalPosition = 80;
 
@@ -209,7 +209,9 @@ void KernelPanic(const char *format, ...) {
 
 	EsPrint("Current thread = %x\n", GetCurrentThread());
 	EsPrint("Trace: %x\n", __builtin_return_address(0));
+#ifdef ES_ARCH_X86_64
 	EsPrint("RSP: %x; RBP: %x\n", ProcessorGetRSP(), ProcessorGetRBP());
+#endif
 	// EsPrint("Memory: %x/%x\n", pmm.pagesAllocated, pmm.startPageCount);
 
 	{
@@ -220,8 +222,10 @@ void KernelPanic(const char *format, ...) {
 		while (item) {
 			Thread *thread = item->thisItem;
 
+#ifdef ES_ARCH_X86_64
 			EsPrint("%z %d %x @%x:%x ", (GetCurrentThread() == thread) ? "=>" : "  ", 
 					thread->id, thread, thread->interruptContext->rip, thread->interruptContext->rbp);
+#endif
 
 			if (thread->state == THREAD_WAITING_EVENT) {
 				EsPrint("WaitEvent(Count:%d, %x) ", thread->blocking.eventCount, thread->blocking.events[0]);
@@ -242,9 +246,11 @@ void KernelPanic(const char *format, ...) {
 		CPULocalStorage *local = KGetCPULocal(i);
 
 		if (local->panicContext) {
+#ifdef ES_ARCH_X86_64
 			EsPrint("CPU %d LS %x RIP/RBP %x:%x TID %d\n", local->processorID, local,
 					local->panicContext->rip, local->panicContext->rbp,
 					local->currentThread ? local->currentThread->id : 0);
+#endif
 		}
 	}
 

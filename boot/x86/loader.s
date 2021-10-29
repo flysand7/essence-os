@@ -906,7 +906,7 @@ error_cannot_read_disk: db "Error: The disk could not be read.",0
 error_file_too_large: db "Error: The file was too large to be loaded (more than 256KB).",0
 error_kernel_too_large: db "Error: The kernel was too large for the 3MB buffer.",0
 error_bad_kernel: db "Error: Invalid or unsupported kernel ELF format.",0
-error_no_memory: db "Error: Not enough memory to load kernel"
+error_no_memory: db "Error: Not enough memory to load kernel",0
 error_no_long_mode: db "Error: The kernel is compiled for a 64-bit processor but the current processor is 32-bit only.",0
 error_could_not_set_video_mode: db "Error: Could not set video mode 1024x768x24.",0
 

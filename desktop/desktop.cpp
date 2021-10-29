@@ -2189,7 +2189,7 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 		EsMemoryCopy(data + sizeof(size_t) * 2 + oldPathBytes, newPath, newPathBytes);
 		EsMessage m = {};
 		m.type = ES_MSG_FILE_MANAGER_PATH_MOVED;
-		m.user.context2 = sizeof(size_t) * 2 + oldPathBytes + newPathBytes;
+		m.user.context2.u = sizeof(size_t) * 2 + oldPathBytes + newPathBytes;
 		m.user.context1 = EsConstantBufferCreate(data, m.user.context2.u, desktop.fileManager->singleProcess->handle); 
 		EsMessagePostRemote(desktop.fileManager->singleProcess->handle, &m);
 		EsHeapFree(data);

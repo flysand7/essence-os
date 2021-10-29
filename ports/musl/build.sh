@@ -1,9 +1,12 @@
 if [ ! -d "bin/musl" ]; then
-	echo "    Downloading source for Musl..."
-	curl https://musl.libc.org/releases/musl-1.2.1.tar.gz > bin/musl-1.2.1.tar.gz
+	echo "Downloading Musl..."
 
-	gunzip bin/musl-1.2.1.tar.gz
-	tar -xf bin/musl-1.2.1.tar
+	if [ ! -f "bin/cache/musl-1.2.1.tar" ]; then
+		curl https://musl.libc.org/releases/musl-1.2.1.tar.gz > bin/cache/musl-1.2.1.tar.gz
+		gunzip bin/cache/musl-1.2.1.tar.gz
+	fi
+
+	tar -xf bin/cache/musl-1.2.1.tar
 	mv musl-1.2.1 bin/musl
 
 	cp ports/musl/changes/config.mak                            bin/musl/config.mak
@@ -29,7 +32,15 @@ cp -p ports/musl/libc.a "root/Applications/POSIX/lib/libc.a"
 cp -p ports/musl/empty.a "root/Applications/POSIX/lib/libm.a"
 cp -p ports/musl/empty.a "root/Applications/POSIX/lib/libpthread.a"
 cp -p ports/musl/empty.a "root/Applications/POSIX/lib/librt.a"
-cp -p -r ports/musl/obj_bits/* "root/Applications/POSIX/include/"
-cp -p -r bin/musl/arch/x86_64/* "root/Applications/POSIX/include/"
-cp -p -r bin/musl/arch/generic/* "root/Applications/POSIX/include/"
 cp -p -r bin/musl/include/* "root/Applications/POSIX/include/"
+cp -p -r bin/musl/arch/generic/* "root/Applications/POSIX/include/"
+
+if [ "$1" = "x86_64" ]; then
+	cp -p -r bin/musl/arch/x86_64/* "root/Applications/POSIX/include/"
+	cp -p -r ports/musl/obj_bits_x86_64/* "root/Applications/POSIX/include/"
+fi
+
+if [ "$1" = "x86_32" ]; then
+	cp -p -r bin/musl/arch/i386/* "root/Applications/POSIX/include/"
+	cp -p -r ports/musl/obj_bits_x86_32/* "root/Applications/POSIX/include/"
+fi

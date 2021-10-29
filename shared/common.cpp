@@ -1240,7 +1240,7 @@ void EsMemoryCopy(void *_destination, const void *_source, size_t bytes) {
 	uint8_t *destination = (uint8_t *) _destination;
 	uint8_t *source = (uint8_t *) _source;
 
-#ifdef ARCH_X86_64
+#ifdef ES_ARCH_X86_64
 	while (bytes >= 16) {
 		_mm_storeu_si128((__m128i *) destination, 
 				_mm_loadu_si128((__m128i *) source));
@@ -1512,7 +1512,7 @@ void EsSort(void *_base, size_t nmemb, size_t size, int (*compar)(const void *, 
 	if (nmemb <= 1) return;
 
 	uint8_t *base = (uint8_t *) _base;
-	uint8_t *swap = (uint8_t *) alloca(size);
+	uint8_t *swap = (uint8_t *) __builtin_alloca(size);
 
 	intptr_t i = -1, j = nmemb;
 
@@ -2221,7 +2221,7 @@ void EsCRTqsort(void *_base, size_t nmemb, size_t size, EsCRTComparisonCallback 
 	if (nmemb <= 1) return;
 
 	uint8_t *base = (uint8_t *) _base;
-	uint8_t *swap = (uint8_t *) alloca(size);
+	uint8_t *swap = (uint8_t *) __builtin_alloca(size);
 
 	intptr_t i = -1, j = nmemb;
 

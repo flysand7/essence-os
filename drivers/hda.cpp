@@ -398,7 +398,7 @@ static void HDAControllerAttach(KDevice *_parent) {
 	uint16_t globalCapabilities = RD_REGISTER_GCAP();
 	bool supports64BitAddresses = globalCapabilities & (1 << 0);
 
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 	if (!supports64BitAddresses) {
 		KernelLog(LOG_ERROR, "HDA", "controller unsupported", "Controller does not support 64-bit addresses.\n");
 		KDeviceDestroy(controller);

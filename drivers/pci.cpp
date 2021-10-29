@@ -215,7 +215,7 @@ bool KPCIDevice::EnableSingleInterrupt(KIRQHandler irqHandler, void *context, co
 	// See the comment in InterruptHandler for what happens when passing -1.
 
 	intptr_t line = interruptLine;
-#ifdef ARCH_X86_COMMON
+#if defined(ES_ARCH_X86_32) || defined(ES_ARCH_X86_64)
 	extern uint32_t bootloaderID;
 	if (bootloaderID == 2) line = -1;
 #endif
@@ -271,7 +271,7 @@ bool KPCIDevice::EnableMSI(KIRQHandler irqHandler, void *context, const char *cO
 			return false;
 		}
 
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 		if ((msi.address & 0xFFFFFFFF00000000) && (~control & (1 << 7))) {
 			KUnregisterMSI(msi.tag);
 			KernelLog(LOG_ERROR, "PCI", "unsupported MSI address", "MSI does not support 64-bit addresses. Requested: %x.\n", msi.address);

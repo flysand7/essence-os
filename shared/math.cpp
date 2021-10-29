@@ -1110,7 +1110,7 @@ struct BigFloat {
 		
 		uint8_t carry = subtract ? 1 : 0;
 
-#ifdef ARCH_32
+#ifdef ES_BITS_32
 		for (intptr_t i = MANTISSA_BITS - 1; i >= 0; i--) {
 			uint8_t xi = GET_MANTISSA_BIT(x, i);
 			uint8_t yi = GET_MANTISSA_BIT(y, i);
@@ -1134,7 +1134,7 @@ struct BigFloat {
 
 				uint8_t carry = 1;
 				
-#ifdef ARCH_32
+#ifdef ES_BITS_32
 				for (intptr_t i = MANTISSA_BITS - 1; i >= 0; i--) {
 					uint8_t xi = GET_MANTISSA_BIT(x, i);
 					uint8_t sum = xi + carry;

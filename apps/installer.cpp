@@ -334,7 +334,7 @@ void ConnectedDriveAdd(EsMessageDevice device) {
 	}
 
 	// TODO EsObjectID might not necessarily fit in EsGeneric...
-	EsListViewFixedItemInsert(drivesList, information.model, information.modelBytes, device.id);
+	EsListViewFixedItemInsert(drivesList, information.model, information.modelBytes, (uintptr_t) device.id);
 	connectedDrives.Add(device);
 }
 
@@ -349,7 +349,7 @@ void ConnectedDriveRemove(EsMessageDevice device) {
 
 	for (uintptr_t i = 0; i < connectedDrives.Length(); i++) {
 		if (connectedDrives[i].id == device.id) {
-			EsListViewFixedItemRemove(drivesList, device.id);
+			EsListViewFixedItemRemove(drivesList, (uintptr_t) device.id);
 			connectedDrives.Delete(i);
 			return;
 		}

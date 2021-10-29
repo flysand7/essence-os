@@ -1966,7 +1966,7 @@ function EsError EsHandleClose(EsHandle handle);
 function void EsSystemShowShutdownDialog();
 
 function void EsPOSIXInitialise(int *argc, char ***argv); 
-function intptr_t EsPOSIXSystemCall(intptr_t n, intptr_t a1, intptr_t a2, intptr_t a3, intptr_t a4, intptr_t a5, intptr_t a6); 
+function long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long a6); 
 function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix);
 
 private function void EsBatch(EsBatchCall *calls, size_t count); 

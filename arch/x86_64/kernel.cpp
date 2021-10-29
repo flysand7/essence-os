@@ -45,6 +45,9 @@ struct MMArchVAS {
 
 #ifdef IMPLEMENTATION
 
+#include <arch/x86_64.h>
+#include <drivers/acpi.cpp>
+
 #define MM_CORE_SPACE_START   (0xFFFF800100000000)
 #define MM_CORE_SPACE_SIZE    (0xFFFF8001F0000000 - 0xFFFF800100000000)
 #define MM_USER_SPACE_START   (0x100000000000)
@@ -1573,5 +1576,7 @@ void ArchInitialise() {
 	NewProcessorStorage storage = AllocateNewProcessorStorage(currentCPU);
 	SetupProcessor2(&storage);
 }
+
+#include <kernel/terminal.cpp>
 
 #endif

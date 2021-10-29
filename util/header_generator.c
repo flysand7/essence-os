@@ -589,6 +589,14 @@ void OutputC(Entry *root) {
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
 
+		if (entry->type == ENTRY_STRUCT) {
+			FilePrintFormat(output, "struct %s;\n", entry->name);
+		}
+	}
+
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = root->children + i;
+
 		if (entry->isPrivate) {
 			FilePrintFormat(output, "#if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)\n");
 		}

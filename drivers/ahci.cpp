@@ -524,7 +524,7 @@ void AHCIController::Initialise() {
 	commandSlotCount = ((capabilities >> 8) & 31) + 1;
 	dma64Supported = capabilities & (1 << 31);
 
-#ifdef ARCH_64
+#ifdef ES_BITS_64
 	if (!dma64Supported) {
 		KernelLog(LOG_ERROR, "AHCI", "controller cannot DMA", "The controller reports it cannot use 64-bit addresses in DMA transfer.\n");
 		return;
