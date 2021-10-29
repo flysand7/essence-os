@@ -2,14 +2,16 @@
 #define _GNU_SOURCE
 #endif
 
-#if 1
+#if 0
 #define TOOLCHAIN_PREFIX "x86_64-essence"
 #define TARGET_NAME "x86_64"
 #define TOOLCHAIN_HAS_RED_ZONE
 #define TOOLCHAIN_HAS_CSTDLIB
+#define QEMU_EXECUTABLE "qemu-system-x86_64"
 #else
 #define TOOLCHAIN_PREFIX "i686-elf"
 #define TARGET_NAME "x86_32"
+#define QEMU_EXECUTABLE "qemu-system-i386"
 #endif
 
 #define WARNING_FLAGS \
@@ -519,7 +521,7 @@ void Run(int emulator, int log, int debug) {
 				serialFlags[0] = 0;
 			}
 
-			CallSystemF("%s %s qemu-system-x86_64 %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
+			CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
 					" %s %s %s %s %s %s %s ", 
@@ -1397,7 +1399,9 @@ void DoCommand(const char *l) {
 		LineCountFile("", "start.sh");
 
 		const char *folders[] = {
-			"desktop/", "boot/x86/", "drivers/", "kernel/", "apps/", "apps/file_manager/", "shared/", "util/"
+			"desktop/", "boot/x86/", "drivers/", "kernel/", 
+			"apps/", "apps/file_manager/", "shared/", "util/",
+			"arch/", "arch/x86_32/", "arch/x86_64/",
 		};
 
 		for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {

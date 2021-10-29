@@ -1,7 +1,7 @@
 [bits 16]
 [org 0x1000]
 
-; This is missing any fileSystem specific macros.
+; This is missing any file system specific macros.
 %define vesa_info 0x7000
 %define os_installation_identifier 0x7FF0
 %define temporary_load_buffer 0x9000
@@ -363,7 +363,184 @@ setup_elf:
 	jne	error_32
 	cmp	byte [ebx + 4],2
 	je	setup_elf_64
+	cmp	byte [ebx + 4],1
 	jne	error_32
+	jmp	setup_elf_32
+
+setup_elf_32:
+	mov	dword [page_table_allocation_location],0x2000
+
+	; Check the ELF data is correct
+	mov	ebx,[kernel_buffer]
+	mov	esi,error_bad_kernel
+	cmp	byte [ebx + 5],1
+	jne	error_32
+	cmp	byte [ebx + 7],0
+	jne	error_32
+	cmp	byte [ebx + 16],2
+	jne	error_32
+	cmp	byte [ebx + 18],0x03
+	jne	error_32
+
+	; Find the program headers
+	; EAX = ELF header, EBX = program headers
+	mov	eax,ebx
+	mov	ebx,[eax + 28]
+	add	ebx,eax
+
+	; ECX = entries, EDX = size of entry
+	movzx	ecx,word [eax + 44]
+	movzx	edx,word [eax + 42]
+
+	; Loop through each program header
+	.loop_program_headers:
+	push	eax
+	push	ecx
+	push	edx
+	push	ebx
+
+	; Only deal with load segments
+	mov	eax,[ebx]
+	cmp	eax,1
+	jne	.next_entry
+
+	; Work out how many physical pages we need to allocate
+	mov	ecx,[ebx + 20]
+	shr	ecx,12
+	inc	ecx
+
+	; Get the starting virtual address
+	mov	eax,[ebx + 8]
+	mov	[.target_page],eax
+
+	; For every frame in the segment
+	.frame_loop:
+	xor	ebx,ebx
+
+	; For every memory region
+	.memory_region_loop:
+
+	; Check the region has enough pages remaining
+	mov	eax,[ebx + memory_map + 8]
+	or	eax,eax
+	jz	.try_next_memory_region
+
+	; Remove one page from the region
+	mov	eax,[ebx + memory_map + 4]
+	or	eax,eax
+	jnz	.try_next_memory_region ; Reject 64-bit pages.
+	mov	eax,[ebx + memory_map + 0]
+	mov	[.physical_page],eax
+	add	eax,0x1000
+	mov	[ebx + memory_map + 0],eax
+	sub	dword [ebx + memory_map + 8],1
+
+	jmp	.found_physical_page
+
+	; Go to the next memory region
+	.try_next_memory_region:
+	add	ebx,16
+	mov	eax,[load_memory_map.pointer]
+	cmp	ebx,eax
+	jne	.memory_region_loop
+	mov	esi,error_no_memory
+	jmp	error_32
+
+	; Map the page into virtual memory
+	.found_physical_page:
+
+	; Make sure we have a page table
+	mov	eax,[.target_page]
+	shr	eax,22
+	shl	eax,2
+	add	eax,0xFFFFF000
+	mov	ebx,[eax]
+	cmp	ebx,0
+	jne	.has_pt
+	mov	ebx,[page_table_allocation_location]
+	add	ebx,page_directory
+	or	ebx,7
+	mov	[eax],ebx
+	add	dword [page_table_allocation_location],0x1000
+	mov	eax,cr3
+	mov	cr3,eax
+	.has_pt:
+
+	; Map the page!
+	mov	eax,[.target_page]
+	shr	eax,12
+	mov	ebx,[.physical_page]
+	or	ebx,0x103
+	shl	eax,2
+	add	eax,0xFFC00000
+	mov	[eax],ebx
+	mov	ebx,[.target_page]
+	invlpg	[ebx]
+
+	; Go to the next frame
+	add	dword [.target_page],0x1000
+	dec	ecx
+	or	ecx,ecx
+	jnz	.frame_loop
+
+	; Restore the pointer to the segment
+	pop	ebx
+	push	ebx
+
+	; Clear the memory
+	mov	ecx,[ebx + 20]
+	xor	eax,eax
+	mov	edi,[ebx + 8]
+	rep	stosb
+
+	; Copy the memory
+	mov	ecx,[ebx + 16]
+	mov	esi,[ebx + 4]
+	add	esi,[kernel_buffer]
+	mov	edi,[ebx + 8]
+	rep	movsb
+
+	; Go to the next entry
+	.next_entry:
+	pop	ebx
+	pop	edx
+	pop	ecx
+	pop	eax
+
+	add	ebx,edx
+	dec	ecx
+	or	ecx,ecx
+	jnz	.loop_program_headers
+
+	jmp	run_kernel32
+
+	.target_page: dd 0
+	.physical_page: dd 0
+
+run_kernel32:
+	; Let the kernel use the memory that was used to store the executable
+	xor	eax,eax
+	mov	ebx,[load_memory_map.pointer]
+	mov	[memory_map + ebx + 4],eax
+	mov	[memory_map + ebx + 12],eax
+	mov	[memory_map + ebx + 16],eax
+	mov	[memory_map + ebx + 20],eax
+	mov	eax,[memory_map + ebx + 8]
+	mov	[memory_map + ebx + 24],eax
+	mov	eax,[memory_map + ebx + 12]
+	mov	[memory_map + ebx + 28],eax
+	mov	eax,[kernel_buffer]
+	mov	[memory_map + ebx],eax
+	mov	eax,[kernel_size]
+	shr	eax,12
+	mov	[memory_map + ebx + 8],eax
+
+	; Execute the kernel's _start function
+	mov	ebx,[kernel_buffer]
+	mov	ecx,[ebx + 24]
+	xor	edi,edi
+	mov	esi,1
+	jmp	ecx
 
 setup_elf_64:
 	; Check that the processor is 64-bit

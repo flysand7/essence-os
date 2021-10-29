@@ -303,6 +303,7 @@ bool MMArchMapPage(MMSpace *space, uintptr_t physicalAddress, uintptr_t virtualA
 	// That said, a CPU won't overwrite and clear a dirty bit when writing out its accessed flag (tested on Qemu);
 	// see here https://stackoverflow.com/questions/69024372/.
 	// Tl;dr: if a CPU ever sees an entry without these bits set, it can overwrite the entry with junk whenever it feels like it.
+	// TODO Should we be marking page tables as dirty/accessed? (Including those made by the 32-bit AND 64-bit bootloader and MMArchInitialise).
 	value |= (1 << 5) | (1 << 6);
 
 	if ((oldValue & 1) && !(flags & MM_MAP_PAGE_OVERWRITE)) {
