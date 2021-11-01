@@ -2282,10 +2282,10 @@ void MMInitialise() {
 		KMutexRelease(&kernelMMSpace->reserveMutex);
 
 		// 1 extra for the top page, then round up so the page bitset is byte-aligned.
-		pmm.pageFrameDatabaseCount = (MMArchGetPhysicalMemoryHighest() + (K_PAGE_SIZE << 3)) >> K_PAGE_BITS; 
-
-		pmm.pageFrames = (MMPageFrame *) MMStandardAllocate(kernelMMSpace, pmm.pageFrameDatabaseCount * sizeof(MMPageFrame), MM_REGION_FIXED);
-		pmm.freeOrZeroedPageBitset.Initialise(pmm.pageFrameDatabaseCount, true);
+		uintptr_t pageFrameDatabaseCount = (MMArchGetPhysicalMemoryHighest() + (K_PAGE_SIZE << 3)) >> K_PAGE_BITS;
+		pmm.pageFrames = (MMPageFrame *) MMStandardAllocate(kernelMMSpace, pageFrameDatabaseCount * sizeof(MMPageFrame), MM_REGION_FIXED);
+		pmm.freeOrZeroedPageBitset.Initialise(pageFrameDatabaseCount, true);
+		pmm.pageFrameDatabaseCount = pageFrameDatabaseCount; // Only set this after the database is ready, or it may be accessed mid-allocation!
 
 		MMPhysicalInsertFreePagesStart();
 		uint64_t commitLimit = MMArchPopulatePageFrameDatabase();

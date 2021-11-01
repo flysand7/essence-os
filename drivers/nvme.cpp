@@ -477,7 +477,7 @@ void NVMeController::Initialise() {
 		return;
 	}
 
-	if (~capabilities & (1UL << 37)) {
+	if (~capabilities & (1ULL << 37)) {
 		KernelLog(LOG_ERROR, "NVMe", "unsupported capabilities", "Controller does not support NVMe command set.\n");
 		return;
 	}

@@ -74,6 +74,7 @@ typedef struct AttributeFilename {
 typedef struct AttributeDirectory {
 	/*  0 */ uint16_t type;						// ESFS_ATTRIBUTE_DIRECTORY.
 	/*  2 */ uint16_t size;						// The size in bytes. Must be 8 byte aligned.
+	/*  4 */ uint8_t _unused0[4];
 	/*  8 */ uint64_t childNodes;					// The number of child nodes in the directory.
 	/* 16 */ uint64_t indexRootBlock;				// The block containing the root IndexVertex for the directory.
 	/* 24 */ uint64_t totalSize;					// The sum of sizes of all the directory's children in bytes.
@@ -157,12 +158,14 @@ typedef struct Superblock {
 	
 	/*  52 */ uint32_t checksum;					// CRC-32 checksum of Superblock.
 	/*  56 */ uint8_t mounted;					// Non-zero to indicate that the volume is mounted, or was not properly unmounted.
+	/*  57 */ uint8_t _unused2[7];
 	
 	/*  64 */ uint64_t blockSize;					// The size of a block on the volume.
 	/*  72 */ uint64_t blockCount;					// The number of blocks on the volume.
 	/*  80 */ uint64_t blocksUsed;					// The number of blocks that are in use.
 	
 	/*  88 */ uint32_t blocksPerGroup;				// The number of blocks in a group.
+	/*  92 */ uint8_t _unused3[4];
 	/*  96 */ uint64_t groupCount;					// The number of groups on the volume.
 	/* 104 */ uint64_t blocksPerGroupBlockBitmap;			// The number of blocks used to a store a group's block bitmap.
 	/* 112 */ uint64_t gdtFirstBlock;				// The first block in the group descriptor table.

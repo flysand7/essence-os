@@ -131,7 +131,6 @@ extern "C" {
 	void MMArchUnmapPages(MMSpace *space, uintptr_t virtualAddressStart, uintptr_t pageCount, unsigned flags, size_t unmapMaximum = 0, uintptr_t *resumePosition = nullptr);
 	bool MMArchMakePageWritable(MMSpace *space, uintptr_t virtualAddress);
 	bool MMArchHandlePageFault(uintptr_t address, uint32_t flags);
-	void MMArchInvalidatePages(uintptr_t virtualAddressStart, uintptr_t pageCount);
 	bool MMArchIsBufferInUserRange(uintptr_t baseAddress, size_t byteCount);
 	bool MMArchSafeCopy(uintptr_t destinationAddress, uintptr_t sourceAddress, size_t byteCount); // Returns false if a page fault occured during the copy.
 	bool MMArchCommitPageTables(MMSpace *space, struct MMRegion *region);

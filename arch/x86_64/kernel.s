@@ -1,5 +1,61 @@
 [bits 64]
 
+[global ArchSwitchContext]
+[global GetCurrentThread]
+[global GetLocalStorage]
+[global MMArchSafeCopy]
+[global ProcessorAPStartup]
+[global ProcessorAreInterruptsEnabled]
+[global ProcessorDebugOutputByte]
+[global ProcessorDisableInterrupts]
+[global ProcessorEnableInterrupts]
+[global ProcessorFakeTimerInterrupt]
+[global ProcessorFlushCodeCache]
+[global ProcessorGetRBP]
+[global ProcessorGetRSP]
+[global ProcessorHalt]
+[global ProcessorIn16]
+[global ProcessorIn32]
+[global ProcessorIn8]
+[global ProcessorInstallTSS]
+[global ProcessorInvalidateAllPages]
+[global ProcessorInvalidatePage]
+[global ProcessorOut16]
+[global ProcessorOut32]
+[global ProcessorOut8]
+[global ProcessorReadCR3]
+[global ProcessorReadMXCSR]
+[global ProcessorReadTimeStamp]
+[global ProcessorReset]
+[global ProcessorSetAddressSpace]
+[global ProcessorSetLocalStorage]
+[global ProcessorSetThreadStorage]
+[global _KThreadTerminate]
+[global _start]
+[global gdt_data]
+[global pagingNXESupport]
+[global pagingPCIDSupport]
+[global pagingSMEPSupport]
+[global pagingTCESupport]
+[global processorGDTR]
+[global simdSSE3Support]
+[global simdSSSE3Support]
+[global timeStampCounterSynchronizationValue]
+
+[extern ArchNextTimer]
+[extern InterruptHandler]
+[extern KThreadTerminate]
+[extern KernelMain]
+[extern PostContextSwitch]
+[extern SetupProcessor2]
+[extern Syscall]
+[extern installationID]
+[extern PCSetupCOM1]
+[extern PCDisablePIC]
+[extern PCProcessMemoryMap]
+[extern bootloaderID]
+[extern bootloaderInformationOffset]
+
 [section .bss]
 
 align 16
@@ -23,62 +79,27 @@ idt:
 cpu_local_storage_index:
 	dq 0
 
-[global physicalMemoryRegions]
-physicalMemoryRegions:
-	dq 0xFFFFFE0000060000 
-[global physicalMemoryRegionsCount]
-physicalMemoryRegionsCount:
-	dq 0
-[global physicalMemoryRegionsPagesCount]
-physicalMemoryRegionsPagesCount:
-	dq 0
-[global physicalMemoryOriginalPagesCount]
-physicalMemoryOriginalPagesCount:
-	dq 0
-[global physicalMemoryRegionsIndex]
-physicalMemoryRegionsIndex:
-	dq 0
-[global physicalMemoryHighest]
-physicalMemoryHighest:
-	dq 0
-
-[global pagingNXESupport]
 pagingNXESupport:
 	dd 1
-[global pagingPCIDSupport]
 pagingPCIDSupport:
 	dd 1
-[global pagingSMEPSupport]
 pagingSMEPSupport:
 	dd 1
-[global pagingTCESupport]
 pagingTCESupport:
 	dd 1
-[global simdSSE3Support]
 simdSSE3Support:
 	dd 1
-[global simdSSSE3Support]
 simdSSSE3Support:
 	dd 1
 
-[global bootloaderID]
-bootloaderID:
-	dd 0
-[global bootloaderInformationOffset]
-bootloaderInformationOffset:
-	dq 0
-
 align 16
-[global processorGDTR]
 processorGDTR:
 	dq 0
 	dq 0
 
 [section .text]
 
-[global _start]
 _start:
-	cli
 	mov	rax,0x63
 	mov	fs,ax
 	mov	gs,ax
@@ -87,20 +108,20 @@ _start:
 	mov	rax,bootloaderID
 	mov	[rax],rsi
 
+	; The MBR bootloader does not know the address of the RSDP. 
 	cmp	rdi,0
 	jne	.standard_acpi
 	mov	[0x7FE8],rdi
 	.standard_acpi:
 
-	; Install a stack
-	mov	rsp,stack + stack_size
-
 	; Save the bootloader information offset.
 	mov	rax,bootloaderInformationOffset
 	mov	[rax],rdi
 
+	; Install a stack
+	mov	rsp,stack + stack_size
+
 	; Load the installation ID.
-[extern installationID]
 	mov	rbx,installationID
 	mov	rax,[rdi + 0x7FF0]
 	mov	[rbx],rax
@@ -113,57 +134,9 @@ _start:
 	mov	rax,cr3
 	mov	cr3,rax
 
-SetupCOM1:
-	; Setup the serial COM1 port for debug output.
-%ifdef COM_OUTPUT
-	mov	dx,0x3F8 + 1
-	mov	al,0x00
-	out	dx,al
-	mov	dx,0x3F8 + 3
-	mov	al,0x80
-	out	dx,al
-	mov	dx,0x3F8 + 0
-	mov	al,0x03
-	out	dx,al
-	mov	dx,0x3F8 + 1
-	mov	al,0x00
-	out	dx,al
-	mov	dx,0x3F8 + 3
-	mov	al,0x03
-	out	dx,al
-	mov	dx,0x3F8 + 2
-	mov	al,0xC7
-	out	dx,al
-	mov	dx,0x3F8 + 4
-	mov	al,0x0B
-	out	dx,al
-%endif
-
-InstallIDT:
-	; Remap the ISRs sent by the PIC to 0x20 - 0x2F
-	; Even though we'll mask the PIC to use the APIC,
-	; we have to do this so that the spurious interrupts
-	; are set to a sane vector range.
-	mov	al,0x11
-	out	0x20,al
-	mov	al,0x11
-	out	0xA0,al
-	mov	al,0x20
-	out	0x21,al
-	mov	al,0x28
-	out	0xA1,al
-	mov	al,0x04
-	out	0x21,al
-	mov	al,0x02
-	out	0xA1,al
-	mov	al,0x01
-	out	0x21,al
-	mov	al,0x01
-	out	0xA1,al
-	mov	al,0x00
-	out	0x21,al
-	mov	al,0x00
-	out	0xA1,al
+	call	PCSetupCOM1
+	call	PCDisablePIC
+	call	PCProcessMemoryMap
 
 	; Install the interrupt handlers
 %macro INSTALL_INTERRUPT_HANDLER 1
@@ -181,78 +154,21 @@ InstallIDT:
 	mov	rcx,processorGDTR
 	sgdt	[rcx]
 
-MemoryCalculations:
-	; Work out basic information about the physical memory map we got from the bootloader
-	mov	rax,bootloaderInformationOffset
-	mov	rax,[rax]
-	mov	rbx,physicalMemoryRegions
-	add	[rbx],rax
-	mov	rdi,0xFFFFFE0000060000 - 0x10
-	add	rdi,rax
-	mov	rsi,0xFFFFFE0000060000
-	add	rsi,rax
-	xor	rax,rax
-	xor	r8,r8
-	.loop:
-	add	rdi,0x10
-	mov	r9,[rdi + 8]
-	shl	r9,12
-	add	r9,[rdi]
-	cmp	r9,r8
-	jb	.lower
-	mov	r8,r9
-	.lower:
-	add	rax,[rdi + 8]
-	cmp	qword [rdi],0
-	jne	.loop
-	mov	rbx,[rdi + 8]
-	sub	rax,rbx
-	sub	rdi,rsi
-	shr	rdi,4
-	mov	rsi,physicalMemoryRegionsCount
-	mov	[rsi],rdi
-	mov	rsi,physicalMemoryRegionsPagesCount
-	mov	[rsi],rax
-	mov	rsi,physicalMemoryOriginalPagesCount
-	mov	[rsi],rbx
-	mov	rsi,physicalMemoryHighest
-	mov	[rsi],r8
-
-DisablePIC:
-	; Disable the PIC by masking all its interrupts, as we're going to use the APIC instead.
-	; For some reason, it'll still generate spurious interrupts, so we'll have to ignore those.
-	mov	al,0xFF
-	out	0xA1,al
-	out	0x21,al
-
-StartKernel:
 	; First stage of processor initilisation
 	call	SetupProcessor1
 
-	; Print a divider line.
-	mov	rdi,'-'
-	mov	rcx,10
-	.line: 	call ProcessorDebugOutputByte
-	loop	.line
-	mov	rdi,10
-	call 	ProcessorDebugOutputByte
-	mov	rdi,13
-	call 	ProcessorDebugOutputByte
-
 	; Call the KernelMain function
 	and	rsp,~0xF
-	extern	KernelMain
 	call	KernelMain
 
 ProcessorReady:
 	; Set the timer and become this CPU's idle thread.
 	mov	rdi,1
-	[extern ArchNextTimer]
 	call	ArchNextTimer
 	jmp	ProcessorIdle
 
 SetupProcessor1:
-EnableCPUFeatures:
+	.enable_cpu_features:
 	; Enable no-execute support, if available
 	mov	eax,0x80000001
 	cpuid
@@ -391,7 +307,7 @@ EnableCPUFeatures:
 	or	eax,0x00010000
 	wrmsr
 
-SetupCPULocalStorage:
+	.setup_cpu_local_storage:
 	mov	ecx,0xC0000101
 	mov	rax,cpu_local_storage
 	mov	rdx,cpu_local_storage
@@ -401,13 +317,13 @@ SetupCPULocalStorage:
 	add	qword [rdi],32 ; Space for 4 8-byte values at gs:0 - gs:31
 	wrmsr
 
-LoadIDTR:
+	.load_idtr:
 	; Load the IDTR
 	mov	rax,idt
 	lidt	[rax]
 	sti
 
-EnableAPIC:
+	.enable_apic:
 	; Enable the APIC!
 	; Since we're on AMD64, we know that the APIC will be present.
 	mov	ecx,0x1B
@@ -453,7 +369,6 @@ SyscallEntry:
 
 	; Arguments in RDI, RSI, RDX, R8, R9. (RCX contains return address).
 	; Return value in RAX.
-	[extern Syscall]
 	mov	rbx,rsp
 	and	rsp,~0xF
 	call	Syscall
@@ -476,19 +391,16 @@ SyscallEntry:
 	db	0x48 
 	sysret
 
-[global ProcessorFakeTimerInterrupt]
 ProcessorFakeTimerInterrupt:
 	int	0x40
 	ret
 
-[global ProcessorDisableInterrupts]
 ProcessorDisableInterrupts:
 	mov	rax,14 ; Still allow important IPIs to go through.
 	mov	cr8,rax
 	sti ; TODO Where is this necessary? Is is a performance issue?
 	ret
 
-[global ProcessorEnableInterrupts]
 ProcessorEnableInterrupts:
 	; WARNING: Changing this mechanism also requires update in x86_64.cpp, when deciding if we should re-enable interrupts on exception.
 	mov	rax,0
@@ -496,7 +408,6 @@ ProcessorEnableInterrupts:
 	sti ; TODO Where is this necessary? Is is a performance issue?
 	ret
 
-[global ProcessorAreInterruptsEnabled]
 ProcessorAreInterruptsEnabled:
 	pushf	
 	pop	rax
@@ -515,60 +426,51 @@ ProcessorAreInterruptsEnabled:
 	; shr	rax,9
 	ret
 
-[global ProcessorHalt]
 ProcessorHalt:
 	cli
 	hlt
 	jmp	ProcessorHalt
 
-[global ProcessorOut8]
 ProcessorOut8:
 	mov	rdx,rdi
 	mov	rax,rsi
 	out	dx,al
 	ret
 
-[global ProcessorIn8]
 ProcessorIn8:
 	mov	rdx,rdi
 	xor	rax,rax
 	in	al,dx
 	ret
 
-[global ProcessorOut16]
 ProcessorOut16:
 	mov	rdx,rdi
 	mov	rax,rsi
 	out	dx,ax
 	ret
 
-[global ProcessorIn16]
 ProcessorIn16:
 	mov	rdx,rdi
 	xor	rax,rax
 	in	ax,dx
 	ret
 
-[global ProcessorOut32]
 ProcessorOut32:
 	mov	rdx,rdi
 	mov	rax,rsi
 	out	dx,eax
 	ret
 
-[global ProcessorIn32]
 ProcessorIn32:
 	mov	rdx,rdi
 	xor	rax,rax
 	in	eax,dx
 	ret
 
-[global ProcessorInvalidatePage]
 ProcessorInvalidatePage:
 	invlpg	[rdi]
 	ret
 
-[global ProcessorInvalidateAllPages]
 ProcessorInvalidateAllPages:
 	; Toggle CR4.PGE to invalidate all TLB entries, including global entries.
 	mov	rax,cr4
@@ -583,22 +485,18 @@ ProcessorIdle:
 	hlt
 	jmp	ProcessorIdle
 
-[global GetLocalStorage]
 GetLocalStorage:
 	mov	rax,[gs:0]
 	ret
 
-[global GetCurrentThread]
 GetCurrentThread:
 	mov	rax,[gs:16]
 	ret
 
-[global ProcessorSetLocalStorage]
 ProcessorSetLocalStorage:
 	mov	[gs:0],rdi
 	ret
 
-[global ProcessorSetThreadStorage]
 ProcessorSetThreadStorage:
 	push	rdx
 	push	rcx
@@ -718,7 +616,6 @@ ASMInterruptHandler:
 	mov	rdi,rsp
 	mov	rbx,rsp
 	and	rsp,~0xF
-	extern	InterruptHandler
 	call	InterruptHandler
 	mov	rsp,rbx
 	xor	rax,rax
@@ -767,7 +664,6 @@ ReturnFromInterruptHandler:
 	add	rsp,16
 	iretq
 
-[global ProcessorSetAddressSpace]
 ProcessorSetAddressSpace:
 	mov	rdi,[rdi]
 	mov	rax,cr3
@@ -777,18 +673,14 @@ ProcessorSetAddressSpace:
 	.cont:
 	ret
 
-[global ProcessorGetRSP]
 ProcessorGetRSP:
 	mov	rax,rsp
 	ret
 
-[global ProcessorGetRBP]
 ProcessorGetRBP:
 	mov	rax,rbp
 	ret
 
-[extern PostContextSwitch]
-[global ArchSwitchContext]
 ArchSwitchContext:
 	cli
 	mov	[gs:16],rcx
@@ -804,12 +696,10 @@ ArchSwitchContext:
 	call	PostContextSwitch
 	jmp	ReturnFromInterruptHandler
 
-[global ProcessorReadCR3]
 ProcessorReadCR3:
 	mov	rax,cr3
 	ret
 
-[global ProcessorDebugOutputByte]
 ProcessorDebugOutputByte:
 %ifdef COM_OUTPUT
 	mov	dx,0x3F8 + 5
@@ -824,19 +714,16 @@ ProcessorDebugOutputByte:
 %endif
 	ret
 
-[global ProcessorReadTimeStamp]
 ProcessorReadTimeStamp:
 	rdtsc
 	shl	rdx,32
 	or	rax,rdx
 	ret
 
-[global ProcessorFlushCodeCache]
 ProcessorFlushCodeCache:
 	wbinvd
 	ret
 
-[global ProcessorReadMXCSR]
 ProcessorReadMXCSR:
 	mov	rax,.buffer
 	stmxcsr	[rax]
@@ -845,7 +732,6 @@ ProcessorReadMXCSR:
 	ret
 	.buffer: dq 0
 
-[global ProcessorInstallTSS]
 ProcessorInstallTSS:
 	push	rbx
 
@@ -875,7 +761,6 @@ ProcessorInstallTSS:
 	pop	rbx
 	ret
 
-[global MMArchSafeCopy]
 MMArchSafeCopy:
 	call	GetCurrentThread
 	mov	byte [rax + 0],1 ; see definition of Thread
@@ -890,7 +775,6 @@ MMArchSafeCopy:
 	mov	al,0
 	ret
 
-[global ProcessorReset]
 ProcessorReset:
 	in	al,0x64
 	test	al,2
@@ -899,8 +783,6 @@ ProcessorReset:
 	out	0x64,al
 	jmp	$
 
-[global _KThreadTerminate]
-[extern  KThreadTerminate]
 _KThreadTerminate:
 	sub	rsp,8
 	jmp	KThreadTerminate
@@ -921,10 +803,8 @@ SynchronizeTimeStampCounter:
 	shr	rdx,32
 	wrmsr
 	ret
-[global timeStampCounterSynchronizationValue]
 	timeStampCounterSynchronizationValue: dq 0
 
-[global ProcessorAPStartup]
 [bits 16]
 ProcessorAPStartup: ; This function must be less than 4KB in length (see drivers/acpi.cpp)
 	mov	ax,0x1000
@@ -966,14 +846,12 @@ ProcessorAPStartup: ; This function must be less than 4KB in length (see drivers
 	mov	rsp,[0x10FD0]
 	call	SetupProcessor1
 	call	SynchronizeTimeStampCounter
-	[extern SetupProcessor2]
 	mov	rdi,[0x10FB0]
 	call	SetupProcessor2
 	mov	byte [0x10FC0],2 ; Indicate the BSP can start the next processor.
 	and	rsp,~0xF
 	jmp	ProcessorReady
 
-[global gdt_data]
 gdt_data:
 	.null_entry:	dq 0
 	.code_entry:	dd 0xFFFF	; 0x08

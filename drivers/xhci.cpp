@@ -596,7 +596,7 @@ bool XHCIController::HandleIRQ() {
 		uint8_t completionCode = (dw2 >> 24) & 0xFF;
 
 		KernelLog(LOG_VERBOSE, "xHCI", "got event", "Received event of type %d with code %d from %x.\n", 
-				type, completionCode, (uintptr_t) dw0 | ((uintptr_t) dw1 << 32));
+				type, completionCode, (uint64_t) dw0 | ((uint64_t) dw1 << 32));
 
 		if (type == 32 /* transfer completion event */) {
 			uint8_t slotID = (dw3 >> 24) & 0xFF;

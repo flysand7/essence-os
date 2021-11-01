@@ -245,7 +245,9 @@ void ACPIParseTables() {
 	uintptr_t startLength = length;
 	uint8_t *data = (uint8_t *) (madt + 1);
 
+#ifdef ES_ARCH_X86_64
 	acpi.lapicAddress = (uint32_t volatile *) ACPIMapPhysicalMemory(madt->lapicAddress, 0x10000);
+#endif
 
 	while (length && length <= startLength) {
 		uint8_t entryType = data[0];

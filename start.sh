@@ -55,6 +55,6 @@ if [ ! -f "bin/good_compiler.txt" ]; then
 fi
 
 # Compile and run Build.
-gcc -o bin/build -g util/build.c -Wall -Wextra -Wno-format-security -Wno-format-overflow \
-		-Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation -pthread -DPARALLEL_BUILD \
+gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} \
+		-Wall -Wextra -Wno-format-security -Wno-format-overflow -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation \
 	&& bin/build "$@"

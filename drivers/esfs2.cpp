@@ -105,7 +105,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 	}
 }
 
-static bool ValidateDirectoryEntry(DirectoryEntry *entry) {
+static bool ValidateDirectoryEntry(Volume *volume, DirectoryEntry *entry) {
 	uint32_t checksum = entry->checksum;
 	entry->checksum = 0;
 	uint32_t calculated = CalculateCRC32(entry, sizeof(DirectoryEntry));
@@ -129,6 +129,8 @@ static bool ValidateDirectoryEntry(DirectoryEntry *entry) {
 				ESFS_CHECK(data->count == entry->fileSize, "ValidateDirectoryEntry - Expected direct attribute to cover entire file.");
 			} 
 		} else if (attribute->type == ESFS_ATTRIBUTE_DIRECTORY) {
+			AttributeDirectory *directory = (AttributeDirectory *) attribute;
+			ESFS_CHECK(directory->indexRootBlock < volume->superblock.blockCount, "ValidateDirectoryEntry - Directory index root block outside volume.");
 		} else if (attribute->type == ESFS_ATTRIBUTE_FILENAME) {
 			AttributeFilename *filename = (AttributeFilename *) attribute;
 			ESFS_CHECK(filename->length + 8 <= filename->size, "ValidateDirectoryEntry - Filename too long.");
@@ -350,7 +352,7 @@ static void Sync(KNode *_directory, KNode *node) {
 		return;
 	}
 
-	if (!ValidateDirectoryEntry((DirectoryEntry *) (blockBuffer + file->reference.offsetIntoBlock))) {
+	if (!ValidateDirectoryEntry(volume, (DirectoryEntry *) (blockBuffer + file->reference.offsetIntoBlock))) {
 		return;
 	}
 
@@ -393,7 +395,7 @@ static EsError Enumerate(KNode *node) {
 		for (uint64_t j = 0; j < entriesInThisBlock; j++, reference.offsetIntoBlock += sizeof(DirectoryEntry)) {
 			DirectoryEntry *entry = (DirectoryEntry *) blockBuffer + j;
 
-			if (!ValidateDirectoryEntry(entry)) {
+			if (!ValidateDirectoryEntry(volume, entry)) {
 				// Try the entries in the next block.
 				break;
 			}
@@ -1635,7 +1637,7 @@ static bool CreateInternal(const char *name, size_t nameLength, EsNodeType type,
 
 	entry->checksum = 0;
 	entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry));
-	if (!ValidateDirectoryEntry(entry)) KernelPanic("EsFS::CreateInternal - Created directory entry is invalid.\n");
+	if (!ValidateDirectoryEntry(volume, entry)) KernelPanic("EsFS::CreateInternal - Created directory entry is invalid.\n");
 
 	// Write the directory entry.
 
@@ -1670,7 +1672,7 @@ static EsError Move(KNode *_oldDirectory, KNode *_file, KNode *_newDirectory, co
 
 	file->entry.checksum = 0;
 	file->entry.checksum = CalculateCRC32(&file->entry, sizeof(DirectoryEntry));
-	if (!ValidateDirectoryEntry(&file->entry)) KernelPanic("EsFS::Move - Existing entry is invalid.\n");
+	if (!ValidateDirectoryEntry(volume, &file->entry)) KernelPanic("EsFS::Move - Existing entry is invalid.\n");
 
 	uint8_t *buffers = (uint8_t *) EsHeapAllocate(superblock->blockSize * 2, true, K_FIXED);
 	if (!buffers) return ES_ERROR_INSUFFICIENT_RESOURCES;
@@ -1727,7 +1729,7 @@ static EsError Load(KNode *_directory, KNode *_node, KNodeMetadata *, const void
 
 	DirectoryEntry *entry = (DirectoryEntry *) (blockBuffer + reference.offsetIntoBlock);
 
-	if (!ValidateDirectoryEntry(entry)) {
+	if (!ValidateDirectoryEntry(directory->volume, entry)) {
 		return ES_ERROR_CORRUPT_DATA;
 	}
 
@@ -1788,7 +1790,7 @@ static EsError Scan(const char *name, size_t nameLength, KNode *_directory) {
 	}
 
 	DirectoryEntry *entry = (DirectoryEntry *) (blockBuffer + reference.offsetIntoBlock);
-	if (!ValidateDirectoryEntry(entry)) return ES_ERROR_CORRUPT_DATA;
+	if (!ValidateDirectoryEntry(volume, entry)) return ES_ERROR_CORRUPT_DATA;
 
 	if ((entry->nodeType == ESFS_NODE_TYPE_DIRECTORY && !FindAttribute(entry, ESFS_ATTRIBUTE_DIRECTORY))
 			|| (entry->nodeType == ESFS_NODE_TYPE_FILE && !FindAttribute(entry, ESFS_ATTRIBUTE_DATA))) {
@@ -1907,7 +1909,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 			}
 
 			DirectoryEntry *entry = (DirectoryEntry *) (blockBuffer + rootReference.offsetIntoBlock);
-			if (!ValidateDirectoryEntry(entry)) goto failure;
+			if (!ValidateDirectoryEntry(volume, entry)) goto failure;
 			AttributeDirectory *directory = (AttributeDirectory *) FindAttribute(entry, ESFS_ATTRIBUTE_DIRECTORY);
 
 			if (!directory || !FindAttribute(entry, ESFS_ATTRIBUTE_DATA)) {

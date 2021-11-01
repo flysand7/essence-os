@@ -27,12 +27,11 @@ EsCRTsqrtf:
 
 [global ProcessorReadTimeStamp]
 ProcessorReadTimeStamp:
-	; TODO
+	rdtsc
 	ret
 
 [global ProcessorCheckStackAlignment]
 ProcessorCheckStackAlignment:
-	; TODO
 	ret
 
 [global ProcessorTLSRead]

@@ -16,7 +16,6 @@ KMutex printLock;
 #endif
 
 void DebugWriteCharacter(uintptr_t character);
-extern "C" void ProcessorDebugOutputByte(uint8_t byte);
 int KWaitKey();
 
 #if defined(ES_ARCH_X86_32) || defined(ES_ARCH_X86_64)

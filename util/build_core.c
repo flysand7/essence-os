@@ -1349,6 +1349,7 @@ int main(int argc, char **argv) {
 					bootUseVBE = !!atoi(s.value);
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
 					strcat(commonAssemblyFlags, " -DCOM_OUTPUT ");
+					strcat(commonCompileFlags, " -DCOM_OUTPUT ");
 				} else if (0 == strcmp(s.key, "BuildCore.NoImportPOSIX")) {
 					noImportPOSIX = !!atoi(s.value);
 				} else if (0 == memcmp(s.key, "General.", 8)) {

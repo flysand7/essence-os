@@ -281,7 +281,11 @@ bool AHCIController::Access(uintptr_t portIndex, uint64_t offsetBytes, size_t co
 		KDMASegment segment = KDMABufferNextSegment(buffer);
 
 		prdt[0 + 4 * prdtEntryCount] = segment.physicalAddress;
+#ifdef ES_BITS_64
 		prdt[1 + 4 * prdtEntryCount] = segment.physicalAddress >> 32;
+#else
+		prdt[1 + 4 * prdtEntryCount] = 0;
+#endif
 		prdt[2 + 4 * prdtEntryCount] = 0;
 		prdt[3 + 4 * prdtEntryCount] = (segment.byteCount - 1) | (segment.isLast ? (1 << 31) /* IRQ when done */ : 0);
 
@@ -572,9 +576,14 @@ void AHCIController::Initialise() {
 		// Set the registers to the physical addresses.
 
 		WR_REGISTER_PCLB(i, physicalAddress); 
-		if (dma64Supported) WR_REGISTER_PCLBU(i, physicalAddress >> 32);
 		WR_REGISTER_PFB(i, (physicalAddress + 0x400));
+#ifdef ES_BITS_64
+		if (dma64Supported) WR_REGISTER_PCLBU(i, physicalAddress >> 32);
 		if (dma64Supported) WR_REGISTER_PFBU(i, (physicalAddress + 0x400) >> 32);
+#else
+		if (dma64Supported) WR_REGISTER_PCLBU(i, 0);
+		if (dma64Supported) WR_REGISTER_PFBU(i, 0);
+#endif
 
 		// Point each command list entry to the corresponding command table.
 
@@ -583,7 +592,11 @@ void AHCIController::Initialise() {
 		for (uintptr_t j = 0; j < commandSlotCount; j++) {
 			uintptr_t address = physicalAddress + COMMAND_LIST_SIZE + RECEIVED_FIS_SIZE + COMMAND_TABLE_SIZE * j;
 			commandList[j * 8 + 2] = address;
+#ifdef ES_BITS_64
 			commandList[j * 8 + 3] = address >> 32;
+#else
+			commandList[j * 8 + 3] = 0;
+#endif
 		}
 
 		// Reset the port.
@@ -725,7 +738,11 @@ void AHCIController::Initialise() {
 
 		uint32_t *prdt = (uint32_t *) (ports[i].commandTables + 0x80);
 		prdt[0] = identifyDataPhysical;
+#ifdef ES_BITS_64
 		prdt[1] = identifyDataPhysical >> 32;
+#else
+		prdt[1] = 0;
+#endif
 		prdt[2] = 0;
 		prdt[3] = 0x200 - 1;
 

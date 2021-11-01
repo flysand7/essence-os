@@ -287,7 +287,11 @@ bool KPCIDevice::EnableMSI(KIRQHandler irqHandler, void *context, const char *cO
 		WriteConfig32(pointer + 4, msi.address & 0xFFFFFFFF);
 
 		if (control & (1 << 7)) {
+#ifdef ES_BITS_64
 			WriteConfig32(pointer + 8, msi.address >> 32);
+#else
+			WriteConfig32(pointer + 8, 0);
+#endif
 			WriteConfig16(pointer + 12, (ReadConfig16(pointer + 12) & 0x3800) | msi.data);
 			if (control & (1 << 8)) WriteConfig32(pointer + 16, 0);
 		} else {

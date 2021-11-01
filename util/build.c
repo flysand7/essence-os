@@ -2,22 +2,19 @@
 #define _GNU_SOURCE
 #endif
 
-#if 0
+#if defined(TARGET_X86_64)
 #define TOOLCHAIN_PREFIX "x86_64-essence"
 #define TARGET_NAME "x86_64"
 #define TOOLCHAIN_HAS_RED_ZONE
 #define TOOLCHAIN_HAS_CSTDLIB
 #define QEMU_EXECUTABLE "qemu-system-x86_64"
-#else
+#elif defined(TARGET_X86_32)
 #define TOOLCHAIN_PREFIX "i686-elf"
 #define TARGET_NAME "x86_32"
 #define QEMU_EXECUTABLE "qemu-system-i386"
+#else
+#error Unknown target.
 #endif
-
-#define WARNING_FLAGS \
-	" -Wall -Wextra -Wno-missing-field-initializers -Wno-pmf-conversions -Wno-frame-address -Wno-unused-function -Wno-format-truncation -Wno-invalid-offsetof "
-#define WARNING_FLAGS_C \
-	" -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation -Wno-unused-parameter "
 
 #include <stdint.h>
 #include <stdarg.h>
@@ -355,11 +352,13 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 }
 
 void BuildUtilities() {
+#define WARNING_FLAGS " -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation -Wno-unused-parameter "
+
 	buildStartTimeStamp = time(NULL);
 
 #define BUILD_UTILITY(x, y, z) \
 	if (CheckDependencies("Utilities." x)) { \
-		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g -std=c2x " WARNING_FLAGS_C " " y)) { \
+		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g -std=c2x " WARNING_FLAGS " " y)) { \
 			ParseDependencies("bin/" x ".d", "Utilities." x, false); \
 		} \
 	}
@@ -1124,6 +1123,8 @@ void DoCommand(const char *l) {
 		BuildAndRun(OPTIMISE_ON, true /* compile */, false /* debug */, -1, LOG_NORMAL);
 	} else if (0 == strcmp(l, "d") || 0 == strcmp(l, "debug")) {
 		BuildAndRun(OPTIMISE_OFF, true /* compile */, true /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "dlv")) {
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, true /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
 	} else if (0 == strcmp(l, "d3") || 0 == strcmp(l, "debug-without-compile")) {
 		BuildAndRun(OPTIMISE_OFF, false /* compile */, true /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "v") || 0 == strcmp(l, "vbox")) {
@@ -1550,7 +1551,7 @@ int main(int _argc, char **_argv) {
 	coloredOutput = isatty(STDERR_FILENO);
 
 	if (argc == 1) {
-		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\n");
+		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\nCross target is " ColorHighlight TARGET_NAME ColorNormal ".\n");
 	}
 
 	systemLog = fopen("bin/system.log", "w");
