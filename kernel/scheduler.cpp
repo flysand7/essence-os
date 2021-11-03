@@ -785,7 +785,6 @@ void Thread::SetAddressSpace(MMSpace *space) {
 
 	KSpinlockAcquire(&scheduler.lock);
 	MMSpace *oldSpace = temporaryAddressSpace ?: kernelMMSpace;
-	EsPrint("space = %x, oldSpace = %x\n", space, oldSpace);
 	temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
 	MMSpaceOpenReference(newSpace);

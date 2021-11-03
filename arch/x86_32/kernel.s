@@ -21,10 +21,12 @@
 [global ProcessorFakeTimerInterrupt]
 [global ProcessorSetAddressSpace]
 [global ProcessorFlushCodeCache]
+[global ProcessorAPStartup]
 [global GetLocalStorage]
 [global GetCurrentThread]
 [global ArchSwitchContext]
 [global processorGDTR]
+[global gdt_data]
 [global timeStampCounterSynchronizationValue]
 
 [extern ArchNextTimer]
@@ -551,3 +553,35 @@ ProcessorSetAddressSpace:
 ProcessorFlushCodeCache:
 	wbinvd
 	ret
+
+SynchronizeTimeStampCounter:
+	; TODO
+	ret
+
+[bits 16]
+ProcessorAPStartup: ; This function must be less than 4KB in length (see drivers/acpi.cpp)
+	mov	ax,0x1000
+	mov	ds,ax
+	mov	byte [0xFC0],1 ; Indicate we've started.
+	mov	eax,[0xFF0]
+	mov	cr3,eax
+	lgdt	[0x1000 + gdt_data.gdt - gdt_data]
+	mov	eax,cr0
+	or	eax,1
+	mov	cr0,eax
+	jmp	0x8:dword (.pmode - ProcessorAPStartup + 0x10000)
+[bits 32]
+	.pmode:
+	mov	eax,0x10
+	mov	ds,ax
+	mov	es,ax
+	mov	ss,ax
+	lgdt	[gdt_data.gdt]
+	mov	esp,[0x10FD0]
+	call	SetupProcessor1
+	call	SynchronizeTimeStampCounter
+	mov	edi,[0x10FB0]
+	push	edi
+	call	SetupProcessor2
+	mov	byte [0x10FC0],2 ; Indicate the BSP can start the next processor.
+	jmp	ProcessorReady

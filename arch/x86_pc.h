@@ -86,7 +86,6 @@ uint32_t LapicReadRegister(uint32_t reg);
 void LapicWriteRegister(uint32_t reg, uint32_t value);
 NewProcessorStorage AllocateNewProcessorStorage(struct ArchCPU *archCPU);
 extern "C" void SetupProcessor2(struct NewProcessorStorage *);
-void ArchDelay1Ms(); // Spin for approximately 1ms. Use only during initialisation. Not thread-safe.
 uint64_t ArchGetTimeFromPITMs();
 void *ACPIGetRSDP();
 size_t ProcessorSendIPI(uintptr_t interrupt, bool nmi = false, int processorID = -1); // Returns the number of processors the IPI was *not* sent to.

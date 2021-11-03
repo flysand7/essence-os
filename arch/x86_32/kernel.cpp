@@ -189,10 +189,6 @@ void MMArchFinalizeVAS(MMSpace *space) {
 	KernelPanic("Unimplemented!\n");
 }
 
-void ArchStartupApplicationProcessors() {
-	// TODO.
-}
-
 bool MMArchHandlePageFault(uintptr_t address, uint32_t flags) {
 	address &= ~(K_PAGE_SIZE - 1);
 	bool forSupervisor = flags & MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR;

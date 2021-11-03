@@ -62,15 +62,10 @@ struct MMArchVAS {
 
 uint8_t coreL1Commit[(0xFFFF800200000000 - 0xFFFF800100000000) >> (/* ENTRIES_PER_PAGE_TABLE_BITS */ 9 + K_PAGE_BITS + 3)];
 
-extern "C" void gdt_data();
-extern "C" void processorGDTR();
-
-extern "C" uint64_t ProcessorReadCR3();
 extern "C" uintptr_t ProcessorGetRSP();
 extern "C" uintptr_t ProcessorGetRBP();
 extern "C" uint64_t ProcessorReadMXCSR();
 extern "C" void ProcessorInstallTSS(uint32_t *gdt, uint32_t *tss);
-extern "C" void ProcessorAPStartup();
 
 extern "C" void SSSE3Framebuffer32To24Copy(volatile uint8_t *destination, volatile uint8_t *source, size_t pixelGroups);
 extern "C" uintptr_t _KThreadTerminate;
@@ -653,105 +648,6 @@ EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, u
 	else if (type == 4  /* R_X86_64_PLT32 */) *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
 	else return ES_ERROR_UNSUPPORTED_FEATURE;
 	return ES_SUCCESS;
-}
-
-void ArchStartupApplicationProcessors() {
-	// TODO How do we know that this address is usable?
-#define AP_TRAMPOLINE 0x10000
-
-	KEvent delay = {};
-
-	uint8_t *startupData = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE);
-
-	// Put the trampoline code in memory.
-	EsMemoryCopy(startupData, (void *) ProcessorAPStartup, 0x1000); // Assume that the AP trampoline code <=4KB.
-
-	// Put the paging table location at AP_TRAMPOLINE + 0xFF0.
-	*((uint64_t *) (startupData + 0xFF0)) = ProcessorReadCR3();
-
-	// Put the 64-bit GDTR at AP_TRAMPOLINE + 0xFE0.
-	EsMemoryCopy(startupData + 0xFE0, (void *) processorGDTR, 0x10);
-
-	// Put the GDT at AP_TRAMPOLINE + 0x1000.
-	EsMemoryCopy(startupData + 0x1000, (void *) gdt_data, 0x1000);
-
-	// Put the startup flag at AP_TRAMPOLINE + 0xFC0
-	uint8_t volatile *startupFlag = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE + 0xFC0);
-
-	// Temporarily identity map 2 pages in at 0x10000.
-	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE, AP_TRAMPOLINE, MM_MAP_PAGE_COMMIT_TABLES_NOW);
-	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE + 0x1000, AP_TRAMPOLINE + 0x1000, MM_MAP_PAGE_COMMIT_TABLES_NOW);
-
-	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
-		ArchCPU *processor = acpi.processors + i;
-		if (processor->bootProcessor) continue;
-
-		// Allocate state for the processor.
-		NewProcessorStorage storage = AllocateNewProcessorStorage(processor);
-
-		// Clear the startup flag.
-		*startupFlag = 0;
-
-		// Put the stack at AP_TRAMPOLINE + 0xFD0, and the address of the NewProcessorStorage at AP_TRAMPOLINE + 0xFB0.
-		void *stack = (void *) ((uintptr_t) MMStandardAllocate(kernelMMSpace, 0x1000, MM_REGION_FIXED) + 0x1000);
-		*((void **) (startupData + 0xFD0)) = stack;
-		*((NewProcessorStorage **) (startupData + 0xFB0)) = &storage;
-
-		KernelLog(LOG_INFO, "ACPI", "starting processor", "Starting processor %d with local storage %x...\n", i, storage.local);
-
-		// Send an INIT IPI.
-		ProcessorDisableInterrupts(); // Don't be interrupted between writes...
-		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-		LapicWriteRegister(0x300 >> 2, 0x4500);
-		ProcessorEnableInterrupts();
-		KEventWait(&delay, 10);
-
-		// Send a startup IPI.
-		ProcessorDisableInterrupts();
-		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-		LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
-		ProcessorEnableInterrupts();
-		for (uintptr_t i = 0; i < 100 && *startupFlag == 0; i++) KEventWait(&delay, 1);
-
-		if (*startupFlag) {
-			// The processor started correctly.
-		} else {
-			// Send a startup IPI, again.
-			ProcessorDisableInterrupts();
-			LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
-			LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
-			ProcessorEnableInterrupts();
-			for (uintptr_t i = 0; i < 1000 && *startupFlag == 0; i++) KEventWait(&delay, 1); // Wait longer this time.
-
-			if (*startupFlag) {
-				// The processor started correctly.
-			} else {
-				// The processor could not be started.
-				KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
-						"ACPIInitialise - Could not start processor %d\n", processor->processorID);
-				continue;
-			}
-		}
-
-		// EsPrint("Startup flag 1 reached!\n");
-
-		for (uintptr_t i = 0; i < 10000 && *startupFlag != 2; i++) KEventWait(&delay, 1);
-
-		if (*startupFlag == 2) {
-			// The processor started!
-		} else {
-			// The processor did not report it completed initilisation, worringly.
-			// Don't let it continue.
-
-			KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
-					"ACPIInitialise - Could not initialise processor %d\n", processor->processorID);
-
-			// TODO Send IPI to stop the processor.
-		}
-	}
-	
-	// Remove the identity pages needed for the trampoline code.
-	MMArchUnmapPages(kernelMMSpace, AP_TRAMPOLINE, 2, ES_FLAGS_DEFAULT);
 }
 
 #include <kernel/terminal.cpp>

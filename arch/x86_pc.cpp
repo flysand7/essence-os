@@ -2,6 +2,10 @@
 
 extern "C" uint64_t ProcessorReadCR3();
 
+extern "C" void gdt_data();
+extern "C" void processorGDTR();
+extern "C" void ProcessorAPStartup();
+
 struct MSIHandler {
 	KIRQHandler callback;
 	void *context;
@@ -576,7 +580,7 @@ uintptr_t ArchFindRootSystemDescriptorPointer() {
 }
 
 uint64_t ArchGetTimeFromPITMs() {
-	// TODO This isn't working on real hardware, but ArchDelay1Ms is?
+	// TODO This isn't working on real hardware, but EarlyDelay1Ms is?
 
 	// NOTE This will only work if called at least once every 50 ms.
 	// 	(The PIT only stores a 16-bit counter, which is depleted every 50 ms.)
@@ -602,7 +606,7 @@ uint64_t ArchGetTimeFromPITMs() {
 	}
 }
 
-void ArchDelay1Ms() {
+void EarlyDelay1Ms() {
 	ProcessorOut8(IO_PIT_COMMAND, 0x30);
 	ProcessorOut8(IO_PIT_DATA, 0xA9);
 	ProcessorOut8(IO_PIT_DATA, 0x04);
@@ -693,7 +697,7 @@ void ArchInitialise() {
 	ProcessorDisableInterrupts();
 	uint64_t start = ProcessorReadTimeStamp();
 	LapicWriteRegister(0x380 >> 2, (uint32_t) -1); 
-	for (int i = 0; i < 8; i++) ArchDelay1Ms(); // Average over 8ms
+	for (int i = 0; i < 8; i++) EarlyDelay1Ms(); // Average over 8ms
 	acpi.lapicTicksPerMs = ((uint32_t) -1 - LapicReadRegister(0x390 >> 2)) >> 4;
 	EsRandomAddEntropy(LapicReadRegister(0x390 >> 2));
 	uint64_t end = ProcessorReadTimeStamp();
@@ -987,4 +991,103 @@ bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char 
 	}
 
 	return true;
+}
+
+void ArchStartupApplicationProcessors() {
+	// TODO How do we know that this address is usable?
+#define AP_TRAMPOLINE 0x10000
+
+	KEvent delay = {};
+
+	uint8_t *startupData = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE);
+
+	// Put the trampoline code in memory.
+	EsMemoryCopy(startupData, (void *) ProcessorAPStartup, 0x1000); // Assume that the AP trampoline code <=4KB.
+
+	// Put the paging table location at AP_TRAMPOLINE + 0xFF0.
+	*((uint64_t *) (startupData + 0xFF0)) = ProcessorReadCR3();
+
+	// Put the 64-bit GDTR at AP_TRAMPOLINE + 0xFE0.
+	EsMemoryCopy(startupData + 0xFE0, (void *) processorGDTR, 0x10);
+
+	// Put the GDT at AP_TRAMPOLINE + 0x1000.
+	EsMemoryCopy(startupData + 0x1000, (void *) gdt_data, 0x1000);
+
+	// Put the startup flag at AP_TRAMPOLINE + 0xFC0
+	uint8_t volatile *startupFlag = (uint8_t *) (LOW_MEMORY_MAP_START + AP_TRAMPOLINE + 0xFC0);
+
+	// Temporarily identity map 2 pages in at 0x10000.
+	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE, AP_TRAMPOLINE, MM_MAP_PAGE_COMMIT_TABLES_NOW);
+	MMArchMapPage(kernelMMSpace, AP_TRAMPOLINE + 0x1000, AP_TRAMPOLINE + 0x1000, MM_MAP_PAGE_COMMIT_TABLES_NOW);
+
+	for (uintptr_t i = 0; i < acpi.processorCount; i++) {
+		ArchCPU *processor = acpi.processors + i;
+		if (processor->bootProcessor) continue;
+
+		// Allocate state for the processor.
+		NewProcessorStorage storage = AllocateNewProcessorStorage(processor);
+
+		// Clear the startup flag.
+		*startupFlag = 0;
+
+		// Put the stack at AP_TRAMPOLINE + 0xFD0, and the address of the NewProcessorStorage at AP_TRAMPOLINE + 0xFB0.
+		void *stack = (void *) ((uintptr_t) MMStandardAllocate(kernelMMSpace, 0x1000, MM_REGION_FIXED) + 0x1000);
+		*((void **) (startupData + 0xFD0)) = stack;
+		*((NewProcessorStorage **) (startupData + 0xFB0)) = &storage;
+
+		KernelLog(LOG_INFO, "ACPI", "starting processor", "Starting processor %d with local storage %x...\n", i, storage.local);
+
+		// Send an INIT IPI.
+		ProcessorDisableInterrupts(); // Don't be interrupted between writes...
+		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+		LapicWriteRegister(0x300 >> 2, 0x4500);
+		ProcessorEnableInterrupts();
+		KEventWait(&delay, 10);
+
+		// Send a startup IPI.
+		ProcessorDisableInterrupts();
+		LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+		LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
+		ProcessorEnableInterrupts();
+		for (uintptr_t i = 0; i < 100 && *startupFlag == 0; i++) KEventWait(&delay, 1);
+
+		if (*startupFlag) {
+			// The processor started correctly.
+		} else {
+			// Send a startup IPI, again.
+			ProcessorDisableInterrupts();
+			LapicWriteRegister(0x310 >> 2, processor->apicID << 24);
+			LapicWriteRegister(0x300 >> 2, 0x4600 | (AP_TRAMPOLINE >> K_PAGE_BITS));
+			ProcessorEnableInterrupts();
+			for (uintptr_t i = 0; i < 1000 && *startupFlag == 0; i++) KEventWait(&delay, 1); // Wait longer this time.
+
+			if (*startupFlag) {
+				// The processor started correctly.
+			} else {
+				// The processor could not be started.
+				KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
+						"ACPIInitialise - Could not start processor %d\n", processor->processorID);
+				continue;
+			}
+		}
+
+		// EsPrint("Startup flag 1 reached!\n");
+
+		for (uintptr_t i = 0; i < 10000 && *startupFlag != 2; i++) KEventWait(&delay, 1);
+
+		if (*startupFlag == 2) {
+			// The processor started!
+		} else {
+			// The processor did not report it completed initilisation, worringly.
+			// Don't let it continue.
+
+			KernelLog(LOG_ERROR, "ACPI", "processor startup failure", 
+					"ACPIInitialise - Could not initialise processor %d\n", processor->processorID);
+
+			// TODO Send IPI to stop the processor.
+		}
+	}
+	
+	// Remove the identity pages needed for the trampoline code.
+	MMArchUnmapPages(kernelMMSpace, AP_TRAMPOLINE, 2, ES_FLAGS_DEFAULT);
 }
