@@ -738,7 +738,14 @@ void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float sc
 	rect.b += box->offset.b * scale;
 
 	int width = THEME_RECT_WIDTH(rect), height = THEME_RECT_HEIGHT(rect);
-	if (width <= 0 || height <= 0) return;
+
+#ifdef IN_DESIGNER
+	if (!THEME_RECT_VALID(UIRectangleIntersection(rect, painter->clip))) {
+#else
+	if (!THEME_RECT_VALID(EsRectangleIntersection(rect, painter->clip))) {
+#endif
+		return;
+	}
 
 	bool isBlurred = box->flags & THEME_LAYER_BOX_IS_BLURRED;
 
@@ -2007,8 +2014,7 @@ void UIStyle::PaintLayers(EsPainter *painter, EsRectangle location, int childTyp
 		bounds.t = _bounds.t + (int) (scale * layer->offset.t) + THEME_RECT_HEIGHT(_bounds) * layer->position.t / 100;
 		bounds.b = _bounds.t + (int) (scale * layer->offset.b) + THEME_RECT_HEIGHT(_bounds) * layer->position.b / 100;
 
-		if (layer->mode == whichLayers && THEME_RECT_WIDTH(bounds) > 0 && THEME_RECT_HEIGHT(bounds) > 0
-				&& THEME_RECT_VALID(EsRectangleIntersection(bounds, painter->clip))) {
+		if (layer->mode == whichLayers) {
 			EsBuffer data2 = data;
 
 			if (layer->type == THEME_LAYER_BOX) {
