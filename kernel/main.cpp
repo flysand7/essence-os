@@ -9,22 +9,21 @@
 #define IMPLEMENTATION
 #include "kernel.h"
 
-extern "C" void KernelMain() {										
+void KernelInitialise() {										
 	kernelProcess = scheduler.SpawnProcess(PROCESS_KERNEL);		// Spawn the kernel process.
+	MMInitialise();							// Initialise the memory manager.
+	KThreadCreate("KernelMain", KernelMain);			// Create the KernelMain thread.
 	ArchInitialise(); 						// Start processors and initialise CPULocalStorage. 
 	scheduler.started = true;					// Start the pre-emptive scheduler.
-	// Continues in KernelInitialise.
 }
 
-void KernelInitialise() {						
+void KernelMain(uintptr_t) {
 	desktopProcess = scheduler.SpawnProcess(PROCESS_DESKTOP);	// Spawn the desktop process.
 	DriversInitialise();						// Load the root device.
 	desktopProcess->Start(EsLiteral(K_DESKTOP_EXECUTABLE));		// Start the desktop process.
-}
-
-void KernelShutdown(uintptr_t action) {
+	KEventWait(&shutdownEvent, ES_WAIT_NO_TIMEOUT);			// Wait for a shutdown request.
 	scheduler.Shutdown();						// Kill user processes.
 	FSShutdown();							// Flush file cache and unmount filesystems.
 	DriversShutdown();						// Inform drivers of shutdown.
-	ArchShutdown(action);						// Power off or restart the computer. 
+	ArchShutdown();							// Power off or restart the computer. 
 }

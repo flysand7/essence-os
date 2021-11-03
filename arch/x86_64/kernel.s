@@ -45,7 +45,7 @@
 [extern ArchNextTimer]
 [extern InterruptHandler]
 [extern KThreadTerminate]
-[extern KernelMain]
+[extern KernelInitialise]
 [extern PostContextSwitch]
 [extern SetupProcessor2]
 [extern Syscall]
@@ -157,9 +157,9 @@ _start:
 	; First stage of processor initilisation
 	call	SetupProcessor1
 
-	; Call the KernelMain function
+	; Call the KernelInitialise function
 	and	rsp,~0xF
-	call	KernelMain
+	call	KernelInitialise
 
 ProcessorReady:
 	; Set the timer and become this CPU's idle thread.

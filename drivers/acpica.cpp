@@ -591,8 +591,8 @@ ACPI_STATUS ACPIWalkNamespaceCallback(ACPI_HANDLE object, uint32_t depth, void *
 	return AE_OK;
 }
 
-void ArchShutdown(uintptr_t action) {
-	if (action == SHUTDOWN_ACTION_RESTART) ProcessorReset();
+void ArchShutdown() {
+	if (shutdownAction == SHUTDOWN_ACTION_RESTART) ProcessorReset();
 	AcpiEnterSleepStatePrep(5);
 	ProcessorDisableInterrupts();
 	AcpiEnterSleepState(5);

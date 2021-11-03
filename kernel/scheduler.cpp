@@ -771,8 +771,6 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 	if (processType == PROCESS_KERNEL) {
 		EsCRTstrcpy(process->cExecutableName, "Kernel");
 		scheduler.allProcesses.InsertEnd(&process->allItem);
-		MMInitialise();								
-		scheduler.SpawnThread("InitKernel", (uintptr_t) KernelInitialise);
 	}
 
 	return process; 
@@ -1370,9 +1368,7 @@ void Scheduler::Yield(InterruptContext *context) {
 }
 
 void Scheduler::Shutdown() {
-	// Prevent the creation of new proceses or threads,
-	// or terminate this thread if we're already shutting down.
-	if (__sync_val_compare_and_swap(&scheduler.shutdown, false, true)) KThreadTerminate();
+	scheduler.shutdown = true;
 
 	// Close our handle to the desktop process.
 	CloseHandleToObject(desktopProcess->executableMainThread, KERNEL_OBJECT_THREAD);

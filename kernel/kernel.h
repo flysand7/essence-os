@@ -101,8 +101,8 @@ struct PhysicalMemoryRegion {
 	uint64_t pageCount;
 };
 
-void KernelInitialise();
-void KernelShutdown(uintptr_t action);
+extern "C" void KernelInitialise();
+void KernelMain(uintptr_t);
 
 uintptr_t DoSyscall(EsSyscallType index,
 		uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t argument3,
@@ -110,6 +110,8 @@ uintptr_t DoSyscall(EsSyscallType index,
 
 uint64_t timeStampTicksPerMs;
 EsUniqueIdentifier installationID; // The identifier of this OS installation, given to us by the bootloader.
+KEvent shutdownEvent;
+uintptr_t shutdownAction;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Architecture specific layer definitions.
@@ -117,7 +119,7 @@ EsUniqueIdentifier installationID; // The identifier of this OS installation, gi
 
 extern "C" {
 	void ArchInitialise();
-	void ArchShutdown(uintptr_t action);
+	void ArchShutdown();
 	void ArchNextTimer(size_t ms); // Schedule the next TIMER_INTERRUPT.
 	uint64_t ArchGetTimeMs(); // Called by the scheduler on the boot processor every context switch.
 	InterruptContext *ArchInitialiseThread(uintptr_t kernelStack, uintptr_t kernelStackSize, struct Thread *thread, 

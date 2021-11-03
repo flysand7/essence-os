@@ -32,7 +32,7 @@
 [extern ArchNextTimer]
 [extern InterruptHandler]
 [extern KThreadTerminate]
-[extern KernelMain]
+[extern KernelInitialise]
 [extern PostContextSwitch]
 [extern SetupProcessor2]
 [extern Syscall]
@@ -149,12 +149,12 @@ _start:
 %assign i i+1
 %endrep
 
-	; Setup the remaining things and call KernelMain.
+	; Setup the remaining things and call KernelInitialise
 	call	SetupProcessor1 ; Need to get SSE up before calling into C code.
 	call	PCSetupCOM1
 	call	PCDisablePIC
 	call	PCProcessMemoryMap
-	call	KernelMain
+	call	KernelInitialise
 
 	; Fall-through.
 ProcessorReady:

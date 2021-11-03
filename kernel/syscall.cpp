@@ -1223,7 +1223,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_SHUTDOWN) {
 	SYSCALL_PERMISSION(ES_PERMISSION_SHUTDOWN);
-	KThreadCreate("Shutdown", [] (uintptr_t action) { KernelShutdown(action); }, argument0);
+	shutdownAction = argument0;
+	KEventSet(&shutdownEvent, false, true);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
