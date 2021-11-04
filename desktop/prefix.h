@@ -176,6 +176,14 @@ ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uint
 #define ES_FUNCTION_OPTIMISE_O2 __attribute__((optimize("-O2")))
 #define ES_FUNCTION_OPTIMISE_O3 __attribute__((optimize("-O3")))
 
+#ifdef ES_BITS_64
+#define ES_PTR64_MS32(x) ((uint32_t) ((uintptr_t) (x) >> 32))
+#define ES_PTR64_LS32(x) ((uint32_t) ((uintptr_t) (x) & 0xFFFFFFFF))
+#else
+#define ES_PTR64_MS32(x) ((uint32_t) (0))
+#define ES_PTR64_LS32(x) ((uint32_t) (x))
+#endif
+
 // --------- Algorithms:
 
 #define ES_MACRO_SORT(_name, _type, _compar, _contextType) void _name(_type *base, size_t nmemb, _contextType context) { \
