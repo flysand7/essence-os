@@ -737,23 +737,6 @@ EsError EsConnectionRead(EsConnection *connection, void *_buffer, size_t bufferB
 	return ES_SUCCESS;
 }
 
-void EsEventForward(EsHandle event, EsHandle eventSink, EsGeneric data) {
-	EsSyscall(ES_SYSCALL_EVENT_FORWARD, event, eventSink, data.u, 0);
-}
-
-EsHandle EsEventSinkCreate(bool ignoreDuplicates) {
-	return EsSyscall(ES_SYSCALL_EVENT_SINK_CREATE, ignoreDuplicates, 0, 0, 0);
-}
-
-EsError EsEventSinkPop(EsHandle eventSink, EsGeneric *data) {
-	EsGeneric unused; if (!data) data = &unused;
-	return EsSyscall(ES_SYSCALL_EVENT_SINK_POP, eventSink, (uintptr_t) data, 0, 0);
-}
-
-EsError EsEventSinkPush(EsHandle eventSink, EsGeneric data) {
-	return EsSyscall(ES_SYSCALL_EVENT_SINK_PUSH, eventSink, data.u, 0, 0);
-}
-
 size_t EsGameControllerStatePoll(EsGameControllerState *buffer) {
 	return EsSyscall(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL, (uintptr_t) buffer, 0, 0, 0);
 }

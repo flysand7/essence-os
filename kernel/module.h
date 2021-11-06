@@ -190,7 +190,6 @@ enum KernelObjectType : uint32_t {
 #endif
 	KERNEL_OBJECT_PIPE		= 0x00000200, // A pipe through which data can be sent between processes, blocking when full or empty.
 	KERNEL_OBJECT_EMBEDDED_WINDOW	= 0x00000400, // An embedded window object, referencing its container Window.
-	KERNEL_OBJECT_EVENT_SINK	= 0x00002000, // An event sink. Events can be forwarded to it, allowing waiting on many objects.
 	KERNEL_OBJECT_CONNECTION	= 0x00004000, // A network connection.
 	KERNEL_OBJECT_DEVICE		= 0x00008000, // A device.
 };
@@ -267,15 +266,11 @@ void KMutexRelease(KMutex *mutex);
 void KMutexAssertLocked(KMutex *mutex);
 
 struct KEvent { // Waiting and notifying. Can wait on multiple at once. Can be set and reset with interrupts disabled.
-	volatile bool autoReset; // This should be first field in the structure,
-			         // so that the type of KEvent can be easily declared with {autoReset}.
+	volatile bool autoReset; // This should be first field in the structure, so that the type of KEvent can be easily declared with {autoReset}.
 	volatile uintptr_t state;
-
 	K_PRIVATE
-
 	LinkedList<Thread> blockedThreads;
 	volatile size_t handles;
-	struct EventSinkTable *sinkTable;
 };
 
 bool KEventSet(KEvent *event, bool schedulerAlreadyLocked = false, bool maybeAlreadySet = false);

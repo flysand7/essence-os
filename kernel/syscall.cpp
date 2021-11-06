@@ -806,7 +806,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 	SYSCALL_READ(handles, argument0, argument1 * sizeof(EsHandle));
 
 	for (uintptr_t i = 0; i < argument1; i++) {
-		KernelObjectType typeMask = KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_EVENT_SINK;
+		KernelObjectType typeMask = KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT;
 		status[i] = currentProcess->handleTable.ResolveHandle(&_objects[i], handles[i], typeMask);
 
 		if (status[i] == RESOLVE_HANDLE_FAILED) {
@@ -823,10 +823,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 
 			case KERNEL_OBJECT_THREAD: {
 				events[i] = &((Thread *) object)->killedEvent;
-			} break;
-
-			case KERNEL_OBJECT_EVENT_SINK: {
-				events[i] = &((EventSink *) object)->available;
 			} break;
 
 			case KERNEL_OBJECT_EVENT: {
@@ -1462,111 +1458,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, Pipe);
 	SYSCALL_BUFFER(argument1, argument2, 2, true /* write */);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, true, true), false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_CREATE) {
-	EventSink *sink = (EventSink *) EsHeapAllocate(sizeof(EventSink), true, K_FIXED);
-	
-	if (!sink) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	}
-
-	sink->ignoreDuplicates = argument0;
-	sink->handles = 1;
-
-	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(sink, 0, KERNEL_OBJECT_EVENT_SINK), false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_FORWARD) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, KEvent);
-	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
-	EsGeneric data = argument2;
-
-	bool error = false, limitExceeded = false;
-
-	KMutexAcquire(&eventForwardMutex);
-
-	if (!event->sinkTable) {
-		event->sinkTable = (EventSinkTable *) EsHeapAllocate(sizeof(EventSinkTable) * ES_MAX_EVENT_FORWARD_COUNT, true, K_FIXED);
-
-		if (!event->sinkTable) {
-			error = true;
-		}
-	}
-
-	if (!error) {
-		limitExceeded = true;
-
-		for (uintptr_t i = 0; i < ES_MAX_EVENT_FORWARD_COUNT; i++) {
-			if (!event->sinkTable[i].sink) {
-				if (!OpenHandleToObject(sink, KERNEL_OBJECT_EVENT_SINK, 0, false)) {
-					error = true;
-					break;
-				}
-
-				KSpinlockAcquire(&scheduler.lock);
-				event->sinkTable[i].sink = sink;
-				event->sinkTable[i].data = data;
-				KSpinlockRelease(&scheduler.lock);
-
-				limitExceeded = false;
-				break;
-			}
-		}
-	}
-
-	KMutexRelease(&eventForwardMutex);
-
-	if (limitExceeded) {
-		SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
-	} else if (error) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	} else {
-	       	SYSCALL_RETURN(0, false);
-	}
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_POP) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
-
-	bool empty = false, overflow = false;
-	EsGeneric data = {};
-
-	KSpinlockAcquire(&sink->spinlock);
-
-	if (!sink->queueCount) {
-		if (sink->overflow) {
-			overflow = true;
-			sink->overflow = false;
-		} else {
-			empty = true;
-		}
-	} else {
-		data = sink->queue[sink->queuePosition];
-		sink->queuePosition++;
-		sink->queueCount--;
-
-		if (sink->queuePosition == ES_MAX_EVENT_SINK_BUFFER_SIZE) {
-			sink->queuePosition = 0;
-		}
-	}
-
-	if (!sink->queueCount && !sink->overflow) {
-		KEventReset(&sink->available); // KEvent::Reset doesn't take the scheduler lock, so this won't deadlock!
-	}
-
-	KSpinlockRelease(&sink->spinlock);
-
-	SYSCALL_WRITE(argument1, &data, sizeof(EsGeneric));
-	SYSCALL_RETURN(overflow ? ES_ERROR_EVENT_SINK_OVERFLOW : empty ? ES_ERROR_EVENT_NOT_SET : ES_SUCCESS, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SINK_PUSH) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT_SINK, sink, EventSink);
-	KSpinlockAcquire(&scheduler.lock);
-	EsError result = sink->Push(argument1);
-	KSpinlockRelease(&scheduler.lock);
-	SYSCALL_RETURN(result, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DOMAIN_NAME_RESOLVE) {

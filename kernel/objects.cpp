@@ -34,23 +34,6 @@ struct Pipe {
 	size_t Access(void *buffer, size_t bytes, bool write, bool userBlockRequest);
 };
 
-struct EventSink {
-	KEvent available;
-	KSpinlock spinlock; // Take after the scheduler's spinlock.
-	volatile size_t handles;
-	uintptr_t queuePosition;
-	size_t queueCount;
-	bool overflow, ignoreDuplicates;
-	EsGeneric queue[ES_MAX_EVENT_SINK_BUFFER_SIZE];
-
-	EsError Push(EsGeneric data);
-};
-
-struct EventSinkTable {
-	EventSink *sink;
-	EsGeneric data;
-};
-
 struct MessageQueue {
 	bool SendMessage(void *target, EsMessage *message); // Returns false if the message queue is full.
 	bool SendMessage(_EsMessageWithObject *message); // Returns false if the message queue is full.
@@ -210,14 +193,6 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags, boo
 			KMutexRelease(&pipe->mutex);
 		} break;
 
-		case KERNEL_OBJECT_EVENT_SINK: {
-			EventSink *sink = (EventSink *) object;
-			KSpinlockAcquire(&sink->spinlock);
-			if (!sink->handles) hadNoHandles = true;
-			else sink->handles++;
-			KSpinlockRelease(&sink->spinlock);
-		} break;
-
 		case KERNEL_OBJECT_CONNECTION: {
 			NetConnection *connection = (NetConnection *) object;
 			hadNoHandles = 0 == __sync_fetch_and_add(&connection->handles, 1);
@@ -275,16 +250,6 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			KMutexRelease(&objectHandleCountChange);
 
 			if (destroy) {
-				if (event->sinkTable) {
-					for (uintptr_t i = 0; i < ES_MAX_EVENT_FORWARD_COUNT; i++) {
-						if (event->sinkTable[i].sink) {
-							CloseHandleToObject(event->sinkTable[i].sink, KERNEL_OBJECT_EVENT_SINK, 0);
-						}
-					}
-
-					EsHeapFree(event->sinkTable, sizeof(EventSinkTable) * ES_MAX_EVENT_FORWARD_COUNT, K_FIXED);
-				}
-
 				EsHeapFree(event, sizeof(KEvent), K_FIXED);
 			}
 		} break;
@@ -383,18 +348,6 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 
 			if (destroy) {
 				EsHeapFree(pipe, sizeof(Pipe), K_PAGED);
-			}
-		} break;
-
-		case KERNEL_OBJECT_EVENT_SINK: {
-			EventSink *sink = (EventSink *) object;
-			KSpinlockAcquire(&sink->spinlock);
-			bool destroy = sink->handles == 1;
-			sink->handles--;
-			KSpinlockRelease(&sink->spinlock);
-
-			if (destroy) {
-				EsHeapFree(sink, sizeof(EventSink), K_FIXED);
 			}
 		} break;
 

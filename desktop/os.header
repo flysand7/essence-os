@@ -317,8 +317,6 @@ define ES_ERROR_FILE_TOO_FRAGMENTED		(-54)
 define ES_ERROR_DRIVE_FULL			(-55)
 define ES_ERROR_COULD_NOT_RESOLVE_SYMBOL	(-56)
 define ES_ERROR_ALREADY_EMBEDDED		(-57)
-define ES_ERROR_EVENT_SINK_OVERFLOW 		(-58)
-define ES_ERROR_EVENT_SINK_DUPLICATE		(-59)
 define ES_ERROR_UNSUPPORTED_CONVERSION		(-60)
 define ES_ERROR_SOURCE_EMPTY			(-61)
 define ES_ERROR_UNSUPPORTED_EXECUTABLE		(-62)
@@ -342,8 +340,6 @@ define ES_CURRENT_PROCESS	 	((EsHandle) (0x11))
 
 define ES_WAIT_NO_TIMEOUT            (-1)
 define ES_MAX_WAIT_COUNT             (8)
-define ES_MAX_EVENT_FORWARD_COUNT    (4)   // The maximum number of event sinks an event can be forwarded to.
-define ES_MAX_EVENT_SINK_BUFFER_SIZE (256) // The maximum number of events an event sink can capture. TODO Make this configurable in EsEventSinkCreate?
 
 define ES_MAX_DIRECTORY_CHILD_NAME_LENGTH (256)
 
@@ -779,12 +775,8 @@ private enum EsSyscallType {
 	// Processing.
 
 	ES_SYSCALL_EVENT_CREATE
-	ES_SYSCALL_EVENT_FORWARD
 	ES_SYSCALL_EVENT_RESET
 	ES_SYSCALL_EVENT_SET
-	ES_SYSCALL_EVENT_SINK_CREATE
-	ES_SYSCALL_EVENT_SINK_POP
-	ES_SYSCALL_EVENT_SINK_PUSH
 	ES_SYSCALL_PROCESS_CRASH
 	ES_SYSCALL_PROCESS_CREATE
 	ES_SYSCALL_PROCESS_GET_STATE
@@ -2218,13 +2210,8 @@ function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
 // Synchronisation and timing.
 
 function EsHandle EsEventCreate(bool autoReset); 
-function void EsEventForward(EsHandle event, EsHandle eventSink, EsGeneric data); // TODO Forwarding process/thread killed events. 
 function void EsEventReset(EsHandle event); 
 function void EsEventSet(EsHandle event); 
-
-function EsHandle EsEventSinkCreate(bool ignoreDuplicates); 
-function EsError EsEventSinkPop(EsHandle eventSink, EsGeneric *data); // Returns ES_ERROR_EVENT_NOT_SET if empty, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
-function EsError EsEventSinkPush(EsHandle eventSink, EsGeneric data); // Returns ES_ERROR_EVENT_SINK_DUPLICATE if duplicate, and ES_ERROR_EVENT_SINK_OVERFLOW if data lost.
 
 function void EsMutexAcquire(EsMutex *mutex); 
 function void EsMutexDestroy(EsMutex *mutex); 

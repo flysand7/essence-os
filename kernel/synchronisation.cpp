@@ -314,55 +314,6 @@ void KSemaphoreSet(KSemaphore *semaphore, uintptr_t u) {
 	KMutexRelease(&semaphore->mutex);
 }
 
-EsError EventSink::Push(EsGeneric data) {
-	EsError result = ES_SUCCESS;
-
-	KSpinlockAssertLocked(&scheduler.lock);
-
-	KSpinlockAcquire(&spinlock);
-
-	if (queueCount == ES_MAX_EVENT_SINK_BUFFER_SIZE) {
-		overflow = true;
-		result = ES_ERROR_EVENT_SINK_OVERFLOW;
-		KernelLog(LOG_VERBOSE, "Event Sinks", "push overflow", "Push %d into %x.\n", data.i, this);
-	} else {
-		bool ignored = false;
-
-		if (ignoreDuplicates) {
-			uintptr_t index = queuePosition;
-
-			for (uintptr_t i = 0; i < queueCount; i++) {
-				if (queue[index] == data) {
-					ignored = true;
-					result = ES_ERROR_EVENT_SINK_DUPLICATE;
-					KernelLog(LOG_VERBOSE, "Event Sinks", "push ignored", "Push %d into %x.\n", data.i, this);
-					break;
-				}
-
-				index++;
-
-				if (index == ES_MAX_EVENT_SINK_BUFFER_SIZE) {
-					index = 0;
-				}
-			}
-		}
-
-		if (!ignored) {
-			uintptr_t writeIndex = queuePosition + queueCount;
-			if (writeIndex >= ES_MAX_EVENT_SINK_BUFFER_SIZE) writeIndex -= ES_MAX_EVENT_SINK_BUFFER_SIZE;
-			if (writeIndex >= ES_MAX_EVENT_SINK_BUFFER_SIZE) KernelPanic("EventSink::Push - Invalid event sink (%x) queue.\n", this);
-			KernelLog(LOG_VERBOSE, "Event Sinks", "push", "Push %d into %x at %d (%d/%d).\n", data.i, this, writeIndex, queuePosition, queueCount);
-			queue[writeIndex] = data;
-			queueCount++;
-			KEventSet(&available, true, true);
-		}
-	}
-
-	KSpinlockRelease(&spinlock);
-
-	return result;
-}
-
 bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet) {
 	if (event->state && !maybeAlreadySet) {
 		KernelLog(LOG_ERROR, "Synchronisation", "event already set", "KEvent::Set - Attempt to set a event that had already been set\n");
@@ -377,13 +328,6 @@ bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet)
 	volatile bool unblockedThreads = false;
 
 	if (!event->state) {
-		if (event->sinkTable) {
-			for (uintptr_t i = 0; i < ES_MAX_EVENT_FORWARD_COUNT; i++) {
-				if (!event->sinkTable[i].sink) continue;
-				event->sinkTable[i].sink->Push(event->sinkTable[i].data);
-			}
-		}
-
 		event->state = true;
 
 		if (scheduler.started) {
