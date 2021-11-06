@@ -82,6 +82,8 @@ struct MMSpace {
 	bool user; 	                 // Regions in the space may be accessed from userspace.
 	uint64_t commit;                 // An *approximate* commit in pages. TODO Better memory usage tracking.
 	uint64_t reserve;                // The number of reserved pages.
+
+	KAsyncTask removeAsyncTask;      // The asynchronous task for deallocating the memory space once it's no longer in use.
 };
 
 // A physical page of memory.
@@ -2252,11 +2254,11 @@ void MMSpaceCloseReference(MMSpace *space) {
 		return;
 	}
 
-	KRegisterAsyncTask([] (EsGeneric _space) { 
-		MMSpace *space = (MMSpace *) _space.p;
+	KRegisterAsyncTask(&space->removeAsyncTask, [] (KAsyncTask *task) { 
+		MMSpace *space = EsContainerOf(MMSpace, removeAsyncTask, task);
 		MMArchFinalizeVAS(space);
 		scheduler.mmSpacePool.Remove(space);
-	}, space);
+	});
 }
 
 void MMInitialise() {

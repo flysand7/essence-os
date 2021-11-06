@@ -4,6 +4,8 @@
 #include <arch/x86_pc.h>
 
 struct PS2Update {
+	KAsyncTask task;
+
 	union {
 		struct {
 			volatile int xMovement, yMovement, zMovement;
@@ -193,8 +195,8 @@ uint16_t scancodeConversionTable2[] = {
 #define PS2_MOUSE_READ		(0xEB)
 #define PS2_MOUSE_RESOLUTION	(0xE8)
 
-void PS2MouseUpdated(EsGeneric _update) {
-	PS2Update *update = (PS2Update *) _update.p;
+void PS2MouseUpdated(KAsyncTask *task) {
+	PS2Update *update = EsContainerOf(PS2Update, task, task);
 
 	KMouseUpdateData data = { 
 		.xMovement = update->xMovement * K_CURSOR_MOVEMENT_SCALE, 
@@ -206,8 +208,8 @@ void PS2MouseUpdated(EsGeneric _update) {
 	KMouseUpdate(&data);
 }
 
-void PS2KeyboardUpdated(EsGeneric _update) {
-	PS2Update *update = (PS2Update *) _update.p;
+void PS2KeyboardUpdated(KAsyncTask *task) {
+	PS2Update *update = EsContainerOf(PS2Update, task, task);
 	KernelLog(LOG_VERBOSE, "PS/2", "keyboard update", "Received scancode %x.\n", update->scancode);
 	KKeyPress(update->scancode);
 }
@@ -349,7 +351,7 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 				| ((firstByte & (1 << 2)) ? K_MIDDLE_BUTTON : 0);
 		update->zMovement = -((int8_t) fourthByte);
 
-		KRegisterAsyncTask(PS2MouseUpdated, update, false);
+		KRegisterAsyncTask(&update->task, PS2MouseUpdated);
 
 		firstByte = 0;
 		secondByte = 0;
@@ -366,7 +368,7 @@ bool PS2IRQHandler(uintptr_t interruptIndex, void *) {
 			ps2.lastUpdatesIndex = (ps2.lastUpdatesIndex + 1) % 16;
 			KSpinlockRelease(&ps2.lastUpdatesLock);
 			update->scancode = scancode;
-			KRegisterAsyncTask(PS2KeyboardUpdated, update, false);
+			KRegisterAsyncTask(&update->task, PS2KeyboardUpdated);
 		}
 	} else {
 		KernelPanic("PS2IRQHandler - Incorrect interrupt index.\n", interruptIndex);

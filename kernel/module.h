@@ -103,18 +103,6 @@ KMSIInformation KRegisterMSI(KIRQHandler handler, void *context, const char *cOw
 void KUnregisterMSI(uintptr_t tag);
 
 // ---------------------------------------------------------------------------------------------------------------
-// Async tasks.
-// ---------------------------------------------------------------------------------------------------------------
-
-// Async tasks are executed on the same processor that registered it.
-// They can be registered with interrupts disabled (e.g. in IRQ handlers).
-// They are executed in the order they were registered.
-// They can acquire mutexes, but cannot perform IO.
-
-typedef void (*KAsyncTaskCallback)(EsGeneric argument);
-void KRegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, bool needed = true);
-
-// ---------------------------------------------------------------------------------------------------------------
 // Common data types, algorithms and things.
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -144,6 +132,24 @@ extern "C" void ProcessorOut16(uint16_t port, uint16_t value);
 extern "C" uint16_t ProcessorIn16(uint16_t port);
 extern "C" void ProcessorOut32(uint16_t port, uint32_t value);
 extern "C" uint32_t ProcessorIn32(uint16_t port);
+
+// ---------------------------------------------------------------------------------------------------------------
+// Async tasks.
+// ---------------------------------------------------------------------------------------------------------------
+
+// Async tasks are executed on the same processor that registered it.
+// They can be registered with interrupts disabled (e.g. in IRQ handlers).
+// They are executed in the order they were registered.
+// They can acquire mutexes, but cannot perform IO.
+
+typedef void (*KAsyncTaskCallback)(struct KAsyncTask *task);
+
+struct KAsyncTask {
+	SimpleList item;
+	KAsyncTaskCallback callback;
+};
+
+void KRegisterAsyncTask(KAsyncTask *task, KAsyncTaskCallback callback);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Kernel core.
@@ -313,6 +319,7 @@ void KSemaphoreSet(KSemaphore *semaphore, uintptr_t units = 1);
 
 struct KTimer {
 	KEvent event;
+	KAsyncTask asyncTask;
 	K_PRIVATE
 	LinkedItem<KTimer> item;
 	uint64_t triggerTimeMs;

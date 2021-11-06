@@ -20,6 +20,7 @@ uint8_t acpicaPageBuffer[K_PAGE_SIZE];
 KMutex acpicaPageBufferMutex;
 char acpiPrintf[4096];
 bool acpiOSLayerActive = false;
+KAsyncTask powerButtonAsyncTask;
 
 ES_EXTERN_C ACPI_STATUS AcpiOsInitialize() {
 	if (acpiOSLayerActive) KernelPanic("AcpiOsInitialize - ACPI has already been initialised.\n");
@@ -419,11 +420,11 @@ ES_EXTERN_C ACPI_STATUS AcpiOsEnterSleep(UINT8 sleepState, UINT32 registerAValue
 }
 
 UINT32 ACPIPowerButtonPressed(void *) {
-	KRegisterAsyncTask([] (EsGeneric) {
+	KRegisterAsyncTask(&powerButtonAsyncTask, [] (KAsyncTask *) {
 		_EsMessageWithObject m = { nullptr, ES_MSG_POWER_BUTTON_PRESSED };
 		if (scheduler.shutdown) return;
 		if (desktopProcess) desktopProcess->messageQueue.SendMessage(&m);
-	}, nullptr, false);
+	});
 
 	return 0;
 }

@@ -5,11 +5,6 @@
 #define THREAD_PRIORITY_COUNT	(2)
 
 void CloseHandleToProcess(void *_thread);
-void KillThread(EsGeneric _thread);
-
-void RegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, struct Process *targetProcess, 
-		bool needed /* if false, the task may not be registered if there are many queued tasks */,
-		bool unlocked = false /* set to true if you haven't acquired the scheduler's lock */);
 
 enum ThreadState : int8_t {
 	THREAD_ACTIVE,			// An active thread. Not necessarily executing; `executing` determines if it executing.
@@ -88,6 +83,7 @@ struct Thread {
 	} blocking;
 
 	KEvent killedEvent;
+	KAsyncTask killAsyncTask;
 
 	// If the type of the thread is THREAD_ASYNC_TASK,
 	// then this is the virtual address space that should be loaded
@@ -142,6 +138,7 @@ struct Process {
 	bool terminating; // This never gets set if TerminateProcess is not called, and instead the process is killed because all its threads exit naturally.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
+	KAsyncTask removeAsyncTask;
 
 	// Executable state:
 	uint8_t executableState;
@@ -266,14 +263,23 @@ struct Scheduler {
 Process _kernelProcess;
 Process *kernelProcess = &_kernelProcess;
 Process *desktopProcess;
-
-extern Scheduler scheduler;
+Scheduler scheduler;
+KSpinlock asyncTaskSpinlock;
 
 #endif
 
 #ifdef IMPLEMENTATION
 
-Scheduler scheduler;
+void KRegisterAsyncTask(KAsyncTask *task, KAsyncTaskCallback callback) {
+	KSpinlockAcquire(&asyncTaskSpinlock);
+
+	if (!task->callback) {
+		task->callback = callback;
+		GetLocalStorage()->asyncTaskList.Insert(&task->item, false);
+	}
+
+	KSpinlockRelease(&asyncTaskSpinlock);
+}
 
 int8_t Scheduler::GetThreadEffectivePriority(Thread *thread) {
 	KSpinlockAssertLocked(&lock);
@@ -477,6 +483,108 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	return nullptr;
 }
 
+void _RemoveProcess(KAsyncTask *task) {
+	Process *process = EsContainerOf(Process, removeAsyncTask, task);
+	GetCurrentThread()->SetAddressSpace(process->vmm);
+	scheduler.RemoveProcess(process);
+}
+
+void CloseHandleToProcess(void *_process) {
+	KSpinlockAcquire(&scheduler.lock);
+	Process *process = (Process *) _process;
+	if (!process->handles) KernelPanic("CloseHandleToProcess - All handles to the process have been closed.\n");
+	process->handles--;
+	bool removeProcess = !process->handles;
+
+	KernelLog(LOG_VERBOSE, "Scheduler", "close process handle", "Closed handle to process %d; %d handles remain.\n", process->id, process->handles);
+
+	if (removeProcess && process->executableStartRequest) {
+		// This must be done in the correct virtual address space!
+		KRegisterAsyncTask(&process->removeAsyncTask, _RemoveProcess);
+	}
+
+	KSpinlockRelease(&scheduler.lock);
+
+	if (removeProcess && !process->executableStartRequest) {
+		// The process was never started, so we can't make a RemoveProcess task, because it doesn't have an MMSpace yet.
+		scheduler.RemoveProcess(process);
+	}
+
+	ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
+}
+
+void KillProcess(Process *process) {
+	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
+
+	process->allThreadsTerminated = true;
+	scheduler.activeProcessCount--;
+
+	bool setProcessKilledEvent = true;
+
+#ifdef ENABLE_POSIX_SUBSYSTEM
+	if (process->posixForking) {
+		// If the process is from an incomplete vfork(),
+		// then the parent process gets to set the killed event
+		// and the exit status.
+		setProcessKilledEvent = false;
+	}
+#endif
+
+	if (setProcessKilledEvent) {
+		// We can now also set the killed event on the process.
+		KEventSet(&process->killedEvent, true);
+	}
+
+	KSpinlockRelease(&scheduler.lock);
+
+	// There are no threads left in this process.
+	// We should destroy the handle table at this point.
+	// Otherwise, the process might never be freed
+	// because of a cyclic-dependency.
+	process->handleTable.Destroy();
+
+	// Destroy the virtual memory space.
+	// Don't actually deallocate it yet though; that is done on an async task queued by RemoveProcess.
+	// This must be destroyed after the handle table!
+	MMSpaceDestroy(process->vmm); 
+
+	// Tell Desktop the process has terminated.
+	if (!scheduler.shutdown) {
+		_EsMessageWithObject m;
+		EsMemoryZero(&m, sizeof(m));
+		m.message.type = ES_MSG_PROCESS_TERMINATED;
+		m.message.crash.pid = process->id;
+		desktopProcess->messageQueue.SendMessage(&m);
+	}
+}
+
+void KillThread(KAsyncTask *task) {
+	Thread *thread = EsContainerOf(Thread, killAsyncTask, task);
+	GetCurrentThread()->SetAddressSpace(thread->process->vmm);
+
+	KSpinlockAcquire(&scheduler.lock);
+	scheduler.allThreads.Remove(&thread->allItem);
+	thread->process->threads.Remove(&thread->processItem);
+
+	KernelLog(LOG_INFO, "Scheduler", "killing thread", 
+			"Killing thread (ID %d, %d remain in process %d) %x...\n", thread->id, thread->process->threads.count, thread->process->id, thread);
+
+	if (thread->process->threads.count == 0) {
+		KillProcess(thread->process); // Releases the scheduler's lock.
+	} else {
+		KSpinlockRelease(&scheduler.lock);
+	}
+
+	MMFree(kernelMMSpace, (void *) thread->kernelStackBase);
+	if (thread->userStackBase) MMFree(thread->process->vmm, (void *) thread->userStackBase);
+
+	KEventSet(&thread->killedEvent);
+
+	// Close the handle that this thread owns of its owner process, and the handle it owns of itself.
+	CloseHandleToObject(thread->process, KERNEL_OBJECT_PROCESS);
+	CloseHandleToObject(thread, KERNEL_OBJECT_THREAD);
+}
+
 void Scheduler::TerminateProcess(Process *process, int status) {
 	KSpinlockAcquire(&scheduler.lock);
 
@@ -573,7 +681,7 @@ void Scheduler::TerminateThread(Thread *thread, bool terminatingProcess) {
 				// The thread is terminatable and it isn't executing.
 				// Remove it from its queue, and then remove the thread.
 				thread->item.RemoveFromList();
-				RegisterAsyncTask(KillThread, thread, thread->process, true);
+				KRegisterAsyncTask(&thread->killAsyncTask, KillThread);
 				yield = true;
 			}
 		} else if (thread->terminatableState == THREAD_USER_BLOCK_REQUEST) {
@@ -823,14 +931,20 @@ void AsyncTaskThread() {
 	CPULocalStorage *local = GetLocalStorage();
 
 	while (true) {
-		if (local->asyncTasksRead == local->asyncTasksWrite) {
+		if (!local->asyncTaskList.first) {
 			ProcessorFakeTimerInterrupt();
 		} else {
-			volatile AsyncTask *task = local->asyncTasks + local->asyncTasksRead;
-			if (task->addressSpace) local->currentThread->SetAddressSpace(task->addressSpace);
-			task->callback(task->argument);
-			local->currentThread->SetAddressSpace(nullptr);
-			local->asyncTasksRead++;
+			KSpinlockAcquire(&asyncTaskSpinlock);
+			SimpleList *item = local->asyncTaskList.first;
+			KAsyncTask *task = EsContainerOf(KAsyncTask, item, item);
+			KAsyncTaskCallback callback = task->callback;
+			task->callback = nullptr;
+			local->inAsyncTask = true;
+			item->Remove();
+			KSpinlockRelease(&asyncTaskSpinlock);
+			callback(task); // This may cause the task to be deallocated.
+			local->currentThread->SetAddressSpace(nullptr); // The task may have modified the address space.
+			local->inAsyncTask = false;
 		}
 	}
 }
@@ -860,46 +974,6 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 
 	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_MANUALLY_ACTIVATED);
 	local->asyncTaskThread->type = THREAD_ASYNC_TASK;
-}
-
-void RegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, Process *targetProcess, bool needed, bool unlocked) {
-	if (!unlocked) KSpinlockAssertLocked(&scheduler.lock);
-	else KSpinlockAcquire(&scheduler.lock);
-	EsDefer(if (unlocked) KSpinlockRelease(&scheduler.lock));
-
-	if (targetProcess == nullptr) {
-		targetProcess = kernelProcess;
-	}
-
-	CPULocalStorage *local = GetLocalStorage();
-
-	int difference = local->asyncTasksWrite - local->asyncTasksRead;
-	if (difference < 0) difference += MAX_ASYNC_TASKS;
-
-	if (difference >= MAX_ASYNC_TASKS / 2 && !needed) {
-		return;
-	}
-
-	if (difference == MAX_ASYNC_TASKS - 1) {
-		KernelPanic("RegisterAsyncTask - Maximum number of queued asynchronous tasks reached.\n");
-	}
-
-	// We need to register tasks for terminating processes.
-#if 0
-	if (!targetProcess->handles) {
-		KernelPanic("RegisterAsyncTask - Process has no handles.\n");
-	}
-#endif
-
-	volatile AsyncTask *task = local->asyncTasks + local->asyncTasksWrite;
-	task->callback = callback;
-	task->argument = argument.p;
-	task->addressSpace = targetProcess->vmm;
-	local->asyncTasksWrite++;
-}
-
-void KRegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, bool needed) {
-	RegisterAsyncTask(callback, argument, kernelProcess, needed, true);
 }
 
 void Scheduler::RemoveProcess(Process *process) {
@@ -948,11 +1022,8 @@ void Scheduler::RemoveProcess(Process *process) {
 
 	// Free the process.
 
-	KRegisterAsyncTask([] (EsGeneric _process) { 
-		Process *process = (Process *) _process.p;
-		MMSpaceCloseReference(process->vmm);
-		scheduler.processPool.Remove(process); 
-	}, process);
+	MMSpaceCloseReference(process->vmm);
+	scheduler.processPool.Remove(process); 
 
 	if (started) {
 		// If all processes (except the kernel process) have terminated, set the scheduler's killedEvent.
@@ -1106,110 +1177,10 @@ void Scheduler::PauseProcess(Process *process, bool resume) {
 	}
 }
 
-void _RemoveProcess(EsGeneric process) {
-	scheduler.RemoveProcess((Process *) process.p);
-}
-
-void CloseHandleToProcess(void *_process) {
-	KSpinlockAcquire(&scheduler.lock);
-	Process *process = (Process *) _process;
-	if (!process->handles) KernelPanic("CloseHandleToProcess - All handles to the process have been closed.\n");
-	process->handles--;
-	bool removeProcess = !process->handles;
-
-	KernelLog(LOG_VERBOSE, "Scheduler", "close process handle", "Closed handle to process %d; %d handles remain.\n", process->id, process->handles);
-
-	if (removeProcess && process->executableStartRequest) {
-		// This must be done in the correct virtual address space!
-		RegisterAsyncTask(_RemoveProcess, process, process, true);
-	}
-
-	KSpinlockRelease(&scheduler.lock);
-
-	if (removeProcess && !process->executableStartRequest) {
-		// The process was never started, so we can't make a RemoveProcess task, because it doesn't have an MMSpace yet.
-		scheduler.RemoveProcess(process);
-	}
-
-	ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
-}
-
-void KillProcess(Process *process) {
-	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
-
-	process->allThreadsTerminated = true;
-	scheduler.activeProcessCount--;
-
-	bool setProcessKilledEvent = true;
-
-#ifdef ENABLE_POSIX_SUBSYSTEM
-	if (process->posixForking) {
-		// If the process is from an incomplete vfork(),
-		// then the parent process gets to set the killed event
-		// and the exit status.
-		setProcessKilledEvent = false;
-	}
-#endif
-
-	if (setProcessKilledEvent) {
-		// We can now also set the killed event on the process.
-		KEventSet(&process->killedEvent, true);
-	}
-
-	KSpinlockRelease(&scheduler.lock);
-
-	// There are no threads left in this process.
-	// We should destroy the handle table at this point.
-	// Otherwise, the process might never be freed
-	// because of a cyclic-dependency.
-	process->handleTable.Destroy();
-
-	// Destroy the virtual memory space.
-	// Don't actually deallocate it yet though; that is done on an async task queued by RemoveProcess.
-	// This must be destroyed after the handle table!
-	MMSpaceDestroy(process->vmm); 
-
-	// Tell Desktop the process has terminated.
-	if (!scheduler.shutdown) {
-		_EsMessageWithObject m;
-		EsMemoryZero(&m, sizeof(m));
-		m.message.type = ES_MSG_PROCESS_TERMINATED;
-		m.message.crash.pid = process->id;
-		desktopProcess->messageQueue.SendMessage(&m);
-	}
-}
-
-void KillThread(EsGeneric _thread) {
-	Thread *thread = (Thread *) _thread.p;
-
-	KSpinlockAcquire(&scheduler.lock);
-	scheduler.allThreads.Remove(&thread->allItem);
-	thread->process->threads.Remove(&thread->processItem);
-
-	KernelLog(LOG_INFO, "Scheduler", "killing thread", 
-			"Killing thread (ID %d, %d remain in process %d) %x...\n", thread->id, thread->process->threads.count, thread->process->id, _thread);
-
-	if (thread->process->threads.count == 0) {
-		KillProcess(thread->process); // Releases the scheduler's lock.
-	} else {
-		KSpinlockRelease(&scheduler.lock);
-	}
-
-	MMFree(kernelMMSpace, (void *) thread->kernelStackBase);
-	if (thread->userStackBase) MMFree(thread->process->vmm, (void *) thread->userStackBase);
-
-	KEventSet(&thread->killedEvent);
-
-	// Close the handle that this thread owns of its owner process, and the handle it owns of itself.
-	CloseHandleToObject(thread->process, KERNEL_OBJECT_PROCESS);
-	CloseHandleToObject(thread, KERNEL_OBJECT_THREAD);
-}
-
 Thread *Scheduler::PickThread(CPULocalStorage *local) {
 	KSpinlockAssertLocked(&lock);
 
-	if (local->asyncTasksRead != local->asyncTasksWrite 
-			&& local->asyncTaskThread->state == THREAD_ACTIVE) {
+	if ((local->asyncTaskList.first || local->inAsyncTask) && local->asyncTaskThread->state == THREAD_ACTIVE) {
 		// If the asynchronous task thread for this processor isn't blocked, and has tasks to process, execute it.
 		return local->asyncTaskThread;
 	}
@@ -1261,7 +1232,7 @@ void Scheduler::Yield(InterruptContext *context) {
 	if (killThread) {
 		local->currentThread->state = THREAD_TERMINATED;
 		KernelLog(LOG_INFO, "Scheduler", "terminate yielded thread", "Terminated yielded thread %x\n", local->currentThread);
-		RegisterAsyncTask(KillThread, local->currentThread, local->currentThread->process, true);
+		KRegisterAsyncTask(&local->currentThread->killAsyncTask, KillThread);
 	}
 
 	// If the thread is waiting for an object to be notified, put it in the relevant blockedThreads list.
@@ -1336,7 +1307,7 @@ void Scheduler::Yield(InterruptContext *context) {
 			KEventSet(&timer->event, true /* scheduler already locked */);
 
 			if (timer->callback) {
-				RegisterAsyncTask(timer->callback, timer->argument, nullptr, true);
+				KRegisterAsyncTask(&timer->asyncTask, timer->callback);
 			}
 		} else {
 			break; // Timers are kept sorted, so there's no point continuing.

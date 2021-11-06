@@ -14,10 +14,12 @@ struct ACPIThermalZone : KDevice {
 	uint64_t pollingFrequency;     // Recommended polling frequency of temperature, in tenths of a seconds.
 	uint64_t currentTemperature;
 	KMutex refreshMutex;
+	KAsyncTask refreshTemperatureAsyncTask;
+	KAsyncTask refreshThresholdsAsyncTask;
 };
 
-static void ACPIThermalRefreshTemperature(EsGeneric context) {
-	ACPIThermalZone *device = (ACPIThermalZone *) context.p;
+static void ACPIThermalRefreshTemperature(KAsyncTask *task) {
+	ACPIThermalZone *device = EsContainerOf(ACPIThermalZone, refreshTemperatureAsyncTask, task);
 	KACPIObject *object = device->object;
 	KMutexAcquire(&device->refreshMutex);
 	KernelLog(LOG_INFO, "ACPIThermal", "temperature", "Taking temperature reading...\n");
@@ -31,8 +33,8 @@ static void ACPIThermalRefreshTemperature(EsGeneric context) {
 	KMutexRelease(&device->refreshMutex);
 }
 
-static void ACPIThermalRefreshThresholds(EsGeneric context) {
-	ACPIThermalZone *device = (ACPIThermalZone *) context.p;
+static void ACPIThermalRefreshThresholds(KAsyncTask *task) {
+	ACPIThermalZone *device = EsContainerOf(ACPIThermalZone, refreshThresholdsAsyncTask, task);
 	KACPIObject *object = device->object;
 	KMutexAcquire(&device->refreshMutex);
 	KernelLog(LOG_INFO, "ACPIThermal", "threshold", "Taking threshold readings...\n");
@@ -60,16 +62,16 @@ static void ACPIThermalRefreshThresholds(EsGeneric context) {
 	}
 
 	KMutexRelease(&device->refreshMutex);
-	ACPIThermalRefreshTemperature(device);
+	ACPIThermalRefreshTemperature(&device->refreshTemperatureAsyncTask);
 }
 
 static void ACPIThermalDeviceNotificationHandler(KACPIObject *, uint32_t value, EsGeneric context) {
 	ACPIThermalZone *device = (ACPIThermalZone *) context.p;
 
 	if (value == 0x80) {
-		KRegisterAsyncTask(ACPIThermalRefreshTemperature, device);
+		KRegisterAsyncTask(&device->refreshTemperatureAsyncTask, ACPIThermalRefreshTemperature);
 	} else if (value == 0x81) {
-		KRegisterAsyncTask(ACPIThermalRefreshThresholds, device);
+		KRegisterAsyncTask(&device->refreshThresholdsAsyncTask, ACPIThermalRefreshThresholds);
 	}
 }
 
@@ -80,7 +82,7 @@ static void ACPIThermalDeviceAttach(KDevice *parent) {
 	device->object = object;
 	KernelLog(LOG_INFO, "ACPIThermal", "device attached", "Found ACPI thermal zone.\n");
 
-	ACPIThermalRefreshThresholds(device);
+	ACPIThermalRefreshThresholds(&device->refreshThresholdsAsyncTask);
 
 	EsError error;
 

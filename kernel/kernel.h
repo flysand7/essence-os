@@ -70,30 +70,19 @@
 
 #include ARCH_KERNEL_SOURCE
 
-struct AsyncTask {
-	KAsyncTaskCallback callback;
-	void *argument;
-	struct MMSpace *addressSpace;
-};
-
 struct CPULocalStorage {
-	struct Thread *currentThread, 
-		      *idleThread, 
-		      *asyncTaskThread;
-
-	struct InterruptContext *panicContext;
-
-	bool irqSwitchThread, schedulerReady, inIRQ;
-
-	unsigned processorID;
-	size_t spinlockCount;
-
-	struct ArchCPU *archCPU;
-
-	// TODO Have separate interrupt task threads and system worker threads (with no task limit).
-#define MAX_ASYNC_TASKS (256)
-	volatile AsyncTask asyncTasks[MAX_ASYNC_TASKS];
-	volatile uint8_t asyncTasksRead, asyncTasksWrite;
+	struct Thread *currentThread;          // The currently executing thread on this CPU.
+	struct Thread *idleThread;             // The CPU's idle thread.
+	struct Thread *asyncTaskThread;        // The CPU's async task thread, used to process the asyncTaskList.
+	struct InterruptContext *panicContext; // The interrupt context saved from a kernel panic IPI.
+	bool irqSwitchThread;                  // The CPU should call Scheduler::Yield after the IRQ handler exits.
+	bool schedulerReady;                   // The CPU is ready to execute threads from the pre-emptive scheduler.
+	bool inIRQ;                            // The CPU is currently executing an IRQ handler registered with KRegisterIRQ.
+	bool inAsyncTask;                      // The CPU is currently executing an asynchronous task.
+	uint32_t processorID;                  // The scheduler's ID for the process.
+	size_t spinlockCount;                  // The number of spinlocks currently acquired.
+	struct ArchCPU *archCPU;               // The architecture layer's data for the CPU.
+	SimpleList asyncTaskList;              // The list of AsyncTasks to be processed.
 };
 
 struct PhysicalMemoryRegion {

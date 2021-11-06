@@ -410,8 +410,8 @@ bool AHCIController::HandleIRQ() {
 	return true;
 }
 
-void TimeoutTimerHit(EsGeneric argument) {
-	AHCIController *controller = (AHCIController *) argument.p;
+void TimeoutTimerHit(KAsyncTask *task) {
+	AHCIController *controller = EsContainerOf(AHCIController, timeoutTimer.asyncTask, task);
 
 	uint64_t currentTimeStamp = KGetTimeInMs();
 

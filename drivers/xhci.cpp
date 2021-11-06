@@ -99,6 +99,7 @@ struct XHCIEndpoint {
 
 	KUSBTransferCallback callback;
 	EsGeneric context;
+	KAsyncTask callbackAsyncTask;
 
 	bool CreateTransferRing();
 
@@ -645,12 +646,12 @@ bool XHCIController::HandleIRQ() {
 					}
 
 					if (endpoint->callback) {
-						KRegisterAsyncTask([] (EsGeneric argument) {
-							XHCIEndpoint *endpoint = (XHCIEndpoint *) argument.p;
+						KRegisterAsyncTask(&endpoint->callbackAsyncTask, [] (KAsyncTask *task) {
+							XHCIEndpoint *endpoint = EsContainerOf(XHCIEndpoint, callbackAsyncTask, task);
 							KUSBTransferCallback callback = endpoint->callback;
 							endpoint->callback = nullptr;
 							callback((endpoint->lastStatus >> 24) != 1 ? -1 : endpoint->lastStatus & 0xFFFFFF, endpoint->context);
-						}, endpoint, true);
+						});
 					}
 
 					break;
