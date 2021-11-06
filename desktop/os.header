@@ -1716,6 +1716,7 @@ struct EsMessageNumberUpdated {
 struct EsMessageGetBreadcrumb {
 	uintptr_t index; // Set response to ES_REJECTED if this equals the number of breadcrumbs.
 	EsBuffer *buffer;
+	uint32_t icon;
 };
 
 struct EsMessageEndEdit {

@@ -4861,7 +4861,7 @@ void TextboxBreadcrumbOverlayRecreate(EsTextbox *textbox) {
 	m.getBreadcrumb.buffer = &buffer;
 
 	while (true) {
-		buffer.position = 0;
+		buffer.position = 0, m.getBreadcrumb.icon = 0;
 		int response = EsMessageSend(textbox, &m);
 		EsAssert(response != 0); // Must handle ES_MSG_TEXTBOX_GET_BREADCRUMB message for breadcrumb overlay.
 		if (response == ES_REJECTED) break;
@@ -4870,6 +4870,8 @@ void TextboxBreadcrumbOverlayRecreate(EsTextbox *textbox) {
 				ES_STYLE_BREADCRUMB_BAR_CRUMB, (char *) buffer.out, buffer.position);
 
 		if (crumb) {
+			EsButtonSetIcon(crumb, m.getBreadcrumb.icon);
+
 			crumb->userData = m.getBreadcrumb.index;
 
 			crumb->messageUser = [] (EsElement *element, EsMessage *message) {

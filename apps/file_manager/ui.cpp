@@ -1026,6 +1026,7 @@ int BreadcrumbBarMessage(EsElement *element, EsMessage *message) {
 
 		String path = PathGetParent(instance->folder->path, message->getBreadcrumb.index);
 		NamespaceGetVisibleName(message->getBreadcrumb.buffer, path);
+		message->getBreadcrumb.icon = message->getBreadcrumb.index ? 0 : NamespaceGetIcon(path);
 		return ES_HANDLED;
 	}
 
