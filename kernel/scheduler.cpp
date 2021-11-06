@@ -1,18 +1,15 @@
 #ifndef IMPLEMENTATION
 
-#define PREEMPT_AFTER_MUTEX_RELEASE
-
 #define THREAD_PRIORITY_NORMAL 	(0) // Lower value = higher priority.
 #define THREAD_PRIORITY_LOW 	(1)
 #define THREAD_PRIORITY_COUNT	(2)
 
-void CloseHandleToThread(void *_thread);
 void CloseHandleToProcess(void *_thread);
 void KillThread(EsGeneric _thread);
 
 void RegisterAsyncTask(KAsyncTaskCallback callback, EsGeneric argument, struct Process *targetProcess, 
-		bool needed /*If false, the task may not be registered if there are many queued tasks.*/,
-		bool unlocked = false /*Set to true if you haven't acquired the scheduler's lock.*/);
+		bool needed /* if false, the task may not be registered if there are many queued tasks */,
+		bool unlocked = false /* set to true if you haven't acquired the scheduler's lock */);
 
 enum ThreadState : int8_t {
 	THREAD_ACTIVE,			// An active thread. Not necessarily executing; `executing` determines if it executing.
@@ -20,7 +17,6 @@ enum ThreadState : int8_t {
 	THREAD_WAITING_EVENT,		// Waiting for a event to be notified.
 	THREAD_WAITING_WRITER_LOCK,	// Waiting for a writer lock to be notified.
 	THREAD_TERMINATED,		// The thread has been terminated. It will be deallocated when all handles are closed.
-					// 	I believe this is called a "zombie thread" in UNIX terminology.
 };
 
 enum ThreadType : int8_t {
@@ -143,7 +139,7 @@ struct Process {
 
 	// Termination:
 	bool allThreadsTerminated;
-	bool terminating;
+	bool terminating; // This never gets set if TerminateProcess is not called, and instead the process is killed because all its threads exit naturally.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
 
@@ -174,13 +170,45 @@ struct Scheduler {
 #define SPAWN_THREAD_PAUSED             (8)
 	Thread *SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
 			uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
-	void TerminateThread(Thread *thread, bool lockAlreadyAcquired = false);
 	void PauseThread(Thread *thread, bool resume /*true to resume, false to pause*/, bool lockAlreadyAcquired = false);
 
 	Process *SpawnProcess(ProcessType processType = PROCESS_NORMAL);
-	void TerminateProcess(Process *process, int status);
 	void PauseProcess(Process *process, bool resume);
 	void CrashProcess(Process *process, EsCrashReason *reason);
+
+	// How thread termination works:
+	// 1. TerminateThread
+	// 	- terminating is set to true.
+	// 	- If the thread is executing, then on the next context switch, KillThread is called on a async task. 
+	// 	- If it is not executing, KillThread is called on a async task.
+	// 	- Note, terminatableState must be set to THREAD_TERMINATABLE.
+	// 	- When a thread terminates itself, its terminatableState is automatically set to THREAD_TERMINATABLE.
+	// 2. KillThread
+	// 	- Removes the thread from the lists, frees the stacks, and sets killedEvent.
+	// 	- The thread's handles to itself and its process are closed.
+	// 	- If this is the last thread in the process, KillProcess is called.
+	// 3. CloseHandleToObject KERNEL_OBJECT_THREAD
+	// 	- If the last handle to the thread has been closed, then RemoveThread is called.
+	// 4. RemoveThread
+	// 	- The thread structure is deallocated.
+	void TerminateThread(Thread *thread, bool lockAlreadyAcquired = false);
+
+	// How process termination works:
+	// 1. TerminateProcess (optional)
+	// 	- terminating is set to true (to prevent creation of new threads).
+	// 	- TerminateThread is called on each thread, leading to an eventual call to KillProcess.
+	// 	- This is optional because KillProcess is called if all threads get terminated naturally; in this case, terminating is never set.
+	// 2. KillProcess
+	// 	- Destroys the handle table and memory space, and sets killedEvent.
+	// 	- Sends a message to Desktop informing it the process was killed.
+	// 	- Since KillProcess is only called from KillThread, there is an associated closing of a process handle from the killed thread.
+	// 3. CloseHandleToObject KERNEL_OBJECT_PROCESS (CloseHandleToProcess)
+	// 	- If the last handle to the process has been closed, then RemoveProcess is called on an async task.
+	// 4. RemoveProcess
+	// 	- Removes the process from the lists, destroys its message queue, and closes its handle to its executable node.
+	// 	  (These tasks are done here because processes that are created but never started will not reach KillProcess.)
+	// 	- The process and memory space structures are deallocated.
+	void TerminateProcess(Process *process, int status);
 
 	Process *OpenProcess(uint64_t id);
 
@@ -195,8 +223,8 @@ struct Scheduler {
 
 	void RemoveProcess(Process *process); // Do not call. Use TerminateProcess/CloseHandleToObject.
 	void RemoveThread(Thread *thread); // Do not call. Use TerminateThread/CloseHandleToObject.
-	void AddActiveThread(Thread *thread, bool start /*Put it at the start*/);	// Add an active thread into the queue.
-	void InsertNewThread(Thread *thread, bool addToActiveList, Process *owner); 	// Used during thread creation.
+	void AddActiveThread(Thread *thread, bool start /* put it at the start of the active list */); // Add an active thread into the queue.
+	void InsertNewThread(Thread *thread, bool addToActiveList, Process *owner); // Used during thread creation.
 	void MaybeUpdateActiveList(Thread *thread); // After changing the priority of a thread, call this to move it to the correct active thread queue if needed.
 
 	void NotifyObject(LinkedList<Thread> *blockedThreads, bool unblockAll, Thread *previousMutexOwner = nullptr);
@@ -957,8 +985,6 @@ void Scheduler::RemoveThread(Thread *thread) {
 	}
 #endif
 
-	// TODO Deallocate user and kernel stacks.
-
 	scheduler.threadPool.Remove(thread);
 }
 
@@ -1108,17 +1134,48 @@ void CloseHandleToProcess(void *_process) {
 	ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
 }
 
-void CloseHandleToThread(void *_thread) {
-	KSpinlockAcquire(&scheduler.lock);
-	Thread *thread = (Thread *) _thread;
-	if (!thread->handles) KernelPanic("CloseHandleToThread - All handles to the thread have been closed.\n");
-	thread->handles--;
-	bool removeThread = thread->handles == 0;
-	// EsPrint("Thread %d has %d handles\n", thread->id, thread->handles);
+void KillProcess(Process *process) {
+	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
+
+	process->allThreadsTerminated = true;
+	scheduler.activeProcessCount--;
+
+	bool setProcessKilledEvent = true;
+
+#ifdef ENABLE_POSIX_SUBSYSTEM
+	if (process->posixForking) {
+		// If the process is from an incomplete vfork(),
+		// then the parent process gets to set the killed event
+		// and the exit status.
+		setProcessKilledEvent = false;
+	}
+#endif
+
+	if (setProcessKilledEvent) {
+		// We can now also set the killed event on the process.
+		KEventSet(&process->killedEvent, true);
+	}
+
 	KSpinlockRelease(&scheduler.lock);
 
-	if (removeThread) {
-		scheduler.RemoveThread(thread);
+	// There are no threads left in this process.
+	// We should destroy the handle table at this point.
+	// Otherwise, the process might never be freed
+	// because of a cyclic-dependency.
+	process->handleTable.Destroy();
+
+	// Destroy the virtual memory space.
+	// Don't actually deallocate it yet though; that is done on an async task queued by RemoveProcess.
+	// This must be destroyed after the handle table!
+	MMSpaceDestroy(process->vmm); 
+
+	// Tell Desktop the process has terminated.
+	if (!scheduler.shutdown) {
+		_EsMessageWithObject m;
+		EsMemoryZero(&m, sizeof(m));
+		m.message.type = ES_MSG_PROCESS_TERMINATED;
+		m.message.crash.pid = process->id;
+		desktopProcess->messageQueue.SendMessage(&m);
 	}
 }
 
@@ -1133,50 +1190,7 @@ void KillThread(EsGeneric _thread) {
 			"Killing thread (ID %d, %d remain in process %d) %x...\n", thread->id, thread->process->threads.count, thread->process->id, _thread);
 
 	if (thread->process->threads.count == 0) {
-		Process *process = thread->process;
-		KernelLog(LOG_INFO, "Scheduler", "killing process", 
-				"Killing process (%d) %x...\n", process->id, process);
-
-		process->allThreadsTerminated = true;
-		scheduler.activeProcessCount--;
-
-		bool setProcessKilledEvent = true;
-
-#ifdef ENABLE_POSIX_SUBSYSTEM
-		if (process->posixForking) {
-			// If the process is from an incomplete vfork(),
-			// then the parent process gets to set the killed event
-			// and the exit status.
-			setProcessKilledEvent = false;
-		}
-#endif
-
-		if (setProcessKilledEvent) {
-			// We can now also set the killed event on the process.
-			KEventSet(&process->killedEvent, true);
-		}
-
-		KSpinlockRelease(&scheduler.lock);
-
-		// There are no threads left in this process.
-		// We should destroy the handle table at this point.
-		// Otherwise, the process might never be freed
-		// because of a cyclic-dependency.
-		process->handleTable.Destroy();
-
-		// Destroy the virtual memory space.
-		// Don't actually deallocate it yet though; that is done on an async task queued by RemoveProcess.
-		// This must be destroyed after the handle table!
-		MMSpaceDestroy(process->vmm); 
-
-		// Tell Desktop the process has terminated.
-		if (!scheduler.shutdown) {
-			_EsMessageWithObject m;
-			EsMemoryZero(&m, sizeof(m));
-			m.message.type = ES_MSG_PROCESS_TERMINATED;
-			m.message.crash.pid = process->id;
-			desktopProcess->messageQueue.SendMessage(&m);
-		}
+		KillProcess(thread->process); // Releases the scheduler's lock.
 	} else {
 		KSpinlockRelease(&scheduler.lock);
 	}
@@ -1186,10 +1200,9 @@ void KillThread(EsGeneric _thread) {
 
 	KEventSet(&thread->killedEvent);
 
-	// Close the handle that this thread owns of its owner process.
+	// Close the handle that this thread owns of its owner process, and the handle it owns of itself.
 	CloseHandleToObject(thread->process, KERNEL_OBJECT_PROCESS);
-
-	CloseHandleToThread(thread);
+	CloseHandleToObject(thread, KERNEL_OBJECT_THREAD);
 }
 
 Thread *Scheduler::PickThread(CPULocalStorage *local) {

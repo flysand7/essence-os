@@ -106,7 +106,6 @@ void RunACPICAEvent(void *e) {
 	ACPICAEvent *event = (ACPICAEvent *) e;
 	event->function(event->context);
 	EsHeapFree(event, 0, K_FIXED);
-	scheduler.TerminateThread(GetCurrentThread());
 }
 
 ES_EXTERN_C ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE type, ACPI_OSD_EXEC_CALLBACK function, void *context) {

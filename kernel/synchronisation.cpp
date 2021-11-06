@@ -244,9 +244,7 @@ void KMutexRelease(KMutex *mutex) {
 	}
 #endif
 
-#ifdef PREEMPT_AFTER_MUTEX_RELEASE
 	if (preempt) ProcessorFakeTimerInterrupt();
-#endif
 }
 
 void KMutexAssertLocked(KMutex *mutex) {

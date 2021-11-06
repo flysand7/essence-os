@@ -250,7 +250,17 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 		} break;
 
 		case KERNEL_OBJECT_THREAD: {
-			CloseHandleToThread(object);
+			KSpinlockAcquire(&scheduler.lock);
+			Thread *thread = (Thread *) object;
+			if (!thread->handles) KernelPanic("CloseHandleToThread - All handles to the thread have been closed.\n");
+			thread->handles--;
+			bool removeThread = thread->handles == 0;
+			// EsPrint("Thread %d has %d handles\n", thread->id, thread->handles);
+			KSpinlockRelease(&scheduler.lock);
+
+			if (removeThread) {
+				scheduler.RemoveThread(thread);
+			}
 		} break;
 
 		case KERNEL_OBJECT_NODE: {
