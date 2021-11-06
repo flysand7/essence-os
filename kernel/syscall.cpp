@@ -1819,7 +1819,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SyscallFunction syscallFunctions[ES_SYSCALL_COUNT + 1] {
+const SyscallFunction syscallFunctions[ES_SYSCALL_COUNT + 1] {
 #include <bin/syscall_array.h>
 };
 

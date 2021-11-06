@@ -965,7 +965,7 @@ void ParseKernelConfiguration() {
 	}
 
 	FilePrintFormat(f, "#ifdef K_IN_CORE_KERNEL\n");
-	FilePrintFormat(f, "KInstalledDriver builtinDrivers[] = {\n");
+	FilePrintFormat(f, "const KInstalledDriver builtinDrivers[] = {\n");
 
 	s.buffer = (char *) kernelConfig;
 	s.bytes = kernelConfigBytes;

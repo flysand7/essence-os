@@ -2674,6 +2674,8 @@ uint8_t DateCalculateDayOfWeek(const EsDateComponents *components) {
 }
 
 void DateToComponents(uint64_t x, EsDateComponents *components) {
+	components->_unused = 0;
+
 	components->millisecond = x % 1000, x /= 1000;
 	components->second      = x %   60, x /=   60;
 	components->minute      = x %   60, x /=   60;
