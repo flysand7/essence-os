@@ -780,6 +780,15 @@ uint64_t ArchGetTimeMs() {
 }
 
 extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddressSpace) {
+	if (scheduler.lock.interruptsEnabled) {
+		KernelPanic("PostContextSwitch - Interrupts were enabled. (3)\n");
+	}
+
+	// We can only free the scheduler's spinlock when we are no longer using the stack
+	// from the previous thread. See DoContextSwitch.
+	// (Another CPU can KillThread this once it's back in activeThreads.)
+	KSpinlockRelease(&scheduler.lock, true);
+
 	Thread *currentThread = GetCurrentThread();
 
 #ifdef ES_ARCH_X86_64
@@ -789,13 +798,10 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 #endif
 
 	bool newThread = currentThread->cpuTimeSlices == 1;
-
 	LapicEndOfInterrupt();
 	ContextSanityCheck(context);
-
-	if (ProcessorAreInterruptsEnabled()) {
-		KernelPanic("PostContextSwitch - Interrupts were enabled. (1)\n");
-	}
+	ProcessorSetThreadStorage(currentThread->tlsAddress);
+	MMSpaceCloseReference(oldAddressSpace);
 
 #ifdef ES_ARCH_X86_64
 	KernelLog(LOG_VERBOSE, "Arch", "context switch", "Context switch to %zthread %x at %x\n", newThread ? "new " : "", currentThread, context->rip);
@@ -805,22 +811,13 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 	currentThread->lastKnownExecutionAddress = context->eip;
 #endif
 
-	if (scheduler.lock.interruptsEnabled) {
-		KernelPanic("PostContextSwitch - Interrupts were enabled. (3)\n");
-	}
-
-	ProcessorSetThreadStorage(currentThread->tlsAddress);
-
-	// We can only free the scheduler's spinlock when we are no longer using the stack
-	// from the previous thread. See DoContextSwitch.
-	// (Another CPU can KillThread this once it's back in activeThreads.)
-	KSpinlockRelease(&scheduler.lock, true);
-
 	if (ProcessorAreInterruptsEnabled()) {
 		KernelPanic("PostContextSwitch - Interrupts were enabled. (2)\n");
 	}
 
-	MMSpaceCloseReference(oldAddressSpace);
+	if (local->spinlockCount) {
+		KernelPanic("PostContextSwitch - spinlockCount is non-zero (%x).\n", local);
+	}
 
 #ifdef ES_ARCH_X86_32
 	if (context->fromRing0) {
@@ -841,7 +838,7 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 }
 
 bool SetupInterruptRedirectionEntry(uintptr_t _line) {
-	KSpinlockAssertLocked(&scheduler.lock);
+	KSpinlockAssertLocked(&irqHandlersLock);
 
 	static uint32_t alreadySetup = 0;
 
@@ -944,9 +941,6 @@ KMSIInformation KRegisterMSI(KIRQHandler handler, void *context, const char *cOw
 }
 
 bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char *cOwnerName, KPCIDevice *pciDevice) {
-	KSpinlockAcquire(&scheduler.lock);
-	EsDefer(KSpinlockRelease(&scheduler.lock));
-
 	if (line == -1 && !pciDevice) {
 		KernelPanic("KRegisterIRQ - Interrupt line is %d, and pciDevice is %x.\n", line, pciDevice);
 	}
@@ -970,27 +964,29 @@ bool KRegisterIRQ(intptr_t line, KIRQHandler handler, void *context, const char 
 		}
 	}
 
-	KSpinlockRelease(&irqHandlersLock);
+	bool result = true;
 
 	if (!found) {
 		KernelLog(LOG_ERROR, "Arch", "too many IRQ handlers", "The limit of IRQ handlers was reached (%d), and the handler for '%z' was not registered.\n",
 				sizeof(irqHandlers) / sizeof(irqHandlers[0]), cOwnerName);
-		return false;
-	}
-
-	KernelLog(LOG_INFO, "Arch", "register IRQ", "KRegisterIRQ - Registered IRQ %d to '%z'.\n", line, cOwnerName);
-
-	if (line != -1) {
-		if (!SetupInterruptRedirectionEntry(line)) {
-			return false;
-		}
+		result = false;
 	} else {
-		SetupInterruptRedirectionEntry(9);
-		SetupInterruptRedirectionEntry(10);
-		SetupInterruptRedirectionEntry(11);
+		KernelLog(LOG_INFO, "Arch", "register IRQ", "KRegisterIRQ - Registered IRQ %d to '%z'.\n", line, cOwnerName);
+
+		if (line != -1) {
+			if (!SetupInterruptRedirectionEntry(line)) {
+				result = false;
+			}
+		} else {
+			SetupInterruptRedirectionEntry(9);
+			SetupInterruptRedirectionEntry(10);
+			SetupInterruptRedirectionEntry(11);
+		}
 	}
 
-	return true;
+	KSpinlockRelease(&irqHandlersLock);
+
+	return result;
 }
 
 void ArchStartupApplicationProcessors() {

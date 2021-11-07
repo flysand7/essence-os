@@ -378,6 +378,10 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 	CPULocalStorage *local = GetLocalStorage();
 	uintptr_t interrupt = context->interruptNumber;
 
+	if (local && local->spinlockCount && context->cr8 != 0xE) {
+		KernelPanic("InterruptHandler - Local spinlockCount is %d but interrupts were enabled (%x/%x).\n", local->spinlockCount, local, context);
+	}
+
 #if 0
 #ifdef EARLY_DEBUGGING
 #ifdef VGA_TEXT_MODE
@@ -505,8 +509,8 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 				if (local && local->spinlockCount && ((context->cr2 >= 0xFFFF900000000000 && context->cr2 < 0xFFFFF00000000000) 
 							|| context->cr2 < 0x8000000000000000)) {
-					KernelPanic("HandlePageFault - Page fault occurred in critical section at %x (S = %x, B = %x, LG = %x) (CR2 = %x).\n", 
-							context->rip, context->rsp, context->rbp, local->currentThread->lastKnownExecutionAddress, context->cr2);
+					KernelPanic("HandlePageFault - Page fault occurred with spinlocks active at %x (S = %x, B = %x, LG = %x, CR2 = %x, local = %x).\n", 
+							context->rip, context->rsp, context->rbp, local->currentThread->lastKnownExecutionAddress, context->cr2, local);
 				}
 				
 				if (!MMArchHandlePageFault(context->cr2, MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR

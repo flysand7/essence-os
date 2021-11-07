@@ -241,7 +241,7 @@ struct Scheduler {
 	LinkedList<KTimer> activeTimers;
 
 	Pool threadPool, processPool, mmSpacePool;
-	LinkedList<Thread>  allThreads;
+	LinkedList<Thread> allThreads;
 	LinkedList<Process> allProcesses;
 	EsObjectID nextThreadID;
 	EsObjectID nextProcessID;
@@ -251,7 +251,7 @@ struct Scheduler {
 
 	uint64_t timeMs;
 
-	unsigned currentProcessorID;
+	uint32_t currentProcessorID;
 
 #ifdef DEBUG_BUILD
 	EsThreadEventLogEntry *volatile threadEventLog;
@@ -375,12 +375,11 @@ void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *o
 	EsDefer(KSpinlockRelease(&lock));
 
 	// New threads are initialised here.
-	thread->id = nextThreadID++;
+	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
 	thread->process = owner;
 
-	owner->handles++; 	// Each thread owns a handles to the owner process.
-				// This makes sure the process isn't destroyed before all its threads have been destroyed.
-	// EsPrint("Open handle to process %d/%x (new thread). New handle count: %d.\n", owner->id, owner, owner->handles);
+	owner->handles++; // Each thread owns a handles to the owner process.
+			  // This makes sure the process isn't destroyed before all its threads have been destroyed.
 
 	thread->item.thisItem = thread;
 	thread->allItem.thisItem = thread;
@@ -893,10 +892,7 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 		return nullptr;
 	}
 
-	KSpinlockAcquire(&scheduler.lock);
-	process->id = nextProcessID++;
-	KSpinlockRelease(&scheduler.lock);
-
+	process->id = __sync_fetch_and_add(&nextProcessID, 1);
 	process->vmm->referenceCount = 1;
 	process->allItem.thisItem = process;
 	process->handles = 1;
@@ -958,18 +954,12 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 	idleThread->terminatableState = THREAD_IN_SYSCALL;
 	idleThread->cName = "Idle";
 	local->currentThread = local->idleThread = idleThread;
+	local->processorID = __sync_fetch_and_add(&currentProcessorID, 1);
 
-	KSpinlockAcquire(&lock);
-
-	if (currentProcessorID >= K_MAX_PROCESSORS) { 
-		KernelPanic("Scheduler::CreateProcessorThreads - Maximum processor count (%d) exceeded.\n", currentProcessorID);
+	if (local->processorID >= K_MAX_PROCESSORS) { 
+		KernelPanic("Scheduler::CreateProcessorThreads - Maximum processor count (%d) exceeded.\n", local->processorID);
 	}
 	
-	local->processorID = currentProcessorID++;
-
-	// Force release the lock because we've changed our currentThread value.
-	KSpinlockRelease(&lock);
-
 	InsertNewThread(idleThread, false, kernelProcess);
 
 	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_MANUALLY_ACTIVATED);
@@ -1202,10 +1192,6 @@ void Scheduler::Yield(InterruptContext *context) {
 
 	if (!started || !local || !local->schedulerReady) {
 		return;
-	}
-
-	if (local->spinlockCount) {
-		KernelPanic("Scheduler::Yield - Spinlocks acquired while attempting to yield (2).\n");
 	}
 
 	if (local->spinlockCount) {

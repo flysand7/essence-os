@@ -94,20 +94,6 @@ void KSpinlockAssertLocked(KSpinlock *spinlock) {
 	}
 }
 
-Thread *AttemptMutexAcquisition(KMutex *mutex, Thread *currentThread) {
-	KSpinlockAcquire(&scheduler.lock);
-
-	Thread *old = mutex->owner;
-
-	if (!old) {
-		mutex->owner = currentThread;
-	}
-
-	KSpinlockRelease(&scheduler.lock);
-
-	return old;
-}
-
 #ifdef DEBUG_BUILD
 bool _KMutexAcquire(KMutex *mutex, const char *cMutexString, const char *cFile, int line) {
 #else
@@ -140,7 +126,13 @@ bool KMutexAcquire(KMutex *mutex) {
 		KernelPanic("KMutex::Acquire - Trying to acquire a mutex while interrupts are disabled.\n");
 	}
 
-	while (AttemptMutexAcquisition(mutex, currentThread)) {
+	while (true) {
+		KSpinlockAcquire(&scheduler.lock);
+		Thread *old = mutex->owner;
+		if (!old) mutex->owner = currentThread;
+		KSpinlockRelease(&scheduler.lock);
+		if (!old) break;
+
 		__sync_synchronize();
 
 		if (GetLocalStorage() && GetLocalStorage()->schedulerReady) {
@@ -440,6 +432,7 @@ bool KWriterLockTake(KWriterLock *lock, bool write, bool poll) {
 	if (thread) {
 		thread->blocking.writerLock = lock;
 		thread->blocking.writerLockType = write;
+		__sync_synchronize();
 	}
 
 	while (true) {
@@ -639,15 +632,14 @@ void Scheduler::WaitMutex(KMutex *mutex) {
 		KernelPanic("Scheduler::WaitMutex - Attempting to wait on a mutex in a non-active thread.\n");
 	}
 
-	KSpinlockAcquire(&lock);
-
-	thread->state = THREAD_WAITING_MUTEX;
 	thread->blocking.mutex = mutex;
+	__sync_synchronize();
+	thread->state = THREAD_WAITING_MUTEX;
 
+	KSpinlockAcquire(&lock);
 	// Is the owner of this mutex executing?
 	// If not, there's no point in spinning on it.
 	bool spin = mutex && mutex->owner && mutex->owner->executing;
-
 	KSpinlockRelease(&lock);
 
 	if (!spin && thread->blocking.mutex->owner) {

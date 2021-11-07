@@ -1096,6 +1096,10 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 
 		copy:;
 
+		if (GetLocalStorage()->spinlockCount) {
+			KernelPanic("CCSpaceAccess - Spinlocks acquired.\n");
+		}
+
 		// Copy into/from the user's buffer.
 
 		if (buffer) {
