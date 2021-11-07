@@ -235,6 +235,7 @@ struct Scheduler {
 
 	KSpinlock lock; // The general lock. TODO Break this up!
 	KMutex allThreadsMutex; // For accessing the allThreads list.
+	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
 
 	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
 	uintptr_t blockShutdownProcessCount;
@@ -1280,6 +1281,7 @@ void Scheduler::Yield(InterruptContext *context) {
 		globalData->schedulerTimeMs = timeMs;
 
 		// Notify the necessary timers.
+		KSpinlockAcquire(&activeTimersSpinlock);
 		LinkedItem<KTimer> *_timer = activeTimers.firstItem;
 
 		while (_timer) {
@@ -1299,6 +1301,8 @@ void Scheduler::Yield(InterruptContext *context) {
 
 			_timer = next;
 		}
+
+		KSpinlockRelease(&activeTimersSpinlock);
 	}
 
 	// Get the next thread to execute.

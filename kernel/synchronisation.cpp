@@ -572,8 +572,7 @@ void TestWriterLocks() {
 #endif
 
 void KTimerSet(KTimer *timer, uint64_t triggerInMs, KAsyncTaskCallback _callback, EsGeneric _argument) {
-	KSpinlockAcquire(&scheduler.lock);
-	EsDefer(KSpinlockRelease(&scheduler.lock));
+	KSpinlockAcquire(&scheduler.activeTimersSpinlock);
 
 	// Reset the timer state.
 
@@ -610,11 +609,12 @@ void KTimerSet(KTimer *timer, uint64_t triggerInMs, KAsyncTaskCallback _callback
 	} else {
 		scheduler.activeTimers.InsertEnd(&timer->item);
 	}
+
+	KSpinlockRelease(&scheduler.activeTimersSpinlock);
 }
 
 void KTimerRemove(KTimer *timer) {
-	KSpinlockAcquire(&scheduler.lock);
-	EsDefer(KSpinlockRelease(&scheduler.lock));
+	KSpinlockAcquire(&scheduler.activeTimersSpinlock);
 
 	if (timer->callback) {
 		KernelPanic("KTimer::Remove - Timers with callbacks cannot be removed.\n");
@@ -623,6 +623,8 @@ void KTimerRemove(KTimer *timer) {
 	if (timer->item.list) {
 		scheduler.activeTimers.Remove(&timer->item);
 	}
+
+	KSpinlockRelease(&scheduler.activeTimersSpinlock);
 }
 
 void Scheduler::WaitMutex(KMutex *mutex) {
