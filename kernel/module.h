@@ -196,7 +196,7 @@ enum KernelObjectType : uint32_t {
 
 // TODO Rename to KObjectReference and KObjectDereference?
 void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags = 0);
-bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags = 0, bool maybeHasNoHandles = false);
+bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags = 0);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Module loading.

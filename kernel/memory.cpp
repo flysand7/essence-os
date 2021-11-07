@@ -1678,7 +1678,7 @@ void MMBalanceThread() {
 			pmm.nextProcessToBalance = process->allItem.nextItem ? process->allItem.nextItem->thisItem : nullptr;
 
 			if (process->handles) {
-				process->handles++;
+				OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 				break;
 			}
 		}

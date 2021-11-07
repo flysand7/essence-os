@@ -232,26 +232,28 @@ struct Scheduler {
 
 	// Variables:
 
-	KSpinlock lock;
+	KSpinlock lock; // The general lock. TODO Break this up!
+	KMutex allThreadsMutex; // For accessing the allThreads list.
 
 	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
 	uintptr_t blockShutdownProcessCount;
-
-	LinkedList<Thread> activeThreads[THREAD_PRIORITY_COUNT], pausedThreads;
-	LinkedList<KTimer> activeTimers;
+	size_t activeProcessCount;
 
 	Pool threadPool, processPool, mmSpacePool;
+
+	LinkedList<Thread> activeThreads[THREAD_PRIORITY_COUNT];
+	LinkedList<Thread> pausedThreads;
+	LinkedList<KTimer> activeTimers;
 	LinkedList<Thread> allThreads;
 	LinkedList<Process> allProcesses;
-	EsObjectID nextThreadID;
-	EsObjectID nextProcessID;
-	size_t activeProcessCount;
 
 	volatile bool started, panic, shutdown;
 
 	uint64_t timeMs;
 
-	uint32_t currentProcessorID;
+	EsObjectID nextThreadID;
+	EsObjectID nextProcessID;
+	EsObjectID nextProcessorID;
 
 #ifdef DEBUG_BUILD
 	EsThreadEventLogEntry *volatile threadEventLog;
@@ -371,15 +373,19 @@ void Scheduler::MaybeUpdateActiveList(Thread *thread) {
 }
 
 void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *owner) {
+	KMutexAcquire(&allThreadsMutex);
+	allThreads.InsertStart(&thread->allItem);
+	KMutexRelease(&allThreadsMutex);
+
 	KSpinlockAcquire(&lock);
-	EsDefer(KSpinlockRelease(&lock));
 
 	// New threads are initialised here.
 	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
 	thread->process = owner;
 
-	owner->handles++; // Each thread owns a handles to the owner process.
-			  // This makes sure the process isn't destroyed before all its threads have been destroyed.
+	// Each thread owns a handles to the owner process.
+	// This makes sure the process isn't destroyed before all its threads have been destroyed.
+	OpenHandleToObject(owner, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 
 	thread->item.thisItem = thread;
 	thread->allItem.thisItem = thread;
@@ -395,7 +401,8 @@ void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *o
 		// Some threads (such as idle threads) do this themselves.
 	}
 
-	allThreads.InsertStart(&thread->allItem);
+	KSpinlockRelease(&lock);
+	// The thread may now be terminated at any moment.
 }
 
 Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1, uint32_t flags, Process *process, uintptr_t argument2) {
@@ -490,10 +497,11 @@ void _RemoveProcess(KAsyncTask *task) {
 
 void CloseHandleToProcess(void *_process) {
 	KSpinlockAcquire(&scheduler.lock);
+
 	Process *process = (Process *) _process;
-	if (!process->handles) KernelPanic("CloseHandleToProcess - All handles to the process have been closed.\n");
-	process->handles--;
-	bool removeProcess = !process->handles;
+	uintptr_t previous = __sync_fetch_and_sub(&process->handles, 1);
+	if (!previous) KernelPanic("CloseHandleToProcess - All handles to process %x have been closed.\n", process);
+	bool removeProcess = previous == 1;
 
 	KernelLog(LOG_VERBOSE, "Scheduler", "close process handle", "Closed handle to process %d; %d handles remain.\n", process->id, process->handles);
 
@@ -561,8 +569,11 @@ void KillThread(KAsyncTask *task) {
 	Thread *thread = EsContainerOf(Thread, killAsyncTask, task);
 	GetCurrentThread()->SetAddressSpace(thread->process->vmm);
 
-	KSpinlockAcquire(&scheduler.lock);
+	KMutexAcquire(&scheduler.allThreadsMutex);
 	scheduler.allThreads.Remove(&thread->allItem);
+	KMutexRelease(&scheduler.allThreadsMutex);
+
+	KSpinlockAcquire(&scheduler.lock);
 	thread->process->threads.Remove(&thread->processItem);
 
 	KernelLog(LOG_INFO, "Scheduler", "killing thread", 
@@ -954,7 +965,7 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 	idleThread->terminatableState = THREAD_IN_SYSCALL;
 	idleThread->cName = "Idle";
 	local->currentThread = local->idleThread = idleThread;
-	local->processorID = __sync_fetch_and_add(&currentProcessorID, 1);
+	local->processorID = __sync_fetch_and_add(&nextProcessorID, 1);
 
 	if (local->processorID >= K_MAX_PROCESSORS) { 
 		KernelPanic("Scheduler::CreateProcessorThreads - Maximum processor count (%d) exceeded.\n", local->processorID);
@@ -1375,7 +1386,7 @@ Process *Scheduler::OpenProcess(uint64_t id) {
 		if (process->id == id 
 				&& process->handles /* if the process has no handles, it's about to be removed */
 				&& process->type != PROCESS_KERNEL /* the kernel process cannot be opened */) {
-			process->handles++;
+			OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 			break;
 		}
 

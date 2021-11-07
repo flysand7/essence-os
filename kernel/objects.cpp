@@ -103,7 +103,7 @@ KMutex objectHandleCountChange;
 
 // TODO Use uint64_t for handle counts, or restrict OpenHandleToObject to some maximum (...but most callers don't check if OpenHandleToObject succeeds).
 
-bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags, bool maybeHasNoHandles) {
+bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 	bool hadNoHandles = false, failed = false;
 
 	switch (type) {
@@ -116,20 +116,11 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags, boo
 		} break;
 
 		case KERNEL_OBJECT_PROCESS: {
-			KSpinlockAcquire(&scheduler.lock);
-			Process *process = (Process *) object;
-			if (!process->handles) hadNoHandles = true;
-			else process->handles++; // NOTE Scheduler::OpenProcess and MMBalanceThread also adjust process handles.
-			KernelLog(LOG_VERBOSE, "Scheduler", "open process handle", "Opened handle to process %d; %d handles.\n", process->id, process->handles);
-			KSpinlockRelease(&scheduler.lock);
+			hadNoHandles = 0 == __sync_fetch_and_add(&((Process *) object)->handles, 1);
 		} break;
 
 		case KERNEL_OBJECT_THREAD: {
-			KSpinlockAcquire(&scheduler.lock);
-			Thread *thread = (Thread *) object;
-			if (!thread->handles) hadNoHandles = true;
-			else thread->handles++;
-			KSpinlockRelease(&scheduler.lock);
+			hadNoHandles = 0 == __sync_fetch_and_add(&((Thread *) object)->handles, 1);
 		} break;
 
 		case KERNEL_OBJECT_SHMEM: {
@@ -208,11 +199,7 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags, boo
 	}
 
 	if (hadNoHandles) {
-		if (maybeHasNoHandles) {
-			return false;
-		} else {
-			KernelPanic("OpenHandleToObject - Object %x of type %x had no handles.\n", object, type);
-		}
+		KernelPanic("OpenHandleToObject - Object %x of type %x had no handles.\n", object, type);
 	}
 
 	return !failed;
@@ -225,15 +212,12 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 		} break;
 
 		case KERNEL_OBJECT_THREAD: {
-			KSpinlockAcquire(&scheduler.lock);
 			Thread *thread = (Thread *) object;
-			if (!thread->handles) KernelPanic("CloseHandleToObject - All handles to thread %x have been closed.\n", thread);
-			thread->handles--;
-			bool removeThread = thread->handles == 0;
-			// EsPrint("Thread %d has %d handles\n", thread->id, thread->handles);
-			KSpinlockRelease(&scheduler.lock);
+			uintptr_t previous = __sync_fetch_and_sub(&thread->handles, 1);
 
-			if (removeThread) {
+			if (previous == 0) {
+				KernelPanic("CloseHandleToObject - All handles to thread %x have been closed.\n", thread);
+			} else if (previous == 1) {
 				scheduler.RemoveThread(thread);
 			}
 		} break;
