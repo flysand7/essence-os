@@ -113,7 +113,9 @@ struct Process {
 	MMSpace *vmm;
 	HandleTable handleTable;
 	MessageQueue messageQueue;
+
 	LinkedList<Thread> threads;
+	KMutex threadsMutex;
 
 	// Creation information:
 	KNode *executableNode;
@@ -135,7 +137,7 @@ struct Process {
 
 	// Termination:
 	bool allThreadsTerminated;
-	bool terminating; // This never gets set if TerminateProcess is not called, and instead the process is killed because all its threads exit naturally.
+	bool preventNewThreads; // Set by TerminateProcess.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
 	KAsyncTask removeAsyncTask;
@@ -167,7 +169,7 @@ struct Scheduler {
 #define SPAWN_THREAD_PAUSED             (8)
 	Thread *SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
 			uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
-	void PauseThread(Thread *thread, bool resume /*true to resume, false to pause*/, bool lockAlreadyAcquired = false);
+	void PauseThread(Thread *thread, bool resume /* true to resume, false to pause */);
 
 	Process *SpawnProcess(ProcessType processType = PROCESS_NORMAL);
 	void PauseProcess(Process *process, bool resume);
@@ -188,13 +190,13 @@ struct Scheduler {
 	// 	- If the last handle to the thread has been closed, then RemoveThread is called.
 	// 4. RemoveThread
 	// 	- The thread structure is deallocated.
-	void TerminateThread(Thread *thread, bool lockAlreadyAcquired = false);
+	void TerminateThread(Thread *thread);
 
 	// How process termination works:
 	// 1. TerminateProcess (optional)
-	// 	- terminating is set to true (to prevent creation of new threads).
+	// 	- preventNewThreads is set to true.
 	// 	- TerminateThread is called on each thread, leading to an eventual call to KillProcess.
-	// 	- This is optional because KillProcess is called if all threads get terminated naturally; in this case, terminating is never set.
+	// 	- This is optional because KillProcess is called if all threads get terminated naturally; in this case, preventNewThreads is never set.
 	// 2. KillProcess
 	// 	- Destroys the handle table and memory space, and sets killedEvent.
 	// 	- Sends a message to Desktop informing it the process was killed.
@@ -373,35 +375,38 @@ void Scheduler::MaybeUpdateActiveList(Thread *thread) {
 }
 
 void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *owner) {
+	// Adding the thread to the owner's list of threads and adding the thread to a scheduling list
+	// need to be done in the same atomic block.
+	KMutexAssertLocked(&owner->threadsMutex);
+
+	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
+	thread->process = owner;
+
+	thread->item.thisItem = thread;
+	thread->allItem.thisItem = thread;
+	thread->processItem.thisItem = thread;
+
+	owner->threads.InsertEnd(&thread->processItem);
+
 	KMutexAcquire(&allThreadsMutex);
 	allThreads.InsertStart(&thread->allItem);
 	KMutexRelease(&allThreadsMutex);
-
-	KSpinlockAcquire(&lock);
-
-	// New threads are initialised here.
-	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
-	thread->process = owner;
 
 	// Each thread owns a handles to the owner process.
 	// This makes sure the process isn't destroyed before all its threads have been destroyed.
 	OpenHandleToObject(owner, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 
-	thread->item.thisItem = thread;
-	thread->allItem.thisItem = thread;
-	thread->processItem.thisItem = thread;
-	owner->threads.InsertEnd(&thread->processItem);
-
 	KernelLog(LOG_INFO, "Scheduler", "create thread", "Create thread ID %d, type %d, owner process %d\n", thread->id, thread->type, owner->id);
 
 	if (addToActiveList) {
 		// Add the thread to the start of the active thread list to make sure that it runs immediately.
+		KSpinlockAcquire(&lock);
 		AddActiveThread(thread, true);
+		KSpinlockRelease(&lock);
 	} else {
-		// Some threads (such as idle threads) do this themselves.
+		// Idle and asynchronous task threads don't need to be added to a scheduling list.
 	}
 
-	KSpinlockRelease(&lock);
 	// The thread may now be terminated at any moment.
 }
 
@@ -416,12 +421,11 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 		KernelPanic("Scheduler::SpawnThread - Cannot add userland thread to kernel process.\n");
 	}
 
-	KSpinlockAcquire(&scheduler.lock);
-	bool terminating = process->terminating;
-	KSpinlockRelease(&scheduler.lock);
+	KMutexAcquire(&process->threadsMutex);
+	EsDefer(KMutexRelease(&process->threadsMutex));
 
 	if (shutdown && userland) return nullptr;
-	if (terminating) return nullptr;
+	if (process->preventNewThreads) return nullptr;
 
 	Thread *thread = (Thread *) threadPool.Add(sizeof(Thread));
 	if (!thread) return nullptr;
@@ -429,6 +433,11 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	thread->isKernelThread = !userland;
 	thread->priority = (flags & SPAWN_THREAD_LOW_PRIORITY) ? THREAD_PRIORITY_LOW : THREAD_PRIORITY_NORMAL;
 	thread->cName = cName;
+
+	// If PauseProcess is called while a thread in that process is spawning a new thread, mark the thread as paused. 
+	// This is synchronized under the threadsMutex.
+	Thread *parentThread = GetCurrentThread();
+	thread->paused = parentThread && process == parentThread->process && parentThread->paused;
 
 	// 2 handles to the thread:
 	// 	One for spawning the thread, 
@@ -523,6 +532,8 @@ void CloseHandleToProcess(void *_process) {
 void KillProcess(Process *process) {
 	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
 
+	KSpinlockAcquire(&scheduler.lock);
+
 	process->allThreadsTerminated = true;
 	scheduler.activeProcessCount--;
 
@@ -573,16 +584,16 @@ void KillThread(KAsyncTask *task) {
 	scheduler.allThreads.Remove(&thread->allItem);
 	KMutexRelease(&scheduler.allThreadsMutex);
 
-	KSpinlockAcquire(&scheduler.lock);
+	KMutexAcquire(&thread->process->threadsMutex);
 	thread->process->threads.Remove(&thread->processItem);
+	bool lastThread = thread->process->threads.count == 0;
+	KMutexRelease(&thread->process->threadsMutex);
 
 	KernelLog(LOG_INFO, "Scheduler", "killing thread", 
 			"Killing thread (ID %d, %d remain in process %d) %x...\n", thread->id, thread->process->threads.count, thread->process->id, thread);
 
-	if (thread->process->threads.count == 0) {
-		KillProcess(thread->process); // Releases the scheduler's lock.
-	} else {
-		KSpinlockRelease(&scheduler.lock);
+	if (lastThread) {
+		KillProcess(thread->process);
 	}
 
 	MMFree(kernelMMSpace, (void *) thread->kernelStackBase);
@@ -596,12 +607,12 @@ void KillThread(KAsyncTask *task) {
 }
 
 void Scheduler::TerminateProcess(Process *process, int status) {
-	KSpinlockAcquire(&scheduler.lock);
+	KMutexAcquire(&process->threadsMutex);
 
 	KernelLog(LOG_INFO, "Scheduler", "terminate process", "Terminating process %d '%z' with status %i...\n", 
 			process->id, process->cExecutableName, status);
 	process->exitStatus = status;
-	process->terminating = true;
+	process->preventNewThreads = true;
 
 	Thread *currentThread = GetCurrentThread();
 	bool isCurrentProcess = process == currentThread->process;
@@ -614,7 +625,7 @@ void Scheduler::TerminateProcess(Process *process, int status) {
 		thread = thread->nextItem;
 
 		if (threadObject != currentThread) {
-			TerminateThread(threadObject, true);
+			TerminateThread(threadObject);
 		} else if (isCurrentProcess) {
 			foundCurrentThread = true;
 		} else {
@@ -622,18 +633,17 @@ void Scheduler::TerminateProcess(Process *process, int status) {
 		}
 	}
 
+	KMutexRelease(&process->threadsMutex);
+
 	if (!foundCurrentThread && isCurrentProcess) {
 		KernelPanic("Scheduler::TerminateProcess - Could not find current thread in the current process?!\n");
 	} else if (isCurrentProcess) {
 		// This doesn't return.
-		TerminateThread(currentThread, true);
+		TerminateThread(currentThread);
 	}
-
-	KSpinlockRelease(&scheduler.lock);
-	ProcessorFakeTimerInterrupt(); // Process the asynchronous tasks.
 }
 
-void Scheduler::TerminateThread(Thread *thread, bool terminatingProcess) {
+void Scheduler::TerminateThread(Thread *thread) {
 	// Overview:
 	//	Set terminating true, and paused false.
 	// 	Is this the current thread?
@@ -648,11 +658,7 @@ void Scheduler::TerminateThread(Thread *thread, bool terminatingProcess) {
 	//		Else, is the user waiting on a mutex/event?
 	//			If we aren't currently executing the thread, unblock the thread.
 		
-	if (!terminatingProcess) {
-		KSpinlockAcquire(&scheduler.lock);
-	} else {
-		KSpinlockAssertLocked(&scheduler.lock);
-	}
+	KSpinlockAcquire(&scheduler.lock);
 
 	bool yield = false;
 
@@ -718,10 +724,8 @@ void Scheduler::TerminateThread(Thread *thread, bool terminatingProcess) {
 
 	done:;
 
-	if (!terminatingProcess) {
-		KSpinlockRelease(&scheduler.lock);
-		if (yield) ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
-	}
+	KSpinlockRelease(&scheduler.lock);
+	if (yield) ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
 }
 
 void NewProcess() {
@@ -971,7 +975,9 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 		KernelPanic("Scheduler::CreateProcessorThreads - Maximum processor count (%d) exceeded.\n", local->processorID);
 	}
 	
+	KMutexAcquire(&kernelProcess->threadsMutex);
 	InsertNewThread(idleThread, false, kernelProcess);
+	KMutexRelease(&kernelProcess->threadsMutex);
 
 	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_MANUALLY_ACTIVATED);
 	local->asyncTaskThread->type = THREAD_ASYNC_TASK;
@@ -1101,8 +1107,8 @@ void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
 	scheduler.PauseProcess(GetCurrentThread()->process, false);
 }
 
-void Scheduler::PauseThread(Thread *thread, bool resume, bool lockAlreadyAcquired) {
-	if (!lockAlreadyAcquired) KSpinlockAcquire(&lock);
+void Scheduler::PauseThread(Thread *thread, bool resume) {
+	KSpinlockAcquire(&lock);
 
 	if (thread->paused == !resume) {
 		return;
@@ -1143,39 +1149,20 @@ void Scheduler::PauseThread(Thread *thread, bool resume, bool lockAlreadyAcquire
 		AddActiveThread(thread, false);
 	}
 
-	if (!lockAlreadyAcquired) KSpinlockRelease(&lock);
+	KSpinlockRelease(&lock);
 }
 
 void Scheduler::PauseProcess(Process *process, bool resume) {
-	Thread *currentThread = GetCurrentThread();
-	bool isCurrentProcess = process == currentThread->process;
-	bool foundCurrentThread = false;
+	KMutexAcquire(&process->threadsMutex);
+	LinkedItem<Thread> *thread = process->threads.firstItem;
 
-	{
-		KSpinlockAcquire(&scheduler.lock);
-		EsDefer(KSpinlockRelease(&scheduler.lock));
-
-		LinkedItem<Thread> *thread = process->threads.firstItem;
-
-		while (thread) {
-			Thread *threadObject = thread->thisItem;
-			thread = thread->nextItem;
-
-			if (threadObject != currentThread) {
-				PauseThread(threadObject, resume, true);
-			} else if (isCurrentProcess) {
-				foundCurrentThread = true;
-			} else {
-				KernelPanic("Scheduler::PauseProcess - Found current thread in the wrong process?!\n");
-			}
-		}
+	while (thread) {
+		Thread *threadObject = thread->thisItem;
+		thread = thread->nextItem;
+		PauseThread(threadObject, resume);
 	}
 
-	if (!foundCurrentThread && isCurrentProcess) {
-		KernelPanic("Scheduler::PauseProcess - Could not find current thread in the current process?!\n");
-	} else if (isCurrentProcess) {
-		PauseThread(currentThread, resume, false);
-	}
+	KMutexRelease(&process->threadsMutex);
 }
 
 Thread *Scheduler::PickThread(CPULocalStorage *local) {
@@ -1361,7 +1348,7 @@ void Scheduler::Shutdown() {
 		KSpinlockAcquire(&lock);
 		Process *process = allProcesses.firstItem->thisItem;
 
-		while (process && (process->terminating || process == kernelProcess)) {
+		while (process && (process->preventNewThreads || process == kernelProcess)) {
 			LinkedItem<Process> *item = process->allItem.nextItem;
 			process = item ? item->thisItem : nullptr;
 		}

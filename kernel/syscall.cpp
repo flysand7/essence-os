@@ -1209,7 +1209,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
 	state.id = process->id;
 	state.executableState = process->executableState;
 	state.flags = (process->allThreadsTerminated ? ES_PROCESS_STATE_ALL_THREADS_TERMINATED : 0)
-		| (process->terminating ? ES_PROCESS_STATE_TERMINATING : 0)
+		| (process->preventNewThreads ? ES_PROCESS_STATE_TERMINATING : 0)
 		| (process->crashed ? ES_PROCESS_STATE_CRASHED : 0)
 		| (process->messageQueue.pinged ? ES_PROCESS_STATE_PINGED : 0);
 
@@ -1275,7 +1275,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 
 			while (item && index < count) {
 				Process *process = item->thisItem;
-				if (process->terminating) goto next;
 
 				{
 					snapshot->processes[index].pid = process->id;
@@ -1292,7 +1291,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 					index++;
 				}
 
-				next:;
 				item = item->nextItem;
 			}
 
