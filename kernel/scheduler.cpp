@@ -238,8 +238,8 @@ struct Scheduler {
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
 
 	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
-	uintptr_t blockShutdownProcessCount;
-	size_t activeProcessCount;
+	volatile uintptr_t blockShutdownProcessCount;
+	volatile size_t activeProcessCount;
 
 	Pool threadPool, processPool, mmSpacePool;
 
@@ -532,10 +532,11 @@ void CloseHandleToProcess(void *_process) {
 void KillProcess(Process *process) {
 	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
 
+	__sync_fetch_and_sub(&scheduler.activeProcessCount, 1);
+
 	KSpinlockAcquire(&scheduler.lock);
 
 	process->allThreadsTerminated = true;
-	scheduler.activeProcessCount--;
 
 	bool setProcessKilledEvent = true;
 
@@ -838,6 +839,8 @@ bool Process::Start(char *imagePath, size_t imagePathLength) {
 }
 
 bool Process::StartWithNode(KNode *node) {
+	// Make sure nobody has tried to start the process.
+
 	KSpinlockAcquire(&scheduler.lock);
 
 	if (executableStartRequest) {
@@ -849,12 +852,16 @@ bool Process::StartWithNode(KNode *node) {
 
 	KSpinlockRelease(&scheduler.lock);
 
+	// Get the name of the process from the node.
+
 	KWriterLockTake(&node->writerLock, K_LOCK_SHARED);
 	size_t byteCount = node->directoryEntry->item.key.longKeyBytes;
 	if (byteCount > ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH) byteCount = ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH;
 	EsMemoryCopy(cExecutableName, node->directoryEntry->item.key.longKey, byteCount);
 	cExecutableName[byteCount] = 0;
 	KWriterLockReturn(&node->writerLock, K_LOCK_SHARED);
+
+	// Initialise the memory space.
 
 	bool success = MMSpaceInitialise(vmm);
 	if (!success) return false;
@@ -866,12 +873,16 @@ bool Process::StartWithNode(KNode *node) {
 	}
 
 	executableNode = node;
+	__sync_fetch_and_add(&scheduler.activeProcessCount, 1);
+	__sync_fetch_and_add(&scheduler.blockShutdownProcessCount, 1);
+
+	// Add the process to the list of all processes.
 
 	KSpinlockAcquire(&scheduler.lock);
 	scheduler.allProcesses.InsertEnd(&allItem);
-	scheduler.activeProcessCount++;
-	scheduler.blockShutdownProcessCount++;
 	KSpinlockRelease(&scheduler.lock);
+
+	// Spawn the kernel thread to load the executable.
 
 	Thread *newProcessThread = scheduler.SpawnThread("NewProcess", (uintptr_t) NewProcess, 0, ES_FLAGS_DEFAULT, this);
 
@@ -879,6 +890,8 @@ bool Process::StartWithNode(KNode *node) {
 		CloseHandleToObject(this, KERNEL_OBJECT_PROCESS);
 		return false;
 	}
+
+	// Wait for the executable to be loaded.
 
 	CloseHandleToObject(newProcessThread, KERNEL_OBJECT_THREAD);
 	KEventWait(&executableLoadAttemptComplete, ES_WAIT_NO_TIMEOUT);
@@ -1032,14 +1045,9 @@ void Scheduler::RemoveProcess(Process *process) {
 	if (started) {
 		// If all processes (except the kernel process) have terminated, set the scheduler's killedEvent.
 
-		KSpinlockAcquire(&scheduler.lock);
-		scheduler.blockShutdownProcessCount--;
-
-		if (!scheduler.blockShutdownProcessCount) {
-			KEventSet(&scheduler.killedEvent, true, false);
+		if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
+			KEventSet(&scheduler.killedEvent);
 		}
-
-		KSpinlockRelease(&scheduler.lock);
 	}
 }
 
