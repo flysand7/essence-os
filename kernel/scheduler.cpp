@@ -30,24 +30,19 @@ enum ThreadTerminatableState : int8_t {
 };
 
 struct Thread {
-	void SetAddressSpace(MMSpace *space); 		// Set a temporary address space for the thread.
-							// Used by the asynchronous task threads,
-							// and the memory manager's balancer.
-
 	// ** Must be the first item in the structure; see MMArchSafeCopy. **
 	bool inSafeCopy;
 
-	LinkedItem<Thread> item;			// Entry in relevent thread queue or blockedThreads list for mutexes/writer locks.
-	LinkedItem<Thread> allItem; 			// Entry in the allThreads list.
-	LinkedItem<Thread> processItem; 		// Entry in the process's list of threads.
-	LinkedItem<Thread> *blockedItems;		// Entries in the blockedThreads lists for events (not mutexes).
+	LinkedItem<Thread> item;        // Entry in relevent thread queue or blockedThreads list for mutexes/writer locks.
+	LinkedItem<Thread> allItem;     // Entry in the allThreads list.
+	LinkedItem<Thread> processItem; // Entry in the process's list of threads.
 
 	struct Process *process;
 
 	EsObjectID id;
 	volatile uintptr_t cpuTimeSlices;
 	volatile size_t handles;
-	int executingProcessorID;
+	uint32_t executingProcessorID;
 
 	uintptr_t userStackBase;
 	uintptr_t kernelStackBase;
@@ -65,7 +60,7 @@ struct Thread {
 	volatile ThreadTerminatableState terminatableState;
 	volatile bool executing;
 	volatile bool terminating; 	// Set when a request to terminate the thread has been registered.
-	volatile bool paused;	   	// Set to pause a thread, usually when it has crashed or being debugged. The scheduler will skip threads marked as paused when deciding what to run.
+	volatile bool paused;	   	// Set to pause a thread. Paused threads are not executed (unless the terminatableState prevents that).
 	volatile bool receivedYieldIPI; // Used to terminate a thread executing on a different processor.
 
 	union {
@@ -77,6 +72,7 @@ struct Thread {
 		};
 
 		struct {
+			LinkedItem<Thread> *eventItems; // Entries in the blockedThreads lists (one per event).
 			KEvent *volatile events[ES_MAX_WAIT_COUNT];
 			volatile size_t eventCount; 
 		};
@@ -213,6 +209,9 @@ struct Scheduler {
 
 	void WaitMutex(KMutex *mutex);
 	uintptr_t WaitEvents(KEvent **events, size_t count); // Returns index of notified object.
+
+	// Set a temporary address space for the current thread. Used by some asynchronous tasks, and the memory manager's balancer.
+	void SetTemporaryAddressSpace(MMSpace *space);
 
 	void Shutdown();
 
@@ -500,7 +499,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 
 void _RemoveProcess(KAsyncTask *task) {
 	Process *process = EsContainerOf(Process, removeAsyncTask, task);
-	GetCurrentThread()->SetAddressSpace(process->vmm);
+	scheduler.SetTemporaryAddressSpace(process->vmm);
 	scheduler.RemoveProcess(process);
 }
 
@@ -578,7 +577,7 @@ void KillProcess(Process *process) {
 
 void KillThread(KAsyncTask *task) {
 	Thread *thread = EsContainerOf(Thread, killAsyncTask, task);
-	GetCurrentThread()->SetAddressSpace(thread->process->vmm);
+	scheduler.SetTemporaryAddressSpace(thread->process->vmm);
 
 	KMutexAcquire(&scheduler.allThreadsMutex);
 	scheduler.allThreads.Remove(&thread->allItem);
@@ -923,18 +922,15 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 	return process; 
 }
 
-void Thread::SetAddressSpace(MMSpace *space) {
-	if (this != GetCurrentThread()) {
-		KernelPanic("Thread::SetAddressSpace - Cannot change another thread's address space.\n");
-	}
-
-	KSpinlockAcquire(&scheduler.lock);
-	MMSpace *oldSpace = temporaryAddressSpace ?: kernelMMSpace;
-	temporaryAddressSpace = space;
+void Scheduler::SetTemporaryAddressSpace(MMSpace *space) {
+	KSpinlockAcquire(&lock);
+	Thread *thread = GetCurrentThread();
+	MMSpace *oldSpace = thread->temporaryAddressSpace ?: kernelMMSpace;
+	thread->temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
 	MMSpaceOpenReference(newSpace);
 	ProcessorSetAddressSpace(&newSpace->data);
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&lock);
 	MMSpaceCloseReference(oldSpace);
 }
 
@@ -954,7 +950,7 @@ void AsyncTaskThread() {
 			item->Remove();
 			KSpinlockRelease(&asyncTaskSpinlock);
 			callback(task); // This may cause the task to be deallocated.
-			local->currentThread->SetAddressSpace(nullptr); // The task may have modified the address space.
+			scheduler.SetTemporaryAddressSpace(nullptr); // The task may have modified the address space.
 			local->inAsyncTask = false;
 		}
 	}
@@ -1250,7 +1246,7 @@ void Scheduler::Yield(InterruptContext *context) {
 
 			if (!unblocked) {
 				for (uintptr_t i = 0; i < local->currentThread->blocking.eventCount; i++) {
-					local->currentThread->blocking.events[i]->blockedThreads.InsertEnd(&local->currentThread->blockedItems[i]);
+					local->currentThread->blocking.events[i]->blockedThreads.InsertEnd(&local->currentThread->blocking.eventItems[i]);
 				}
 			}
 		}
@@ -1278,26 +1274,31 @@ void Scheduler::Yield(InterruptContext *context) {
 		}
 	}
 
-	// Notify any triggered timers.
-	
-	LinkedItem<KTimer> *_timer = activeTimers.firstItem;
+	if (!local->processorID) {
+		// Update the scheduler's time.
+		timeMs = ArchGetTimeMs();
+		globalData->schedulerTimeMs = timeMs;
 
-	while (_timer) {
-		KTimer *timer = _timer->thisItem;
-		LinkedItem<KTimer> *next = _timer->nextItem;
+		// Notify the necessary timers.
+		LinkedItem<KTimer> *_timer = activeTimers.firstItem;
 
-		if (timer->triggerTimeMs <= timeMs) {
-			activeTimers.Remove(_timer);
-			KEventSet(&timer->event, true /* scheduler already locked */);
+		while (_timer) {
+			KTimer *timer = _timer->thisItem;
+			LinkedItem<KTimer> *next = _timer->nextItem;
 
-			if (timer->callback) {
-				KRegisterAsyncTask(&timer->asyncTask, timer->callback);
+			if (timer->triggerTimeMs <= timeMs) {
+				activeTimers.Remove(_timer);
+				KEventSet(&timer->event, true /* scheduler already locked */);
+
+				if (timer->callback) {
+					KRegisterAsyncTask(&timer->asyncTask, timer->callback);
+				}
+			} else {
+				break; // Timers are kept sorted, so there's no point continuing.
 			}
-		} else {
-			break; // Timers are kept sorted, so there's no point continuing.
-		}
 
-		_timer = next;
+			_timer = next;
+		}
 	}
 
 	// Get the next thread to execute.
@@ -1321,12 +1322,6 @@ void Scheduler::Yield(InterruptContext *context) {
 
 	// Prepare the next timer interrupt.
 	ArchNextTimer(1 /* ms */);
-
-	if (!local->processorID) {
-		// Update the scheduler's time.
-		timeMs = ArchGetTimeMs();
-		globalData->schedulerTimeMs = timeMs;
-	}
 
 	InterruptContext *newContext = newThread->interruptContext;
 	MMSpace *addressSpace = newThread->temporaryAddressSpace ?: newThread->process->vmm;

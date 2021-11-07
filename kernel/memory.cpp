@@ -1688,7 +1688,7 @@ void MMBalanceThread() {
 		// For every memory region...
 
 		MMSpace *space = process->vmm;
-		GetCurrentThread()->SetAddressSpace(space);
+		scheduler.SetTemporaryAddressSpace(space);
 		KMutexAcquire(&space->reserveMutex);
 		LinkedItem<MMRegion> *item = pmm.nextRegionToBalance ? &pmm.nextRegionToBalance->itemNonGuard : space->usedRegionsNonGuard.firstItem;
 
@@ -1746,7 +1746,7 @@ void MMBalanceThread() {
 		}
 
 		KMutexRelease(&space->reserveMutex);
-		GetCurrentThread()->SetAddressSpace(nullptr);
+		scheduler.SetTemporaryAddressSpace(nullptr);
 		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
 	}
 }

@@ -666,13 +666,13 @@ uintptr_t Scheduler::WaitEvents(KEvent **events, size_t count) {
 	Thread *thread = GetCurrentThread();
 	thread->blocking.eventCount = count;
 
-	LinkedItem<Thread> blockedItems[count]; // Max size 16 * 32 = 512.
-	EsMemoryZero(blockedItems, count * sizeof(LinkedItem<Thread>));
-	thread->blockedItems = blockedItems;
-	EsDefer(thread->blockedItems = nullptr);
+	LinkedItem<Thread> eventItems[count]; // Max size 16 * 32 = 512.
+	EsMemoryZero(eventItems, count * sizeof(LinkedItem<Thread>));
+	thread->blocking.eventItems = eventItems;
+	EsDefer(thread->blocking.eventItems = nullptr);
 
 	for (uintptr_t i = 0; i < count; i++) {
-		thread->blockedItems[i].thisItem = thread;
+		eventItems[i].thisItem = thread;
 		thread->blocking.events[i] = events[i];
 	}
 
@@ -741,8 +741,8 @@ void Scheduler::UnblockThread(Thread *unblockedThread, Thread *previousMutexOwne
 		}
 	} else if (unblockedThread->state == THREAD_WAITING_EVENT) {
 		for (uintptr_t i = 0; i < unblockedThread->blocking.eventCount; i++) {
-			if (unblockedThread->blockedItems[i].list) {
-				unblockedThread->blockedItems[i].RemoveFromList();
+			if (unblockedThread->blocking.eventItems[i].list) {
+				unblockedThread->blocking.eventItems[i].RemoveFromList();
 			}
 		}
 	} else if (unblockedThread->state == THREAD_WAITING_WRITER_LOCK) {
