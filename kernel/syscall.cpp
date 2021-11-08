@@ -1249,54 +1249,37 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 
 	switch (type) {
 		case ES_SYSTEM_SNAPSHOT_PROCESSES: {
-			KSpinlockAcquire(&scheduler.lock);
-			size_t count = scheduler.allProcesses.count + 8;
-			bufferSize = sizeof(EsSnapshotProcesses) + sizeof(EsSnapshotProcessesItem) * count;
-			KSpinlockRelease(&scheduler.lock);
-			
+			KMutexAcquire(&scheduler.allProcessesMutex);
+
+			bufferSize = sizeof(EsSnapshotProcesses) + sizeof(EsSnapshotProcessesItem) * scheduler.allProcesses.count;
 			buffer = EsHeapAllocate(bufferSize, true, K_FIXED);
 
 			if (!buffer) {
+				KMutexRelease(&scheduler.allProcessesMutex);
 				SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 			}
 
-			EsMemoryZero(buffer, bufferSize);
-
-			KSpinlockAcquire(&scheduler.lock);
-
-			if (scheduler.allProcesses.count < count) {
-				count = scheduler.allProcesses.count;
-			}
-
 			EsSnapshotProcesses *snapshot = (EsSnapshotProcesses *) buffer;
-
 			LinkedItem<Process> *item = scheduler.allProcesses.firstItem;
 			uintptr_t index = 0;
 
-			while (item && index < count) {
+			while (item) {
 				Process *process = item->thisItem;
-
-				{
-					snapshot->processes[index].pid = process->id;
-					snapshot->processes[index].memoryUsage = process->vmm->commit * K_PAGE_SIZE; 
-					snapshot->processes[index].cpuTimeSlices = process->cpuTimeSlices;
-					snapshot->processes[index].idleTimeSlices = process->idleTimeSlices;
-					snapshot->processes[index].handleCount = process->handleTable.handleCount;
-					snapshot->processes[index].threadCount = process->threads.count;
-					snapshot->processes[index].isKernel = process->type == PROCESS_KERNEL;
-
-					snapshot->processes[index].nameBytes = EsCStringLength(process->cExecutableName);
-					EsMemoryCopy(snapshot->processes[index].name, process->cExecutableName, snapshot->processes[index].nameBytes);
-
-					index++;
-				}
-
-				item = item->nextItem;
+				snapshot->processes[index].pid = process->id;
+				snapshot->processes[index].memoryUsage = process->vmm->commit * K_PAGE_SIZE; 
+				snapshot->processes[index].cpuTimeSlices = process->cpuTimeSlices;
+				snapshot->processes[index].idleTimeSlices = process->idleTimeSlices;
+				snapshot->processes[index].handleCount = process->handleTable.handleCount;
+				snapshot->processes[index].threadCount = process->threads.count;
+				snapshot->processes[index].isKernel = process->type == PROCESS_KERNEL;
+				snapshot->processes[index].nameBytes = EsCStringLength(process->cExecutableName);
+				EsMemoryCopy(snapshot->processes[index].name, process->cExecutableName, snapshot->processes[index].nameBytes);
+				item = item->nextItem, index++;
 			}
 
-			snapshot->count = index;
-			bufferSize = sizeof(EsSnapshotProcesses) + sizeof(EsSnapshotProcessesItem) * index;
-			KSpinlockRelease(&scheduler.lock);
+			EsAssert(index == scheduler.allProcesses.count);
+			snapshot->count = scheduler.allProcesses.count;
+			KMutexRelease(&scheduler.allProcessesMutex);
 		} break;
 
 		default: {

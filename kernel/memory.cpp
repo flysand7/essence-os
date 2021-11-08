@@ -1664,7 +1664,7 @@ void MMBalanceThread() {
 
 		// Find a process to balance.
 		
-		KSpinlockAcquire(&scheduler.lock);
+		KMutexAcquire(&scheduler.allProcessesMutex);
 
 		Process *process = nullptr;
 
@@ -1683,7 +1683,7 @@ void MMBalanceThread() {
 			}
 		}
 
-		KSpinlockRelease(&scheduler.lock);
+		KMutexRelease(&scheduler.allProcessesMutex);
 
 		// For every memory region...
 

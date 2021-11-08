@@ -235,6 +235,7 @@ struct Scheduler {
 
 	KSpinlock lock; // The general lock. TODO Break this up!
 	KMutex allThreadsMutex; // For accessing the allThreads list.
+	KMutex allProcessesMutex; // For accessing the allProcesses list.
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
 
 	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
@@ -878,9 +879,9 @@ bool Process::StartWithNode(KNode *node) {
 
 	// Add the process to the list of all processes.
 
-	KSpinlockAcquire(&scheduler.lock);
+	KMutexAcquire(&scheduler.allProcessesMutex);
 	scheduler.allProcesses.InsertEnd(&allItem);
-	KSpinlockRelease(&scheduler.lock);
+	KMutexRelease(&scheduler.allProcessesMutex);
 
 	// Spawn the kernel thread to load the executable.
 
@@ -1001,7 +1002,7 @@ void Scheduler::RemoveProcess(Process *process) {
 	if (started) {
 		// Make sure that the process cannot be opened.
 
-		KSpinlockAcquire(&lock);
+		KMutexAcquire(&allProcessesMutex);
 
 		allProcesses.Remove(&process->allItem);
 
@@ -1014,7 +1015,7 @@ void Scheduler::RemoveProcess(Process *process) {
 			pmm.balanceResumePosition = 0;
 		}
 
-		KSpinlockRelease(&lock);
+		KMutexRelease(&allProcessesMutex);
 
 		// At this point, no pointers to the process (should) remain (I think).
 
@@ -1352,7 +1353,7 @@ void Scheduler::Shutdown() {
 	KernelLog(LOG_INFO, "Scheduler", "killing all processes", "Scheduler::Destroy - Killing all processes....\n");
 
 	while (true) {
-		KSpinlockAcquire(&lock);
+		KMutexAcquire(&allProcessesMutex);
 		Process *process = allProcesses.firstItem->thisItem;
 
 		while (process && (process->preventNewThreads || process == kernelProcess)) {
@@ -1360,7 +1361,7 @@ void Scheduler::Shutdown() {
 			process = item ? item->thisItem : nullptr;
 		}
 
-		KSpinlockRelease(&lock);
+		KMutexRelease(&allProcessesMutex);
 		if (!process) break;
 
 		TerminateProcess(process, -1);
@@ -1370,9 +1371,9 @@ void Scheduler::Shutdown() {
 }
 
 Process *Scheduler::OpenProcess(uint64_t id) {
-	KSpinlockAcquire(&scheduler.lock);
-
+	KMutexAcquire(&allProcessesMutex);
 	LinkedItem<Process> *item = scheduler.allProcesses.firstItem;
+	Process *result = nullptr;
 
 	while (item) {
 		Process *process = item->thisItem;
@@ -1381,15 +1382,15 @@ Process *Scheduler::OpenProcess(uint64_t id) {
 				&& process->handles /* if the process has no handles, it's about to be removed */
 				&& process->type != PROCESS_KERNEL /* the kernel process cannot be opened */) {
 			OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
+			result = item->thisItem;
 			break;
 		}
 
 		item = item->nextItem;
 	}
 
-	KSpinlockRelease(&scheduler.lock);
-
-	return item ? item->thisItem : nullptr;
+	KMutexRelease(&allProcessesMutex);
+	return result;
 }
 
 bool KThreadCreate(const char *cName, void (*startAddress)(uintptr_t), uintptr_t argument) {
