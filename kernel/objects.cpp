@@ -276,7 +276,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			if (!previous) KernelPanic("CloseHandleToObject - Window %x has no handles.\n", window);
 
 			if (previous == 2) {
-				KEventSet(&windowManager.windowsToCloseEvent, false, true /* maybe already set */);
+				KEventSet(&windowManager.windowsToCloseEvent, true /* maybe already set */);
 			} else if (previous == 1) {
 				window->Destroy();
 			}
@@ -288,7 +288,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			if (!previous) KernelPanic("CloseHandleToObject - EmbeddedWindow %x has no handles.\n", window);
 
 			if (previous == 2) {
-				KEventSet(&windowManager.windowsToCloseEvent, false, true /* maybe already set */);
+				KEventSet(&windowManager.windowsToCloseEvent, true /* maybe already set */);
 			} else if (previous == 1) {
 				window->Destroy();
 			}
@@ -321,7 +321,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 
 				if (!pipe->readers) {
 					// If there are no more readers, wake up any blocking writers.
-					KEventSet(&pipe->canWrite, false, true);
+					KEventSet(&pipe->canWrite, true);
 				}
 			} 
 			
@@ -330,7 +330,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 
 				if (!pipe->writers) {
 					// If there are no more writers, wake up any blocking readers.
-					KEventSet(&pipe->canRead, false, true);
+					KEventSet(&pipe->canRead, true);
 				}
 			} 
 
@@ -621,7 +621,7 @@ size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 			_buffer = (uint8_t *) _buffer + toWrite;
 			amount += toWrite;
 
-			KEventSet(&canRead, false, true);
+			KEventSet(&canRead, true);
 
 			if (!readers) {
 				// EsPrint("\tPipe closed\n");
@@ -654,7 +654,7 @@ size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 			_buffer = (uint8_t *) _buffer + toRead;
 			amount += toRead;
 
-			KEventSet(&canWrite, false, true);
+			KEventSet(&canWrite, true);
 
 			if (!writers) {
 				// Nobody is writing to the pipe, so there's no point reading from it.
@@ -724,7 +724,7 @@ bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
 		}
 	}
 
-	KEventSet(&notEmpty, false, true);
+	KEventSet(&notEmpty, true);
 
 	return true;
 }

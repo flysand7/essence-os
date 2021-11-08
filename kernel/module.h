@@ -273,7 +273,7 @@ struct KEvent { // Waiting and notifying. Can wait on multiple at once. Can be s
 	volatile size_t handles;
 };
 
-bool KEventSet(KEvent *event, bool schedulerAlreadyLocked = false, bool maybeAlreadySet = false);
+bool KEventSet(KEvent *event, bool maybeAlreadySet = false);
 void KEventReset(KEvent *event); 
 bool KEventPoll(KEvent *event); // TODO Remove this! Currently it is only used by KAudioFillBuffersFromMixer.
 bool KEventWait(KEvent *event, uint64_t timeoutMs = ES_WAIT_NO_TIMEOUT); // See KWaitEvents to wait for multiple events. Returns false if the wait timed out.

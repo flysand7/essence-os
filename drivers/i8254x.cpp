@@ -280,7 +280,7 @@ bool Controller::HandleIRQ() {
 	if (cause & (1 << 2)) {
 		KernelLog(LOG_INFO, "I8254x", "link status change", "Link is now %z.\n", 
 				(RD_REGISTER_STATUS() & (1 << 1)) ? "up" : "down");
-		KEventSet(&receiveEvent, false, true);
+		KEventSet(&receiveEvent, true);
 	}
 
 	if (cause & (1 << 6)) {
@@ -288,7 +288,7 @@ bool Controller::HandleIRQ() {
 	}
 
 	if (cause & ((1 << 6) | (1 << 7) | (1 << 4))) {
-		KEventSet(&receiveEvent, false, true);
+		KEventSet(&receiveEvent, true);
 	}
 
 	return true;

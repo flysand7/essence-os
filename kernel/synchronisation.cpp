@@ -306,17 +306,12 @@ void KSemaphoreSet(KSemaphore *semaphore, uintptr_t u) {
 	KMutexRelease(&semaphore->mutex);
 }
 
-bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet) {
+bool KEventSet(KEvent *event, bool maybeAlreadySet) {
 	if (event->state && !maybeAlreadySet) {
-		KernelLog(LOG_ERROR, "Synchronisation", "event already set", "KEvent::Set - Attempt to set a event that had already been set\n");
+		KernelLog(LOG_ERROR, "Synchronisation", "event already set", "KEventSet - Attempt to set a event that had already been set\n");
 	}
 
-	if (!schedulerAlreadyLocked) {
-		KSpinlockAcquire(&scheduler.dispatchSpinlock);
-	} else {
-		KSpinlockAssertLocked(&scheduler.dispatchSpinlock);
-	}
-	
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 	volatile bool unblockedThreads = false;
 
 	if (!event->state) {
@@ -327,14 +322,12 @@ bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet)
 				unblockedThreads = true;
 			}
 
-			scheduler.NotifyObject(&event->blockedThreads, !event->autoReset /* if this is a manually reset event, unblock all the waiting threads */);
+			// If this is a manually reset event, unblock all the waiting threads.
+			scheduler.NotifyObject(&event->blockedThreads, !event->autoReset);
 		}
 	}
 
-	if (!schedulerAlreadyLocked) {
-		KSpinlockRelease(&scheduler.dispatchSpinlock);
-	}
-
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 	return unblockedThreads;
 }
 

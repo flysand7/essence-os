@@ -767,7 +767,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_RESIZE) {
 					     
 SYSCALL_IMPLEMENT(ES_SYSCALL_EVENT_SET) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_EVENT, event, KEvent);
-	KEventSet(event, false, true);
+	KEventSet(event, true);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
@@ -1220,7 +1220,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_SHUTDOWN) {
 	SYSCALL_PERMISSION(ES_PERMISSION_SHUTDOWN);
 	shutdownAction = argument0;
-	KEventSet(&shutdownEvent, false, true);
+	KEventSet(&shutdownEvent, true);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

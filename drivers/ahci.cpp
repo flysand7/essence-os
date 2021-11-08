@@ -364,7 +364,7 @@ bool AHCIController::HandleIRQ() {
 			}
 
 			port->runningCommands = 0;
-			KEventSet(&port->commandSlotsAvailable, false, true /* maybe already set */);
+			KEventSet(&port->commandSlotsAvailable, true /* maybe already set */);
 
 			// Restart command processing.
 
@@ -392,7 +392,7 @@ bool AHCIController::HandleIRQ() {
 
 			port->commandContexts[j]->End(true /* success */);
 			port->commandContexts[j] = nullptr;
-			KEventSet(&port->commandSlotsAvailable, false, true /* maybe already set */);
+			KEventSet(&port->commandSlotsAvailable, true /* maybe already set */);
 			port->runningCommands &= ~(1 << j);
 
 			commandCompleted = true;

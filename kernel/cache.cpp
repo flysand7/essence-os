@@ -247,7 +247,7 @@ void CCWriteSectionPrepare(CCActiveSection *section) {
 	section->accessors = 1;
 	if (!activeSectionManager.modifiedList.count) KEventReset(&activeSectionManager.modifiedNonEmpty);
 	if (activeSectionManager.modifiedList.count < CC_MODIFIED_GETTING_FULL) KEventReset(&activeSectionManager.modifiedGettingFull);
-	KEventSet(&activeSectionManager.modifiedNonFull, false, true);
+	KEventSet(&activeSectionManager.modifiedNonFull, true);
 }
 
 void CCWriteSection(CCActiveSection *section) {
@@ -286,7 +286,7 @@ void CCWriteSection(CCActiveSection *section) {
 	EsMemoryZero(section->modifiedPages, sizeof(section->modifiedPages));
 	__sync_synchronize();
 	KEventSet(&section->writeCompleteEvent);
-	KEventSet(&section->cache->writeComplete, false, true);
+	KEventSet(&section->cache->writeComplete, true);
 
 	if (!section->accessors) {
 		if (section->loading) KernelPanic("CCSpaceAccess - Active section %x with no accessors is loading.", section);
@@ -378,10 +378,10 @@ void CCActiveSectionReturnToLists(CCActiveSection *section, bool writeBack) {
 				}
 
 				if (activeSectionManager.modifiedList.count >= CC_MODIFIED_GETTING_FULL) {
-					KEventSet(&activeSectionManager.modifiedGettingFull, false, true);
+					KEventSet(&activeSectionManager.modifiedGettingFull, true);
 				}
 
-				KEventSet(&activeSectionManager.modifiedNonEmpty, false, true);
+				KEventSet(&activeSectionManager.modifiedNonEmpty, true);
 
 				activeSectionManager.modifiedList.InsertEnd(&section->listItem);
 			} else {

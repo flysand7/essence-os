@@ -312,11 +312,11 @@ GlobalData *globalData; // Shared with all processes.
 
 void MMUpdateAvailablePageCount(bool increase) {
 	if (MM_AVAILABLE_PAGES() >= MM_CRITICAL_AVAILABLE_PAGES_THRESHOLD) {
-		KEventSet(&pmm.availableNotCritical, false, true);
+		KEventSet(&pmm.availableNotCritical, true);
 		KEventReset(&pmm.availableCritical);
 	} else {
 		KEventReset(&pmm.availableNotCritical);
-		KEventSet(&pmm.availableCritical, false, true);
+		KEventSet(&pmm.availableCritical, true);
 
 		if (!increase) {
 			KernelLog(LOG_ERROR, "Memory", "critical page limit hit", 
@@ -327,7 +327,7 @@ void MMUpdateAvailablePageCount(bool increase) {
 	if (MM_AVAILABLE_PAGES() >= MM_LOW_AVAILABLE_PAGES_THRESHOLD) {
 		KEventReset(&pmm.availableLow);
 	} else {
-		KEventSet(&pmm.availableLow, false, true);
+		KEventSet(&pmm.availableLow, true);
 	}
 }
 
@@ -372,7 +372,7 @@ void MMPhysicalInsertFreePagesNext(uintptr_t page) {
 
 void MMPhysicalInsertFreePagesEnd() {
 	if (pmm.countFreePages > MM_ZERO_PAGE_THRESHOLD) {
-		KEventSet(&pmm.zeroPageEvent, false, true);
+		KEventSet(&pmm.zeroPageEvent, true);
 	}
 
 	MMUpdateAvailablePageCount(true);
@@ -1183,7 +1183,7 @@ bool MMCommit(uint64_t bytes, bool fixed) {
 		}
 
 		if (MM_OBJECT_CACHE_SHOULD_TRIM()) {
-			KEventSet(&pmm.trimObjectCaches, false, true);
+			KEventSet(&pmm.trimObjectCaches, true);
 		}
 	} else {
 		// We haven't started tracking commit counts yet.
@@ -2094,7 +2094,7 @@ void MMObjectCacheInsert(MMObjectCache *cache, MMObjectCacheItem *item) {
 	__sync_fetch_and_add(&pmm.approximateTotalObjectCacheBytes, cache->averageObjectBytes);
 
 	if (MM_OBJECT_CACHE_SHOULD_TRIM()) {
-		KEventSet(&pmm.trimObjectCaches, false, true);
+		KEventSet(&pmm.trimObjectCaches, true);
 	}
 
 	KSpinlockRelease(&cache->lock);

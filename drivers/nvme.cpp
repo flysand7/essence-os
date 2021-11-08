@@ -433,7 +433,7 @@ bool NVMeController::HandleIRQ() {
 
 		__sync_synchronize();
 		ioSubmissionQueueHead = *(uint16_t *) (ioCompletionQueue + ioCompletionQueueHead * COMPLETION_QUEUE_ENTRY_BYTES + 8);
-		KEventSet(&ioSubmissionQueueNonFull, false, true);
+		KEventSet(&ioSubmissionQueueNonFull, true);
 
 		// Advance the queue head.
 

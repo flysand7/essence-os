@@ -520,14 +520,10 @@ namespace POSIX {
 				}
 
 				KSpinlockAcquire(&scheduler.dispatchSpinlock);
-
 				process->posixForking = false;
-
-				if (process->allThreadsTerminated) {
-					KEventSet(&process->killedEvent, true);
-				}
-
+				bool setKilledEvent = process->allThreadsTerminated;
 				KSpinlockRelease(&scheduler.dispatchSpinlock);
+				if (setKilledEvent) KEventSet(&process->killedEvent, true);
 
 				EsHeapFree(path, 0, K_FIXED);
 				CloseHandleToObject(process->executableMainThread, KERNEL_OBJECT_THREAD);

@@ -1,3 +1,7 @@
+// TODO Review vforking interaction from the POSIX subsystem with the process termination algorithm.
+// TODO Simplify or remove asynchronous task thread semantics.
+// TODO Break up or remove dispatchSpinlock.
+
 #ifndef IMPLEMENTATION
 
 #define THREAD_PRIORITY_NORMAL 	(0) // Lower value = higher priority.
@@ -523,9 +527,7 @@ void KillProcess(Process *process) {
 	KMutexRelease(&scheduler.allProcessesMutex);
 
 	KSpinlockAcquire(&scheduler.dispatchSpinlock);
-
 	process->allThreadsTerminated = true;
-
 	bool setProcessKilledEvent = true;
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
@@ -537,12 +539,12 @@ void KillProcess(Process *process) {
 	}
 #endif
 
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
+
 	if (setProcessKilledEvent) {
 		// We can now also set the killed event on the process.
 		KEventSet(&process->killedEvent, true);
 	}
-
-	KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 	// There are no threads left in this process.
 	// We should destroy the handle table at this point.
@@ -1152,6 +1154,36 @@ void Scheduler::Yield(InterruptContext *context) {
 		return;
 	}
 
+	if (!local->processorID) {
+		// Update the scheduler's time.
+		timeMs = ArchGetTimeMs();
+		globalData->schedulerTimeMs = timeMs;
+
+		// Notify the necessary timers.
+		KSpinlockAcquire(&activeTimersSpinlock);
+		LinkedItem<KTimer> *_timer = activeTimers.firstItem;
+
+		while (_timer) {
+			KTimer *timer = _timer->thisItem;
+			LinkedItem<KTimer> *next = _timer->nextItem;
+
+			if (timer->triggerTimeMs <= timeMs) {
+				activeTimers.Remove(_timer);
+				KEventSet(&timer->event);
+
+				if (timer->callback) {
+					KRegisterAsyncTask(&timer->asyncTask, timer->callback);
+				}
+			} else {
+				break; // Timers are kept sorted, so there's no point continuing.
+			}
+
+			_timer = next;
+		}
+
+		KSpinlockRelease(&activeTimersSpinlock);
+	}
+
 	if (local->spinlockCount) {
 		KernelPanic("Scheduler::Yield - Spinlocks acquired while attempting to yield.\n");
 	}
@@ -1236,36 +1268,6 @@ void Scheduler::Yield(InterruptContext *context) {
 		} else {
 			KernelPanic("Scheduler::Yield - Unrecognised thread type\n");
 		}
-	}
-
-	if (!local->processorID) {
-		// Update the scheduler's time.
-		timeMs = ArchGetTimeMs();
-		globalData->schedulerTimeMs = timeMs;
-
-		// Notify the necessary timers.
-		KSpinlockAcquire(&activeTimersSpinlock);
-		LinkedItem<KTimer> *_timer = activeTimers.firstItem;
-
-		while (_timer) {
-			KTimer *timer = _timer->thisItem;
-			LinkedItem<KTimer> *next = _timer->nextItem;
-
-			if (timer->triggerTimeMs <= timeMs) {
-				activeTimers.Remove(_timer);
-				KEventSet(&timer->event, true /* scheduler already locked */);
-
-				if (timer->callback) {
-					KRegisterAsyncTask(&timer->asyncTask, timer->callback);
-				}
-			} else {
-				break; // Timers are kept sorted, so there's no point continuing.
-			}
-
-			_timer = next;
-		}
-
-		KSpinlockRelease(&activeTimersSpinlock);
 	}
 
 	// Get the next thread to execute.

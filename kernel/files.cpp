@@ -1023,7 +1023,7 @@ void FSUnmountFileSystem(uintptr_t argument) {
 	KernelLog(LOG_INFO, "FS", "unmount complete", "Unmounted file system %x.\n", fileSystem);
 	KDeviceCloseHandle(fileSystem);
 	__sync_fetch_and_sub(&fs.fileSystemsUnmounting, 1);
-	KEventSet(&fs.fileSystemUnmounted, false, true);
+	KEventSet(&fs.fileSystemUnmounted, true);
 }
 
 //////////////////////////////////////////

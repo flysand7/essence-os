@@ -685,7 +685,7 @@ bool XHCIController::HandleIRQ() {
 				KernelLog(LOG_INFO, "xHCI", "port enabled", "Port %d has been enabled.\n", port);
 				ports[port].statusChangeEvent = true;
 				ports[port].enabled = true;
-				KEventSet(&portStatusChangeEvent, false, true);
+				KEventSet(&portStatusChangeEvent, true);
 			} else if (ports[port].usb2 && (linkState == 7 || linkState == 4) && (~status & (1 << 4))) {
 				KernelLog(LOG_INFO, "xHCI", "port reset", "Attempting to reset USB 2 port %d... (1)\n", port);
 				WR_REGISTER_PORTSC(port, (status & (1 << 9)) | (1 << 4));
@@ -693,7 +693,7 @@ bool XHCIController::HandleIRQ() {
 				KernelLog(LOG_INFO, "xHCI", "port detach", "Device detached from port %d.\n", port);
 				ports[port].statusChangeEvent = true;
 				ports[port].enabled = false;
-				KEventSet(&portStatusChangeEvent, false, true);
+				KEventSet(&portStatusChangeEvent, true);
 			}
 
 			KSpinlockRelease(&portResetSpinlock);
