@@ -229,7 +229,7 @@ struct Scheduler {
 
 	// Variables:
 
-	KSpinlock lock; // The general lock. TODO Break this up!
+	KSpinlock dispatchSpinlock; // For accessing synchronisation objects, thread states, scheduling lists, etc. TODO Break this up!
 	KMutex allThreadsMutex; // For accessing the allThreads list.
 	KMutex allProcessesMutex; // For accessing the allProcesses list.
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
@@ -283,7 +283,7 @@ void KRegisterAsyncTask(KAsyncTask *task, KAsyncTaskCallback callback) {
 }
 
 int8_t Scheduler::GetThreadEffectivePriority(Thread *thread) {
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	for (int8_t i = 0; i < thread->priority; i++) {
 		if (thread->blockedThreadPriorities[i]) {
@@ -305,7 +305,7 @@ void Scheduler::AddActiveThread(Thread *thread, bool start) {
 		return;
 	}
 	
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	if (thread->state != THREAD_ACTIVE) {
 		KernelPanic("Scheduler::AddActiveThread - Thread %d not active\n", thread->id);
@@ -343,7 +343,7 @@ void Scheduler::MaybeUpdateActiveList(Thread *thread) {
 		KernelPanic("Scheduler::MaybeUpdateActiveList - Trying to update the active list of a non-normal thread %x.\n", thread);
 	}
 
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	if (thread->state != THREAD_ACTIVE || thread->executing) {
 		// The thread is not currently in an active list, 
@@ -397,9 +397,9 @@ void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *o
 
 	if (addToActiveList) {
 		// Add the thread to the start of the active thread list to make sure that it runs immediately.
-		KSpinlockAcquire(&lock);
+		KSpinlockAcquire(&dispatchSpinlock);
 		AddActiveThread(thread, true);
-		KSpinlockRelease(&lock);
+		KSpinlockRelease(&dispatchSpinlock);
 	} else {
 		// Idle and asynchronous task threads don't need to be added to a scheduling list.
 	}
@@ -522,7 +522,7 @@ void KillProcess(Process *process) {
 
 	KMutexRelease(&scheduler.allProcessesMutex);
 
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 	process->allThreadsTerminated = true;
 
@@ -542,7 +542,7 @@ void KillProcess(Process *process) {
 		KEventSet(&process->killedEvent, true);
 	}
 
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 	// There are no threads left in this process.
 	// We should destroy the handle table at this point.
@@ -647,7 +647,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 	//		Else, is the user waiting on a mutex/event?
 	//			If we aren't currently executing the thread, unblock the thread.
 		
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 	bool yield = false;
 
@@ -666,7 +666,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 
 		// Mark the thread as terminatable.
 		thread->terminatableState = THREAD_TERMINATABLE;
-		KSpinlockRelease(&scheduler.lock);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 		// We cannot return to the previous function as it expects to be killed.
 		ProcessorFakeTimerInterrupt();
@@ -713,7 +713,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 
 	done:;
 
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 	if (yield) ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
 }
 
@@ -829,16 +829,16 @@ bool Process::Start(char *imagePath, size_t imagePathLength) {
 bool Process::StartWithNode(KNode *node) {
 	// Make sure nobody has tried to start the process.
 
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 	if (executableStartRequest) {
-		KSpinlockRelease(&scheduler.lock);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 		return false;
 	}
 
 	executableStartRequest = true;
 
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 	// Get the name of the process from the node.
 
@@ -924,14 +924,14 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 }
 
 void Scheduler::SetTemporaryAddressSpace(MMSpace *space) {
-	KSpinlockAcquire(&lock);
+	KSpinlockAcquire(&dispatchSpinlock);
 	Thread *thread = GetCurrentThread();
 	MMSpace *oldSpace = thread->temporaryAddressSpace ?: kernelMMSpace;
 	thread->temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
 	MMSpaceOpenReference(newSpace);
 	ProcessorSetAddressSpace(&newSpace->data);
-	KSpinlockRelease(&lock);
+	KSpinlockRelease(&dispatchSpinlock);
 	MMSpaceCloseReference(oldSpace);
 }
 
@@ -1068,7 +1068,7 @@ void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
 }
 
 void Scheduler::PauseThread(Thread *thread, bool resume) {
-	KSpinlockAcquire(&lock);
+	KSpinlockAcquire(&dispatchSpinlock);
 
 	if (thread->paused == !resume) {
 		return;
@@ -1080,7 +1080,7 @@ void Scheduler::PauseThread(Thread *thread, bool resume) {
 		if (thread->state == THREAD_ACTIVE) {
 			if (thread->executing) {
 				if (thread == GetCurrentThread()) {
-					KSpinlockRelease(&lock);
+					KSpinlockRelease(&dispatchSpinlock);
 
 					// Yield.
 					ProcessorFakeTimerInterrupt();
@@ -1109,7 +1109,7 @@ void Scheduler::PauseThread(Thread *thread, bool resume) {
 		AddActiveThread(thread, false);
 	}
 
-	KSpinlockRelease(&lock);
+	KSpinlockRelease(&dispatchSpinlock);
 }
 
 void Scheduler::PauseProcess(Process *process, bool resume) {
@@ -1126,7 +1126,7 @@ void Scheduler::PauseProcess(Process *process, bool resume) {
 }
 
 Thread *Scheduler::PickThread(CPULocalStorage *local) {
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	if ((local->asyncTaskList.first || local->inAsyncTask) && local->asyncTaskThread->state == THREAD_ACTIVE) {
 		// If the asynchronous task thread for this processor isn't blocked, and has tasks to process, execute it.
@@ -1157,9 +1157,9 @@ void Scheduler::Yield(InterruptContext *context) {
 	}
 
 	ProcessorDisableInterrupts(); // We don't want interrupts to get reenabled after the context switch.
-	KSpinlockAcquire(&lock);
+	KSpinlockAcquire(&dispatchSpinlock);
 
-	if (lock.interruptsEnabled) {
+	if (dispatchSpinlock.interruptsEnabled) {
 		KernelPanic("Scheduler::Yield - Interrupts were enabled when scheduler lock was acquired.\n");
 	}
 

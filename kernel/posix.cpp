@@ -519,7 +519,7 @@ namespace POSIX {
 					return -ENOMEM;
 				}
 
-				KSpinlockAcquire(&scheduler.lock);
+				KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 				process->posixForking = false;
 
@@ -527,7 +527,7 @@ namespace POSIX {
 					KEventSet(&process->killedEvent, true);
 				}
 
-				KSpinlockRelease(&scheduler.lock);
+				KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 				EsHeapFree(path, 0, K_FIXED);
 				CloseHandleToObject(process->executableMainThread, KERNEL_OBJECT_THREAD);

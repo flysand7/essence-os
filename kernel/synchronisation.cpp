@@ -127,10 +127,10 @@ bool KMutexAcquire(KMutex *mutex) {
 	}
 
 	while (true) {
-		KSpinlockAcquire(&scheduler.lock);
+		KSpinlockAcquire(&scheduler.dispatchSpinlock);
 		Thread *old = mutex->owner;
 		if (!old) mutex->owner = currentThread;
-		KSpinlockRelease(&scheduler.lock);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 		if (!old) break;
 
 		__sync_synchronize();
@@ -193,7 +193,7 @@ void KMutexRelease(KMutex *mutex) {
 
 	KMutexAssertLocked(mutex);
 	Thread *currentThread = GetCurrentThread();
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 #ifdef DEBUG_BUILD
 	// EsPrint("$%x:%x:0\n", owner, id);
@@ -211,7 +211,7 @@ void KMutexRelease(KMutex *mutex) {
 		scheduler.NotifyObject(&mutex->blockedThreads, true, currentThread); 
 	}
 
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 	__sync_synchronize();
 
 #ifdef DEBUG_BUILD
@@ -312,9 +312,9 @@ bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet)
 	}
 
 	if (!schedulerAlreadyLocked) {
-		KSpinlockAcquire(&scheduler.lock);
+		KSpinlockAcquire(&scheduler.dispatchSpinlock);
 	} else {
-		KSpinlockAssertLocked(&scheduler.lock);
+		KSpinlockAssertLocked(&scheduler.dispatchSpinlock);
 	}
 	
 	volatile bool unblockedThreads = false;
@@ -332,7 +332,7 @@ bool KEventSet(KEvent *event, bool schedulerAlreadyLocked, bool maybeAlreadySet)
 	}
 
 	if (!schedulerAlreadyLocked) {
-		KSpinlockRelease(&scheduler.lock);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 	}
 
 	return unblockedThreads;
@@ -396,7 +396,7 @@ void KWriterLockAssertExclusive(KWriterLock *lock) {
 }
 
 void KWriterLockReturn(KWriterLock *lock, bool write) {
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 	if (lock->state == -1) {
 		if (!write) {
@@ -418,7 +418,7 @@ void KWriterLockReturn(KWriterLock *lock, bool write) {
 		scheduler.NotifyObject(&lock->blockedThreads, true);
 	}
 
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 }
 
 bool KWriterLockTake(KWriterLock *lock, bool write, bool poll) {
@@ -436,7 +436,7 @@ bool KWriterLockTake(KWriterLock *lock, bool write, bool poll) {
 	}
 
 	while (true) {
-		KSpinlockAcquire(&scheduler.lock);
+		KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
 		if (write) {
 			if (lock->state == 0) {
@@ -453,7 +453,7 @@ bool KWriterLockTake(KWriterLock *lock, bool write, bool poll) {
 			}
 		}
 
-		KSpinlockRelease(&scheduler.lock);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 
 		if (poll || done) {
 			break;
@@ -491,11 +491,11 @@ void KWriterLockTakeMultiple(KWriterLock **locks, size_t lockCount, bool write) 
 }
 
 void KWriterLockConvertExclusiveToShared(KWriterLock *lock) {
-	KSpinlockAcquire(&scheduler.lock);
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 	KWriterLockAssertExclusive(lock);
 	lock->state = 1;
 	scheduler.NotifyObject(&lock->blockedThreads, true);
-	KSpinlockRelease(&scheduler.lock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 }
 
 #if 0
@@ -638,11 +638,11 @@ void Scheduler::WaitMutex(KMutex *mutex) {
 	__sync_synchronize();
 	thread->state = THREAD_WAITING_MUTEX;
 
-	KSpinlockAcquire(&lock);
+	KSpinlockAcquire(&dispatchSpinlock);
 	// Is the owner of this mutex executing?
 	// If not, there's no point in spinning on it.
 	bool spin = mutex && mutex->owner && mutex->owner->executing;
-	KSpinlockRelease(&lock);
+	KSpinlockRelease(&dispatchSpinlock);
 
 	if (!spin && thread->blocking.mutex->owner) {
 		ProcessorFakeTimerInterrupt();
@@ -711,7 +711,7 @@ uintptr_t KWaitEvents(KEvent **events, size_t count) {
 }
 
 void Scheduler::UnblockThread(Thread *unblockedThread, Thread *previousMutexOwner) {
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	if (unblockedThread->state == THREAD_WAITING_MUTEX) {
 		if (unblockedThread->item.list) {
@@ -778,7 +778,7 @@ void Scheduler::UnblockThread(Thread *unblockedThread, Thread *previousMutexOwne
 }
 
 void Scheduler::NotifyObject(LinkedList<Thread> *blockedThreads, bool unblockAll, Thread *previousMutexOwner) {
-	KSpinlockAssertLocked(&lock);
+	KSpinlockAssertLocked(&dispatchSpinlock);
 
 	LinkedItem<Thread> *unblockedItem = blockedThreads->firstItem;
 

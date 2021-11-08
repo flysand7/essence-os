@@ -780,14 +780,14 @@ uint64_t ArchGetTimeMs() {
 }
 
 extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddressSpace) {
-	if (scheduler.lock.interruptsEnabled) {
+	if (scheduler.dispatchSpinlock.interruptsEnabled) {
 		KernelPanic("PostContextSwitch - Interrupts were enabled. (3)\n");
 	}
 
 	// We can only free the scheduler's spinlock when we are no longer using the stack
 	// from the previous thread. See DoContextSwitch.
 	// (Another CPU can KillThread this once it's back in activeThreads.)
-	KSpinlockRelease(&scheduler.lock, true);
+	KSpinlockRelease(&scheduler.dispatchSpinlock, true);
 
 	Thread *currentThread = GetCurrentThread();
 

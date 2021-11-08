@@ -208,7 +208,15 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 	switch (type) {
 		case KERNEL_OBJECT_PROCESS: {
-			CloseHandleToProcess(object);
+			Process *process = (Process *) object;
+			uintptr_t previous = __sync_fetch_and_sub(&process->handles, 1);
+			KernelLog(LOG_VERBOSE, "Scheduler", "close process handle", "Closed handle to process %d; %d handles remain.\n", process->id, process->handles);
+
+			if (previous == 0) {
+				KernelPanic("CloseHandleToProcess - All handles to process %x have been closed.\n", process);
+			} else if (previous == 1) {
+				scheduler.RemoveProcess(process);
+			}
 		} break;
 
 		case KERNEL_OBJECT_THREAD: {
