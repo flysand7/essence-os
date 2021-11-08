@@ -1665,24 +1665,9 @@ void MMBalanceThread() {
 		// Find a process to balance.
 		
 		KMutexAcquire(&scheduler.allProcessesMutex);
-
-		Process *process = nullptr;
-
-		while (true) {
-			if (pmm.nextProcessToBalance) {
-				process = pmm.nextProcessToBalance;
-			} else {
-				process = scheduler.allProcesses.firstItem->thisItem;
-			}
-
-			pmm.nextProcessToBalance = process->allItem.nextItem ? process->allItem.nextItem->thisItem : nullptr;
-
-			if (process->handles) {
-				OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
-				break;
-			}
-		}
-
+		Process *process = pmm.nextProcessToBalance ?: scheduler.allProcesses.firstItem->thisItem;
+		pmm.nextProcessToBalance = process->allItem.nextItem ? process->allItem.nextItem->thisItem : nullptr;
+		OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 		KMutexRelease(&scheduler.allProcessesMutex);
 
 		// For every memory region...

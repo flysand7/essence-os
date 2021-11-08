@@ -4,8 +4,6 @@
 #define THREAD_PRIORITY_LOW 	(1)
 #define THREAD_PRIORITY_COUNT	(2)
 
-void CloseHandleToProcess(void *_thread);
-
 enum ThreadState : int8_t {
 	THREAD_ACTIVE,			// An active thread. Not necessarily executing; `executing` determines if it executing.
 	THREAD_WAITING_MUTEX,		// Waiting for a mutex to be released.
@@ -136,7 +134,6 @@ struct Process {
 	bool preventNewThreads; // Set by TerminateProcess.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
-	KAsyncTask removeAsyncTask;
 
 	// Executable state:
 	uint8_t executableState;
@@ -194,14 +191,13 @@ struct Scheduler {
 	// 	- TerminateThread is called on each thread, leading to an eventual call to KillProcess.
 	// 	- This is optional because KillProcess is called if all threads get terminated naturally; in this case, preventNewThreads is never set.
 	// 2. KillProcess
-	// 	- Destroys the handle table and memory space, and sets killedEvent.
+	// 	- Removes the process from the lists, destroys the handle table and memory space, and sets killedEvent.
 	// 	- Sends a message to Desktop informing it the process was killed.
 	// 	- Since KillProcess is only called from KillThread, there is an associated closing of a process handle from the killed thread.
-	// 3. CloseHandleToObject KERNEL_OBJECT_PROCESS (CloseHandleToProcess)
-	// 	- If the last handle to the process has been closed, then RemoveProcess is called on an async task.
+	// 3. CloseHandleToObject KERNEL_OBJECT_PROCESS
+	// 	- If the last handle to the process has been closed, then RemoveProcess is called.
 	// 4. RemoveProcess
-	// 	- Removes the process from the lists, destroys its message queue, and closes its handle to its executable node.
-	// 	  (These tasks are done here because processes that are created but never started will not reach KillProcess.)
+	// 	- Destroys the message queue, and closes the handle to the executable node.
 	// 	- The process and memory space structures are deallocated.
 	void TerminateProcess(Process *process, int status);
 
@@ -499,41 +495,32 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	return nullptr;
 }
 
-void _RemoveProcess(KAsyncTask *task) {
-	Process *process = EsContainerOf(Process, removeAsyncTask, task);
-	scheduler.SetTemporaryAddressSpace(process->vmm);
-	scheduler.RemoveProcess(process);
-}
-
-void CloseHandleToProcess(void *_process) {
-	KSpinlockAcquire(&scheduler.lock);
-
-	Process *process = (Process *) _process;
-	uintptr_t previous = __sync_fetch_and_sub(&process->handles, 1);
-	if (!previous) KernelPanic("CloseHandleToProcess - All handles to process %x have been closed.\n", process);
-	bool removeProcess = previous == 1;
-
-	KernelLog(LOG_VERBOSE, "Scheduler", "close process handle", "Closed handle to process %d; %d handles remain.\n", process->id, process->handles);
-
-	if (removeProcess && process->executableStartRequest) {
-		// This must be done in the correct virtual address space!
-		KRegisterAsyncTask(&process->removeAsyncTask, _RemoveProcess);
-	}
-
-	KSpinlockRelease(&scheduler.lock);
-
-	if (removeProcess && !process->executableStartRequest) {
-		// The process was never started, so we can't make a RemoveProcess task, because it doesn't have an MMSpace yet.
-		scheduler.RemoveProcess(process);
-	}
-
-	ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
-}
-
 void KillProcess(Process *process) {
+	// This function should only be called by KillThread, when the last thread in the process exits.
+	// There should be at least one remaining handle to the process here, owned by that thread.
+	// It will be closed at the end of the KillThread function.
+
+	if (!process->handles) {
+		KernelPanic("KillProcess - Process %x is on the allProcesses list but there are no handles to it.\n", process);
+	}
+
 	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
 
 	__sync_fetch_and_sub(&scheduler.activeProcessCount, 1);
+
+	// Remove the process from the list of processes.
+	KMutexAcquire(&scheduler.allProcessesMutex);
+	scheduler.allProcesses.Remove(&process->allItem);
+
+	if (pmm.nextProcessToBalance == process) {
+		// If the balance thread got interrupted while balancing this process,
+		// start at the beginning of the next process.
+		pmm.nextProcessToBalance = process->allItem.nextItem ? process->allItem.nextItem->thisItem : nullptr;
+		pmm.nextRegionToBalance = nullptr;
+		pmm.balanceResumePosition = 0;
+	}
+
+	KMutexRelease(&scheduler.allProcessesMutex);
 
 	KSpinlockAcquire(&scheduler.lock);
 
@@ -877,15 +864,14 @@ bool Process::StartWithNode(KNode *node) {
 	__sync_fetch_and_add(&scheduler.activeProcessCount, 1);
 	__sync_fetch_and_add(&scheduler.blockShutdownProcessCount, 1);
 
-	// Add the process to the list of all processes.
-
+	// Add the process to the list of all processes,
+	// and spawn the kernel thread to load the executable.
+	// This is synchronized under allProcessesMutex so that the process can't be terminated or paused
+	// until newProcessThread has been spawned.
 	KMutexAcquire(&scheduler.allProcessesMutex);
 	scheduler.allProcesses.InsertEnd(&allItem);
-	KMutexRelease(&scheduler.allProcessesMutex);
-
-	// Spawn the kernel thread to load the executable.
-
 	Thread *newProcessThread = scheduler.SpawnThread("NewProcess", (uintptr_t) NewProcess, 0, ES_FLAGS_DEFAULT, this);
+	KMutexRelease(&scheduler.allProcessesMutex);
 
 	if (!newProcessThread) {
 		CloseHandleToObject(this, KERNEL_OBJECT_PROCESS);
@@ -997,58 +983,26 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 void Scheduler::RemoveProcess(Process *process) {
 	KernelLog(LOG_INFO, "Scheduler", "remove process", "Removing process %d.\n", process->id);
 
-	bool started = process->executableStartRequest;
-
-	if (started) {
-		// Make sure that the process cannot be opened.
-
-		KMutexAcquire(&allProcessesMutex);
-
-		allProcesses.Remove(&process->allItem);
-
-		if (pmm.nextProcessToBalance == process) {
-			// If the balance thread got interrupted while balancing this process,
-			// start at the beginning of the next process.
-
-			pmm.nextProcessToBalance = process->allItem.nextItem ? process->allItem.nextItem->thisItem : nullptr;
-			pmm.nextRegionToBalance = nullptr;
-			pmm.balanceResumePosition = 0;
-		}
-
-		KMutexRelease(&allProcessesMutex);
-
-		// At this point, no pointers to the process (should) remain (I think).
-
-		if (!process->allThreadsTerminated) {
-			KernelPanic("Scheduler::RemoveProcess - The process is being removed before all its threads have terminated?!\n");
-		}
-
+	if (process->executableNode) {
 		// Close the handle to the executable node.
-
 		CloseHandleToObject(process->executableNode, KERNEL_OBJECT_NODE, ES_FILE_READ);
+		process->executableNode = nullptr;
 	}
 
-	// Destroy the process's handle table, if it has already been destroyed.
+	// Destroy the process's handle table, if it hasn't already been destroyed.
 	// For most processes, the handle table is destroyed when the last thread terminates.
-
 	process->handleTable.Destroy();
 
 	// Free all the remaining messages in the message queue.
 	// This is done after closing all handles, since closing handles can generate messages.
-
 	process->messageQueue.messages.Free();
 
 	// Free the process.
-
 	MMSpaceCloseReference(process->vmm);
 	scheduler.processPool.Remove(process); 
 
-	if (started) {
-		// If all processes (except the kernel process) have terminated, set the scheduler's killedEvent.
-
-		if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
-			KEventSet(&scheduler.killedEvent);
-		}
+	if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
+		KEventSet(&scheduler.killedEvent);
 	}
 }
 
@@ -1378,9 +1332,7 @@ Process *Scheduler::OpenProcess(uint64_t id) {
 	while (item) {
 		Process *process = item->thisItem;
 
-		if (process->id == id 
-				&& process->handles /* if the process has no handles, it's about to be removed */
-				&& process->type != PROCESS_KERNEL /* the kernel process cannot be opened */) {
+		if (process->id == id && process->type != PROCESS_KERNEL /* the kernel process cannot be opened */) {
 			OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
 			result = item->thisItem;
 			break;

@@ -1274,6 +1274,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 				snapshot->processes[index].isKernel = process->type == PROCESS_KERNEL;
 				snapshot->processes[index].nameBytes = EsCStringLength(process->cExecutableName);
 				EsMemoryCopy(snapshot->processes[index].name, process->cExecutableName, snapshot->processes[index].nameBytes);
+				EsAssert(process->handles);
 				item = item->nextItem, index++;
 			}
 
