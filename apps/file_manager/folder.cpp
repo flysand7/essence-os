@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define NAMESPACE_HANDLER_FILE_SYSTEM (1)
 #define NAMESPACE_HANDLER_DRIVES_PAGE (2)
 #define NAMESPACE_HANDLER_ROOT (3) // Acts as a container handler where needed.

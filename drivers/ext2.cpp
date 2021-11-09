@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Validation of all fields.
 // TODO Contiguous block reading in Scan and Enumerate.
 // TODO Make GetDataBlock use (not yet implemented) system block cache.

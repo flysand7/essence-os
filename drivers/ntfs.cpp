@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Validation of all fields.
 // TODO Update to the latest file subsystem changes.
 // 	- Set spaceUsed and spaceTotal.

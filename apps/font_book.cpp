@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
 #include <shared/array.cpp>

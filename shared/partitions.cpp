@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #ifndef K_SIGNATURE_BLOCK_SIZE
 #define K_SIGNATURE_BLOCK_SIZE (65536)
 #endif

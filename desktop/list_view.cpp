@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO RMB click/drag.
 // TODO Consistent int64_t/intptr_t.
 // TODO Drag and drop.

@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 opaque_type EsElement          EsElementPublic;
 opaque_type EsPanel            EsElement;
 opaque_type EsWindow           EsElement;

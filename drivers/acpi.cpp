@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define SIGNATURE_RSDP (0x2052545020445352)
 #define SIGNATURE_RSDT (0x54445352)
 #define SIGNATURE_XSDT (0x54445358)

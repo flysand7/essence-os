@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Warn on Read/WriteBAR if port IO/memory space access is disabled in the command register.
 
 #include <module.h>

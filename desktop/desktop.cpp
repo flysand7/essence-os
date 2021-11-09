@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Tabs:
 //	- New tab page - search; recent files.
 // 	- Right click menu.

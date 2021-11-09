@@ -1,5 +1,7 @@
 # Contributing Guidelines
 
+*This project is constantly evolving, and as such, this file may be out of date.*
+
 ## Map
 
 - `apps/` Builtin applications.

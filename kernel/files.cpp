@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Features:
 // 	- Handling errors creating files (prevent further file system operations).
 // 	- Limiting the size of the directory/node cache.

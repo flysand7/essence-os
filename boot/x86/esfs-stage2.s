@@ -1,3 +1,7 @@
+; This file is part of the Essence operating system.
+; It is released under the terms of the MIT license -- see LICENSE.md.
+; Written by: nakst.
+
 %macro FilesystemInitialise 0
 %define superblock 0x8000
 %define kernel_file_entry 0x8800

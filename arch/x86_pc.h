@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #ifndef ARCH_X86_PC_HEADER
 #define ARCH_X86_PC_HEADER
 

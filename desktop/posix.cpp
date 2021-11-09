@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define ES_API
 #define ES_FORWARD(x) x
 #define ES_EXTERN_FORWARD extern "C"

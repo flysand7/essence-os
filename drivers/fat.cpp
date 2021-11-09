@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Validation of all fields.
 // TODO Don't load entire FAT in memory.
 // TODO Long file names.

@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define THEME_LAYER_BOX     (1)
 #define THEME_LAYER_TEXT    (2)
 #define THEME_LAYER_METRICS (3)

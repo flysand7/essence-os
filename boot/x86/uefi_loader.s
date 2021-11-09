@@ -1,3 +1,7 @@
+; This file is part of the Essence operating system.
+; It is released under the terms of the MIT license -- see LICENSE.md.
+; Written by: nakst.
+
 [bits 64]
 [org 0x180000]
 [section .text]

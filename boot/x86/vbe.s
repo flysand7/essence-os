@@ -1,3 +1,7 @@
+; This file is part of the Essence operating system.
+; It is released under the terms of the MIT license -- see LICENSE.md.
+; Written by: nakst.
+
 vbe_init:
 	mov	ax,vesa_info >> 4
 	mov	es,ax

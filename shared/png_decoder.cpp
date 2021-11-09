@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 uint32_t SwapBigEndian32(uint32_t x);
 
 typedef struct PNGReader {

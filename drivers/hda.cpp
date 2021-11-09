@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #include <module.h>
 
 #define RD_REGISTER_GCAP()        controller->pci->ReadBAR16(0, 0x00)                  // Global capabilities. 

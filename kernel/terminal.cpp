@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Everything in this file is a hack just so I can debug the kernel.
 // 	Replace all of it!!!
 

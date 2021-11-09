@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Prevent Meltdown/Spectre exploits.
 // TODO Kernel debugger.
 // TODO Passing data to userspace - zeroing padding bits of structures.

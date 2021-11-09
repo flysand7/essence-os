@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Review vforking interaction from the POSIX subsystem with the process termination algorithm.
 // TODO Simplify or remove asynchronous task thread semantics.
 // TODO Break up or remove dispatchSpinlock.

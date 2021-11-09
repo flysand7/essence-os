@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Saving.
 // TODO Don't use an EsPaintTarget for the bitmap?
 // TODO Show brush preview.

@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #pragma GCC diagnostic ignored "-Wunused-variable" push
 
 #define DEFINE_INTERFACE_STRING(name, text) static const char *interfaceString_ ## name = text;

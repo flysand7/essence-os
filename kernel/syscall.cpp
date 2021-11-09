@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Replace ES_ERROR_UNKNOWN with proper errors.
 // TODO Clean up the return values for system calls; with FATAL_ERRORs there should need to be less error codes returned.
 // TODO If a file system call fails with an error indicating the file system is corrupted, or a drive is failing, report the problem to the user.
