@@ -160,10 +160,11 @@ struct Scheduler {
 
 	void Yield(InterruptContext *context);
 
-#define SPAWN_THREAD_MANUALLY_ACTIVATED (1)
-#define SPAWN_THREAD_USERLAND 		(2)
-#define SPAWN_THREAD_LOW_PRIORITY	(4)
-#define SPAWN_THREAD_PAUSED             (8)
+#define SPAWN_THREAD_USERLAND     (1 << 0)
+#define SPAWN_THREAD_LOW_PRIORITY (1 << 1)
+#define SPAWN_THREAD_PAUSED       (1 << 2)
+#define SPAWN_THREAD_ASYNC_TASK   (1 << 3)
+#define SPAWN_THREAD_IDLE         (1 << 4)
 	Thread *SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
 			uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
 	void PauseThread(Thread *thread, bool resume /* true to resume, false to pause */);
@@ -222,7 +223,6 @@ struct Scheduler {
 	void RemoveProcess(Process *process); // Do not call. Use TerminateProcess/CloseHandleToObject.
 	void RemoveThread(Thread *thread); // Do not call. Use TerminateThread/CloseHandleToObject.
 	void AddActiveThread(Thread *thread, bool start /* put it at the start of the active list */); // Add an active thread into the queue.
-	void InsertNewThread(Thread *thread, bool addToActiveList, Process *owner); // Used during thread creation.
 	void MaybeUpdateActiveList(Thread *thread); // After changing the priority of a thread, call this to move it to the correct active thread queue if needed.
 
 	void NotifyObject(LinkedList<Thread> *blockedThreads, bool unblockAll, Thread *previousMutexOwner = nullptr);
@@ -237,6 +237,7 @@ struct Scheduler {
 	KMutex allThreadsMutex; // For accessing the allThreads list.
 	KMutex allProcessesMutex; // For accessing the allProcesses list.
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
+	KSpinlock asyncTaskSpinlock; // For accessing the per-CPU asyncTaskList.
 
 	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
 	volatile uintptr_t blockShutdownProcessCount;
@@ -269,21 +270,20 @@ Process _kernelProcess;
 Process *kernelProcess = &_kernelProcess;
 Process *desktopProcess;
 Scheduler scheduler;
-KSpinlock asyncTaskSpinlock;
 
 #endif
 
 #ifdef IMPLEMENTATION
 
 void KRegisterAsyncTask(KAsyncTask *task, KAsyncTaskCallback callback) {
-	KSpinlockAcquire(&asyncTaskSpinlock);
+	KSpinlockAcquire(&scheduler.asyncTaskSpinlock);
 
 	if (!task->callback) {
 		task->callback = callback;
 		GetLocalStorage()->asyncTaskList.Insert(&task->item, false);
 	}
 
-	KSpinlockRelease(&asyncTaskSpinlock);
+	KSpinlockRelease(&scheduler.asyncTaskSpinlock);
 }
 
 int8_t Scheduler::GetThreadEffectivePriority(Thread *thread) {
@@ -375,44 +375,9 @@ void Scheduler::MaybeUpdateActiveList(Thread *thread) {
 	activeThreads[effectivePriority].InsertStart(&thread->item);
 }
 
-void Scheduler::InsertNewThread(Thread *thread, bool addToActiveList, Process *owner) {
-	// Adding the thread to the owner's list of threads and adding the thread to a scheduling list
-	// need to be done in the same atomic block.
-	KMutexAssertLocked(&owner->threadsMutex);
-
-	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
-	thread->process = owner;
-
-	thread->item.thisItem = thread;
-	thread->allItem.thisItem = thread;
-	thread->processItem.thisItem = thread;
-
-	owner->threads.InsertEnd(&thread->processItem);
-
-	KMutexAcquire(&allThreadsMutex);
-	allThreads.InsertStart(&thread->allItem);
-	KMutexRelease(&allThreadsMutex);
-
-	// Each thread owns a handles to the owner process.
-	// This makes sure the process isn't destroyed before all its threads have been destroyed.
-	OpenHandleToObject(owner, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
-
-	KernelLog(LOG_INFO, "Scheduler", "create thread", "Create thread ID %d, type %d, owner process %d\n", thread->id, thread->type, owner->id);
-
-	if (addToActiveList) {
-		// Add the thread to the start of the active thread list to make sure that it runs immediately.
-		KSpinlockAcquire(&dispatchSpinlock);
-		AddActiveThread(thread, true);
-		KSpinlockRelease(&dispatchSpinlock);
-	} else {
-		// Idle and asynchronous task threads don't need to be added to a scheduling list.
-	}
-
-	// The thread may now be terminated at any moment.
-}
-
 Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1, uint32_t flags, Process *process, uintptr_t argument2) {
 	bool userland = flags & SPAWN_THREAD_USERLAND;
+	Thread *parentThread = GetCurrentThread();
 
 	if (!process) {
 		process = kernelProcess;
@@ -422,6 +387,8 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 		KernelPanic("Scheduler::SpawnThread - Cannot add userland thread to kernel process.\n");
 	}
 
+	// Adding the thread to the owner's list of threads and adding the thread to a scheduling list
+	// need to be done in the same atomic block.
 	KMutexAcquire(&process->threadsMutex);
 	EsDefer(KMutexRelease(&process->threadsMutex));
 
@@ -431,19 +398,6 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	Thread *thread = (Thread *) threadPool.Add(sizeof(Thread));
 	if (!thread) return nullptr;
 	KernelLog(LOG_INFO, "Scheduler", "spawn thread", "Created thread, %x to start at %x\n", thread, startAddress);
-	thread->isKernelThread = !userland;
-	thread->priority = (flags & SPAWN_THREAD_LOW_PRIORITY) ? THREAD_PRIORITY_LOW : THREAD_PRIORITY_NORMAL;
-	thread->cName = cName;
-
-	// If PauseProcess is called while a thread in that process is spawning a new thread, mark the thread as paused. 
-	// This is synchronized under the threadsMutex.
-	Thread *parentThread = GetCurrentThread();
-	thread->paused = parentThread && process == parentThread->process && parentThread->paused;
-
-	// 2 handles to the thread:
-	// 	One for spawning the thread, 
-	// 	and the other for remaining during the thread's life.
-	thread->handles = 2;
 
 	// Allocate the thread's stacks.
 #if defined(ES_BITS_64)
@@ -453,8 +407,11 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 #endif
 	uintptr_t userStackReserve = userland ? 0x400000 /* 4MB */ : kernelStackSize;
 	uintptr_t userStackCommit = userland ? 0x20000 /* 128KB */ : 0;
-	uintptr_t stack = 0, kernelStack = (uintptr_t) MMStandardAllocate(kernelMMSpace, kernelStackSize, MM_REGION_FIXED);
+	uintptr_t stack = 0, kernelStack = 0;
 
+	if (flags & SPAWN_THREAD_IDLE) goto skipStackAllocation;
+
+	kernelStack = (uintptr_t) MMStandardAllocate(kernelMMSpace, kernelStackSize, MM_REGION_FIXED);
 	if (!kernelStack) goto fail;
 
 	if (userland) {
@@ -475,21 +432,66 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	}
 
 	if (!stack) goto fail;
+	skipStackAllocation:;
 
-	KernelLog(LOG_INFO, "Scheduler", "thread stacks", 
-			"Spawning thread with stacks (k,u): %x->%x, %x->%x\n", kernelStack, kernelStack + kernelStackSize, stack, stack + userStackReserve);
+	// If PauseProcess is called while a thread in that process is spawning a new thread, mark the thread as paused. 
+	// This is synchronized under the threadsMutex.
+	thread->paused = (parentThread && process == parentThread->process && parentThread->paused) || (flags & SPAWN_THREAD_PAUSED);
 
+	// 2 handles to the thread:
+	// 	One for spawning the thread, 
+	// 	and the other for remaining during the thread's life.
+	thread->handles = 2;
+
+	thread->isKernelThread = !userland;
+	thread->priority = (flags & SPAWN_THREAD_LOW_PRIORITY) ? THREAD_PRIORITY_LOW : THREAD_PRIORITY_NORMAL;
+	thread->cName = cName;
 	thread->kernelStackBase = kernelStack;
 	thread->userStackBase = userland ? stack : 0;
 	thread->userStackReserve = userStackReserve;
 	thread->userStackCommit = userStackCommit;
-	thread->paused = flags & SPAWN_THREAD_PAUSED;
 	thread->terminatableState = userland ? THREAD_TERMINATABLE : THREAD_IN_SYSCALL;
-	thread->interruptContext = ArchInitialiseThread(kernelStack, kernelStackSize, thread, 
-			startAddress, argument1, argument2, 
-			userland, stack, userStackReserve);
+	thread->type = (flags & SPAWN_THREAD_ASYNC_TASK) ? THREAD_ASYNC_TASK : (flags & SPAWN_THREAD_IDLE) ? THREAD_IDLE : THREAD_NORMAL;
+	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
+	thread->process = process;
+	thread->item.thisItem = thread;
+	thread->allItem.thisItem = thread;
+	thread->processItem.thisItem = thread;
 
-	InsertNewThread(thread, ~flags & SPAWN_THREAD_MANUALLY_ACTIVATED, process);
+	if (thread->type != THREAD_IDLE) {
+		thread->interruptContext = ArchInitialiseThread(kernelStack, kernelStackSize, thread, 
+				startAddress, argument1, argument2, userland, stack, userStackReserve);
+	} else {
+		thread->state = THREAD_ACTIVE;
+		thread->executing = true;
+	}
+
+	process->threads.InsertEnd(&thread->processItem);
+
+	KMutexAcquire(&allThreadsMutex);
+	allThreads.InsertStart(&thread->allItem);
+	KMutexRelease(&allThreadsMutex);
+
+	// Each thread owns a handles to the owner process.
+	// This makes sure the process isn't destroyed before all its threads have been destroyed.
+	OpenHandleToObject(process, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT);
+
+	KernelLog(LOG_INFO, "Scheduler", "thread stacks", "Spawning thread with stacks (k,u): %x->%x, %x->%x\n", 
+			kernelStack, kernelStack + kernelStackSize, stack, stack + userStackReserve);
+	KernelLog(LOG_INFO, "Scheduler", "create thread", "Create thread ID %d, type %d, owner process %d\n", 
+			thread->id, thread->type, process->id);
+
+	if (thread->type == THREAD_NORMAL) {
+		// Add the thread to the start of the active thread list to make sure that it runs immediately.
+		KSpinlockAcquire(&dispatchSpinlock);
+		AddActiveThread(thread, true);
+		KSpinlockRelease(&dispatchSpinlock);
+	} else {
+		// Idle and asynchronous task threads don't need to be added to a scheduling list.
+	}
+
+	// The thread may now be terminated at any moment.
+
 	return thread;
 
 	fail:;
@@ -944,14 +946,14 @@ void AsyncTaskThread() {
 		if (!local->asyncTaskList.first) {
 			ProcessorFakeTimerInterrupt();
 		} else {
-			KSpinlockAcquire(&asyncTaskSpinlock);
+			KSpinlockAcquire(&scheduler.asyncTaskSpinlock);
 			SimpleList *item = local->asyncTaskList.first;
 			KAsyncTask *task = EsContainerOf(KAsyncTask, item, item);
 			KAsyncTaskCallback callback = task->callback;
 			task->callback = nullptr;
 			local->inAsyncTask = true;
 			item->Remove();
-			KSpinlockRelease(&asyncTaskSpinlock);
+			KSpinlockRelease(&scheduler.asyncTaskSpinlock);
 			callback(task); // This may cause the task to be deallocated.
 			scheduler.SetTemporaryAddressSpace(nullptr); // The task may have modified the address space.
 			local->inAsyncTask = false;
@@ -960,26 +962,13 @@ void AsyncTaskThread() {
 }
 
 void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
-	Thread *idleThread = (Thread *) threadPool.Add(sizeof(Thread));
-	idleThread->isKernelThread = true;
-	idleThread->state = THREAD_ACTIVE;
-	idleThread->executing = true;
-	idleThread->type = THREAD_IDLE;
-	idleThread->terminatableState = THREAD_IN_SYSCALL;
-	idleThread->cName = "Idle";
-	local->currentThread = local->idleThread = idleThread;
+	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_ASYNC_TASK);
+	local->currentThread = local->idleThread = SpawnThread("Idle", 0, 0, SPAWN_THREAD_IDLE);
 	local->processorID = __sync_fetch_and_add(&nextProcessorID, 1);
 
 	if (local->processorID >= K_MAX_PROCESSORS) { 
 		KernelPanic("Scheduler::CreateProcessorThreads - Maximum processor count (%d) exceeded.\n", local->processorID);
 	}
-	
-	KMutexAcquire(&kernelProcess->threadsMutex);
-	InsertNewThread(idleThread, false, kernelProcess);
-	KMutexRelease(&kernelProcess->threadsMutex);
-
-	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_MANUALLY_ACTIVATED);
-	local->asyncTaskThread->type = THREAD_ASYNC_TASK;
 }
 
 void Scheduler::RemoveProcess(Process *process) {
@@ -1193,6 +1182,10 @@ void Scheduler::Yield(InterruptContext *context) {
 
 	if (dispatchSpinlock.interruptsEnabled) {
 		KernelPanic("Scheduler::Yield - Interrupts were enabled when scheduler lock was acquired.\n");
+	}
+
+	if (!local->currentThread->executing) {
+		KernelPanic("Scheduler::Yield - Current thread %x marked as not executing (%x).\n", local->currentThread, local);
 	}
 
 	MMSpace *oldAddressSpace = local->currentThread->temporaryAddressSpace ?: local->currentThread->process->vmm;
