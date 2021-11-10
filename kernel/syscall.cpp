@@ -1621,15 +1621,39 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
+	SYSCALL_PERMISSION(ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT);
+
+	// TODO Temporary: moved out of the DEBUG_BUILD block.
+
 	if (argument0 == 3) {
-		SYSCALL_PERMISSION(ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT);
-		// TODO Temporary: moved out of the DEBUG_BUILD block.
 		extern char kernelLog[];
 		extern uintptr_t kernelLogPosition;
 		size_t bytes = kernelLogPosition;
 		if (argument2 < bytes) bytes = argument2;
 		EsMemoryCopy((void *) argument1, kernelLog, bytes);
 		SYSCALL_RETURN(bytes, false);
+	} else if (argument0 == 12) {
+		EsMemoryStatistics statistics;
+		EsMemoryZero(&statistics, sizeof(statistics));
+		statistics.fixedHeapAllocationCount = K_FIXED->allocationsCount;
+		statistics.fixedHeapTotalSize = K_FIXED->size;
+		statistics.coreHeapAllocationCount = K_CORE->allocationsCount;
+		statistics.coreHeapTotalSize = K_CORE->size;
+		statistics.cachedNodes = fs.bootFileSystem->cachedNodes.count;
+		statistics.cachedDirectoryEntries = fs.bootFileSystem->cachedDirectoryEntries.count;
+		statistics.totalSurfaceBytes = graphics.totalSurfaceBytes;
+		statistics.commitPageable = pmm.commitPageable;
+		statistics.commitFixed = pmm.commitFixed;
+		statistics.commitLimit = pmm.commitLimit;
+		statistics.commitFixedLimit = pmm.commitFixedLimit;
+		statistics.commitRemaining = MM_REMAINING_COMMIT();
+		statistics.maximumObjectCachePages = MM_OBJECT_CACHE_PAGES_MAXIMUM();
+		statistics.approximateObjectCacheSize = pmm.approximateTotalObjectCacheBytes;
+		statistics.countZeroedPages = pmm.countZeroedPages;
+		statistics.countFreePages = pmm.countFreePages;
+		statistics.countStandbyPages = pmm.countStandbyPages;
+		statistics.countActivePages = pmm.countActivePages;
+		SYSCALL_WRITE(argument1, &statistics, sizeof(statistics));
 	}
 
 #ifdef DEBUG_BUILD
@@ -1668,28 +1692,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 		KEventWait(&event, 1000);
 		EsHeapFree(scheduler.threadEventLog, 0, K_FIXED);
 		scheduler.threadEventLog = nullptr;
-	} else if (argument0 == 12) {
-		EsMemoryStatistics statistics;
-		EsMemoryZero(&statistics, sizeof(statistics));
-		statistics.fixedHeapAllocationCount = K_FIXED->allocationsCount;
-		statistics.fixedHeapTotalSize = K_FIXED->size;
-		statistics.coreHeapAllocationCount = K_CORE->allocationsCount;
-		statistics.coreHeapTotalSize = K_CORE->size;
-		statistics.cachedNodes = fs.bootFileSystem->cachedNodes.count;
-		statistics.cachedDirectoryEntries = fs.bootFileSystem->cachedDirectoryEntries.count;
-		statistics.totalSurfaceBytes = graphics.totalSurfaceBytes;
-		statistics.commitPageable = pmm.commitPageable;
-		statistics.commitFixed = pmm.commitFixed;
-		statistics.commitLimit = pmm.commitLimit;
-		statistics.commitFixedLimit = pmm.commitFixedLimit;
-		statistics.commitRemaining = MM_REMAINING_COMMIT();
-		statistics.maximumObjectCachePages = MM_OBJECT_CACHE_PAGES_MAXIMUM();
-		statistics.approximateObjectCacheSize = pmm.approximateTotalObjectCacheBytes;
-		statistics.countZeroedPages = pmm.countZeroedPages;
-		statistics.countFreePages = pmm.countFreePages;
-		statistics.countStandbyPages = pmm.countStandbyPages;
-		statistics.countActivePages = pmm.countActivePages;
-		SYSCALL_WRITE(argument1, &statistics, sizeof(statistics));
 	}
 #endif
 

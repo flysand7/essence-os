@@ -405,12 +405,12 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 
 	// Allocate the thread's stacks.
 #if defined(ES_BITS_64)
-	uintptr_t kernelStackSize = userland ? 0x4000 /* 16KB */ : 0x10000 /* 64KB */;
+	uintptr_t kernelStackSize = 0x5000 /* 20KB */;
 #elif defined(ES_BITS_32)
-	uintptr_t kernelStackSize = userland ? 0x3000 /* 12KB */ : 0x8000 /* 32KB */;
+	uintptr_t kernelStackSize = 0x4000 /* 16KB */;
 #endif
 	uintptr_t userStackReserve = userland ? 0x400000 /* 4MB */ : kernelStackSize;
-	uintptr_t userStackCommit = userland ? 0x20000 /* 128KB */ : 0;
+	uintptr_t userStackCommit = userland ? 0x10000 /* 64KB */ : 0;
 	uintptr_t stack = 0, kernelStack = 0;
 
 	if (flags & SPAWN_THREAD_IDLE) goto skipStackAllocation;
