@@ -589,7 +589,7 @@ void ThumbnailGenerateTask(Instance *, Task *task) {
 	}
 
 	// TODO Determine the best value for these constants -- maybe base it off the current UI scale factor?
-	uint32_t thumbnailMaximumWidth = 120;
+	uint32_t thumbnailMaximumWidth = 143;
 	uint32_t thumbnailMaximumHeight = 80;
 	EsRectangle targetRectangle = EsRectangleFit(ES_RECT_2S(thumbnailMaximumWidth, thumbnailMaximumHeight), ES_RECT_2S(originalWidth, originalHeight), false);
 	uint32_t targetWidth = ES_RECT_WIDTH(targetRectangle), targetHeight = ES_RECT_HEIGHT(targetRectangle);
@@ -1039,7 +1039,7 @@ int BreadcrumbBarMessage(EsElement *element, EsMessage *message) {
 
 #define ADD_BUTTON_TO_TOOLBAR(_command, _label, _icon, _accessKey, _name) \
 	{ \
-		_name = EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, 0, _label); \
+		_name = EsButtonCreate(buttonGroup, ES_FLAGS_DEFAULT, 0, _label); \
 		EsButtonSetIcon(_name, _icon);  \
 		EsCommandAddButton(&instance->_command, _name); \
 		_name->accessKey = _accessKey; \
@@ -1047,7 +1047,7 @@ int BreadcrumbBarMessage(EsElement *element, EsMessage *message) {
 
 #define ADD_BUTTON_TO_STATUS_BAR(_command, _label, _icon, _accessKey, _name) \
 	{ \
-		_name = EsButtonCreate(statusBar, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_STATUS_BAR, _label); \
+		_name = EsButtonCreate(buttonGroup, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_STATUS_BAR, _label); \
 		EsButtonSetIcon(_name, _icon);  \
 		EsCommandAddButton(&instance->_command, _name); \
 		_name->accessKey = _accessKey; \
@@ -1084,22 +1084,30 @@ void InstanceCreateUI(Instance *instance) {
 	// Toolbar:
 
 	EsElement *toolbar = EsWindowGetToolbar(instance->window);
+	EsPanel *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 	ADD_BUTTON_TO_TOOLBAR(commandGoBackwards, nullptr, ES_ICON_GO_PREVIOUS_SYMBOLIC, 'B', button);
+	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_TOOLBAR(commandGoForwards, nullptr, ES_ICON_GO_NEXT_SYMBOLIC, 'F', button);
+	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_TOOLBAR(commandGoParent, nullptr, ES_ICON_GO_UP_SYMBOLIC, 'U', button);
-	EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT);
-	instance->breadcrumbBar = EsTextboxCreate(toolbar, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED | ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS, {});
+	EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, ES_STYLE_TOOLBAR_SPACER);
+	instance->breadcrumbBar = EsTextboxCreate(toolbar, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED | ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS);
 	instance->breadcrumbBar->messageUser = BreadcrumbBarMessage;
 	instance->breadcrumbBar->accessKey = 'A';
 	EsTextboxUseBreadcrumbOverlay(instance->breadcrumbBar);
+	EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, ES_STYLE_TOOLBAR_SPACER);
+	buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 	ADD_BUTTON_TO_TOOLBAR(commandNewFolder, interfaceString_FileManagerNewFolderToolbarItem, ES_ICON_FOLDER_NEW_SYMBOLIC, 'N', instance->newFolderButton);
 
 	// Status bar:
 
 	EsPanel *statusBar = EsPanelCreate(rootPanel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_STATUS_BAR);
 	instance->status = EsTextDisplayCreate(statusBar, ES_CELL_H_FILL);
+	buttonGroup = EsPanelCreate(statusBar, ES_PANEL_HORIZONTAL);
 	ADD_BUTTON_TO_STATUS_BAR(commandViewDetails, nullptr, ES_ICON_VIEW_LIST_SYMBOLIC, 0, button);
+	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_STATUS_BAR(commandViewTiles, nullptr, ES_ICON_VIEW_LIST_COMPACT_SYMBOLIC, 0, button);
+	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_STATUS_BAR(commandViewThumbnails, nullptr, ES_ICON_VIEW_GRID_SYMBOLIC, 0, button);
 
 	// Load initial folder:

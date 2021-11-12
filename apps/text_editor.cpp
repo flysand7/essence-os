@@ -287,7 +287,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		EsFileMenuAddToToolbar(toolbarMain);
 		
-		button = EsButtonCreate(toolbarMain, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchOpen));
+		button = EsButtonCreate(EsPanelCreate(toolbarMain, ES_PANEL_HORIZONTAL), ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchOpen));
 		button->accessKey = 'S';
 		EsButtonSetIcon(button, ES_ICON_EDIT_FIND_SYMBOLIC);
 
@@ -296,7 +296,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 			EsElementFocus(instance->textboxSearch);
 		});
 
-		button = EsButtonCreate(toolbarMain, ES_BUTTON_DROPDOWN, {}, INTERFACE_STRING(CommonFormatPopup));
+		button = EsButtonCreate(EsPanelCreate(toolbarMain, ES_PANEL_HORIZONTAL), ES_BUTTON_DROPDOWN, {}, INTERFACE_STRING(CommonFormatPopup));
 		button->accessKey = 'M';
 		EsButtonSetIcon(button, ES_ICON_FORMAT_TEXT_LARGER_SYMBOLIC);
 		EsCommandAddButton(&instance->commandFormat, button);
@@ -308,7 +308,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		EsElement *toolbarSearch = instance->toolbarSearch = EsWindowGetToolbar(window, true);
 
-		button = EsButtonCreate(toolbarSearch, ES_FLAGS_DEFAULT, 0);
+		button = EsButtonCreate(EsPanelCreate(toolbarSearch, ES_PANEL_HORIZONTAL), ES_FLAGS_DEFAULT, 0);
 		button->cName = "go back", button->accessKey = 'X';
 		EsButtonSetIcon(button, ES_ICON_GO_FIRST_SYMBOLIC);
 
@@ -316,10 +316,10 @@ void ProcessApplicationMessage(EsMessage *message) {
 			EsWindowSwitchToolbar(instance->window, instance->toolbarMain, ES_TRANSITION_SLIDE_DOWN);
 		});
 
-		EsPanel *section = EsPanelCreate(toolbarSearch, ES_PANEL_HORIZONTAL);
-		EsTextDisplayCreate(section, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(CommonSearchPrompt));
+		EsSpacerCreate(toolbarSearch, ES_FLAGS_DEFAULT, 0, 14, 0);
 
-		instance->textboxSearch = EsTextboxCreate(section, ES_FLAGS_DEFAULT, {});
+		EsTextDisplayCreate(toolbarSearch, ES_FLAGS_DEFAULT, 0, INTERFACE_STRING(CommonSearchPrompt));
+		instance->textboxSearch = EsTextboxCreate(toolbarSearch, ES_FLAGS_DEFAULT, {});
 		instance->textboxSearch->cName = "search textbox";
 		instance->textboxSearch->accessKey = 'S';
 
@@ -341,12 +341,15 @@ void ProcessApplicationMessage(EsMessage *message) {
 			return 0;
 		};
 
+		EsSpacerCreate(toolbarSearch, ES_FLAGS_DEFAULT, 0, 7, 0);
 		instance->displaySearch = EsTextDisplayCreate(toolbarSearch, ES_CELL_H_FILL, {}, "");
 
-		button = EsButtonCreate(toolbarSearch, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchNext));
+		EsPanel *buttonGroup = EsPanelCreate(toolbarSearch, ES_PANEL_HORIZONTAL);
+		button = EsButtonCreate(buttonGroup, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchNext));
 		button->accessKey = 'N';
 		EsCommandAddButton(&instance->commandFindNext, button);
-		button = EsButtonCreate(toolbarSearch, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchPrevious));
+		EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
+		button = EsButtonCreate(buttonGroup, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchPrevious));
 		button->accessKey = 'P';
 		EsCommandAddButton(&instance->commandFindPrevious, button);
 	} else if (message->type == ES_MSG_INSTANCE_OPEN) {

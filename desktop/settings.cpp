@@ -46,6 +46,16 @@ const EsStyle styleSettingsGroupContainer = {
 	},
 };
 
+const EsStyle styleAllSettingsGroupContainer = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_ALL,
+		.insets = ES_RECT_1(5),
+		.preferredWidth = 400,
+		.gapMajor = 5,
+		.gapMinor = 5,
+	},
+};
+
 const EsStyle styleSettingsGroupContainer2 = {
 	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
 
@@ -106,7 +116,7 @@ const EsStyle styleSettingsOverlayPanel = {
 };
 
 const EsStyle styleSettingsButton = {
-	.inherit = ES_STYLE_PUSH_BUTTON_TOOLBAR,
+	.inherit = ES_STYLE_PUSH_BUTTON_NORMAL,
 
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_PREFERRED_HEIGHT | ES_THEME_METRICS_LAYOUT_VERTICAL
@@ -860,7 +870,8 @@ void InstanceSettingsCreate(EsMessage *message) {
 	{
 		EsElement *toolbar = EsWindowGetToolbar(instance->window);
 
-		EsButton *backButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsBackButton));
+		EsButton *backButton = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 
+				0, INTERFACE_STRING(DesktopSettingsBackButton));
 		instance->backButton = backButton;
 		backButton->accessKey = 'A';
 		EsButtonSetIcon(backButton, ES_ICON_GO_HOME_SYMBOLIC);
@@ -869,7 +880,8 @@ void InstanceSettingsCreate(EsMessage *message) {
 
 		EsSpacerCreate(toolbar, ES_CELL_FILL);
 
-		EsButton *undoButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
+		EsButton *undoButton = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 
+				0, INTERFACE_STRING(DesktopSettingsUndoButton));
 		instance->undoButton = undoButton;
 		undoButton->accessKey = 'U';
 		EsButtonSetIcon(undoButton, ES_ICON_EDIT_UNDO_SYMBOLIC);
@@ -886,7 +898,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 	}
 
 	{
-		EsPanel *container = EsPanelCreate(content, ES_CELL_H_SHRINK | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleSettingsGroupContainer);
+		EsPanel *container = EsPanelCreate(content, ES_CELL_H_SHRINK | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleAllSettingsGroupContainer);
 		EsPanelSetBands(container, 4);
 
 		EsSort(settingsPages, sizeof(settingsPages) / sizeof(settingsPages[0]), sizeof(settingsPages[0]), [] (const void *_a, const void *_b, EsGeneric) {

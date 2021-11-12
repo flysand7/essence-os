@@ -19,7 +19,7 @@
 // TODO Desktop experience:
 // 	- Alt+tab.
 // 	- Changing wallpaper.
-//
+
 // TODO Global shortcuts:
 // 	- Restoring closed tabs.
 // 	- Switch to window.
@@ -28,7 +28,6 @@
 // TODO Restarting Desktop if it crashes.
 // TODO Make sure applications can't delete |Fonts:.
 // TODO Handle open document deletion.
-// TODO Store an array of processes for each InstalledApplication.
 
 #define MSG_SETUP_DESKTOP_UI ((EsMessageType) (ES_MSG_USER_START + 1))
 

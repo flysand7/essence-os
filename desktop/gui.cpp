@@ -1029,7 +1029,7 @@ void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element) {
 				EsMenuAddCommand(menu, button->command->check, button->label, button->labelBytes, button->command);
 			}
 		} else {
-			EsMenuAddCommandsFromToolbar(menu, element);
+			EsMenuAddCommandsFromToolbar(menu, child);
 		}
 	}
 }
@@ -5693,7 +5693,7 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
 		}
 
-		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR);
+		EsButton *renameButton = EsButtonCreate(EsPanelCreate(panel3, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR);
 		if (!renameButton) goto show;
 		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
 		EsButtonOnCommand(renameButton, FileMenuRename);
@@ -5741,7 +5741,8 @@ void FileMenuCreate(EsInstance *_instance, EsElement *element, EsCommand *) {
 }
 
 void EsFileMenuAddToToolbar(EsElement *element, const EsFileMenuSettings *settings) {
-	EsButton *button = EsButtonCreate(element, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
+	EsPanel *buttonGroup = EsPanelCreate(element, ES_PANEL_HORIZONTAL);
+	EsButton *button = EsButtonCreate(buttonGroup, ES_BUTTON_DROPDOWN, 0, INTERFACE_STRING(CommonFileMenu));
 	if (!button) return;
 	button->accessKey = 'F';
 	button->userData = (void *) settings;

@@ -20,6 +20,7 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
+// 	Inactive and disabled state.
 // 	Undoing a delete does not preserve an instance's layer.
 //	Having to link to the end of a conditional object chain is a bit strange.
 // 	Automatically cleaning up unused objects.
@@ -3086,8 +3087,8 @@ void ObjectAddCommandInternal(void *cp) {
 	object.type = (ObjectType) (uintptr_t) cp;
 	object.id = ++objectIDAllocator;
 	Property p;
-	int32_t x = canvas->panX + UI_RECT_WIDTH(canvas->bounds) / 2;
-	int32_t y = canvas->panY + UI_RECT_HEIGHT(canvas->bounds) / 2;
+	int32_t x = canvas->panX + UI_RECT_WIDTH(canvas->bounds)  / 2 / canvas->zoom;
+	int32_t y = canvas->panY + UI_RECT_HEIGHT(canvas->bounds) / 2 / canvas->zoom;
 	x -= x % CANVAS_ALIGN, y -= y % CANVAS_ALIGN;
 	int32_t w = object.type == OBJ_COMMENT ? 30 : 80;
 	int32_t h = object.type == OBJ_COMMENT ? 10 : 60;

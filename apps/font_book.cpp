@@ -360,7 +360,7 @@ void _start() {
 
 			EsSpacerCreate(toolbar, ES_CELL_H_FILL);
 
-			EsButton *button = EsButtonCreate(toolbar, ES_BUTTON_DROPDOWN, {}, INTERFACE_STRING(FontBookVariants));
+			EsButton *button = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_DROPDOWN, {}, INTERFACE_STRING(FontBookVariants));
 			button->accessKey = 'V';
 			EsButtonOnCommand(button, VariantsPopupCreate);
 
