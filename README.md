@@ -97,3 +97,110 @@ If you want your project to target Essence, you need to generate the API header 
 Currently supported languages are 'c' (also works for C++), 'zig' and 'odin'.
 
 There is currently no documentation for the API; for examples of how to use the API, consult the standard applications in the `apps/` folder of the source tree. Minimal sample applications are placed in the `apps/samples` folder. By placing your application's `.ini` file in the `apps/` folder, it will be automatically built by the build system.
+
+## TODO
+
+**This list is incomplete!**
+
+- Applications
+	- PDF viewer
+	- Media player
+	- Automator
+	- Web browser
+- Desktop environment
+	- Alt-tab
+	- Saving application state on shut down
+	- Task list popup
+	- Add more settings, and organize them
+	- Print screen key
+	- Storing images in the clipboard
+	- Combined search and Lua REPL
+	- Clipboard viewer
+	- Improved color eyedropper
+- File Manager
+	- Deleting files
+	- Improving thumbnail storage
+	- Property store
+	- Searching
+	- Search indexing
+	- Tagging; metadata
+	- Tracking source of files
+	- Localizing system folder names
+	- Previewing other file types
+	- Filtering
+	- Multi-rename
+	- Compressed archives
+	- Creating new files
+	- Automation
+	- Grouping
+- GUI
+	- Drag and drop
+	- Keyboard navigation in menus
+	- Date/time entry
+	- Tokens in textbox
+	- Right-to-left layout
+	- Accessibility hooks (e.g. for a screen reader)
+	- Choice boxes
+	- Resizable scrollbars
+	- Asynchronously painted element
+	- Reorder lists
+	- Dialogs as separate windows
+	- File dialogs
+	- Textbox auto-complete
+	- Media display
+	- Progress bars
+	- Dockable UI
+	- Charts
+	- Gauges
+	- Password editor
+	- Scrollbar animations
+	- Scaling at the paint level (as well as layout)
+	- Simpler control of line clipping in `EsTextDisplay`
+	- Fast scroll
+	- Keeping items anchored when resizing 
+	- Instance reference counting
+- Text rendering
+	- Variable font support
+	- Fix custom font renderer
+	- Unicode bidirectional text algorithm
+	- Unicode vertical text layout algorithm
+	- OpenType features
+	- Grapheme splitter (for textbox)
+	- Fallback fonts for unsupported languages
+	- Consistent font size specification
+- API
+	- Date/time
+	- 2D graphics
+	- Tweening
+	- Media decoding
+	- Debugging other processes
+	- `io_uring`-like file access
+	- String sorting; normalization; case conversion
+- Shared code
+	- Better heap allocator
+	- Faster rendering routines
+	- Color spaces
+- Theming
+	- Dark theme
+	- High contrast theme
+	- Bitmapped font
+- Kernel
+	- Networking protocol implementation
+	- Networking hardware drivers
+	- Rewrite audio layer
+	- Asynchronous IO
+	- Better IPC messaging
+	- Double fault handler
+	- `x86_32` support
+	- ARM support
+	- Graphics card drivers
+	- Support for USB 3.0 devices
+	- OHCI/UHCI/EHCI drivers
+	- USB hub support
+	- Built-in debugger
+	- Decrease startup time
+	- Decrease memory usage
+	- Shared memory permissions
+	- Proper worker threads
+	- Read-write file systems: FAT, ext4, NTFS
+- Documentation!
