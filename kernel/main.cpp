@@ -14,7 +14,7 @@
 #include "kernel.h"
 
 void KernelInitialise() {										
-	kernelProcess = scheduler.SpawnProcess(PROCESS_KERNEL);		// Spawn the kernel process.
+	kernelProcess = ProcessSpawn(PROCESS_KERNEL);			// Spawn the kernel process.
 	MMInitialise();							// Initialise the memory manager.
 	KThreadCreate("KernelMain", KernelMain);			// Create the KernelMain thread.
 	ArchInitialise(); 						// Start processors and initialise CPULocalStorage. 
@@ -22,11 +22,11 @@ void KernelInitialise() {
 }
 
 void KernelMain(uintptr_t) {
-	desktopProcess = scheduler.SpawnProcess(PROCESS_DESKTOP);	// Spawn the desktop process.
+	desktopProcess = ProcessSpawn(PROCESS_DESKTOP);			// Spawn the desktop process.
 	DriversInitialise();						// Load the root device.
-	desktopProcess->Start(EsLiteral(K_DESKTOP_EXECUTABLE));		// Start the desktop process.
+	ProcessStart(desktopProcess, EsLiteral(K_DESKTOP_EXECUTABLE));	// Start the desktop process.
 	KEventWait(&shutdownEvent, ES_WAIT_NO_TIMEOUT);			// Wait for a shutdown request.
-	scheduler.Shutdown();						// Kill user processes.
+	ProcessTerminateAll();						// Terminate all user processes.
 	FSShutdown();							// Flush file cache and unmount filesystems.
 	DriversShutdown();						// Inform drivers of shutdown.
 	ArchShutdown();							// Power off or restart the computer. 

@@ -140,10 +140,34 @@ bool KMutexAcquire(KMutex *mutex) {
 		__sync_synchronize();
 
 		if (GetLocalStorage() && GetLocalStorage()->schedulerReady) {
+			if (currentThread->state != THREAD_ACTIVE) {
+				KernelPanic("KWaitMutex - Attempting to wait on a mutex in a non-active thread.\n");
+			}
+
+			currentThread->blocking.mutex = mutex;
+			__sync_synchronize();
+
 			// Instead of spinning on the lock, 
 			// let's tell the scheduler to not schedule this thread
 			// until it's released.
-			scheduler.WaitMutex(mutex);
+			currentThread->state = THREAD_WAITING_MUTEX;
+
+			KSpinlockAcquire(&scheduler.dispatchSpinlock);
+			// Is the owner of this mutex executing?
+			// If not, there's no point in spinning on it.
+			bool spin = mutex && mutex->owner && mutex->owner->executing;
+			KSpinlockRelease(&scheduler.dispatchSpinlock);
+
+			if (!spin && currentThread->blocking.mutex->owner) {
+				ProcessorFakeTimerInterrupt();
+			}
+
+			// Early exit if this is a user request to block the thread and the thread is terminating.
+			while ((!currentThread->terminating || currentThread->terminatableState != THREAD_USER_BLOCK_REQUEST) && mutex->owner) {
+				currentThread->state = THREAD_WAITING_MUTEX;
+			}
+
+			currentThread->state = THREAD_ACTIVE;
 
 			if (currentThread->terminating && currentThread->terminatableState == THREAD_USER_BLOCK_REQUEST) {
 				// We didn't acquire the mutex because the thread is terminating.
@@ -358,13 +382,13 @@ bool KEventWait(KEvent *_this, uint64_t timeoutMs) {
 	events[0] = _this;
 
 	if (timeoutMs == (uint64_t) ES_WAIT_NO_TIMEOUT) {
-		int index = scheduler.WaitEvents(events, 1);
+		int index = KEventWaitMultiple(events, 1);
 		return index == 0;
 	} else {
 		KTimer timer = {};
 		KTimerSet(&timer, timeoutMs);
 		events[1] = &timer.event;
-		int index = scheduler.WaitEvents(events, 2);
+		int index = KEventWaitMultiple(events, 2);
 		KTimerRemove(&timer);
 		return index == 0;
 	}
@@ -624,42 +648,13 @@ void KTimerRemove(KTimer *timer) {
 	KSpinlockRelease(&scheduler.activeTimersSpinlock);
 }
 
-void Scheduler::WaitMutex(KMutex *mutex) {
-	Thread *thread = GetCurrentThread();
-
-	if (thread->state != THREAD_ACTIVE) {
-		KernelPanic("Scheduler::WaitMutex - Attempting to wait on a mutex in a non-active thread.\n");
-	}
-
-	thread->blocking.mutex = mutex;
-	__sync_synchronize();
-	thread->state = THREAD_WAITING_MUTEX;
-
-	KSpinlockAcquire(&dispatchSpinlock);
-	// Is the owner of this mutex executing?
-	// If not, there's no point in spinning on it.
-	bool spin = mutex && mutex->owner && mutex->owner->executing;
-	KSpinlockRelease(&dispatchSpinlock);
-
-	if (!spin && thread->blocking.mutex->owner) {
-		ProcessorFakeTimerInterrupt();
-	}
-
-	// Early exit if this is a user request to block the thread and the thread is terminating.
-	while ((!thread->terminating || thread->terminatableState != THREAD_USER_BLOCK_REQUEST) && mutex->owner) {
-		thread->state = THREAD_WAITING_MUTEX;
-	}
-
-	thread->state = THREAD_ACTIVE;
-}
-
-uintptr_t Scheduler::WaitEvents(KEvent **events, size_t count) {
+uintptr_t KEventWaitMultiple(KEvent **events, size_t count) {
 	if (count > ES_MAX_WAIT_COUNT) {
-		KernelPanic("Scheduler::WaitEvents - count (%d) > ES_MAX_WAIT_COUNT (%d)\n", count, ES_MAX_WAIT_COUNT);
+		KernelPanic("KEventWaitMultiple - count (%d) > ES_MAX_WAIT_COUNT (%d)\n", count, ES_MAX_WAIT_COUNT);
 	} else if (!count) {
-		KernelPanic("Scheduler::WaitEvents - Count is 0.\n");
+		KernelPanic("KEventWaitMultiple - Count is 0.\n");
 	} else if (!ProcessorAreInterruptsEnabled()) {
-		KernelPanic("Scheduler::WaitEvents - Interrupts disabled.\n");
+		KernelPanic("KEventWaitMultiple - Interrupts disabled.\n");
 	}
 
 	Thread *thread = GetCurrentThread();
@@ -701,10 +696,6 @@ uintptr_t Scheduler::WaitEvents(KEvent **events, size_t count) {
 	}
 
 	return -1; // Exited from termination.
-}
-
-uintptr_t KWaitEvents(KEvent **events, size_t count) {
-	return scheduler.WaitEvents(events, count);
 }
 
 void Scheduler::UnblockThread(Thread *unblockedThread, Thread *previousMutexOwner) {

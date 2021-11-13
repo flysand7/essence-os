@@ -196,7 +196,7 @@ bool Controller::Transmit(void *dataVirtual, uintptr_t dataPhysical, size_t data
 void Controller::DispatchThread() {
 	while (true) {
 		KEvent *events[] = { &receiveEvent };
-		KWaitEvents(events, 1);
+		KEventWaitMultiple(events, 1);
 
 		NetInterfaceSetConnected(this, RD_REGISTER_STATUS() & (1 << 1));
 

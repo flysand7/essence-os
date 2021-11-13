@@ -477,7 +477,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			EsMemoryZero(&crashReason, sizeof(EsCrashReason));
 			crashReason.errorCode = ES_FATAL_ERROR_PROCESSOR_EXCEPTION;
 			crashReason.duringSystemCall = (EsSyscallType) -1;
-			scheduler.CrashProcess(currentThread->process, &crashReason);
+			ProcessCrash(currentThread->process, &crashReason);
 
 			resolved:;
 

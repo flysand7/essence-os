@@ -122,7 +122,7 @@ ES_EXTERN_C ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE type, ACPI_OSD_EXEC_CALL
 	event->function = function;
 	event->context = context;
 
-	Thread *thread = scheduler.SpawnThread("ACPICAEvent", (uintptr_t) RunACPICAEvent, (uintptr_t) event);
+	Thread *thread = ThreadSpawn("ACPICAEvent", (uintptr_t) RunACPICAEvent, (uintptr_t) event);
 
 	if (acpiEventCount == 256) {
 		KernelPanic("AcpiOsExecute - Exceeded maximum event count, 256.\n");

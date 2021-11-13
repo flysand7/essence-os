@@ -1677,7 +1677,7 @@ void MMBalanceThread() {
 		// For every memory region...
 
 		MMSpace *space = process->vmm;
-		scheduler.SetTemporaryAddressSpace(space);
+		ThreadSetTemporaryAddressSpace(space);
 		KMutexAcquire(&space->reserveMutex);
 		LinkedItem<MMRegion> *item = pmm.nextRegionToBalance ? &pmm.nextRegionToBalance->itemNonGuard : space->usedRegionsNonGuard.firstItem;
 
@@ -1735,7 +1735,7 @@ void MMBalanceThread() {
 		}
 
 		KMutexRelease(&space->reserveMutex);
-		scheduler.SetTemporaryAddressSpace(nullptr);
+		ThreadSetTemporaryAddressSpace(nullptr);
 		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
 	}
 }
@@ -2298,9 +2298,9 @@ void MMInitialise() {
 
 		pmm.zeroPageEvent.autoReset = true;
 		MMCommit(PHYSICAL_MEMORY_MANIPULATION_REGION_PAGES * K_PAGE_SIZE, true);
-		pmm.zeroPageThread = scheduler.SpawnThread("MMZero", (uintptr_t) MMZeroPageThread, 0, SPAWN_THREAD_LOW_PRIORITY);
-		scheduler.SpawnThread("MMBalance", (uintptr_t) MMBalanceThread, 0, ES_FLAGS_DEFAULT)->isPageGenerator = true;
-		scheduler.SpawnThread("MMObjTrim", (uintptr_t) MMObjectCacheTrimThread, 0, ES_FLAGS_DEFAULT);
+		pmm.zeroPageThread = ThreadSpawn("MMZero", (uintptr_t) MMZeroPageThread, 0, SPAWN_THREAD_LOW_PRIORITY);
+		ThreadSpawn("MMBalance", (uintptr_t) MMBalanceThread, 0, ES_FLAGS_DEFAULT)->isPageGenerator = true;
+		ThreadSpawn("MMObjTrim", (uintptr_t) MMObjectCacheTrimThread, 0, ES_FLAGS_DEFAULT);
 	}
 
 	{

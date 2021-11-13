@@ -1214,12 +1214,12 @@ void CCWriteBehindThread() {
 			// Wait for a reason to want to write behind.
 			// - The CC_WAIT_FOR_WRITE_BEHIND timer expires.
 			// - The number of available page frames is low (pmm.availableLow).
-			// - The system is shutting down and so the cache must be flushed (scheduler.killedEvent).
+			// - The system is shutting down and so the cache must be flushed (scheduler.allProcessesTerminatedEvent).
 			// - The modified list is getting full (activeSectionManager.modifiedGettingFull).
 			KTimer timer = {};
 			KTimerSet(&timer, CC_WAIT_FOR_WRITE_BEHIND - lastWriteMs);
-			KEvent *events[] = { &timer.event, &pmm.availableLow, &scheduler.killedEvent, &activeSectionManager.modifiedGettingFull };
-			scheduler.WaitEvents(events, sizeof(events) / sizeof(events[0]));
+			KEvent *events[] = { &timer.event, &pmm.availableLow, &scheduler.allProcessesTerminatedEvent, &activeSectionManager.modifiedGettingFull };
+			KEventWaitMultiple(events, sizeof(events) / sizeof(events[0]));
 			KTimerRemove(&timer);
 		}
 
@@ -1251,7 +1251,7 @@ void CCInitialise() {
 			activeSectionManager.sectionCount);
 
 	KEventSet(&activeSectionManager.modifiedNonFull);
-	activeSectionManager.writeBackThread = scheduler.SpawnThread("CCWriteBehind", (uintptr_t) CCWriteBehindThread, 0, ES_FLAGS_DEFAULT);
+	activeSectionManager.writeBackThread = ThreadSpawn("CCWriteBehind", (uintptr_t) CCWriteBehindThread, 0, ES_FLAGS_DEFAULT);
 	activeSectionManager.writeBackThread->isPageGenerator = true;
 }
 

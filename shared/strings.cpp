@@ -90,8 +90,8 @@ DEFINE_INTERFACE_STRING(CommonUnitMilliseconds, " ms");
 // Desktop.
 
 DEFINE_INTERFACE_STRING(DesktopNewTabTitle, "New Tab");
-DEFINE_INTERFACE_STRING(DesktopShutdownTitle, "Shutdown");
-DEFINE_INTERFACE_STRING(DesktopShutdownAction, "Shutdown");
+DEFINE_INTERFACE_STRING(DesktopShutdownTitle, "Shut Down");
+DEFINE_INTERFACE_STRING(DesktopShutdownAction, "Shut down");
 DEFINE_INTERFACE_STRING(DesktopRestartAction, "Restart");
 DEFINE_INTERFACE_STRING(DesktopForceQuit, "Force quit");
 DEFINE_INTERFACE_STRING(DesktopCrashedApplication, "The application has crashed. If you're a developer, more information is available in System Monitor.");

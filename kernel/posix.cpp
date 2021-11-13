@@ -463,7 +463,7 @@ namespace POSIX {
 				// EsPrint("vfork->\n");
 
 				// Allocate the process.
-				Process *forkProcess = currentThread->posixData->forkProcess = scheduler.SpawnProcess();
+				Process *forkProcess = currentThread->posixData->forkProcess = ProcessSpawn(PROCESS_NORMAL);
 				forkProcess->pgid = currentProcess->pgid;
 
 				// Clone our FDs.
@@ -518,7 +518,7 @@ namespace POSIX {
 
 				// Start the process.
 
-				if (!process->Start(path, syscall.arguments[1])) {
+				if (!ProcessStart(process, path, syscall.arguments[1])) {
 					EsHeapFree(path, 0, K_FIXED);
 					return -ENOMEM;
 				}
@@ -591,7 +591,7 @@ namespace POSIX {
 				if (processHandle) {
 					return processHandle;
 				} else {
-					scheduler.TerminateProcess(currentProcess, syscall.arguments[0]);
+					ProcessTerminate(currentProcess, syscall.arguments[0]);
 				}
 			} break;
 

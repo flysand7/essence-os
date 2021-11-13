@@ -219,7 +219,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			if (previous == 0) {
 				KernelPanic("CloseHandleToProcess - All handles to process %x have been closed.\n", process);
 			} else if (previous == 1) {
-				scheduler.RemoveProcess(process);
+				ProcessRemove(process);
 			}
 		} break;
 
@@ -230,7 +230,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 			if (previous == 0) {
 				KernelPanic("CloseHandleToObject - All handles to thread %x have been closed.\n", thread);
 			} else if (previous == 1) {
-				scheduler.RemoveThread(thread);
+				ThreadRemove(thread);
 			}
 		} break;
 

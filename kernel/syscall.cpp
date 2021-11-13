@@ -176,7 +176,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 	// Create the process.
 
 	if (error == ES_SUCCESS) {
-		Process *process = scheduler.SpawnProcess();
+		Process *process = ProcessSpawn(PROCESS_NORMAL);
 
 		if (!process) {
 			error = ES_ERROR_INSUFFICIENT_RESOURCES;
@@ -198,7 +198,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_CREATE) {
 
 			// Start the process.
 
-			if (error != ES_SUCCESS || !process->StartWithNode(executableObject)) {
+			if (error != ES_SUCCESS || !ProcessStartWithNode(process, executableObject)) {
 				error = ES_ERROR_UNKNOWN; // TODO.
 				CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
 			} else {
@@ -498,10 +498,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_TERMINATE) {
 	{
 		SYSCALL_HANDLE(argument0, KERNEL_OBJECT_THREAD, thread, Thread);
 		if (thread == currentThread) self = true;
-		else scheduler.TerminateThread(thread);
+		else ThreadTerminate(thread);
 	}
 
-	if (self) scheduler.TerminateThread(currentThread);
+	if (self) ThreadTerminate(currentThread);
 
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
@@ -514,10 +514,10 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_TERMINATE) {
 	{
 		SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
 		if (process == currentProcess) self = true;
-		else scheduler.TerminateProcess(process, argument1);
+		else ProcessTerminate(process, argument1);
 	}
 
-	if (self) scheduler.TerminateProcess(currentProcess, argument1);
+	if (self) ProcessTerminate(currentProcess, argument1);
 
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
@@ -525,14 +525,13 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_TERMINATE) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_CREATE) {
 	EsThreadInformation thread;
 	EsMemoryZero(&thread, sizeof(EsThreadInformation));
-	Thread *threadObject = scheduler.SpawnThread("Syscall", argument0, argument3, SPAWN_THREAD_USERLAND, currentProcess, argument1);
+	Thread *threadObject = ThreadSpawn("Syscall", argument0, argument3, SPAWN_THREAD_USERLAND, currentProcess, argument1);
 
 	if (!threadObject) {
 		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	}
 
 	thread.tid = threadObject->id;
-
 	thread.handle = currentProcess->handleTable.OpenHandle(threadObject, 0, KERNEL_OBJECT_THREAD); 
 
 	SYSCALL_WRITE(argument2, &thread, sizeof(EsThreadInformation));
@@ -849,7 +848,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 		}
 
 		currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
-		waitReturnValue = scheduler.WaitEvents(events, waitObjectCount);
+		waitReturnValue = KEventWaitMultiple(events, waitObjectCount);
 		currentThread->terminatableState = THREAD_IN_SYSCALL;
 
 		if (waitReturnValue == argument1) {
@@ -1082,7 +1081,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_PAUSE) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PROCESS, process, Process);
-	scheduler.PauseProcess(process, (bool) argument1);
+	ProcessPause(process, (bool) argument1);
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
@@ -1303,7 +1302,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESSOR_COUNT) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_OPEN) {
 	SYSCALL_PERMISSION(ES_PERMISSION_PROCESS_OPEN);
 
-	Process *process = scheduler.OpenProcess(argument0);
+	Process *process = ProcessOpen(argument0);
 
 	if (process) {
 		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS), false);
@@ -1755,7 +1754,7 @@ uintptr_t DoSyscall(EsSyscallType index, uintptr_t argument0, uintptr_t argument
 			reason.duringSystemCall = index;
 			KernelLog(LOG_ERROR, "Syscall", "syscall failure", 
 					"Process crashed during system call [%x, %x, %x, %x, %x]\n", index, argument0, argument1, argument2, argument3);
-			scheduler.CrashProcess(currentProcess, &reason);
+			ProcessCrash(currentProcess, &reason);
 		}
 	}
 

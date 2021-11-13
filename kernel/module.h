@@ -280,7 +280,7 @@ struct KEvent { // Waiting and notifying. Can wait on multiple at once. Can be s
 bool KEventSet(KEvent *event, bool maybeAlreadySet = false);
 void KEventReset(KEvent *event); 
 bool KEventPoll(KEvent *event); // TODO Remove this! Currently it is only used by KAudioFillBuffersFromMixer.
-bool KEventWait(KEvent *event, uint64_t timeoutMs = ES_WAIT_NO_TIMEOUT); // See KWaitEvents to wait for multiple events. Returns false if the wait timed out.
+bool KEventWait(KEvent *event, uint64_t timeoutMs = ES_WAIT_NO_TIMEOUT); // See KEventWaitMultiple to wait for multiple events. Returns false if the wait timed out.
 
 struct KWriterLock { // One writer or many readers.
 	K_PRIVATE
@@ -424,7 +424,7 @@ bool KThreadCreate(const char *cName, void (*startAddress)(uintptr_t), uintptr_t
 extern "C" void KThreadTerminate(); // Terminates the current thread. Kernel threads can only be terminated by themselves.
 void KYield();
 
-uintptr_t KWaitEvents(KEvent **events, size_t count);
+uintptr_t KEventWaitMultiple(KEvent **events, size_t count);
 
 struct KWorkGroup {
 	inline void Initialise() {

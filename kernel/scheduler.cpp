@@ -6,6 +6,37 @@
 // TODO Simplify or remove asynchronous task thread semantics.
 // TODO Break up or remove dispatchSpinlock.
 
+// How thread termination works:
+// 1. ThreadTerminate
+// 	- terminating is set to true.
+// 	- If the thread is executing, then on the next context switch, ThreadKill is called on a async task. 
+// 	- If it is not executing, ThreadKill is called on a async task.
+// 	- Note, terminatableState must be set to THREAD_TERMINATABLE.
+// 	- When a thread terminates itself, its terminatableState is automatically set to THREAD_TERMINATABLE.
+// 2. ThreadKill
+// 	- Removes the thread from the lists, frees the stacks, and sets killedEvent.
+// 	- The thread's handles to itself and its process are closed.
+// 	- If this is the last thread in the process, ProcessKill is called.
+// 3. CloseHandleToObject KERNEL_OBJECT_THREAD
+// 	- If the last handle to the thread has been closed, then ThreadRemove is called.
+// 4. ThreadRemove
+// 	- The thread structure is deallocated.
+
+// How process termination works:
+// 1. ProcessTerminate (optional)
+// 	- preventNewThreads is set to true.
+// 	- ThreadTerminate is called on each thread, leading to an eventual call to ProcessKill.
+// 	- This is optional because ProcessKill is called if all threads get terminated naturally; in this case, preventNewThreads is never set.
+// 2. ProcessKill
+// 	- Removes the process from the lists, destroys the handle table and memory space, and sets killedEvent.
+// 	- Sends a message to Desktop informing it the process was killed.
+// 	- Since ProcessKill is only called from ThreadKill, there is an associated closing of a process handle from the killed thread.
+// 3. CloseHandleToObject KERNEL_OBJECT_PROCESS
+// 	- If the last handle to the process has been closed, then ProcessRemove is called.
+// 4. ProcessRemove
+// 	- Destroys the message queue, and closes the handle to the executable node.
+// 	- The process and memory space structures are deallocated.
+
 #ifndef IMPLEMENTATION
 
 #define THREAD_PRIORITY_NORMAL 	(0) // Lower value = higher priority.
@@ -109,9 +140,6 @@ enum ProcessType {
 };
 
 struct Process {
-	bool StartWithNode(KNode *node);
-	bool Start(char *imagePath, size_t imagePathLength);
-
 	MMSpace *vmm;
 	HandleTable handleTable;
 	MessageQueue messageQueue;
@@ -139,7 +167,7 @@ struct Process {
 
 	// Termination:
 	bool allThreadsTerminated;
-	bool preventNewThreads; // Set by TerminateProcess.
+	bool preventNewThreads; // Set by ProcessTerminate.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
 
@@ -163,105 +191,36 @@ struct Scheduler {
 	// External API:
 
 	void Yield(InterruptContext *context);
-
-#define SPAWN_THREAD_USERLAND     (1 << 0)
-#define SPAWN_THREAD_LOW_PRIORITY (1 << 1)
-#define SPAWN_THREAD_PAUSED       (1 << 2)
-#define SPAWN_THREAD_ASYNC_TASK   (1 << 3)
-#define SPAWN_THREAD_IDLE         (1 << 4)
-	Thread *SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
-			uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
-	void PauseThread(Thread *thread, bool resume /* true to resume, false to pause */);
-
-	Process *SpawnProcess(ProcessType processType = PROCESS_NORMAL);
-	void PauseProcess(Process *process, bool resume);
-	void CrashProcess(Process *process, EsCrashReason *reason);
-
-	// How thread termination works:
-	// 1. TerminateThread
-	// 	- terminating is set to true.
-	// 	- If the thread is executing, then on the next context switch, KillThread is called on a async task. 
-	// 	- If it is not executing, KillThread is called on a async task.
-	// 	- Note, terminatableState must be set to THREAD_TERMINATABLE.
-	// 	- When a thread terminates itself, its terminatableState is automatically set to THREAD_TERMINATABLE.
-	// 2. KillThread
-	// 	- Removes the thread from the lists, frees the stacks, and sets killedEvent.
-	// 	- The thread's handles to itself and its process are closed.
-	// 	- If this is the last thread in the process, KillProcess is called.
-	// 3. CloseHandleToObject KERNEL_OBJECT_THREAD
-	// 	- If the last handle to the thread has been closed, then RemoveThread is called.
-	// 4. RemoveThread
-	// 	- The thread structure is deallocated.
-	void TerminateThread(Thread *thread);
-
-	// How process termination works:
-	// 1. TerminateProcess (optional)
-	// 	- preventNewThreads is set to true.
-	// 	- TerminateThread is called on each thread, leading to an eventual call to KillProcess.
-	// 	- This is optional because KillProcess is called if all threads get terminated naturally; in this case, preventNewThreads is never set.
-	// 2. KillProcess
-	// 	- Removes the process from the lists, destroys the handle table and memory space, and sets killedEvent.
-	// 	- Sends a message to Desktop informing it the process was killed.
-	// 	- Since KillProcess is only called from KillThread, there is an associated closing of a process handle from the killed thread.
-	// 3. CloseHandleToObject KERNEL_OBJECT_PROCESS
-	// 	- If the last handle to the process has been closed, then RemoveProcess is called.
-	// 4. RemoveProcess
-	// 	- Destroys the message queue, and closes the handle to the executable node.
-	// 	- The process and memory space structures are deallocated.
-	void TerminateProcess(Process *process, int status);
-
-	Process *OpenProcess(uint64_t id);
-
-	void WaitMutex(KMutex *mutex);
-	uintptr_t WaitEvents(KEvent **events, size_t count); // Returns index of notified object.
-
-	// Set a temporary address space for the current thread. Used by some asynchronous tasks, and the memory manager's balancer.
-	void SetTemporaryAddressSpace(MMSpace *space);
-
-	void Shutdown();
-
-	// Internal functions:
-
 	void CreateProcessorThreads(CPULocalStorage *local);
-
-	void RemoveProcess(Process *process); // Do not call. Use TerminateProcess/CloseHandleToObject.
-	void RemoveThread(Thread *thread); // Do not call. Use TerminateThread/CloseHandleToObject.
 	void AddActiveThread(Thread *thread, bool start /* put it at the start of the active list */); // Add an active thread into the queue.
 	void MaybeUpdateActiveList(Thread *thread); // After changing the priority of a thread, call this to move it to the correct active thread queue if needed.
-
 	void NotifyObject(LinkedList<Thread> *blockedThreads, bool unblockAll, Thread *previousMutexOwner = nullptr);
 	void UnblockThread(Thread *unblockedThread, Thread *previousMutexOwner = nullptr);
-
 	Thread *PickThread(CPULocalStorage *local); // Pick the next thread to execute.
 	int8_t GetThreadEffectivePriority(Thread *thread);
 
 	// Variables:
 
 	KSpinlock dispatchSpinlock; // For accessing synchronisation objects, thread states, scheduling lists, etc. TODO Break this up!
-	KMutex allThreadsMutex; // For accessing the allThreads list.
-	KMutex allProcessesMutex; // For accessing the allProcesses list.
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
-	KSpinlock asyncTaskSpinlock; // For accessing the per-CPU asyncTaskList.
-
-	KEvent killedEvent; // Set during shutdown when all processes have been terminated.
-	volatile uintptr_t blockShutdownProcessCount;
-	volatile size_t activeProcessCount;
-
-	Pool threadPool, processPool, mmSpacePool;
-
 	LinkedList<Thread> activeThreads[THREAD_PRIORITY_COUNT];
 	LinkedList<Thread> pausedThreads;
 	LinkedList<KTimer> activeTimers;
+
+	KMutex allThreadsMutex; // For accessing the allThreads list.
+	KMutex allProcessesMutex; // For accessing the allProcesses list.
+	KSpinlock asyncTaskSpinlock; // For accessing the per-CPU asyncTaskList.
 	LinkedList<Thread> allThreads;
 	LinkedList<Process> allProcesses;
 
+	Pool threadPool, processPool, mmSpacePool;
+	EsObjectID nextThreadID, nextProcessID, nextProcessorID;
+
+	KEvent allProcessesTerminatedEvent; // Set during shutdown when all processes have been terminated.
+	volatile uintptr_t blockShutdownProcessCount;
+	volatile size_t activeProcessCount;
 	volatile bool started, panic, shutdown;
-
 	uint64_t timeMs;
-
-	EsObjectID nextThreadID;
-	EsObjectID nextProcessID;
-	EsObjectID nextProcessorID;
 
 #ifdef DEBUG_BUILD
 	EsThreadEventLogEntry *volatile threadEventLog;
@@ -269,6 +228,21 @@ struct Scheduler {
 	volatile size_t threadEventLogAllocated;
 #endif
 };
+
+Process *ProcessSpawn(ProcessType processType);
+void ProcessRemove(Process *process);
+void ProcessTerminate(Process *process, int status);
+void ThreadRemove(Thread *thread);
+void ThreadTerminate(Thread *thread);
+void ThreadSetTemporaryAddressSpace(MMSpace *space);
+
+#define SPAWN_THREAD_USERLAND     (1 << 0)
+#define SPAWN_THREAD_LOW_PRIORITY (1 << 1)
+#define SPAWN_THREAD_PAUSED       (1 << 2)
+#define SPAWN_THREAD_ASYNC_TASK   (1 << 3)
+#define SPAWN_THREAD_IDLE         (1 << 4)
+Thread *ThreadSpawn(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
+		uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
 
 Process _kernelProcess;
 Process *kernelProcess = &_kernelProcess;
@@ -379,7 +353,7 @@ void Scheduler::MaybeUpdateActiveList(Thread *thread) {
 	activeThreads[effectivePriority].InsertStart(&thread->item);
 }
 
-Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintptr_t argument1, uint32_t flags, Process *process, uintptr_t argument2) {
+Thread *ThreadSpawn(const char *cName, uintptr_t startAddress, uintptr_t argument1, uint32_t flags, Process *process, uintptr_t argument2) {
 	bool userland = flags & SPAWN_THREAD_USERLAND;
 	Thread *parentThread = GetCurrentThread();
 
@@ -388,7 +362,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	}
 
 	if (userland && process == kernelProcess) {
-		KernelPanic("Scheduler::SpawnThread - Cannot add userland thread to kernel process.\n");
+		KernelPanic("ThreadSpawn - Cannot add userland thread to kernel process.\n");
 	}
 
 	// Adding the thread to the owner's list of threads and adding the thread to a scheduling list
@@ -396,10 +370,11 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	KMutexAcquire(&process->threadsMutex);
 	EsDefer(KMutexRelease(&process->threadsMutex));
 
-	if (shutdown && userland) return nullptr;
-	if (process->preventNewThreads) return nullptr;
+	if (process->preventNewThreads) {
+		return nullptr;
+	}
 
-	Thread *thread = (Thread *) threadPool.Add(sizeof(Thread));
+	Thread *thread = (Thread *) scheduler.threadPool.Add(sizeof(Thread));
 	if (!thread) return nullptr;
 	KernelLog(LOG_INFO, "Scheduler", "spawn thread", "Created thread, %x to start at %x\n", thread, startAddress);
 
@@ -438,7 +413,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	if (!stack) goto fail;
 	skipStackAllocation:;
 
-	// If PauseProcess is called while a thread in that process is spawning a new thread, mark the thread as paused. 
+	// If ProcessPause is called while a thread in that process is spawning a new thread, mark the thread as paused. 
 	// This is synchronized under the threadsMutex.
 	thread->paused = (parentThread && process == parentThread->process && parentThread->paused) || (flags & SPAWN_THREAD_PAUSED);
 
@@ -456,7 +431,7 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	thread->userStackCommit = userStackCommit;
 	thread->terminatableState = userland ? THREAD_TERMINATABLE : THREAD_IN_SYSCALL;
 	thread->type = (flags & SPAWN_THREAD_ASYNC_TASK) ? THREAD_ASYNC_TASK : (flags & SPAWN_THREAD_IDLE) ? THREAD_IDLE : THREAD_NORMAL;
-	thread->id = __sync_fetch_and_add(&nextThreadID, 1);
+	thread->id = __sync_fetch_and_add(&scheduler.nextThreadID, 1);
 	thread->process = process;
 	thread->item.thisItem = thread;
 	thread->allItem.thisItem = thread;
@@ -472,9 +447,9 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 
 	process->threads.InsertEnd(&thread->processItem);
 
-	KMutexAcquire(&allThreadsMutex);
-	allThreads.InsertStart(&thread->allItem);
-	KMutexRelease(&allThreadsMutex);
+	KMutexAcquire(&scheduler.allThreadsMutex);
+	scheduler.allThreads.InsertStart(&thread->allItem);
+	KMutexRelease(&scheduler.allThreadsMutex);
 
 	// Each thread owns a handles to the owner process.
 	// This makes sure the process isn't destroyed before all its threads have been destroyed.
@@ -487,9 +462,9 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 
 	if (thread->type == THREAD_NORMAL) {
 		// Add the thread to the start of the active thread list to make sure that it runs immediately.
-		KSpinlockAcquire(&dispatchSpinlock);
-		AddActiveThread(thread, true);
-		KSpinlockRelease(&dispatchSpinlock);
+		KSpinlockAcquire(&scheduler.dispatchSpinlock);
+		scheduler.AddActiveThread(thread, true);
+		KSpinlockRelease(&scheduler.dispatchSpinlock);
 	} else {
 		// Idle and asynchronous task threads don't need to be added to a scheduling list.
 	}
@@ -501,17 +476,17 @@ Thread *Scheduler::SpawnThread(const char *cName, uintptr_t startAddress, uintpt
 	fail:;
 	if (stack) MMFree(process->vmm, (void *) stack);
 	if (kernelStack) MMFree(kernelMMSpace, (void *) kernelStack);
-	threadPool.Remove(thread);
+	scheduler.threadPool.Remove(thread);
 	return nullptr;
 }
 
-void KillProcess(Process *process) {
-	// This function should only be called by KillThread, when the last thread in the process exits.
+void ProcessKill(Process *process) {
+	// This function should only be called by ThreadKill, when the last thread in the process exits.
 	// There should be at least one remaining handle to the process here, owned by that thread.
-	// It will be closed at the end of the KillThread function.
+	// It will be closed at the end of the ThreadKill function.
 
 	if (!process->handles) {
-		KernelPanic("KillProcess - Process %x is on the allProcesses list but there are no handles to it.\n", process);
+		KernelPanic("ProcessKill - Process %x is on the allProcesses list but there are no handles to it.\n", process);
 	}
 
 	KernelLog(LOG_INFO, "Scheduler", "killing process", "Killing process (%d) %x...\n", process->id, process);
@@ -559,7 +534,7 @@ void KillProcess(Process *process) {
 	process->handleTable.Destroy();
 
 	// Destroy the virtual memory space.
-	// Don't actually deallocate it yet though; that is done on an async task queued by RemoveProcess.
+	// Don't actually deallocate it yet though; that is done on an async task queued by ProcessRemove.
 	// This must be destroyed after the handle table!
 	MMSpaceDestroy(process->vmm); 
 
@@ -573,9 +548,9 @@ void KillProcess(Process *process) {
 	}
 }
 
-void KillThread(KAsyncTask *task) {
+void ThreadKill(KAsyncTask *task) {
 	Thread *thread = EsContainerOf(Thread, killAsyncTask, task);
-	scheduler.SetTemporaryAddressSpace(thread->process->vmm);
+	ThreadSetTemporaryAddressSpace(thread->process->vmm);
 
 	KMutexAcquire(&scheduler.allThreadsMutex);
 	scheduler.allThreads.Remove(&thread->allItem);
@@ -590,7 +565,7 @@ void KillThread(KAsyncTask *task) {
 			"Killing thread (ID %d, %d remain in process %d) %x...\n", thread->id, thread->process->threads.count, thread->process->id, thread);
 
 	if (lastThread) {
-		KillProcess(thread->process);
+		ProcessKill(thread->process);
 	}
 
 	MMFree(kernelMMSpace, (void *) thread->kernelStackBase);
@@ -603,7 +578,7 @@ void KillThread(KAsyncTask *task) {
 	CloseHandleToObject(thread, KERNEL_OBJECT_THREAD);
 }
 
-void Scheduler::TerminateProcess(Process *process, int status) {
+void ProcessTerminate(Process *process, int status) {
 	KMutexAcquire(&process->threadsMutex);
 
 	KernelLog(LOG_INFO, "Scheduler", "terminate process", "Terminating process %d '%z' with status %i...\n", 
@@ -622,25 +597,25 @@ void Scheduler::TerminateProcess(Process *process, int status) {
 		thread = thread->nextItem;
 
 		if (threadObject != currentThread) {
-			TerminateThread(threadObject);
+			ThreadTerminate(threadObject);
 		} else if (isCurrentProcess) {
 			foundCurrentThread = true;
 		} else {
-			KernelPanic("Scheduler::TerminateProcess - Found current thread in the wrong process?!\n");
+			KernelPanic("Scheduler::ProcessTerminate - Found current thread in the wrong process?!\n");
 		}
 	}
 
 	KMutexRelease(&process->threadsMutex);
 
 	if (!foundCurrentThread && isCurrentProcess) {
-		KernelPanic("Scheduler::TerminateProcess - Could not find current thread in the current process?!\n");
+		KernelPanic("Scheduler::ProcessTerminate - Could not find current thread in the current process?!\n");
 	} else if (isCurrentProcess) {
 		// This doesn't return.
-		TerminateThread(currentThread);
+		ThreadTerminate(currentThread);
 	}
 }
 
-void Scheduler::TerminateThread(Thread *thread) {
+void ThreadTerminate(Thread *thread) {
 	// Overview:
 	//	Set terminating true, and paused false.
 	// 	Is this the current thread?
@@ -678,7 +653,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 
 		// We cannot return to the previous function as it expects to be killed.
 		ProcessorFakeTimerInterrupt();
-		KernelPanic("Scheduler::TerminateThread - ProcessorFakeTimerInterrupt returned.\n");
+		KernelPanic("Scheduler::ThreadTerminate - ProcessorFakeTimerInterrupt returned.\n");
 	} else {
 		if (thread->terminatableState == THREAD_TERMINATABLE) {
 			// We're in user code..
@@ -688,13 +663,13 @@ void Scheduler::TerminateThread(Thread *thread) {
 				// is pre-empted, it will be terminated.
 			} else {
 				if (thread->state != THREAD_ACTIVE) {
-					KernelPanic("Scheduler::TerminateThread - Terminatable thread non-active.\n");
+					KernelPanic("Scheduler::ThreadTerminate - Terminatable thread non-active.\n");
 				}
 
 				// The thread is terminatable and it isn't executing.
 				// Remove it from its queue, and then remove the thread.
 				thread->item.RemoveFromList();
-				KRegisterAsyncTask(&thread->killAsyncTask, KillThread);
+				KRegisterAsyncTask(&thread->killAsyncTask, ThreadKill);
 				yield = true;
 			}
 		} else if (thread->terminatableState == THREAD_USER_BLOCK_REQUEST) {
@@ -709,7 +684,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 				// Unblock the thread.
 				// See comment above.
 				if (thread->state == THREAD_WAITING_MUTEX || thread->state == THREAD_WAITING_EVENT) {
-					UnblockThread(thread);
+					scheduler.UnblockThread(thread);
 				}
 			}
 		} else {
@@ -725,7 +700,7 @@ void Scheduler::TerminateThread(Thread *thread) {
 	if (yield) ProcessorFakeTimerInterrupt(); // Process the asynchronous task.
 }
 
-void NewProcess() {
+void ProcessLoadExecutable() {
 	Process *thisProcess = GetCurrentThread()->process;
 
 	KernelLog(LOG_INFO, "Scheduler", "new process", 
@@ -795,7 +770,7 @@ void NewProcess() {
 		if (thisProcess->creationFlags & ES_PROCESS_CREATE_PAUSED) threadFlags |= SPAWN_THREAD_PAUSED;
 
 		thisProcess->executableState = ES_PROCESS_EXECUTABLE_LOADED;
-		thisProcess->executableMainThread = scheduler.SpawnThread("MainThread", api.startAddress, 
+		thisProcess->executableMainThread = ThreadSpawn("MainThread", api.startAddress, 
 				(uintptr_t) startupInformation, threadFlags, thisProcess);
 
 		if (!thisProcess->executableMainThread) {
@@ -805,7 +780,7 @@ void NewProcess() {
 
 	if (!success) {
 		if (thisProcess->type != PROCESS_NORMAL) {
-			KernelPanic("NewProcess - Failed to start the critical process %z.\n", thisProcess->cExecutableName);
+			KernelPanic("ProcessLoadExecutable - Failed to start the critical process %z.\n", thisProcess->cExecutableName);
 		}
 
 		thisProcess->executableState = ES_PROCESS_EXECUTABLE_FAILED_TO_LOAD;
@@ -814,37 +789,17 @@ void NewProcess() {
 	KEventSet(&thisProcess->executableLoadAttemptComplete);
 }
 
-bool Process::Start(char *imagePath, size_t imagePathLength) {
-	uint64_t flags = ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND;
-	KNodeInformation node = FSNodeOpen(imagePath, imagePathLength, flags);
-	bool result = false;
-
-	if (!ES_CHECK_ERROR(node.error)) {
-		if (node.node->directoryEntry->type == ES_NODE_FILE) {
-			result = StartWithNode(node.node);
-		}
-
-		CloseHandleToObject(node.node, KERNEL_OBJECT_NODE, flags);
-	}
-
-	if (!result && type == PROCESS_DESKTOP) {
-		KernelPanic("Process::Start - Could not load the desktop executable.\n");
-	}
-
-	return result;
-}
-
-bool Process::StartWithNode(KNode *node) {
+bool ProcessStartWithNode(Process *process, KNode *node) {
 	// Make sure nobody has tried to start the process.
 
 	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 
-	if (executableStartRequest) {
+	if (process->executableStartRequest) {
 		KSpinlockRelease(&scheduler.dispatchSpinlock);
 		return false;
 	}
 
-	executableStartRequest = true;
+	process->executableStartRequest = true;
 
 	KSpinlockRelease(&scheduler.dispatchSpinlock);
 
@@ -853,45 +808,45 @@ bool Process::StartWithNode(KNode *node) {
 	KWriterLockTake(&node->writerLock, K_LOCK_SHARED);
 	size_t byteCount = node->directoryEntry->item.key.longKeyBytes;
 	if (byteCount > ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH) byteCount = ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH;
-	EsMemoryCopy(cExecutableName, node->directoryEntry->item.key.longKey, byteCount);
-	cExecutableName[byteCount] = 0;
+	EsMemoryCopy(process->cExecutableName, node->directoryEntry->item.key.longKey, byteCount);
+	process->cExecutableName[byteCount] = 0;
 	KWriterLockReturn(&node->writerLock, K_LOCK_SHARED);
 
 	// Initialise the memory space.
 
-	bool success = MMSpaceInitialise(vmm);
+	bool success = MMSpaceInitialise(process->vmm);
 	if (!success) return false;
 
 	// NOTE If you change these flags, make sure to update the flags when the handle is closed!
 
 	if (!OpenHandleToObject(node, KERNEL_OBJECT_NODE, ES_FILE_READ)) {
-		KernelPanic("Process::StartWithNode - Could not open read handle to node %x.\n", node);
+		KernelPanic("ProcessStartWithNode - Could not open read handle to node %x.\n", node);
 	}
 
-	executableNode = node;
+	process->executableNode = node;
 	__sync_fetch_and_add(&scheduler.activeProcessCount, 1);
 	__sync_fetch_and_add(&scheduler.blockShutdownProcessCount, 1);
 
 	// Add the process to the list of all processes,
 	// and spawn the kernel thread to load the executable.
 	// This is synchronized under allProcessesMutex so that the process can't be terminated or paused
-	// until newProcessThread has been spawned.
+	// until loadExecutableThread has been spawned.
 	KMutexAcquire(&scheduler.allProcessesMutex);
-	scheduler.allProcesses.InsertEnd(&allItem);
-	Thread *newProcessThread = scheduler.SpawnThread("NewProcess", (uintptr_t) NewProcess, 0, ES_FLAGS_DEFAULT, this);
+	scheduler.allProcesses.InsertEnd(&process->allItem);
+	Thread *loadExecutableThread = ThreadSpawn("ExecLoad", (uintptr_t) ProcessLoadExecutable, 0, ES_FLAGS_DEFAULT, process);
 	KMutexRelease(&scheduler.allProcessesMutex);
 
-	if (!newProcessThread) {
-		CloseHandleToObject(this, KERNEL_OBJECT_PROCESS);
+	if (!loadExecutableThread) {
+		CloseHandleToObject(process, KERNEL_OBJECT_PROCESS);
 		return false;
 	}
 
 	// Wait for the executable to be loaded.
 
-	CloseHandleToObject(newProcessThread, KERNEL_OBJECT_THREAD);
-	KEventWait(&executableLoadAttemptComplete, ES_WAIT_NO_TIMEOUT);
+	CloseHandleToObject(loadExecutableThread, KERNEL_OBJECT_THREAD);
+	KEventWait(&process->executableLoadAttemptComplete, ES_WAIT_NO_TIMEOUT);
 
-	if (executableState == ES_PROCESS_EXECUTABLE_FAILED_TO_LOAD) {
+	if (process->executableState == ES_PROCESS_EXECUTABLE_FAILED_TO_LOAD) {
 		KernelLog(LOG_ERROR, "Scheduler", "executable load failure", "Executable failed to load.\n");
 		return false;
 	}
@@ -899,23 +854,43 @@ bool Process::StartWithNode(KNode *node) {
 	return true;
 }
 
-Process *Scheduler::SpawnProcess(ProcessType processType) {
-	if (shutdown) return nullptr;
+bool ProcessStart(Process *process, char *imagePath, size_t imagePathLength) {
+	uint64_t flags = ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND;
+	KNodeInformation node = FSNodeOpen(imagePath, imagePathLength, flags);
+	bool result = false;
 
-	Process *process = processType == PROCESS_KERNEL ? kernelProcess : (Process *) processPool.Add(sizeof(Process));
+	if (!ES_CHECK_ERROR(node.error)) {
+		if (node.node->directoryEntry->type == ES_NODE_FILE) {
+			result = ProcessStartWithNode(process, node.node);
+		}
+
+		CloseHandleToObject(node.node, KERNEL_OBJECT_NODE, flags);
+	}
+
+	if (!result && process->type == PROCESS_DESKTOP) {
+		KernelPanic("ProcessStart - Could not load the desktop executable.\n");
+	}
+
+	return result;
+}
+
+Process *ProcessSpawn(ProcessType processType) {
+	if (scheduler.shutdown) return nullptr;
+
+	Process *process = processType == PROCESS_KERNEL ? kernelProcess : (Process *) scheduler.processPool.Add(sizeof(Process));
 
 	if (!process) {
 		return nullptr;
 	}
 
-	process->vmm = processType == PROCESS_KERNEL ? kernelMMSpace : (MMSpace *) mmSpacePool.Add(sizeof(MMSpace));
+	process->vmm = processType == PROCESS_KERNEL ? kernelMMSpace : (MMSpace *) scheduler.mmSpacePool.Add(sizeof(MMSpace));
 
 	if (!process->vmm) {
-		processPool.Remove(process);
+		scheduler.processPool.Remove(process);
 		return nullptr;
 	}
 
-	process->id = __sync_fetch_and_add(&nextProcessID, 1);
+	process->id = __sync_fetch_and_add(&scheduler.nextProcessID, 1);
 	process->vmm->referenceCount = 1;
 	process->allItem.thisItem = process;
 	process->handles = 1;
@@ -931,15 +906,15 @@ Process *Scheduler::SpawnProcess(ProcessType processType) {
 	return process; 
 }
 
-void Scheduler::SetTemporaryAddressSpace(MMSpace *space) {
-	KSpinlockAcquire(&dispatchSpinlock);
+void ThreadSetTemporaryAddressSpace(MMSpace *space) {
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
 	Thread *thread = GetCurrentThread();
 	MMSpace *oldSpace = thread->temporaryAddressSpace ?: kernelMMSpace;
 	thread->temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
 	MMSpaceOpenReference(newSpace);
 	ProcessorSetAddressSpace(&newSpace->data);
-	KSpinlockRelease(&dispatchSpinlock);
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
 	MMSpaceCloseReference(oldSpace);
 }
 
@@ -959,15 +934,15 @@ void AsyncTaskThread() {
 			item->Remove();
 			KSpinlockRelease(&scheduler.asyncTaskSpinlock);
 			callback(task); // This may cause the task to be deallocated.
-			scheduler.SetTemporaryAddressSpace(nullptr); // The task may have modified the address space.
+			ThreadSetTemporaryAddressSpace(nullptr); // The task may have modified the address space.
 			local->inAsyncTask = false;
 		}
 	}
 }
 
 void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
-	local->asyncTaskThread = SpawnThread("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_ASYNC_TASK);
-	local->currentThread = local->idleThread = SpawnThread("Idle", 0, 0, SPAWN_THREAD_IDLE);
+	local->asyncTaskThread = ThreadSpawn("AsyncTasks", (uintptr_t) AsyncTaskThread, 0, SPAWN_THREAD_ASYNC_TASK);
+	local->currentThread = local->idleThread = ThreadSpawn("Idle", 0, 0, SPAWN_THREAD_IDLE);
 	local->processorID = __sync_fetch_and_add(&nextProcessorID, 1);
 
 	if (local->processorID >= K_MAX_PROCESSORS) { 
@@ -975,7 +950,7 @@ void Scheduler::CreateProcessorThreads(CPULocalStorage *local) {
 	}
 }
 
-void Scheduler::RemoveProcess(Process *process) {
+void ProcessRemove(Process *process) {
 	KernelLog(LOG_INFO, "Scheduler", "remove process", "Removing process %d.\n", process->id);
 
 	if (process->executableNode) {
@@ -997,11 +972,11 @@ void Scheduler::RemoveProcess(Process *process) {
 	scheduler.processPool.Remove(process); 
 
 	if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
-		KEventSet(&scheduler.killedEvent);
+		KEventSet(&scheduler.allProcessesTerminatedEvent);
 	}
 }
 
-void Scheduler::RemoveThread(Thread *thread) {
+void ThreadRemove(Thread *thread) {
 	KernelLog(LOG_INFO, "Scheduler", "remove thread", "Removing thread %d.\n", thread->id);
 
 	// The last handle to the thread has been closed,
@@ -1021,17 +996,75 @@ void Scheduler::RemoveThread(Thread *thread) {
 	scheduler.threadPool.Remove(thread);
 }
 
-void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
+void ThreadPause(Thread *thread, bool resume) {
+	KSpinlockAcquire(&scheduler.dispatchSpinlock);
+
+	if (thread->paused == !resume) {
+		return;
+	}
+
+	thread->paused = !resume;
+
+	if (!resume && thread->terminatableState == THREAD_TERMINATABLE) {
+		if (thread->state == THREAD_ACTIVE) {
+			if (thread->executing) {
+				if (thread == GetCurrentThread()) {
+					KSpinlockRelease(&scheduler.dispatchSpinlock);
+
+					// Yield.
+					ProcessorFakeTimerInterrupt();
+
+					if (thread->paused) {
+						KernelPanic("ThreadPause - Current thread incorrectly resumed.\n");
+					}
+				} else {
+					// The thread is executing, but on a different processor.
+					// Send them an IPI to stop.
+					ProcessorSendYieldIPI(thread);
+					// TODO The interrupt context might not be set at this point.
+				}
+			} else {
+				// Remove the thread from the active queue, and put it into the paused queue.
+				thread->item.RemoveFromList();
+				scheduler.AddActiveThread(thread, false);
+			}
+		} else {
+			// The thread doesn't need to be in the paused queue as it won't run anyway.
+			// If it is unblocked, then AddActiveThread will put it into the correct queue.
+		}
+	} else if (resume && thread->item.list == &scheduler.pausedThreads) {
+		// Remove the thread from the paused queue, and put it into the active queue.
+		scheduler.pausedThreads.Remove(&thread->item);
+		scheduler.AddActiveThread(thread, false);
+	}
+
+	KSpinlockRelease(&scheduler.dispatchSpinlock);
+}
+
+void ProcessPause(Process *process, bool resume) {
+	KMutexAcquire(&process->threadsMutex);
+	LinkedItem<Thread> *thread = process->threads.firstItem;
+
+	while (thread) {
+		Thread *threadObject = thread->thisItem;
+		thread = thread->nextItem;
+		ThreadPause(threadObject, resume);
+	}
+
+	KMutexRelease(&process->threadsMutex);
+}
+
+void ProcessCrash(Process *process, EsCrashReason *crashReason) {
 	if (process == kernelProcess) {
-		KernelPanic("Scheduler::CrashProcess - Kernel process has crashed (%d).\n", crashReason->errorCode);
+		KernelPanic("ProcessCrash - Kernel process has crashed (%d).\n", crashReason->errorCode);
 	}
 
 	if (process->type != PROCESS_NORMAL) {
-		KernelPanic("Scheduler::CrashProcess - A critical process has crashed (%d).\n", crashReason->errorCode);
+		KernelPanic("ProcessCrash - A critical process has crashed (%d).\n", crashReason->errorCode);
 	}
 
 	if (GetCurrentThread()->process != process) {
-		KernelPanic("Scheduler::CrashProcess - Attempt to crash process from different process.\n");
+		KernelPanic("ProcessCrash - Attempt to crash process from different process.\n");
 	}
 
 	KMutexAcquire(&process->crashMutex);
@@ -1047,7 +1080,7 @@ void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
 
 	EsMemoryCopy(&process->crashReason, crashReason, sizeof(EsCrashReason));
 
-	if (!shutdown) {
+	if (!scheduler.shutdown) {
 		_EsMessageWithObject m;
 		EsMemoryZero(&m, sizeof(m));
 		m.message.type = ES_MSG_APPLICATION_CRASH;
@@ -1059,65 +1092,7 @@ void Scheduler::CrashProcess(Process *process, EsCrashReason *crashReason) {
 	KMutexRelease(&process->crashMutex);
 
 	// TODO Shouldn't this be done before sending the desktop message?
-	scheduler.PauseProcess(GetCurrentThread()->process, false);
-}
-
-void Scheduler::PauseThread(Thread *thread, bool resume) {
-	KSpinlockAcquire(&dispatchSpinlock);
-
-	if (thread->paused == !resume) {
-		return;
-	}
-
-	thread->paused = !resume;
-
-	if (!resume && thread->terminatableState == THREAD_TERMINATABLE) {
-		if (thread->state == THREAD_ACTIVE) {
-			if (thread->executing) {
-				if (thread == GetCurrentThread()) {
-					KSpinlockRelease(&dispatchSpinlock);
-
-					// Yield.
-					ProcessorFakeTimerInterrupt();
-
-					if (thread->paused) {
-						KernelPanic("Scheduler::PauseThread - Current thread incorrectly resumed.\n");
-					}
-				} else {
-					// The thread is executing, but on a different processor.
-					// Send them an IPI to stop.
-					ProcessorSendYieldIPI(thread);
-					// TODO The interrupt context might not be set at this point.
-				}
-			} else {
-				// Remove the thread from the active queue, and put it into the paused queue.
-				thread->item.RemoveFromList();
-				AddActiveThread(thread, false);
-			}
-		} else {
-			// The thread doesn't need to be in the paused queue as it won't run anyway.
-			// If it is unblocked, then AddActiveThread will put it into the correct queue.
-		}
-	} else if (resume && thread->item.list == &pausedThreads) {
-		// Remove the thread from the paused queue, and put it into the active queue.
-		pausedThreads.Remove(&thread->item);
-		AddActiveThread(thread, false);
-	}
-
-	KSpinlockRelease(&dispatchSpinlock);
-}
-
-void Scheduler::PauseProcess(Process *process, bool resume) {
-	KMutexAcquire(&process->threadsMutex);
-	LinkedItem<Thread> *thread = process->threads.firstItem;
-
-	while (thread) {
-		Thread *threadObject = thread->thisItem;
-		thread = thread->nextItem;
-		PauseThread(threadObject, resume);
-	}
-
-	KMutexRelease(&process->threadsMutex);
+	ProcessPause(GetCurrentThread()->process, false);
 }
 
 Thread *Scheduler::PickThread(CPULocalStorage *local) {
@@ -1205,7 +1180,7 @@ void Scheduler::Yield(InterruptContext *context) {
 	if (killThread) {
 		local->currentThread->state = THREAD_TERMINATED;
 		KernelLog(LOG_INFO, "Scheduler", "terminate yielded thread", "Terminated yielded thread %x\n", local->currentThread);
-		KRegisterAsyncTask(&local->currentThread->killAsyncTask, KillThread);
+		KRegisterAsyncTask(&local->currentThread->killAsyncTask, ThreadKill);
 	}
 
 	// If the thread is waiting for an object to be notified, put it in the relevant blockedThreads list.
@@ -1296,35 +1271,35 @@ void Scheduler::Yield(InterruptContext *context) {
 	KernelPanic("Scheduler::Yield - DoContextSwitch unexpectedly returned.\n");
 }
 
-void Scheduler::Shutdown() {
+void ProcessTerminateAll() {
 	scheduler.shutdown = true;
 
 	// Close our handle to the desktop process.
 	CloseHandleToObject(desktopProcess->executableMainThread, KERNEL_OBJECT_THREAD);
 	CloseHandleToObject(desktopProcess, KERNEL_OBJECT_PROCESS);
 
-	KernelLog(LOG_INFO, "Scheduler", "killing all processes", "Scheduler::Destroy - Killing all processes....\n");
+	KernelLog(LOG_INFO, "Scheduler", "terminating all processes", "ProcessTerminateAll - Terminating all processes....\n");
 
 	while (true) {
-		KMutexAcquire(&allProcessesMutex);
-		Process *process = allProcesses.firstItem->thisItem;
+		KMutexAcquire(&scheduler.allProcessesMutex);
+		Process *process = scheduler.allProcesses.firstItem->thisItem;
 
 		while (process && (process->preventNewThreads || process == kernelProcess)) {
 			LinkedItem<Process> *item = process->allItem.nextItem;
 			process = item ? item->thisItem : nullptr;
 		}
 
-		KMutexRelease(&allProcessesMutex);
+		KMutexRelease(&scheduler.allProcessesMutex);
 		if (!process) break;
 
-		TerminateProcess(process, -1);
+		ProcessTerminate(process, -1);
 	}
 
-	KEventWait(&killedEvent);
+	KEventWait(&scheduler.allProcessesTerminatedEvent);
 }
 
-Process *Scheduler::OpenProcess(uint64_t id) {
-	KMutexAcquire(&allProcessesMutex);
+Process *ProcessOpen(uint64_t id) {
+	KMutexAcquire(&scheduler.allProcessesMutex);
 	LinkedItem<Process> *item = scheduler.allProcesses.firstItem;
 	Process *result = nullptr;
 
@@ -1340,16 +1315,16 @@ Process *Scheduler::OpenProcess(uint64_t id) {
 		item = item->nextItem;
 	}
 
-	KMutexRelease(&allProcessesMutex);
+	KMutexRelease(&scheduler.allProcessesMutex);
 	return result;
 }
 
 bool KThreadCreate(const char *cName, void (*startAddress)(uintptr_t), uintptr_t argument) {
-	return scheduler.SpawnThread(cName, (uintptr_t) startAddress, argument) ? true : false;
+	return ThreadSpawn(cName, (uintptr_t) startAddress, argument) ? true : false;
 }
 
 void KThreadTerminate() {
-	scheduler.TerminateThread(GetCurrentThread());
+	ThreadTerminate(GetCurrentThread());
 }
 
 void KYield() {
