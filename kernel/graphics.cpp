@@ -113,10 +113,10 @@ void KRegisterGraphicsTarget(KGraphicsTarget *target) {
 #else
 	windowManager.Initialise();
 
-	EsMessage m;
-	EsMemoryZero(&m, sizeof(EsMessage));
-	m.type = ES_MSG_SET_SCREEN_RESOLUTION;
-	desktopProcess->messageQueue.SendMessage(nullptr, &m);
+	_EsMessageWithObject m;
+	EsMemoryZero(&m, sizeof(m));
+	m.message.type = ES_MSG_SET_SCREEN_RESOLUTION;
+	DesktopSendMessage(&m);
 #endif
 }
 

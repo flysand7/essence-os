@@ -119,11 +119,11 @@ void DeviceRemovedRecurse(KDevice *device) {
 	}
 
 	if (device->flags & K_DEVICE_VISIBLE_TO_USER) {
-		EsMessage m;
+		_EsMessageWithObject m;
 		EsMemoryZero(&m, sizeof(m));
-		m.type = ES_MSG_DEVICE_DISCONNECTED;
-		m.device.id = device->objectID;
-		desktopProcess->messageQueue.SendMessage(nullptr, &m);
+		m.message.type = ES_MSG_DEVICE_DISCONNECTED;
+		m.message.device.id = device->objectID;
+		DesktopSendMessage(&m);
 	}
 
 	if (device->removed) {
@@ -145,16 +145,16 @@ void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type) {
 
 	KDeviceOpenHandle(device);
 
-	EsMessage m;
+	_EsMessageWithObject m;
 	EsMemoryZero(&m, sizeof(m));
-	m.type = ES_MSG_DEVICE_CONNECTED;
-	m.device.id = device->objectID;
-	m.device.type = type;
-	m.device.handle = desktopProcess->handleTable.OpenHandle(device, 0, KERNEL_OBJECT_DEVICE);
+	m.message.type = ES_MSG_DEVICE_CONNECTED;
+	m.message.device.id = device->objectID;
+	m.message.device.type = type;
+	m.message.device.handle = DesktopOpenHandle(device, 0, KERNEL_OBJECT_DEVICE);
 
-	if (m.device.handle) {
-		if (!desktopProcess->messageQueue.SendMessage(nullptr, &m)) {
-			desktopProcess->handleTable.CloseHandle(m.device.handle); // This will check that the handle is still valid.
+	if (m.message.device.handle) {
+		if (!DesktopSendMessage(&m)) {
+			DesktopCloseHandle(m.message.device.handle); // This will check that the handle is still valid.
 		}
 	}
 }

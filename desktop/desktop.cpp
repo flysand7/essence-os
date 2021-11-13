@@ -238,6 +238,7 @@ void WallpaperLoad(EsGeneric);
 WindowTab *WindowTabCreate(ContainerWindow *container);
 ContainerWindow *ContainerWindowCreate();
 void ContainerWindowShow(ContainerWindow *, int32_t width, int32_t height);
+void ShutdownModalCreate();
 
 #include "settings.cpp"
 
@@ -626,6 +627,8 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
 				}
 			}
+		} else if (scancode == ES_SCANCODE_ACPI_POWER) {
+			ShutdownModalCreate();
 		} else {
 			return 0;
 		}
@@ -2964,14 +2967,12 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 	EsHeapFree(instance);
 }
 
-void DesktopMessage(EsMessage *message) {
+void DesktopSendMessage(EsMessage *message) {
 	if (!desktop.clockReady) {
 		desktop.clockReady = EsEventCreate(false);
 	}
 
-	if (message->type == ES_MSG_POWER_BUTTON_PRESSED) {
-		ShutdownModalCreate();
-	} else if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
+	if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
 		EmbeddedWindowDestroyed(message->desktop.windowID);
 	} else if (message->type == ES_MSG_DESKTOP) {
 		uint8_t *buffer = (uint8_t *) EsHeapAllocate(message->desktop.bytes, false);
@@ -3073,6 +3074,6 @@ void DesktopEntry() {
 
 	while (true) {
 		EsMessage *message = EsMessageReceive();
-		DesktopMessage(message);
+		DesktopSendMessage(message);
 	}
 }

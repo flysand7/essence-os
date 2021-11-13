@@ -1876,11 +1876,11 @@ void FSRegisterBootFileSystem(KFileSystem *fileSystem, EsUniqueIdentifier identi
 
 void FSFileSystemDeviceRemoved(KDevice *device) {
 	KFileSystem *fileSystem = (KFileSystem *) device;
-	EsMessage m;
-	EsMemoryZero(&m, sizeof(EsMessage));
-	m.type = ES_MSG_UNREGISTER_FILE_SYSTEM;
-	m.unregisterFileSystem.id = fileSystem->objectID;
-	desktopProcess->messageQueue.SendMessage(nullptr, &m);
+	_EsMessageWithObject m;
+	EsMemoryZero(&m, sizeof(m));
+	m.message.type = ES_MSG_UNREGISTER_FILE_SYSTEM;
+	m.message.unregisterFileSystem.id = fileSystem->objectID;
+	DesktopSendMessage(&m);
 }
 
 void FSRegisterFileSystem(KFileSystem *fileSystem) {
@@ -1893,16 +1893,15 @@ void FSRegisterFileSystem(KFileSystem *fileSystem) {
 	fileSystem->rootDirectory->directoryEntry->directoryChildren = fileSystem->rootDirectoryInitialChildren;
 	FSNodeOpenHandle(fileSystem->rootDirectory, ES_FLAGS_DEFAULT, fileSystem->isBootFileSystem ? FS_NODE_OPEN_HANDLE_STANDARD : FS_NODE_OPEN_HANDLE_FIRST);
 
-	EsMessage m;
-	EsMemoryZero(&m, sizeof(EsMessage));
-	m.type = ES_MSG_REGISTER_FILE_SYSTEM;
-	m.registerFileSystem.isBootFileSystem = fileSystem->isBootFileSystem;
+	_EsMessageWithObject m;
+	EsMemoryZero(&m, sizeof(m));
+	m.message.type = ES_MSG_REGISTER_FILE_SYSTEM;
+	m.message.registerFileSystem.isBootFileSystem = fileSystem->isBootFileSystem;
+	m.message.registerFileSystem.rootDirectory = DesktopOpenHandle(fileSystem->rootDirectory, _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
 
-	m.registerFileSystem.rootDirectory = desktopProcess->handleTable.OpenHandle(fileSystem->rootDirectory, _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
-
-	if (m.registerFileSystem.rootDirectory) {
-		if (!desktopProcess->messageQueue.SendMessage(nullptr, &m)) {
-			desktopProcess->handleTable.CloseHandle(m.registerFileSystem.rootDirectory); // This will check that the handle is still valid.
+	if (m.message.registerFileSystem.rootDirectory) {
+		if (!DesktopSendMessage(&m)) {
+			DesktopCloseHandle(m.message.registerFileSystem.rootDirectory); // This will check that the handle is still valid.
 		}
 	}
 

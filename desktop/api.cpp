@@ -1483,7 +1483,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		while (!api.foundBootFileSystem) {
 			EsMessage *message = EsMessageReceive();
-			DesktopMessage(message);
+			DesktopSendMessage(message);
 		}
 
 		size_t fileSize;

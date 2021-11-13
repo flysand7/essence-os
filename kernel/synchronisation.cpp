@@ -4,10 +4,6 @@
 
 #ifdef IMPLEMENTATION
 
-#ifdef DEBUG_BUILD
-uintptr_t nextMutexID;
-#endif
-
 void KSpinlockAcquire(KSpinlock *spinlock) {
 	if (scheduler.panic) return;
 
@@ -187,6 +183,7 @@ bool KMutexAcquire(KMutex *mutex) {
 	KMutexAssertLocked(mutex);
 
 	if (!mutex->id) {
+		static uintptr_t nextMutexID;
 		mutex->id = __sync_fetch_and_add(&nextMutexID, 1);
 	}
 

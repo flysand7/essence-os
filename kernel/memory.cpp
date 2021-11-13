@@ -302,7 +302,6 @@ void PMCopy(uintptr_t page, void *source, size_t pageCount);
 
 MMSpace _kernelMMSpace, _coreMMSpace;
 PMM pmm;
-MMActiveSectionManager activeSectionManager;
 
 MMRegion *mmCoreRegions = (MMRegion *) MM_CORE_REGIONS_START;
 size_t mmCoreRegionCount, mmCoreRegionArrayCommit;

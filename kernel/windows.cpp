@@ -399,12 +399,11 @@ void WindowManager::PressKey(uint32_t scancode) {
 	KernelLog(LOG_VERBOSE, "WM", "press key", "WindowManager::PressKey - Received key press %x. Modifiers are %X. Keys held: %d/%d%z.\n", 
 			scancode, modifiers, keysHeld, maximumKeysHeld, message.keyboard.single ? " (single)" : "");
 
-	if ((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) {
-		desktopProcess->messageQueue.SendMessage(nullptr, &message);
-	} else if (activeWindow) {
-		SendMessageToWindow(activeWindow, &message);
+	if (((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) || !activeWindow) {
+		_EsMessageWithObject messageWithObject = { nullptr, message };
+		DesktopSendMessage(&messageWithObject);
 	} else {
-		desktopProcess->messageQueue.SendMessage(nullptr, &message);
+		SendMessageToWindow(activeWindow, &message);
 	}
 
 	KMutexRelease(&mutex);
@@ -928,17 +927,16 @@ void EmbeddedWindow::Destroy() {
 void EmbeddedWindow::Close() {
 	KMutexAssertLocked(&windowManager.mutex);
 
-	EsMessage message;
-	EsMemoryZero(&message, sizeof(EsMessage));
-	message.type = ES_MSG_WINDOW_DESTROYED;
-	owner->messageQueue.SendMessage(apiWindow, &message); 
+	_EsMessageWithObject m;
+	EsMemoryZero(&m, sizeof(m));
+	m.object = apiWindow;
+	m.message.type = ES_MSG_WINDOW_DESTROYED;
+	owner->messageQueue.SendMessage(&m); 
 	SetEmbedOwner(nullptr);
-
-	if (!scheduler.shutdown) {
-		message.type = ES_MSG_EMBEDDED_WINDOW_DESTROYED;
-		message.desktop.windowID = id;
-		desktopProcess->messageQueue.SendMessage(nullptr, &message); 
-	}
+	m.object = nullptr;
+	m.message.type = ES_MSG_EMBEDDED_WINDOW_DESTROYED;
+	m.message.desktop.windowID = id;
+	DesktopSendMessage(&m);
 
 	if (container && container->embed == this) {
 		container->SetEmbed(nullptr);

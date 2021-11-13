@@ -8,8 +8,6 @@
 
 #ifdef IMPLEMENTATION
 
-KMutex eventForwardMutex;
-
 #define SYSCALL_BUFFER_LIMIT (64 * 1024 * 1024) // To prevent overflow and DOS attacks.
 #define SYSCALL_BUFFER(address, length, index, write) \
 	MMRegion *_region ## index = MMFindAndPinRegion(currentVMM, (address), (length)); \
@@ -1368,17 +1366,19 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 			OpenHandleToObject(pipe, KERNEL_OBJECT_PIPE, PIPE_WRITER);
 		}
 
+		void *constantBuffer = MakeConstantBuffer(buffer, argument1);
+
 		_EsMessageWithObject m = {};
 		m.message.type = ES_MSG_DESKTOP;
-		m.message.desktop.buffer = MakeConstantBufferForDesktop(buffer, argument1);
+		m.message.desktop.buffer = constantBuffer ? DesktopOpenHandle(constantBuffer, ES_FLAGS_DEFAULT, KERNEL_OBJECT_CONSTANT_BUFFER) : ES_INVALID_HANDLE;
 		m.message.desktop.bytes = argument1;
 		m.message.desktop.windowID = window ? window->id : 0;
 		m.message.desktop.processID = currentProcess->id;
-		m.message.desktop.pipe = pipe ? desktopProcess->handleTable.OpenHandle(pipe, PIPE_WRITER, KERNEL_OBJECT_PIPE) : ES_INVALID_HANDLE;
+		m.message.desktop.pipe = pipe ? DesktopOpenHandle(pipe, PIPE_WRITER, KERNEL_OBJECT_PIPE) : ES_INVALID_HANDLE;
 
-		if (!m.message.desktop.buffer || !desktopProcess->messageQueue.SendMessage(&m)) {
-			desktopProcess->handleTable.CloseHandle(m.message.desktop.buffer); 
-			desktopProcess->handleTable.CloseHandle(m.message.desktop.pipe); 
+		if (!m.message.desktop.buffer || !DesktopSendMessage(&m)) {
+			DesktopCloseHandle(m.message.desktop.buffer); 
+			DesktopCloseHandle(m.message.desktop.pipe); 
 		}
 	}
 

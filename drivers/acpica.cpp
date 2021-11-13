@@ -425,9 +425,8 @@ ES_EXTERN_C ACPI_STATUS AcpiOsEnterSleep(UINT8 sleepState, UINT32 registerAValue
 
 UINT32 ACPIPowerButtonPressed(void *) {
 	KRegisterAsyncTask(&powerButtonAsyncTask, [] (KAsyncTask *) {
-		_EsMessageWithObject m = { nullptr, ES_MSG_POWER_BUTTON_PRESSED };
-		if (scheduler.shutdown) return;
-		if (desktopProcess) desktopProcess->messageQueue.SendMessage(&m);
+		KKeyPress(ES_SCANCODE_ACPI_POWER | K_SCANCODE_KEY_PRESSED);
+		KKeyPress(ES_SCANCODE_ACPI_POWER | K_SCANCODE_KEY_RELEASED);
 	});
 
 	return 0;

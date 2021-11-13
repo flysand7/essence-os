@@ -79,6 +79,8 @@ void CCSpaceUncover(CCSpace *cache, EsFileOffset removeStart, EsFileOffset remov
 EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *buffer, EsFileOffset offset, EsFileOffset count, uint32_t flags, 
 		MMSpace *mapSpace = nullptr, unsigned mapFlags = ES_FLAGS_DEFAULT);
 
+MMActiveSectionManager activeSectionManager;
+
 #else
 
 CCCachedSection *CCFindCachedSectionContaining(CCSpace *cache, EsFileOffset sectionOffset) {

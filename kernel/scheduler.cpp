@@ -188,8 +188,6 @@ struct Process {
 };
 
 struct Scheduler {
-	// External API:
-
 	void Yield(InterruptContext *context);
 	void CreateProcessorThreads(CPULocalStorage *local);
 	void AddActiveThread(Thread *thread, bool start /* put it at the start of the active list */); // Add an active thread into the queue.
@@ -198,8 +196,6 @@ struct Scheduler {
 	void UnblockThread(Thread *unblockedThread, Thread *previousMutexOwner = nullptr);
 	Thread *PickThread(CPULocalStorage *local); // Pick the next thread to execute.
 	int8_t GetThreadEffectivePriority(Thread *thread);
-
-	// Variables:
 
 	KSpinlock dispatchSpinlock; // For accessing synchronisation objects, thread states, scheduling lists, etc. TODO Break this up!
 	KSpinlock activeTimersSpinlock; // For accessing the activeTimers lists.
@@ -244,9 +240,14 @@ void ThreadSetTemporaryAddressSpace(MMSpace *space);
 Thread *ThreadSpawn(const char *cName, uintptr_t startAddress, uintptr_t argument1 = 0, 
 		uint32_t flags = ES_FLAGS_DEFAULT, Process *process = nullptr, uintptr_t argument2 = 0);
 
+bool DesktopSendMessage(_EsMessageWithObject *message);
+EsHandle DesktopOpenHandle(void *object, uint32_t flags, KernelObjectType type);
+void DesktopCloseHandle(EsHandle handle);
+
 Process _kernelProcess;
 Process *kernelProcess = &_kernelProcess;
 Process *desktopProcess;
+KMutex desktopMutex;
 Scheduler scheduler;
 
 #endif
@@ -544,7 +545,7 @@ void ProcessKill(Process *process) {
 		EsMemoryZero(&m, sizeof(m));
 		m.message.type = ES_MSG_PROCESS_TERMINATED;
 		m.message.crash.pid = process->id;
-		desktopProcess->messageQueue.SendMessage(&m);
+		DesktopSendMessage(&m);
 	}
 }
 
@@ -728,7 +729,7 @@ void ProcessLoadExecutable() {
 
 	KLoadedExecutable application = {};
 
-	if (thisProcess != desktopProcess && loadError == ES_SUCCESS) {
+	if (thisProcess->type != PROCESS_DESKTOP && loadError == ES_SUCCESS) {
 		loadError = KLoadELF(thisProcess->executableNode, &application);
 	}
 
@@ -754,7 +755,7 @@ void ProcessLoadExecutable() {
 		if (!startupInformation) {
 			success = false;
 		} else {
-			startupInformation->isDesktop = thisProcess == desktopProcess;
+			startupInformation->isDesktop = thisProcess->type == PROCESS_DESKTOP;
 			startupInformation->isBundle = application.isBundle;
 			startupInformation->applicationStartAddress = application.startAddress;
 			startupInformation->tlsImageStart = application.tlsImageStart;
@@ -1086,7 +1087,7 @@ void ProcessCrash(Process *process, EsCrashReason *crashReason) {
 		m.message.type = ES_MSG_APPLICATION_CRASH;
 		m.message.crash.pid = process->id;
 		EsMemoryCopy(&m.message.crash.reason, crashReason, sizeof(EsCrashReason));
-		desktopProcess->messageQueue.SendMessage(&m);
+		DesktopSendMessage(&m);
 	}
 
 	KMutexRelease(&process->crashMutex);
@@ -1272,11 +1273,16 @@ void Scheduler::Yield(InterruptContext *context) {
 }
 
 void ProcessTerminateAll() {
+	KMutexAcquire(&desktopMutex);
+
 	scheduler.shutdown = true;
 
 	// Close our handle to the desktop process.
 	CloseHandleToObject(desktopProcess->executableMainThread, KERNEL_OBJECT_THREAD);
 	CloseHandleToObject(desktopProcess, KERNEL_OBJECT_PROCESS);
+	desktopProcess = nullptr;
+
+	KMutexRelease(&desktopMutex);
 
 	KernelLog(LOG_INFO, "Scheduler", "terminating all processes", "ProcessTerminateAll - Terminating all processes....\n");
 
@@ -1329,6 +1335,31 @@ void KThreadTerminate() {
 
 void KYield() {
 	ProcessorFakeTimerInterrupt();
+}
+
+bool DesktopSendMessage(_EsMessageWithObject *message) {
+	bool result = false;
+	KMutexAcquire(&desktopMutex);
+	if (desktopProcess) result = desktopProcess->messageQueue.SendMessage(message);
+	KMutexRelease(&desktopMutex);
+	return result;
+}
+
+EsHandle DesktopOpenHandle(void *object, uint32_t flags, KernelObjectType type) {
+	EsHandle result = ES_INVALID_HANDLE;
+	bool close = false;
+	KMutexAcquire(&desktopMutex);
+	if (desktopProcess) result = desktopProcess->handleTable.OpenHandle(object, flags, type);
+	else close = true;
+	KMutexRelease(&desktopMutex);
+	if (close) CloseHandleToObject(object, type, flags);
+	return result;
+}
+
+void DesktopCloseHandle(EsHandle handle) {
+	KMutexAcquire(&desktopMutex);
+	if (desktopProcess) desktopProcess->handleTable.CloseHandle(handle); // This will check that the handle is still valid.
+	KMutexRelease(&desktopMutex);
 }
 
 uint64_t KCPUCurrentID() 	{ return GetLocalStorage() ->processorID; }

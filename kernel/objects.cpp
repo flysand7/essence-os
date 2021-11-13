@@ -574,10 +574,6 @@ EsHandle MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes, Proces
 	return object ? process->handleTable.OpenHandle(object, 0, KERNEL_OBJECT_CONSTANT_BUFFER) : ES_INVALID_HANDLE; 
 }
 
-EsHandle MakeConstantBufferForDesktop(K_USER_BUFFER const void *data, size_t bytes) {
-	return MakeConstantBuffer(data, bytes, desktopProcess);
-}
-
 size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 	size_t amount = 0;
 	Thread *currentThread = GetCurrentThread();
@@ -729,6 +725,12 @@ bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
 	}
 
 	KEventSet(&notEmpty, true);
+
+	// TODO Temporary.
+	static int largest = 0;
+	int size = messages.Length();
+	if (size > largest) largest = size;
+	if (size > 40) KernelPanic("what\n");
 
 	return true;
 }
