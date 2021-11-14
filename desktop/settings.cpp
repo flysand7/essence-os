@@ -191,7 +191,7 @@ bool SettingsPutValue(const char *cConfigurationSection, const char *cConfigurat
 }
 
 void SettingsLoadDefaults() {
-	SettingsPutValue("general", "click_chain_timeout_ms", EsLiteral("500"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "click_chain_timeout_ms", EsLiteral("300"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "show_cursor_shadow", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "scroll_lines_per_notch", EsLiteral("3"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "ui_scale", EsLiteral("100"), nullptr, nullptr, true, false);

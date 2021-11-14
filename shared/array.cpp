@@ -55,16 +55,18 @@ struct Array {
 		return -1;
 	}
 
-	inline void FindAndDelete(T item, bool failIfNotFound) {
+	inline bool FindAndDelete(T item, bool failIfNotFound) {
 		intptr_t index = Find(item, failIfNotFound);
-		if (index == -1) return;
+		if (index == -1) return false;
 		Delete(index);
+		return true;
 	}
 
-	inline void FindAndDeleteSwap(T item, bool failIfNotFound) { 
+	inline bool FindAndDeleteSwap(T item, bool failIfNotFound) { 
 		intptr_t index = Find(item, failIfNotFound);
-		if (index == -1) return;
+		if (index == -1) return false;
 		DeleteSwap(index);
+		return true;
 	}
 
 	inline void AddFast(T item) { 

@@ -7470,15 +7470,16 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			UIMaybeRefreshStyleAll(window);
 		}
 	} else if (message->type == ES_MSG_WINDOW_ACTIVATED) {
+		gui.leftModifiers = message->windowActivated.leftModifiers;
+		gui.rightModifiers = message->windowActivated.rightModifiers;
+
 		if (!window->activated) {
 			AccessKeyModeExit();
 
-			gui.leftModifiers = gui.rightModifiers = 0;
 			gui.clickChainStartMs = 0;
-
 			window->activated = true;
-			EsMessage m = { ES_MSG_WINDOW_ACTIVATED };
-			EsMessageSend(window, &m);
+
+			EsMessageSend(window, message);
 
 			if (!window->focused && window->inactiveFocus) {
 				EsElementFocus(window->inactiveFocus, false);

@@ -55,7 +55,7 @@
 struct ReorderItem : EsElement {
 	double sizeProgress, sizeTarget;
 	double offsetProgress, offsetTarget;
-	bool dragging;
+	bool dragging, exiting;
 	int dragOffset, dragPosition;
 };
 
@@ -70,6 +70,12 @@ struct WindowTab : ReorderItem {
 	struct ApplicationInstance *applicationInstance;
 	struct ApplicationInstance *notRespondingInstance;
 	EsButton *closeButton;
+
+	// Copied from ApplicationInstance.
+	// This needs to store a copy so it can be used during the exit animation.
+	char title[128];
+	size_t titleBytes;
+	uint32_t iconID;
 };
 
 struct WindowTabBand : ReorderList {
@@ -91,6 +97,7 @@ struct TaskBar : EsElement {
 };
 
 struct ContainerWindow {
+	Array<WindowTab *> openTabs;
 	WindowTabBand *tabBand;
 	TaskBarButton *taskBarButton; // Might be null. For example, in the installer there is no task bar.
 	EsWindow *window;
@@ -247,10 +254,13 @@ void ShutdownModalCreate();
 //////////////////////////////////////////////////////
 
 bool ReorderItemAnimate(ReorderItem *item, uint64_t deltaMs, const char *entranceDuration) {
+	const float speed = -3.0f;
+	// const float speed = -0.3f;
+
 	item->sizeProgress += (item->sizeTarget - item->sizeProgress) 
-		* (1 - EsCRTexp(deltaMs * -3.0f / GetConstantNumber(entranceDuration)));
+		* (1 - EsCRTexp(deltaMs * speed / GetConstantNumber(entranceDuration)));
 	item->offsetProgress += (item->offsetTarget - item->offsetProgress) 
-		* (1 - EsCRTexp(deltaMs * -3.0f / GetConstantNumber("taskBarButtonMoveDuration")));
+		* (1 - EsCRTexp(deltaMs * speed / GetConstantNumber("taskBarButtonMoveDuration")));
 
 	bool complete = true;
 
@@ -266,11 +276,19 @@ bool ReorderItemAnimate(ReorderItem *item, uint64_t deltaMs, const char *entranc
 		complete = false;
 	}
 
+	if (item->sizeProgress <= 1 && item->exiting) {
+		EsElementDestroy(item);
+	}
+
 	EsElementRelayout(item->parent);
 	return complete;
 }
 
-bool ReorderItemDragged(ReorderItem *item, int mouseX) {
+void ReorderItemDragged(ReorderItem *item, int mouseX) {
+	if (item->exiting) {
+		return;
+	}
+
 	ReorderList *list = (ReorderList *) item->parent;
 	size_t childCount = list->items.Length();
 
@@ -295,11 +313,12 @@ bool ReorderItemDragged(ReorderItem *item, int mouseX) {
 
 	EsAssert(currentIndex != -1);
 
-	bool changed = false;
-
 	if (draggedIndex != currentIndex) {
 		list->items.Delete(currentIndex);
 		list->items.Insert(item, draggedIndex);
+
+		EsMessage m = { .type = ES_MSG_REORDER_ITEM_MOVED, .child = item };
+		EsMessageSend(list, &m);
 
 		for (uintptr_t i = 0, x = list->style->insets.l; i < childCount; i++) {
 			ReorderItem *child = (ReorderItem *) list->items[i];
@@ -315,18 +334,14 @@ bool ReorderItemDragged(ReorderItem *item, int mouseX) {
 
 			x += child->sizeProgress;
 		}
-
-		changed = true;
 	}
 
 	item->dragging = true;
-	EsElementRelayout(item->parent);
-
-	return changed;
+	EsElementRelayout(list);
 }
 
 void ReorderItemDragComplete(ReorderItem *item) {
-	if (!item->dragging) {
+	if (!item->dragging || item->exiting) {
 		return;
 	}
 
@@ -361,10 +376,15 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 	}
 
 	int totalWidth = 0;
+	uintptr_t nonExitingChildCount = 0;
 
 	for (uintptr_t i = 0; i < childCount; i++) {
 		ReorderItem *child = list->items[i];
-		totalWidth += child->style->metrics->maximumWidth + list->style->metrics->gapMinor;
+
+		if (!child->exiting) {
+			totalWidth += child->style->metrics->maximumWidth + list->style->metrics->gapMinor;
+			nonExitingChildCount++;
+		}
 	}
 
 	bool widthClamped = false;
@@ -374,17 +394,20 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 		widthClamped = true;
 	}
 
-	int targetWidth = totalWidth / childCount;
-	int extraWidth = totalWidth % childCount;
+	int targetWidth = totalWidth / nonExitingChildCount;
+	int extraWidth = totalWidth % nonExitingChildCount;
 
 	list->targetWidth = targetWidth;
 	list->extraWidth = extraWidth;
 
 	for (uintptr_t i = 0; i < childCount; i++) {
 		ReorderItem *child = list->items[i];
+		int sizeTarget = 0;
 
-		int sizeTarget = targetWidth;
-		if (extraWidth) sizeTarget++, extraWidth--;
+		if (!child->exiting) {
+			sizeTarget = targetWidth;
+			if (extraWidth) sizeTarget++, extraWidth--;
+		}
 
 		if (preventTabSizeAnimation) {
 			child->sizeTarget = child->sizeProgress = sizeTarget;
@@ -400,8 +423,12 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 
 	for (uintptr_t i = 0; i < childCount; i++) {
 		ReorderItem *child = list->items[i];
-		int width = (i == childCount - 1 && widthClamped) ? (totalWidth - x) : child->sizeProgress;
+		int width = child->sizeProgress;
 		int gap = list->style->metrics->gapMinor;
+
+		if (i == childCount - 1 && widthClamped && width > totalWidth - x) {
+			width = totalWidth - x;
+		}
 
 		if (child->dragging) {
 			int p = child->dragPosition;
@@ -513,6 +540,10 @@ void DesktopInspectorThread(EsGeneric) {
 //////////////////////////////////////////////////////
 
 void WindowTabClose(WindowTab *tab) {
+	if (!tab->applicationInstance) {
+		return;
+	}
+
 	if (tab->notRespondingInstance) {
 		// The application is not responding, so force quit the process.
 		EsProcessTerminate(tab->applicationInstance->process->handle, 1);
@@ -522,6 +553,10 @@ void WindowTabClose(WindowTab *tab) {
 }
 
 void WindowTabActivate(WindowTab *tab, bool force = false) {
+	if (!tab->applicationInstance) {
+		return;
+	}
+
 	if (tab->container->active != tab || force) {
 		tab->container->active = tab;
 		EsElementRelayout(tab->container->tabBand);
@@ -534,26 +569,42 @@ void WindowTabActivate(WindowTab *tab, bool force = false) {
 void WindowTabDestroy(WindowTab *tab) {
 	ContainerWindow *container = tab->container;
 
-	if (container->tabBand->items.Length() == 1) {
+	if (container->openTabs.Length() == 1) {
 		EsElementDestroy(container->window);
-		if (container->taskBarButton) EsElementDestroy(container->taskBarButton);
+
+		if (container->taskBarButton) {
+			container->taskBarButton->exiting = true;
+			container->taskBarButton->containerWindow = nullptr;
+			EsElementRelayout(&desktop.taskBar);
+			// The button is destroyed by ReorderItemAnimate, once the exit animation completes.
+		}
+		
 		desktop.allContainerWindows.FindAndDeleteSwap(container, true);
 	} else {
 		if (container->active == tab) {
 			container->active = nullptr;
 
-			for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
-				if (container->tabBand->items[i] != tab) continue;
-				WindowTabActivate((WindowTab *) container->tabBand->items[i ? (i - 1) : 1]);
+			for (uintptr_t i = 0; i < container->openTabs.Length(); i++) {
+				if (container->openTabs[i] != tab) continue;
+				WindowTabActivate(container->openTabs[i ? (i - 1) : 1]);
 				break;
 			}
 		}
 
-		EsElementDestroy(tab);
+		tab->applicationInstance = nullptr;
+		tab->exiting = true;
+		tab->SetStyle(ES_STYLE_WINDOW_TAB_INACTIVE);
+		container->openTabs.FindAndDelete(tab, true);
+		EsElementRelayout(container->tabBand);
+		// The tab is destroyed by ReorderItemAnimate, once the exit animation completes.
 	}
 }
 
 WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *container, int32_t width, int32_t height) {
+	if (!tab->applicationInstance) {
+		return nullptr;
+	}
+
 	if (!container) {
 		// Create a new container.
 		container = ContainerWindowCreate();
@@ -674,17 +725,17 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 		if (((message->keyboard.modifiers & ~ES_MODIFIER_SHIFT) == ES_MODIFIER_CTRL) && message->keyboard.scancode == ES_SCANCODE_TAB) {
 			int tab = -1;
 
-			for (uintptr_t i = 0; i < container->tabBand->items.Length(); i++) {
-				if (container->tabBand->items[i] == container->active) {
+			for (uintptr_t i = 0; i < container->openTabs.Length(); i++) {
+				if (container->openTabs[i] == container->active) {
 					tab = i;
 				}
 			}
 
 			EsAssert(tab != -1);
 			tab += ((message->keyboard.modifiers & ES_MODIFIER_SHIFT) ? -1 : 1);
-			if (tab == -1) tab = container->tabBand->items.Length() - 1;
-			if (tab == (int) container->tabBand->items.Length()) tab = 0;
-			WindowTabActivate((WindowTab *) container->tabBand->items[tab]);
+			if (tab == -1) tab = container->openTabs.Length() - 1;
+			if (tab == (int) container->openTabs.Length()) tab = 0;
+			WindowTabActivate(container->openTabs[tab]);
 		} else if (ctrlOnly && scancode == ES_SCANCODE_T && !message->keyboard.repeat) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, container);
 		} else if (ctrlOnly && scancode == ES_SCANCODE_W && !message->keyboard.repeat) {
@@ -713,8 +764,8 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 			bool unhandled = true;
 
 			for (uintptr_t i = 0; i < 9; i++) {
-				if (ctrlOnly && scancode == (int) (ES_SCANCODE_1 + i) && container->tabBand->items.Length() > i) {
-					WindowTabActivate((WindowTab *) container->tabBand->items[i]);
+				if (ctrlOnly && scancode == (int) (ES_SCANCODE_1 + i) && container->openTabs.Length() > i) {
+					WindowTabActivate(container->openTabs[i]);
 					unhandled = false;
 					break;
 				}
@@ -736,9 +787,10 @@ int ContainerWindowMessage(EsElement *element, EsMessage *message) {
 int WindowTabMessage(EsElement *element, EsMessage *message) {
 	WindowTab *tab = (WindowTab *) element;
 	WindowTabBand *band = (WindowTabBand *) tab->parent;
-	ApplicationInstance *instance = tab->applicationInstance;
 
 	if (message->type == ES_MSG_DESTROY) {
+		band->container->openTabs.FindAndDelete(tab, false);
+
 		if (tab->notRespondingInstance) {
 			ApplicationInstanceClose(tab->notRespondingInstance);
 			tab->notRespondingInstance = nullptr;
@@ -762,13 +814,13 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 				insets.t, closeButtonWidth, tab->height - insets.t - insets.b);
 	} else if (message->type == ES_MSG_PAINT) {
 		EsDrawContent(message->painter, element, ES_RECT_2S(message->painter->width, message->painter->height), 
-				instance->title, instance->titleBytes, instance->iconID);
+				tab->title, tab->titleBytes, tab->iconID);
 	} else if (message->type == ES_MSG_ANIMATE) {
 		message->animate.complete = ReorderItemAnimate(tab, message->animate.deltaMs, "windowTabEntranceDuration");
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
 		EsElementSetDisabled(band->GetChild(0), true);
 
-		if (band->items.Length() == 1) {
+		if (band->container->openTabs.Length() == 1) {
 			// Get the window we're hovering the tab over.
 			EsObjectID hoverWindowID;
 			EsPoint mousePositionOnScreen = EsMouseGetPosition();
@@ -845,9 +897,9 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_MOUSE_LEFT_UP) {
 		ReorderItemDragComplete(tab);
 		EsElementSetDisabled(band->GetChild(0), false);
-	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
+	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK && tab->applicationInstance) {
 		EsMenu *menu = EsMenuCreate(tab, ES_FLAGS_DEFAULT);
-		uint64_t disableIfOnlyTab = tab->container->tabBand->items.Length() == 1 ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT;
+		uint64_t disableIfOnlyTab = tab->container->openTabs.Length() == 1 ? ES_ELEMENT_DISABLED : ES_FLAGS_DEFAULT;
 
 		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopCloseTab), [] (EsMenu *, EsGeneric context) {
 			WindowTabClose((WindowTab *) context.p);
@@ -883,6 +935,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 			EsMenuAddItem(menu, ES_FLAGS_DEFAULT, INTERFACE_STRING(DesktopInspectUI), [] (EsMenu *, EsGeneric context) {
 				WindowTab *tab = (WindowTab *) context.p;
 				ApplicationInstance *instance = tab->applicationInstance;
+				if (!instance) return;
 				EsMessage m = { ES_MSG_TAB_INSPECT_UI };
 				m.tabOperation.id = instance->embeddedWindowID;
 				EsMessagePostRemote(instance->process->handle, &m);
@@ -912,6 +965,7 @@ WindowTab *WindowTabCreate(ContainerWindow *container) {
 	tab->container = container;
 	tab->Initialise(container->tabBand, ES_CELL_H_SHRINK | ES_CELL_V_BOTTOM, WindowTabMessage, nullptr);
 	tab->cName = "window tab";
+	container->openTabs.Add(tab);
 
 	tab->closeButton = EsButtonCreate(tab, ES_FLAGS_DEFAULT, ES_STYLE_WINDOW_TAB_CLOSE_BUTTON);
 	tab->closeButton->userData = tab;
@@ -927,8 +981,8 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 	WindowTabBand *band = (WindowTabBand *) element;
 
 	if (message->type == ES_MSG_LAYOUT) {
-		for (uint16_t i = 0; i < band->items.Length(); i++) {
-			WindowTab *tab = (WindowTab *) band->items[i];
+		for (uint16_t i = 0; i < band->container->openTabs.Length(); i++) {
+			WindowTab *tab = band->container->openTabs[i];
 			tab->SetStyle(tab == tab->container->active ? ES_STYLE_WINDOW_TAB_ACTIVE : ES_STYLE_WINDOW_TAB_INACTIVE);
 
 			if (tab == tab->container->active) {
@@ -951,16 +1005,15 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		EsMenu *menu = EsMenuCreate(band, ES_MENU_AT_CURSOR);
+		const char *string = band->container->openTabs.Length() > 1 ? interfaceString_DesktopCloseAllTabs : interfaceString_DesktopCloseWindow;
 
-		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, 
-				band->items.Length() > 1 ? interfaceString_DesktopCloseAllTabs : interfaceString_DesktopCloseWindow, -1, 
-				[] (EsMenu *, EsGeneric context) {
-			WindowTabBand *band = (WindowTabBand *) context.p;
+		EsMenuAddItem(menu, ES_FLAGS_DEFAULT, string, -1, [] (EsMenu *, EsGeneric context) {
+			ContainerWindow *container = (ContainerWindow *) context.p;
 
-			for (uintptr_t i = 0; i < band->items.Length(); i++) {
-				WindowTabClose((WindowTab *) band->items[i]);
+			for (uintptr_t i = 0; i < container->openTabs.Length(); i++) {
+				WindowTabClose(container->openTabs[i]);
 			}
-		}, band);
+		}, band->container);
 
 		EsMenuAddSeparator(menu);
 
@@ -1006,6 +1059,22 @@ int WindowTabBandMessage(EsElement *element, EsMessage *message) {
 		}, band->window);
 
 		EsMenuShow(menu);
+	} else if (message->type == ES_MSG_REORDER_ITEM_MOVED) {
+		WindowTab *tab = (WindowTab *) message->child;
+
+		if (band->container->openTabs.FindAndDelete(tab, false)) {
+			uintptr_t openTabsBeforeTab = 0;
+
+			for (uintptr_t i = 0; i < band->items.Length(); i++) {
+				if (band->items[i] == tab) {
+					break;
+				} else if (!band->items[i]->exiting) {
+					openTabsBeforeTab++;
+				}
+			}
+
+			band->container->openTabs.Insert(tab, openTabsBeforeTab);
+		}
 	} else {
 		return ReorderListMessage(band, message);
 	}
@@ -1081,12 +1150,15 @@ ContainerWindow *ContainerWindowCreate() {
 int TaskBarButtonMessage(EsElement *element, EsMessage *message) {
 	TaskBarButton *button = (TaskBarButton *) element;
 
-	if (message->type == ES_MSG_PAINT) {
+	if (message->type == ES_MSG_PAINT && button->containerWindow) {
 		ContainerWindow *containerWindow = button->containerWindow;
 		ApplicationInstance *instance = containerWindow->active->applicationInstance;
-		EsDrawContent(message->painter, element, ES_RECT_2S(message->painter->width, message->painter->height), 
-				instance->title, instance->titleBytes, instance->iconID);
-	} else if (message->type == ES_MSG_MOUSE_LEFT_CLICK) {
+
+		if (instance) {
+			EsDrawContent(message->painter, element, ES_RECT_2S(message->painter->width, message->painter->height), 
+					instance->title, instance->titleBytes, instance->iconID);
+		}
+	} else if (message->type == ES_MSG_MOUSE_LEFT_CLICK && button->containerWindow) {
 		if (button->customStyleState & THEME_STATE_SELECTED) {
 			EsSyscall(ES_SYSCALL_WINDOW_MOVE, button->containerWindow->window->handle, 0, 0, ES_WINDOW_MOVE_HIDDEN);
 		} else {
@@ -1458,6 +1530,10 @@ void InstanceBlankTabCreate(EsMessage *message) {
 //////////////////////////////////////////////////////
 
 ApplicationInstance *ApplicationInstanceFindByWindowID(EsObjectID windowID, bool remove) {
+	if (!windowID) {
+		return nullptr;
+	}
+
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		ApplicationInstance *instance = desktop.allApplicationInstances[i];
 
@@ -1983,7 +2059,7 @@ void OpenDocumentOpenReference(EsObjectID id) {
 	document->referenceCount++;
 }
 
-void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest) {
+void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest, ContainerWindow *container) {
 	bool foundDocument = false;
 
 	_EsApplicationStartupInformation startupInformation = {};
@@ -2029,7 +2105,7 @@ void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest) {
 		OpenDocumentListUpdated();
 	}
 
-	ApplicationInstanceCreate(startupInformation.id, &startupInformation, nullptr);
+	ApplicationInstanceCreate(startupInformation.id, &startupInformation, container);
 	OpenDocumentCloseReference(startupInformation.documentID);
 }
 
@@ -2635,7 +2711,16 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsApplicationStartupRequest request = {};
 			EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
 			request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
-			if (!b.error) OpenDocumentWithApplication(&request);
+
+			if (!b.error) {
+				ContainerWindow *container = nullptr /* new container */;
+
+				if ((request.flags & ES_APPLICATION_STARTUP_IN_SAME_CONTAINER) && instance && instance->tab) {
+					 container = instance->tab->container;
+				}
+
+				OpenDocumentWithApplication(&request, container);
+			}
 		}
 	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && pipe) {
 		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
@@ -2851,6 +2936,10 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		}
 
 		if (instance->tab) {
+			EsMemoryCopy(instance->tab->title, instance->title, instance->titleBytes);
+			instance->tab->titleBytes = instance->titleBytes;
+			instance->tab->iconID = instance->iconID;
+
 			instance->tab->Repaint(true);
 
 			if (instance->tab == instance->tab->container->active && instance->tab->container->taskBarButton) {

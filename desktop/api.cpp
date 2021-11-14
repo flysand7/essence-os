@@ -252,6 +252,29 @@ struct APIInstance {
 	EsTextbox *fileMenuNameTextbox; // Also used by the file save dialog.
 };
 
+#define CHARACTER_MONO     (1) // 1 bit per pixel.
+#define CHARACTER_SUBPIXEL (2) // 24 bits per pixel; each byte specifies the alpha of each RGB channel.
+#define CHARACTER_IMAGE    (3) // 32 bits per pixel, ARGB.
+#define CHARACTER_RECOLOR  (4) // 32 bits per pixel, AXXX.
+
+#include "renderer.cpp"
+#include "theme.cpp"
+
+#define TEXT_RENDERER
+#include "text.cpp"
+#undef TEXT_RENDERER
+
+#include "gui.cpp"
+
+#ifndef NO_API_TABLE
+const void *const apiTable[] = {
+#include <bin/api_array.h>
+};
+#endif
+
+extern "C" void _init();
+typedef void (*StartFunction)();
+
 MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
 	MountPoint mountPoint = {};
 	EsAssert(prefixBytes < sizeof(mountPoint.prefix));
@@ -485,7 +508,7 @@ _EsApplicationStartupInformation *ApplicationStartupInformationParse(const void 
 	return startupInformation;
 }
 
-void EsApplicationStart(const EsApplicationStartupRequest *request) {
+void EsApplicationStart(EsInstance *instance, const EsApplicationStartupRequest *request) {
 	EsApplicationStartupRequest copy = *request;
 
 	if (copy.filePathBytes == -1) {
@@ -498,7 +521,7 @@ void EsApplicationStart(const EsApplicationStartupRequest *request) {
 	EsBufferWrite(&buffer, copy.filePath, copy.filePathBytes);
 
 	if (!buffer.error) {
-		MessageDesktop(buffer.out, buffer.position);
+		MessageDesktop(buffer.out, buffer.position, instance ? instance->window->handle : ES_INVALID_HANDLE);
 	}
 
 	EsHeapFree(buffer.out);
@@ -522,29 +545,6 @@ void EsInstanceSetClassViewer(EsInstance *_instance, const EsInstanceClassViewer
 	APIInstance *instance = (APIInstance *) _instance->_private;
 	instance->instanceClass = ES_INSTANCE_CLASS_VIEWER;
 }
-
-#define CHARACTER_MONO     (1) // 1 bit per pixel.
-#define CHARACTER_SUBPIXEL (2) // 24 bits per pixel; each byte specifies the alpha of each RGB channel.
-#define CHARACTER_IMAGE    (3) // 32 bits per pixel, ARGB.
-#define CHARACTER_RECOLOR  (4) // 32 bits per pixel, AXXX.
-
-#include "renderer.cpp"
-#include "theme.cpp"
-
-#define TEXT_RENDERER
-#include "text.cpp"
-#undef TEXT_RENDERER
-
-#include "gui.cpp"
-
-#ifndef NO_API_TABLE
-const void *const apiTable[] = {
-#include <bin/api_array.h>
-};
-#endif
-
-extern "C" void _init();
-typedef void (*StartFunction)();
 
 const char *EnumLookupNameFromValue(const EnumString *array, int value) {
 	if (array[0].value == -1) {

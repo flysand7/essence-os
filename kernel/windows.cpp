@@ -112,10 +112,8 @@ struct WindowManager {
 
 	// Keyboard:
 
-	bool shift, alt, ctrl, flag;
-	bool shift2, alt2, ctrl2, flag2;
 	bool numlock;
-	uint8_t modifiers;
+	uint8_t leftModifiers, rightModifiers;
 	uint16_t keysHeld, maximumKeysHeld /* cleared when all released */;
 	uint8_t keysHeldBitSet[512 / 8];
 
@@ -341,39 +339,33 @@ void WindowManager::PressKey(uint32_t scancode) {
 
 	// TODO Caps lock.
 
-	if (scancode == ES_SCANCODE_LEFT_CTRL) ctrl = true;
-	if (scancode == (ES_SCANCODE_LEFT_CTRL | K_SCANCODE_KEY_RELEASED)) ctrl = false;
-	if (scancode == ES_SCANCODE_LEFT_SHIFT) shift = true;
-	if (scancode == (ES_SCANCODE_LEFT_SHIFT | K_SCANCODE_KEY_RELEASED)) shift = false;
-	if (scancode == ES_SCANCODE_LEFT_ALT) alt = true;
-	if (scancode == (ES_SCANCODE_LEFT_ALT | K_SCANCODE_KEY_RELEASED)) alt = false;
-	if (scancode == ES_SCANCODE_LEFT_FLAG) flag = true;
-	if (scancode == (ES_SCANCODE_LEFT_FLAG | K_SCANCODE_KEY_RELEASED)) flag = false;
+	if (scancode == ES_SCANCODE_LEFT_CTRL) leftModifiers |= ES_MODIFIER_CTRL;
+	if (scancode == (ES_SCANCODE_LEFT_CTRL | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_CTRL;
+	if (scancode == ES_SCANCODE_LEFT_SHIFT) leftModifiers |= ES_MODIFIER_SHIFT;
+	if (scancode == (ES_SCANCODE_LEFT_SHIFT | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_SHIFT;
+	if (scancode == ES_SCANCODE_LEFT_ALT) leftModifiers |= ES_MODIFIER_ALT;
+	if (scancode == (ES_SCANCODE_LEFT_ALT | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_ALT;
+	if (scancode == ES_SCANCODE_LEFT_FLAG) leftModifiers |= ES_MODIFIER_FLAG;
+	if (scancode == (ES_SCANCODE_LEFT_FLAG | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_FLAG;
 
-	if (scancode == ES_SCANCODE_RIGHT_CTRL) ctrl2 = true;
-	if (scancode == (ES_SCANCODE_RIGHT_CTRL | K_SCANCODE_KEY_RELEASED)) ctrl2 = false;
-	if (scancode == ES_SCANCODE_RIGHT_SHIFT) shift2 = true;
-	if (scancode == (ES_SCANCODE_RIGHT_SHIFT | K_SCANCODE_KEY_RELEASED)) shift2 = false;
-	if (scancode == ES_SCANCODE_RIGHT_ALT) alt2 = true;
-	if (scancode == (ES_SCANCODE_RIGHT_ALT | K_SCANCODE_KEY_RELEASED)) alt2 = false;
-	if (scancode == ES_SCANCODE_RIGHT_FLAG) flag2 = true;
-	if (scancode == (ES_SCANCODE_RIGHT_FLAG | K_SCANCODE_KEY_RELEASED)) flag2 = false;
+	if (scancode == ES_SCANCODE_RIGHT_CTRL) leftModifiers |= ES_MODIFIER_CTRL;
+	if (scancode == (ES_SCANCODE_RIGHT_CTRL | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_CTRL;
+	if (scancode == ES_SCANCODE_RIGHT_SHIFT) leftModifiers |= ES_MODIFIER_SHIFT;
+	if (scancode == (ES_SCANCODE_RIGHT_SHIFT | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_SHIFT;
+	if (scancode == ES_SCANCODE_RIGHT_ALT) leftModifiers |= ES_MODIFIER_ALT_GR;
+	if (scancode == (ES_SCANCODE_RIGHT_ALT | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_ALT_GR;
+	if (scancode == ES_SCANCODE_RIGHT_FLAG) leftModifiers |= ES_MODIFIER_FLAG;
+	if (scancode == (ES_SCANCODE_RIGHT_FLAG | K_SCANCODE_KEY_RELEASED)) leftModifiers &= ~ES_MODIFIER_FLAG;
 
 	if (scancode == ES_SCANCODE_NUM_LOCK) {
 		numlock = !numlock;
 		HIDeviceUpdateIndicators();
 	}
 
-	modifiers = (alt ? ES_MODIFIER_ALT : 0) 
-		| (alt2 ? ES_MODIFIER_ALT_GR : 0) 
-		| ((ctrl | ctrl2) ? ES_MODIFIER_CTRL : 0) 
-		| ((shift | shift2) ? ES_MODIFIER_SHIFT : 0)
-		| ((flag | flag2) ? ES_MODIFIER_FLAG : 0);
-
 	EsMessage message;
 	EsMemoryZero(&message, sizeof(EsMessage));
 	message.type = (scancode & K_SCANCODE_KEY_RELEASED) ? ES_MSG_KEY_UP : ES_MSG_KEY_DOWN;
-	message.keyboard.modifiers = modifiers;
+	message.keyboard.modifiers = leftModifiers | rightModifiers;
 	message.keyboard.scancode = scancode & ~K_SCANCODE_KEY_RELEASED;
 	message.keyboard.numlock = numlock;
 
@@ -397,9 +389,9 @@ void WindowManager::PressKey(uint32_t scancode) {
 	maximumKeysHeld = (!keysHeld || keysHeld > maximumKeysHeld) ? keysHeld : maximumKeysHeld;
 
 	KernelLog(LOG_VERBOSE, "WM", "press key", "WindowManager::PressKey - Received key press %x. Modifiers are %X. Keys held: %d/%d%z.\n", 
-			scancode, modifiers, keysHeld, maximumKeysHeld, message.keyboard.single ? " (single)" : "");
+			scancode, leftModifiers | rightModifiers, keysHeld, maximumKeysHeld, message.keyboard.single ? " (single)" : "");
 
-	if (((modifiers & ES_MODIFIER_CTRL) && (modifiers & ES_MODIFIER_FLAG)) || !activeWindow) {
+	if ((((leftModifiers | rightModifiers) & ES_MODIFIER_CTRL) && ((leftModifiers | rightModifiers) & ES_MODIFIER_FLAG)) || !activeWindow) {
 		_EsMessageWithObject messageWithObject = { nullptr, message };
 		DesktopSendMessage(&messageWithObject);
 	} else {
@@ -524,6 +516,8 @@ bool WindowManager::ActivateWindow(Window *window) {
 
 		// Activate the new window.
 		message.type = ES_MSG_WINDOW_ACTIVATED;
+		message.windowActivated.leftModifiers = leftModifiers;
+		message.windowActivated.rightModifiers = rightModifiers;
 		SendMessageToWindow(window, &message);
 	} else {
 		// No window is active.
@@ -642,7 +636,7 @@ void WindowManager::MoveCursor(int64_t xMovement, int64_t yMovement) {
 	xMovement *= CURSOR_SPEED(cursorProperties);
 	yMovement *= CURSOR_SPEED(cursorProperties);
 
-	if (alt && (cursorProperties & CURSOR_USE_ALT_SLOW)) {
+	if ((leftModifiers & ES_MODIFIER_ALT) && (cursorProperties & CURSOR_USE_ALT_SLOW)) {
 		// Apply cursor slowdown.
 		xMovement /= 5, yMovement /= 5;
 	}
@@ -1239,6 +1233,12 @@ void Window::SetEmbed(EmbeddedWindow *newEmbed) {
 		EsMessage message;
 		EsMemoryZero(&message, sizeof(message));
 		message.type = windowManager.activeWindow == this ? ES_MSG_WINDOW_ACTIVATED : ES_MSG_WINDOW_DEACTIVATED;
+
+		if (message.type == ES_MSG_WINDOW_ACTIVATED) {
+			message.windowActivated.leftModifiers = windowManager.leftModifiers;
+			message.windowActivated.rightModifiers = windowManager.rightModifiers;
+		}
+
 		embed->owner->messageQueue.SendMessage(embed->apiWindow, &message);
 	}
 

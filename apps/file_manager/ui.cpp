@@ -821,7 +821,8 @@ int ListCallback(EsElement *element, EsMessage *message) {
 					request.id = fileType->openHandler;
 					request.filePath = path.text;
 					request.filePathBytes = path.bytes;
-					EsApplicationStart(&request);
+					request.flags = EsKeyboardIsCtrlHeld() ? ES_APPLICATION_STARTUP_IN_SAME_CONTAINER : ES_FLAGS_DEFAULT;
+					EsApplicationStart(instance, &request);
 					StringDestroy(&path);
 				} else {
 					EsDialogShow(instance->window, INTERFACE_STRING(FileManagerOpenFileError),

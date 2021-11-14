@@ -700,6 +700,7 @@ define ES_ELEMENT_FOCUS_FROM_KEYBOARD  (1 << 1)
 
 define ES_APPLICATION_STARTUP_MANUAL_PATH        (1 << 0)
 define ES_APPLICATION_STARTUP_BACKGROUND_SERVICE (1 << 1)
+define ES_APPLICATION_STARTUP_IN_SAME_CONTAINER  (1 << 2)
 
 define ES_LIST_VIEW_INLINE_TEXTBOX_COPY_EXISTING_TEXT        (1 << 0)
 define ES_LIST_VIEW_INLINE_TEXTBOX_REJECT_EDIT_IF_FOCUS_LOST (1 << 1)
@@ -962,7 +963,6 @@ enum EsMessageType {
 	ES_MSG_RADIO_GROUP_UPDATED		= 0x3002	// Sent to all siblings of a radiobox when it is checked, so they can uncheck themselves.
 	ES_MSG_COLOR_CHANGED			= 0x3003	// Color well's color has changed. See message->colorChanged.
 	ES_MSG_LIST_DISPLAY_GET_MARKER		= 0x3004	// Get the string for a marker in an EsListDisplay. See message->getContent.
-	ES_MSG_REORDER_ITEM_TEST		= 0x3005
 	ES_MSG_SLIDER_MOVED			= 0x3006	// The slider has been moved.
 
 	// Desktop messages: 
@@ -1031,6 +1031,10 @@ enum EsMessageType {
 	ES_MSG_LIST_VIEW_COLUMN_MENU		= 0x5313
 	ES_MSG_LIST_VIEW_GET_SUMMARY		= 0x5314
 	ES_MSG_LIST_VIEW_GET_COLUMN_SORT	= 0x5315
+
+	// Reorder list messages:
+	ES_MSG_REORDER_ITEM_TEST		= 0x5400
+	ES_MSG_REORDER_ITEM_MOVED		= 0x5401
 
 	// Application messages:
 	ES_MSG_APPLICATION_EXIT			= 0x7001
@@ -1558,6 +1562,10 @@ struct EsMessageKeyboard {
 	bool repeat, numpad, numlock, single;
 };
 
+struct EsMessageWindowActivated {
+	uint8_t leftModifiers, rightModifiers;
+};
+
 struct EsMessageScrollWheel {
 	int32_t dx, dy;
 };
@@ -1813,6 +1821,7 @@ struct EsMessage {
 		EsMessageItemToString itemToString;
 		EsMessageFocus focus;
 		EsMessageScrollWheel scrollWheel;
+		EsMessageWindowActivated windowActivated;
 		const EsStyle *childStyleVariant;
 		EsRectangle *accessKeyHintBounds;
 		EsPainter *painter;
@@ -1954,7 +1963,7 @@ function_pointer void EsWorkCallback(EsGeneric context);
 
 // System.
 
-function void EsApplicationStart(const EsApplicationStartupRequest *request);
+function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request);
 function void EsApplicationRunTemporary(ES_INSTANCE_TYPE *instance, STRING path);
 function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize); 
 function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 

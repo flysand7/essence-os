@@ -1257,9 +1257,9 @@ struct EsListView : EsElement {
 			focusedItemIndex = item->index;
 			element->customStyleState |= THEME_STATE_FOCUSED_ITEM;
 
-			Select(item->group, item->index, EsKeyboardIsShiftHeld(), EsKeyboardIsCtrlHeld(), false);
-
-			if (message->mouseDown.clickChainCount == 2 && !EsKeyboardIsShiftHeld() && !EsKeyboardIsCtrlHeld()) {
+			if (message->mouseDown.clickChainCount == 1 || (~element->customStyleState & THEME_STATE_SELECTED)) {
+				Select(item->group, item->index, EsKeyboardIsShiftHeld(), EsKeyboardIsCtrlHeld(), false);
+			} else if (message->mouseDown.clickChainCount == 2) {
 				EsMessage m = { ES_MSG_LIST_VIEW_CHOOSE_ITEM };
 				m.chooseItem.group = item->group;
 				m.chooseItem.index = item->index;
@@ -1512,7 +1512,7 @@ struct EsListView : EsElement {
 		} else if (isSpace && ctrl && !shift && hasFocusedItem) {
 			Select(focusedItemGroup, focusedItemIndex, false, true, false);
 			return true;
-		} else if (isEnter && hasFocusedItem && !shift && !ctrl && !alt) {
+		} else if (isEnter && hasFocusedItem) {
 			if (searchBufferBytes) {
 				searchBufferLastKeyTime = 0;
 				searchBufferBytes = 0;
