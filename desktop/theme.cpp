@@ -207,6 +207,7 @@ typedef struct ThemeMetrics {
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
 	int8_t textAlign, fontWeight;
 	int16_t textSize, iconSize;
+	uint8_t textFigures;
 	bool isItalic, layoutVertical;
 } ThemeMetrics;
 
@@ -1200,24 +1201,16 @@ typedef struct ThemeAnimation {
 struct UIStyle {
 	intptr_t referenceCount;
 
-	uint32_t observedStyleStateMask;
-	bool IsStateChangeObserved(uint16_t state1, uint16_t state2);
-
 	// General information.
 
 	uint8_t textAlign;
-	uint16_t textSize;
-	uint32_t textColor;
 	EsFont font;
-
 	EsRectangle insets, borders;
 	uint16_t preferredWidth, preferredHeight;
 	int16_t gapMajor, gapMinor, gapWrap;
-
+	uint32_t observedStyleStateMask;
 	EsRectangle paintOutsets, opaqueInsets;
-
 	float scale;
-
 	EsThemeAppearance *appearance; // An optional, custom appearance provided by the application.
 
 	// Data.
@@ -1242,7 +1235,7 @@ struct UIStyle {
 	// Misc.
 
 	bool IsRegionCompletelyOpaque(EsRectangle region, int width, int height);
-
+	bool IsStateChangeObserved(uint16_t state1, uint16_t state2);
 	inline void GetTextStyle(EsTextStyle *style);
 };
 
@@ -1326,8 +1319,6 @@ bool ThemeInitialise() {
 }
 
 void ThemeStyleCopyInlineMetrics(UIStyle *style) {
-	style->textSize = style->metrics->textSize; 
-	style->textColor = style->metrics->textColor;
 	style->font.family = style->metrics->fontFamily;
 	style->font.weight = style->metrics->fontWeight;
 	style->font.italic = style->metrics->isItalic;
@@ -1547,6 +1538,7 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 		if (customMetrics->mask & ES_THEME_METRICS_GAP_MINOR) style->metrics->gapMinor = customMetrics->gapMinor;
 		if (customMetrics->mask & ES_THEME_METRICS_GAP_WRAP) style->metrics->gapWrap = customMetrics->gapWrap;
 		if (customMetrics->mask & ES_THEME_METRICS_TEXT_COLOR) style->metrics->textColor = customMetrics->textColor;
+		if (customMetrics->mask & ES_THEME_METRICS_TEXT_FIGURES) style->metrics->textFigures = customMetrics->textFigures;
 		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_BACKGROUND) style->metrics->selectedBackground = customMetrics->selectedBackground;
 		if (customMetrics->mask & ES_THEME_METRICS_SELECTED_TEXT) style->metrics->selectedText = customMetrics->selectedText;
 		if (customMetrics->mask & ES_THEME_METRICS_ICON_COLOR) style->metrics->iconColor = customMetrics->iconColor;
@@ -1933,13 +1925,18 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 
 	if (textBytes) {
 		EsTextPlanProperties properties = {};
-		properties.flags = (flags & ES_DRAW_CONTENT_CHANGE_ALIGNMENT) ? (flags & 0xFF) : textAlign;
+		properties.flags = textAlign;
+
+		if (flags & ES_TEXT_H_LEFT)   properties.flags = (properties.flags & ~(ES_TEXT_H_CENTER | ES_TEXT_H_RIGHT)) | ES_TEXT_H_LEFT;
+		if (flags & ES_TEXT_H_CENTER) properties.flags = (properties.flags & ~(ES_TEXT_H_LEFT | ES_TEXT_H_RIGHT)) | ES_TEXT_H_CENTER;
+		if (flags & ES_TEXT_H_RIGHT)  properties.flags = (properties.flags & ~(ES_TEXT_H_LEFT | ES_TEXT_H_CENTER)) | ES_TEXT_H_RIGHT;
+		if (flags & ES_TEXT_V_TOP)    properties.flags = (properties.flags & ~(ES_TEXT_V_CENTER | ES_TEXT_V_BOTTOM)) | ES_TEXT_V_TOP;
+		if (flags & ES_TEXT_V_CENTER) properties.flags = (properties.flags & ~(ES_TEXT_V_TOP | ES_TEXT_V_BOTTOM)) | ES_TEXT_V_CENTER;
+		if (flags & ES_TEXT_V_BOTTOM) properties.flags = (properties.flags & ~(ES_TEXT_V_TOP | ES_TEXT_V_CENTER)) | ES_TEXT_V_BOTTOM;
 
 		EsTextRun textRun[2] = {};
 		textRun[1].offset = textBytes;
-		textRun[0].style.font = font;
-		textRun[0].style.size = textSize;
-		textRun[0].style.color = textColor;
+		GetTextStyle(&textRun[0].style);
 
 		if (flags & ES_DRAW_CONTENT_TABULAR) {
 			textRun[0].style.figures = ES_TEXT_FIGURE_TABULAR;
@@ -2038,6 +2035,7 @@ inline void UIStyle::GetTextStyle(EsTextStyle *style) {
 	style->font = font;
 	style->size = metrics->textSize;
 	style->color = metrics->textColor;
+	style->figures = metrics->textFigures;
 } 
 
 bool UIStyle::IsStateChangeObserved(uint16_t state1, uint16_t state2) {

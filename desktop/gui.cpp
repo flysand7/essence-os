@@ -3920,8 +3920,7 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 		EsDrawContent(message->painter, element, 
 			ES_RECT_2S(message->painter->width, message->painter->height), 
 			button->label, button->labelBytes, button->iconID, 
-			((button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : 0)
-			| ((button->flags & ES_BUTTON_TABULAR) ? ES_DRAW_CONTENT_TABULAR : 0));
+			((button->flags & ES_BUTTON_DROPDOWN) ? ES_DRAW_CONTENT_MARKER_DOWN_ARROW : 0));
 	} else if (message->type == ES_MSG_PAINT_ICON) {
 		if (button->imageDisplay) {
 			EsRectangle imageSize = ES_RECT_2S(button->imageDisplay->width, button->imageDisplay->height);
@@ -4233,7 +4232,7 @@ int ProcessMenuItemMessage(EsElement *element, EsMessage *message) {
 
 		EsDrawContent(message->painter, element, 
 			ES_RECT_2S(message->painter->width, message->painter->height), 
-			(const char *) _buffer, buffer.position, 0, ES_DRAW_CONTENT_CHANGE_ALIGNMENT | ES_TEXT_H_RIGHT | ES_TEXT_V_CENTER);
+			(const char *) _buffer, buffer.position, 0, ES_TEXT_H_RIGHT);
 	} else if (message->type == ES_MSG_GET_WIDTH) {
 		uint8_t _buffer[64];
 		EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };

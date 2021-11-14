@@ -28,16 +28,16 @@ struct Instance : EsInstance {
 
 EsListViewColumn listViewProcessesColumns[] = {
 	{ "Name", -1, 0, 150 },
-	{ "PID", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ "Memory", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ "CPU", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ "Handles", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
-	{ "Threads", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 120 },
+	{ "PID", -1, ES_TEXT_H_RIGHT, 120 },
+	{ "Memory", -1, ES_TEXT_H_RIGHT, 120 },
+	{ "CPU", -1, ES_TEXT_H_RIGHT, 120 },
+	{ "Handles", -1, ES_TEXT_H_RIGHT, 120 },
+	{ "Threads", -1, ES_TEXT_H_RIGHT, 120 },
 };
 
 EsListViewColumn listViewContextSwitchesColumns[] = {
-	{ "Time stamp (ms)", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
-	{ "CPU", -1, ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED, 150 },
+	{ "Time stamp (ms)", -1, ES_TEXT_H_RIGHT, 150 },
+	{ "CPU", -1, ES_TEXT_H_RIGHT, 150 },
 	{ "Process", -1, 0, 150 },
 	{ "Thread", -1, 0, 150 },
 	{ "Count", -1, 0, 150 },

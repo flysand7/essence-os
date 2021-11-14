@@ -193,6 +193,15 @@ const EsStyle styleButtonGroupContainer = {
 	},
 };
 
+const EsStyle styleClockButton = {
+	.inherit = ES_STYLE_TASK_BAR_EXTRA,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_TEXT_FIGURES,
+		.textFigures = ES_TEXT_FIGURE_TABULAR,
+	},
+};
+
 struct {
 	Array<InstalledApplication *> installedApplications;
 	Array<ApplicationInstance *> allApplicationInstances;
@@ -371,10 +380,6 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 
 	size_t childCount = list->items.Length();
 
-	if (!childCount) {
-		return 0;
-	}
-
 	int totalWidth = 0;
 	uintptr_t nonExitingChildCount = 0;
 
@@ -394,8 +399,8 @@ int ReorderListLayout(ReorderList *list, int additionalRightMargin, bool clampDr
 		widthClamped = true;
 	}
 
-	int targetWidth = totalWidth / nonExitingChildCount;
-	int extraWidth = totalWidth % nonExitingChildCount;
+	int targetWidth = nonExitingChildCount ? totalWidth / nonExitingChildCount : -1;
+	int extraWidth = nonExitingChildCount ? totalWidth % nonExitingChildCount : 0;
 
 	list->targetWidth = targetWidth;
 	list->extraWidth = extraWidth;
@@ -575,7 +580,7 @@ void WindowTabDestroy(WindowTab *tab) {
 		if (container->taskBarButton) {
 			container->taskBarButton->exiting = true;
 			container->taskBarButton->containerWindow = nullptr;
-			EsElementRelayout(&desktop.taskBar);
+			EsElementRelayout(container->taskBarButton->parent);
 			// The button is destroyed by ReorderItemAnimate, once the exit animation completes.
 		}
 		
@@ -2652,7 +2657,7 @@ void DesktopSetup() {
 			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON);
 			desktop.tasksButton->messageUser = TaskBarTasksButtonMessage;
 
-			EsButton *clockButton = EsButtonCreate(panel, ES_BUTTON_TABULAR | ES_BUTTON_COMPACT, ES_STYLE_TASK_BAR_EXTRA);
+			EsButton *clockButton = EsButtonCreate(panel, ES_BUTTON_COMPACT, &styleClockButton);
 			clockButton->cName = "current time";
 			EsThreadCreate(TaskBarClockUpdateThread, nullptr, clockButton); 
 

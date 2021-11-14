@@ -1193,18 +1193,9 @@ struct EsListView : EsElement {
 							&& ES_HANDLED == EsMessageSend(this, &m)) {
 						bool useSelectedCellStyle = (item->element->customStyleState & THEME_STATE_SELECTED) && (flags & ES_LIST_VIEW_CHOICE_SELECT);
 						UIStyle *style = useSelectedCellStyle ? selectedCellStyle : i ? secondaryCellStyle : primaryCellStyle;
-
-						uint8_t previousTextAlign = style->textAlign;
-
-						if (columns[i].flags & ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED) {
-							style->textAlign ^= ES_TEXT_H_RIGHT | ES_TEXT_H_LEFT;
-						}
-
 						style->PaintText(message->painter, element, bounds, 
 								(char *) _buffer, buffer.position, m.getContent.icon,
-								(columns[i].flags & ES_LIST_VIEW_COLUMN_TABULAR) ? ES_DRAW_CONTENT_TABULAR : ES_FLAGS_DEFAULT, 
-								i ? nullptr : &selection);
-						style->textAlign = previousTextAlign;
+								columns[i].flags, i ? nullptr : &selection);
 					}
 
 					bounds.l += columns[i].width * theming.scale + secondaryCellStyle->gapMajor;

@@ -2686,6 +2686,17 @@ void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 					textRun->style.decorations |= ES_TEXT_DECORATION_UNDERLINE;
 				} else if (c == '2' /* secondary color */) {
 					textRun->style.color = GetConstantNumber("textSecondary");
+				} else if (c == '#' /* custom color */) {
+					char string[9];
+					size_t bytes = 0;
+
+					while (bytes < sizeof(string)) {
+						if (i >= inStringBytes || inString[i] == ']') break;
+						string[bytes++] = inString[i++];
+					}
+
+					textRun->style.color = EsColorParse(string, bytes);
+					goto parsedFormat;
 				}
 			}
 

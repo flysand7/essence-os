@@ -47,7 +47,7 @@ EsListViewColumn folderOutputColumns[] = {
 #define COLUMN_TYPE (1)
 	{ INTERFACE_STRING(FileManagerColumnType), ES_LIST_VIEW_COLUMN_HAS_MENU },
 #define COLUMN_SIZE (2)
-	{ INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_HAS_MENU | ES_LIST_VIEW_COLUMN_RIGHT_ALIGNED },
+	{ INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT },
 };
 
 #define LOAD_FOLDER_BACK     (1)
