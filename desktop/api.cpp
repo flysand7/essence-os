@@ -203,6 +203,8 @@ struct EsUndoManager {
 };
 
 struct APIInstance {
+	uintptr_t referenceCount;
+
 	HashStore<uint32_t, EsCommand *> commands;
 
 	_EsApplicationStartupInformation *startupInformation;
@@ -814,6 +816,7 @@ APIInstance *InstanceSetup(EsInstance *instance) {
 	APIInstance *apiInstance = (APIInstance *) EsHeapAllocate(sizeof(APIInstance), true);
 
 	instance->_private = apiInstance;
+	apiInstance->referenceCount = 1;
 
 	instance->undoManager = &apiInstance->undoManager;
 	instance->undoManager->instance = instance;
@@ -885,6 +888,7 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 	if (message) {
 		apiInstance->mainWindowHandle = message->createInstance.window;
 		instance->window = EsWindowCreate(instance, ES_WINDOW_NORMAL);
+		EsInstanceOpenReference(instance);
 		EsWindowSetTitle(instance->window, nullptr, 0);
 
 		if (apiInstance->startupInformation && apiInstance->startupInformation->readHandle) {
@@ -912,7 +916,28 @@ EsApplicationStartupRequest EsInstanceGetStartupRequest(EsInstance *_instance) {
 	return request;
 }
 
+void EsInstanceOpenReference(EsInstance *_instance) {
+	EsMessageMutexCheck();
+	APIInstance *instance = (APIInstance *) _instance->_private;
+	EsAssert(instance->referenceCount);
+	instance->referenceCount++;
+}
+
+void EsInstanceCloseReference(EsInstance *_instance) {
+	EsMessageMutexCheck();
+	APIInstance *instance = (APIInstance *) _instance->_private;
+	instance->referenceCount--;
+
+	if (!instance->referenceCount) {
+		EsMessage m = {};
+		m.type = ES_MSG_INSTANCE_DESTROY;
+		m.instanceDestroy.instance = _instance;
+		EsMessagePost(nullptr, &m); 
+	}
+}
+
 void EsInstanceDestroy(EsInstance *instance) {
+	EsMessageMutexCheck();
 	InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
 
 	if (*inspector) {
@@ -923,8 +948,8 @@ void EsInstanceDestroy(EsInstance *instance) {
 
 	UndoManagerDestroy(instance->undoManager);
 	EsAssert(instance->window->instance == instance);
-	instance->window->destroyInstanceAfterClose = true;
 	EsElementDestroy(instance->window);
+	EsInstanceCloseReference(instance);
 }
 
 EsWindow *WindowFromWindowID(EsObjectID id) {

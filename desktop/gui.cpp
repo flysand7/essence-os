@@ -463,7 +463,7 @@ struct EsWindow : EsElement {
 	uint32_t windowWidth, windowHeight;
 
 	// TODO Replace this with a bitset?
-	bool willUpdate, toolbarFillMode, destroyInstanceAfterClose, doNotPaint;
+	bool willUpdate, toolbarFillMode, doNotPaint;
 	bool restoreOnNextMove, resetPositionOnNextMove, receivedFirstResize, isMaximised;
 	bool hovering, activated, appearActivated;
 	bool visualizeRepaints, visualizeLayoutBounds, visualizePaintSteps; // Inspector properties.
@@ -7253,14 +7253,10 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	// Check if the window has been destroyed.
 
 	if (message->type == ES_MSG_WINDOW_DESTROYED) {
-		if (window->destroyInstanceAfterClose) {
-			EsMessage m = {};
-			m.type = ES_MSG_INSTANCE_DESTROY;
-			m.instanceDestroy.instance = window->instance;
+		if (window->instance) {
 			EsAssert(window->instance->window == window);
 			window->instance->window = nullptr;
-			window->instance = nullptr;
-			EsMessagePost(nullptr, &m); 
+			EsInstanceCloseReference(window->instance);
 		}
 
 		EsAssert(window->handle == ES_INVALID_HANDLE);
@@ -7546,7 +7542,7 @@ struct InspectorWindow : EsInstance {
 	EsInstance *instance; // The instance being inspected.
 
 	EsListView *elementList;
-	Array<InspectorElementEntry> elements;
+	Array<InspectorElementEntry> elements; // TODO This is being leaked.
 	InspectorElementEntry hoveredElement;
 	char *cCategoryFilter;
 
@@ -8028,6 +8024,8 @@ void InspectorSetup(EsWindow *window) {
 	InspectorWindow *inspector = (InspectorWindow *) EsHeapAllocate(sizeof(InspectorWindow), true); // TODO Freeing this.
 	inspector->window = window;
 	InstanceSetup(inspector);
+	EsInstanceOpenReference(inspector);
+	
 	inspector->instance = window->instance;
 	((APIInstance *) inspector->_private)->internalOnly = true;
 	window->instance = inspector;

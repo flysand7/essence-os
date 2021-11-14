@@ -2366,6 +2366,8 @@ function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callbac
 function void EsCommandSetDisabled(EsCommand *command, bool disabled);
 function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
 
+function void EsInstanceOpenReference(EsInstance *_instance);
+function void EsInstanceCloseReference(EsInstance *_instance);
 function void EsInstanceDestroy(ES_INSTANCE_TYPE *instance);
 function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoManager *manager);
 function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
