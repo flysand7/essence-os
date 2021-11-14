@@ -167,6 +167,7 @@ struct Process {
 
 	// Termination:
 	bool allThreadsTerminated;
+	bool blockShutdown;
 	bool preventNewThreads; // Set by ProcessTerminate.
 	int exitStatus; // TODO Remove this.
 	KEvent killedEvent;
@@ -824,7 +825,12 @@ bool ProcessStartWithNode(Process *process, KNode *node) {
 		KernelPanic("ProcessStartWithNode - Could not open read handle to node %x.\n", node);
 	}
 
+	if (KEventPoll(&scheduler.allProcessesTerminatedEvent)) {
+		KernelPanic("ProcessStartWithNode - allProcessesTerminatedEvent was set.\n");
+	}
+
 	process->executableNode = node;
+	process->blockShutdown = true;
 	__sync_fetch_and_add(&scheduler.activeProcessCount, 1);
 	__sync_fetch_and_add(&scheduler.blockShutdownProcessCount, 1);
 
@@ -968,13 +974,16 @@ void ProcessRemove(Process *process) {
 	// This is done after closing all handles, since closing handles can generate messages.
 	process->messageQueue.messages.Free();
 
+	if (process->blockShutdown) {
+		if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
+			// If this is the last process to exit, set the allProcessesTerminatedEvent.
+			KEventSet(&scheduler.allProcessesTerminatedEvent);
+		}
+	}
+
 	// Free the process.
 	MMSpaceCloseReference(process->vmm);
 	scheduler.processPool.Remove(process); 
-
-	if (1 == __sync_fetch_and_sub(&scheduler.blockShutdownProcessCount, 1)) {
-		KEventSet(&scheduler.allProcessesTerminatedEvent);
-	}
 }
 
 void ThreadRemove(Thread *thread) {
