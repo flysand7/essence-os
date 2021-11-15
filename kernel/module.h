@@ -285,7 +285,7 @@ bool KEventWait(KEvent *event, uint64_t timeoutMs = ES_WAIT_NO_TIMEOUT); // See 
 struct KWriterLock { // One writer or many readers.
 	K_PRIVATE
 	LinkedList<Thread> blockedThreads;
-	volatile int64_t state; // -1: exclusive; >0: shared owners.
+	volatile intptr_t state; // -1: exclusive; >0: shared owners.
 #ifdef DEBUG_BUILD
 	volatile Thread *exclusiveOwner;
 #endif

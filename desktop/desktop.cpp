@@ -580,6 +580,7 @@ void WindowTabDestroy(WindowTab *tab) {
 		if (container->taskBarButton) {
 			container->taskBarButton->exiting = true;
 			container->taskBarButton->containerWindow = nullptr;
+			EsElementStartTransition(container->taskBarButton, ES_TRANSITION_FADE_OUT, ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE);
 			EsElementRelayout(container->taskBarButton->parent);
 			// The button is destroyed by ReorderItemAnimate, once the exit animation completes.
 		}
@@ -599,6 +600,7 @@ void WindowTabDestroy(WindowTab *tab) {
 		tab->applicationInstance = nullptr;
 		tab->exiting = true;
 		tab->SetStyle(ES_STYLE_WINDOW_TAB_INACTIVE);
+		EsElementStartTransition(tab, ES_TRANSITION_FADE_OUT, ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE);
 		container->openTabs.FindAndDelete(tab, true);
 		EsElementRelayout(container->tabBand);
 		// The tab is destroyed by ReorderItemAnimate, once the exit animation completes.

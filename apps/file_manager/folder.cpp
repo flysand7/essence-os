@@ -77,9 +77,6 @@ EsError FSDirEnumerate(Folder *folder) {
 	EsDirectoryChild *buffer = nullptr;
 	ptrdiff_t _entryCount = EsDirectoryEnumerateChildren(STRING(folder->path), &buffer);
 
-	// TODO.
-	EsSleep(5000);
-
 	if (!ES_CHECK_ERROR(_entryCount)) {
 		for (intptr_t i = 0; i < _entryCount; i++) {
 			FolderAddEntry(folder, buffer[i].name, buffer[i].nameBytes, &buffer[i]);

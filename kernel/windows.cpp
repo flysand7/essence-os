@@ -50,7 +50,7 @@ struct Window {
 	Process *owner;
 	void *apiWindow;
 	EmbeddedWindow *embed;
-	volatile uint64_t handles;
+	volatile uint32_t handles;
 	EsObjectID id;
 
 	// Location:

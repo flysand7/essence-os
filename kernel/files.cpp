@@ -84,7 +84,7 @@ struct {
 	bool shutdown;
 
 	volatile uint64_t totalHandleCount;
-	volatile uint64_t fileSystemsUnmounting;
+	volatile uintptr_t fileSystemsUnmounting;
 	KEvent fileSystemUnmounted;
 } fs = {
 	.fileSystemUnmounted = { .autoReset = true },
