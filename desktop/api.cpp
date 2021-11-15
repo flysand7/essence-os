@@ -670,7 +670,7 @@ void InstanceSave(EsInstance *_instance) {
 
 void InstanceClose(EsInstance *instance) {
 	if (!EsCommandByID(instance, ES_COMMAND_SAVE)->enabled) {
-		EsInstanceDestroy(instance);
+		EsInstanceClose(instance);
 		return;
 	}
 
@@ -717,7 +717,7 @@ void InstanceClose(EsInstance *instance) {
 	EsDialogAddButton(dialog, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_DANGEROUS, INTERFACE_STRING(FileCloseWithModificationsDelete), 
 			[] (EsInstance *instance, EsElement *, EsCommand *) { 
 		EsDialogClose(instance->window->dialogs.Last()); 
-		EsInstanceDestroy(instance);
+		EsInstanceClose(instance);
 	});
 
 	EsButton *button = EsDialogAddButton(dialog, ES_BUTTON_DEFAULT, 0, INTERFACE_STRING(FileCloseWithModificationsSave), 
@@ -936,20 +936,12 @@ void EsInstanceCloseReference(EsInstance *_instance) {
 	}
 }
 
-void EsInstanceDestroy(EsInstance *instance) {
+void EsInstanceClose(EsInstance *instance) {
 	EsMessageMutexCheck();
-	InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
-
-	if (*inspector) {
-		EsInstanceDestroy(*inspector);
-		(*inspector)->window->InternalDestroy();
-		*inspector = nullptr;
-	}
-
-	UndoManagerDestroy(instance->undoManager);
-	EsAssert(instance->window->instance == instance);
-	EsElementDestroy(instance->window);
-	EsInstanceCloseReference(instance);
+	EsMessage m = {};
+	m.type = ES_MSG_INSTANCE_CLOSE;
+	m.instanceClose.instance = instance;
+	EsMessagePost(nullptr, &m); 
 }
 
 EsWindow *WindowFromWindowID(EsObjectID id) {
@@ -1063,6 +1055,24 @@ EsMessage *EsMessageReceive() {
 			if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
 			EsHeapFree(instance);
 			EsHeapFree(message.message.instanceDestroy.instance);
+		} else if (message.message.type == ES_MSG_INSTANCE_CLOSE) {
+			EsInstance *instance = message.message.instanceClose.instance;
+			InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
+
+			if (*inspector) {
+				EsInstance *instance2 = *inspector;
+				UndoManagerDestroy(instance2->undoManager);
+				EsAssert(instance2->window->instance == instance2);
+				EsElementDestroy(instance2->window);
+				EsInstanceCloseReference(instance2);
+				instance2->window->InternalDestroy();
+				*inspector = nullptr;
+			}
+
+			UndoManagerDestroy(instance->undoManager);
+			EsAssert(instance->window->instance == instance);
+			EsElementDestroy(instance->window);
+			EsInstanceCloseReference(instance);
 		} else if (message.message.type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {
@@ -1312,7 +1322,7 @@ EsMessage *EsMessageReceive() {
 					return &message.message;
 				}
 			}
-		} else if (type == ES_MSG_INSTANCE_DESTROY) {
+		} else if (type == ES_MSG_INSTANCE_DESTROY || type == ES_MSG_INSTANCE_CLOSE) {
 			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
 
 			if (!instance->internalOnly) {
@@ -1404,7 +1414,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
 
 			if (apiInstance->closeAfterSaveCompletes) {
-				EsInstanceDestroy(instance);
+				EsInstanceClose(instance);
 			}
 		} else {
 			apiInstance->closeAfterSaveCompletes = false;

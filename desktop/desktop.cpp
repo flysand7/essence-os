@@ -1524,7 +1524,7 @@ void InstanceBlankTabCreate(EsMessage *message) {
 
 			if (ApplicationInstanceStart(((InstalledApplication *) element->userData.p)->id, nullptr, instance)) {
 				WindowTabActivate(instance->tab, true);
-				EsInstanceDestroy(element->instance);
+				EsInstanceClose(element->instance);
 			}
 		});
 	}

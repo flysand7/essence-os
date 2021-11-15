@@ -72,6 +72,10 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 	task.then = [] (Instance *instance, Task *task) {
 		// TODO Check if folder was marked for refresh.
 
+		if (instance->closed) {
+			return;
+		}
+
 		int historyMode = task->context.i & 0xFF;
 		int flags = task->context.i;
 		Folder *folder = instance->folder;
@@ -627,7 +631,7 @@ void ThumbnailGenerateTaskComplete(Instance *, Task *task) {
 	String parent = PathGetParent(task->string);
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
-		if (StringEquals(parent, instances[i]->path)) { // TODO Support recursive views.
+		if (!instances[i]->closed && StringEquals(parent, instances[i]->path)) { // TODO Support recursive views.
 			EsListViewInvalidateAll(instances[i]->list);
 		}
 	}

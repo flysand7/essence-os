@@ -179,6 +179,8 @@ struct Instance : EsInstance {
 	Task blockingTask;
 	volatile bool blockingTaskInProgress, blockingTaskReachedTimeout;
 	volatile uint32_t blockingTaskID;
+
+	bool closed; // The window has been destroyed (or is about to be).
 };
 
 struct NamespaceHandler {
@@ -205,7 +207,7 @@ struct Folder {
 	HashTable entries;
 	EsArena entryArena;
 
-	Array<Instance *> attachedInstances;
+	Array<Instance *> attachedInstances; // NOTE Check Instance::closed is false before accessing the UI!
 	uintptr_t referenceCount;
 
 	String path;
@@ -245,7 +247,7 @@ void ThumbnailGenerateIfNeeded(Folder *folder, FolderEntry *entry, bool fromFold
 Array<Drive> drives;
 EsMutex drivesMutex;
 
-Array<Instance *> instances;
+Array<Instance *> instances; // NOTE Check Instance::closed is false before accessing the UI!
 
 Array<String> bookmarks;
 #define FOLDER_VIEW_SETTINGS_MAXIMUM_ENTRIES (10000)
@@ -330,10 +332,14 @@ void BlockingTaskComplete(Instance *instance) {
 	if (task->then) {
 		task->then(instance, task);
 	}
+
+	EsInstanceCloseReference(instance);
 }
 
 void BlockingTaskQueue(Instance *instance, Task task) {
 	EsAssert(!instance->blockingTaskInProgress); // Cannot queue a new blocking task if the previous has not finished.
+
+	EsInstanceOpenReference(instance); // Don't destroy the instance while the task is in progress.
 
 	instance->blockingTask = task;
 	instance->blockingTaskInProgress = true;
@@ -434,6 +440,7 @@ void DriveRemove(const char *prefix, size_t prefixBytes) {
 			found = true;
 
 			for (uintptr_t i = 0; i < instances.Length(); i++) {
+				if (instances[i]->closed) continue;
 				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, index, 1);
 			}
 
@@ -459,6 +466,7 @@ void DriveAdd(const char *prefix, size_t prefixBytes) {
 	drives.Add(drive);
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
+		if (instances[i]->closed) continue;
 		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_DRIVES, drives.Length(), 1);
 	}
 
@@ -520,6 +528,16 @@ void _start() {
 				instances.Add(instance);
 				InstanceCreateUI(instance);
 			}
+		} else if (message->type == ES_MSG_INSTANCE_CLOSE) {
+			Instance *instance = message->instanceClose.instance;
+			EsAssert(!instance->closed);
+			instance->closed = true;
+			instance->list = nullptr;
+			instance->placesView = nullptr;
+			instance->breadcrumbBar = nullptr;
+			instance->newFolderButton = nullptr;
+			instance->status = nullptr;
+			instance->blockingDialog = nullptr;
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			Instance *instance = message->instanceDestroy.instance;
 			EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
@@ -628,6 +646,7 @@ void _start() {
 			}
 
 			for (uintptr_t i = 0; i < instances.Length(); i++) {
+				if (instances[i]->closed) continue;
 				EsListViewInvalidateAll(instances[i]->list);
 			}
 

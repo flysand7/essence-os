@@ -56,7 +56,9 @@ void CommandRename(Instance *instance, EsElement *, EsCommand *) {
 					},
 
 					.then = [] (Instance *instance, Task *task) {
-						if (task->result != ES_SUCCESS) {
+						if (instance->closed) {
+							// Ignore.
+						} else if (task->result != ES_SUCCESS) {
 							InstanceReportError(instance, ERROR_RENAME_ITEM, task->result);
 						} else {
 							Folder *folder = instance->folder;
@@ -105,7 +107,9 @@ void CommandNewFolder(Instance *instance, EsElement *, EsCommand *) {
 		},
 
 		.then = [] (Instance *instance, Task *task) {
-			if (task->result != ES_SUCCESS) {
+			if (instance->closed) {
+				// Ignore.
+			} else if (task->result != ES_SUCCESS) {
 				InstanceReportError(instance, ERROR_NEW_FOLDER, task->result);
 			} else {
 				Folder *folder = instance->folder;
@@ -405,7 +409,7 @@ void CommandPasteTask(EsUserTask *userTask, EsGeneric _task) {
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
 		Instance *instance = instances[i];
 
-		if (instance->issuedPasteTask == task) {
+		if (!instance->closed && instance->issuedPasteTask == task) {
 			instance->issuedPasteTask = nullptr;
 
 			if (error != ES_SUCCESS) {

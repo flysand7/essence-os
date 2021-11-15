@@ -77,6 +77,9 @@ EsError FSDirEnumerate(Folder *folder) {
 	EsDirectoryChild *buffer = nullptr;
 	ptrdiff_t _entryCount = EsDirectoryEnumerateChildren(STRING(folder->path), &buffer);
 
+	// TODO.
+	EsSleep(5000);
+
 	if (!ES_CHECK_ERROR(_entryCount)) {
 		for (intptr_t i = 0; i < _entryCount; i++) {
 			FolderAddEntry(folder, buffer[i].name, buffer[i].nameBytes, &buffer[i]);
@@ -301,6 +304,7 @@ void BookmarkAdd(String path, bool saveConfiguration = true) {
 	if (saveConfiguration) ConfigurationSave();
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
+		if (instances[i]->closed) continue;
 		EsListViewInsert(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, bookmarks.Length(), 1);
 	}
 }
@@ -311,6 +315,7 @@ void BookmarkRemove(String path) {
 			bookmarks.Delete(i);
 
 			for (uintptr_t i = 0; i < instances.Length(); i++) {
+				if (instances[i]->closed) continue;
 				EsListViewRemove(instances[i]->placesView, PLACES_VIEW_GROUP_BOOKMARKS, i + 1, 1);
 			}
 
@@ -433,6 +438,7 @@ void FolderAddEntryAndUpdateInstances(Folder *folder, const char *name, size_t n
 
 	for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
 		Instance *instance = folder->attachedInstances[i];
+		if (instance->closed) continue;
 		listEntry.selected = instance == selectItem;
 		InstanceAddSingle(instance, listEntry);
 		InstanceUpdateStatusString(instance);
@@ -445,6 +451,7 @@ uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, s
 
 	if (entry) {
 		for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
+			if (folder->attachedInstances[i]->closed) continue;
 			InstanceRemoveSingle(folder->attachedInstances[i], entry);
 		}
 
@@ -489,6 +496,7 @@ void FolderPathMoved(String oldPath, String newPath, bool saveConfiguration) {
 
 		if (PathReplacePrefix(&folder->path, oldPath, newPath)) {
 			for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
+				if (folder->attachedInstances[i]->closed) continue;
 				InstanceFolderPathChanged(folder->attachedInstances[i], false);
 			}
 		}
@@ -503,6 +511,7 @@ void FolderPathMoved(String oldPath, String newPath, bool saveConfiguration) {
 	}
 
 	for (uintptr_t i = 0; i < instances.Length(); i++) {
+		if (instances[i]->closed) continue;
 		EsListViewInvalidateAll(instances[i]->placesView);
 
 		for (uintptr_t j = 0; j < instances[i]->pathBackwardHistory.Length(); j++) {
@@ -581,6 +590,7 @@ void FolderRefresh(Folder *folder) {
 	Array<Instance *> instancesToRefresh = {};
 
 	for (uintptr_t i = 0; i < folder->attachedInstances.Length(); i++) {
+		if (folder->attachedInstances[i]->closed) continue;
 		instancesToRefresh.Add(folder->attachedInstances[i]);
 	}
 

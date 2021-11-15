@@ -1040,6 +1040,7 @@ enum EsMessageType {
 	ES_MSG_INSTANCE_OPEN			= 0x7003
 	ES_MSG_INSTANCE_SAVE			= 0x7004
 	ES_MSG_INSTANCE_DESTROY			= 0x7005
+	ES_MSG_INSTANCE_CLOSE			= 0x7006
 
 	// User messages:
 	ES_MSG_USER_START			= 0x8000
@@ -1744,6 +1745,10 @@ struct EsMessageInstanceDestroy {
 	ES_INSTANCE_TYPE *instance;
 };
 
+struct EsMessageInstanceClose {
+	ES_INSTANCE_TYPE *instance;
+};
+
 // Internal system messages.
 
 struct EsMessageProcessCrash {
@@ -1856,6 +1861,7 @@ struct EsMessage {
 		EsMessageInstanceOpen instanceOpen;
 		EsMessageInstanceSave instanceSave;
 		EsMessageInstanceDestroy instanceDestroy;
+		EsMessageInstanceClose instanceClose;
 
 		// Internal messages:
 		void *_argument;
@@ -2366,9 +2372,9 @@ function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callbac
 function void EsCommandSetDisabled(EsCommand *command, bool disabled);
 function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
 
-function void EsInstanceOpenReference(EsInstance *_instance);
-function void EsInstanceCloseReference(EsInstance *_instance);
-function void EsInstanceDestroy(ES_INSTANCE_TYPE *instance);
+function void EsInstanceOpenReference(ES_INSTANCE_TYPE *_instance);
+function void EsInstanceCloseReference(ES_INSTANCE_TYPE *_instance); // Sends ES_MSG_INSTANCE_DESTROY when all references closed.
+function void EsInstanceClose(ES_INSTANCE_TYPE *instance); // Sends ES_MSG_INSTANCE_CLOSE, and closes the window's reference to the instance.
 function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoManager *manager);
 function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
 function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings);
