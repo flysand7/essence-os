@@ -506,7 +506,7 @@ namespace POSIX {
 				EsMemoryCopy(path, (void *) syscall.arguments[0], syscall.arguments[1]);
 
 				Process *process = currentThread->posixData->forkProcess;
-				process->data.environment = MakeConstantBuffer((void *) syscall.arguments[2], syscall.arguments[3], process);
+				process->data.environment = ConstantBufferCreate((void *) syscall.arguments[2], syscall.arguments[3], process);
 				process->posixForking = true;
 				process->permissions = currentProcess->permissions;
 
@@ -514,7 +514,7 @@ namespace POSIX {
 				OpenHandleToObject((void *) syscall.arguments[4], KERNEL_OBJECT_NODE, _ES_NODE_DIRECTORY_WRITE);
 				mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
 				mountPoint.prefixBytes = EsStringFormat(mountPoint.prefix, sizeof(mountPoint.prefix), "|POSIX:");
-				process->data.initialMountPoints = MakeConstantBuffer(&mountPoint, sizeof(EsMountPoint), process);
+				process->data.initialMountPoints = ConstantBufferCreate(&mountPoint, sizeof(EsMountPoint), process);
 
 				// Start the process.
 

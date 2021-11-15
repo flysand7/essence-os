@@ -6,10 +6,6 @@
 
 #ifndef IMPLEMENTATION
 
-inline KernelObjectType operator|(KernelObjectType a, KernelObjectType b) {
-	return (KernelObjectType) ((int) a | (int) b);
-}
-
 struct Handle {
 	void *object;	
 	uint32_t flags;
@@ -365,8 +361,8 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 }
 
 uintptr_t HandleShare(Handle share, Process *process, uint32_t mode, EsHandle at = ES_INVALID_HANDLE) {
-#define HANDLE_SHARE_TYPE_MASK (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS \
-		| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE)
+#define HANDLE_SHARE_TYPE_MASK ((KernelObjectType) (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS \
+		| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE))
 
 	if ((share.type & HANDLE_SHARE_TYPE_MASK) == 0) {
 		KernelPanic("HandleShare - Invalid object type %x; allowed types are %x.\n", share.type, HANDLE_SHARE_TYPE_MASK);
@@ -559,7 +555,7 @@ void HandleTable::Destroy() {
 	}
 }
 
-ConstantBuffer *MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes) {
+ConstantBuffer *ConstantBufferCreate(K_USER_BUFFER const void *data, size_t bytes) {
 	ConstantBuffer *buffer = (ConstantBuffer *) EsHeapAllocate(sizeof(ConstantBuffer) + bytes, false, K_FIXED);
 	if (!buffer) return nullptr;
 	EsMemoryZero(buffer, sizeof(ConstantBuffer));
@@ -569,8 +565,8 @@ ConstantBuffer *MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes)
 	return buffer;
 }
 
-EsHandle MakeConstantBuffer(K_USER_BUFFER const void *data, size_t bytes, Process *process) {
-	void *object = MakeConstantBuffer(data, bytes);
+EsHandle ConstantBufferCreate(K_USER_BUFFER const void *data, size_t bytes, Process *process) {
+	void *object = ConstantBufferCreate(data, bytes);
 	return object ? process->handleTable.OpenHandle(object, 0, KERNEL_OBJECT_CONSTANT_BUFFER) : ES_INVALID_HANDLE; 
 }
 

@@ -285,7 +285,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CREATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_CLOSE) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW), _window);
 	KMutexAcquire(&windowManager.mutex);
 
 	if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
@@ -331,7 +331,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_PROPERTY) {
 	} else if (property == ES_WINDOW_PROPERTY_MATERIAL) {
 		window->material = argument1;
 	} else if (property == ES_WINDOW_PROPERTY_EMBED) {
-		SYSCALL_HANDLE(argument1, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE, embed, EmbeddedWindow);
+		SYSCALL_HANDLE(argument1, (KernelObjectType) (KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE), embed, EmbeddedWindow);
 		KMutexAcquire(&windowManager.mutex);
 		window->SetEmbed(embed);
 		KMutexRelease(&windowManager.mutex);
@@ -375,7 +375,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_REDRAW) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_BITS) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW), _window);
 
 	EsRectangle region;
 	SYSCALL_READ(&region, argument1, sizeof(EsRectangle));
@@ -552,7 +552,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_OPEN) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE, object);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE), object);
 
 	if (object.type == KERNEL_OBJECT_SHMEM) {
 		// TODO Access permissions and modes.
@@ -597,9 +597,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_CONSTANT_BUFFER_CREATE) {
 
 	if (argument2) {
 		SYSCALL_BUFFER(argument0, argument2, 1, false);
-		SYSCALL_RETURN(MakeConstantBuffer((void *) argument0, argument2, process), false);
+		SYSCALL_RETURN(ConstantBufferCreate((void *) argument0, argument2, process), false);
 	} else {
-		SYSCALL_RETURN(MakeConstantBuffer(nullptr, 0, process), false);
+		SYSCALL_RETURN(ConstantBufferCreate(nullptr, 0, process), false);
 	}
 }
 
@@ -707,7 +707,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_MOVE) {
 	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
-	SYSCALL_HANDLE(argument1, KERNEL_OBJECT_NODE | KERNEL_OBJECT_NONE, directory, KNode);
+	SYSCALL_HANDLE(argument1, KernelObjectType(KERNEL_OBJECT_NODE | KERNEL_OBJECT_NONE), directory, KNode);
 	char *newPath;
 	if (argument3 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	SYSCALL_READ_HEAP(newPath, argument2, argument3);
@@ -807,7 +807,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 	SYSCALL_READ(handles, argument0, argument1 * sizeof(EsHandle));
 
 	for (uintptr_t i = 0; i < argument1; i++) {
-		KernelObjectType typeMask = KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT;
+		KernelObjectType typeMask = (KernelObjectType) (KERNEL_OBJECT_PROCESS | KERNEL_OBJECT_THREAD | KERNEL_OBJECT_EVENT);
 		status[i] = currentProcess->handleTable.ResolveHandle(&_objects[i], handles[i], typeMask);
 
 		if (status[i] == RESOLVE_HANDLE_FAILED) {
@@ -872,7 +872,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WAIT) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW), _window);
 
 	uint32_t imageWidth = (argument2 >> 16) & 0xFF;
 	uint32_t imageHeight = (argument2 >> 24) & 0xFF;
@@ -1048,7 +1048,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_BOUNDS) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW), _window);
 
 	EsRectangle rectangle;
 	EsMemoryZero(&rectangle, sizeof(EsRectangle));
@@ -1103,7 +1103,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_POST) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_GET_ID) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS, object);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_THREAD | KERNEL_OBJECT_PROCESS), object);
 
 	if (object.type == KERNEL_OBJECT_THREAD) {
 		SYSCALL_WRITE(argument1, &((Thread *) object.object)->id, sizeof(EsObjectID));
@@ -1226,7 +1226,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SHUTDOWN) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_GET_ID) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW, _window);
+	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_WINDOW | KERNEL_OBJECT_EMBEDDED_WINDOW), _window);
 
 	if (_window.type == KERNEL_OBJECT_WINDOW) {
 		SYSCALL_RETURN(((Window *) _window.object)->id, false);
@@ -1290,7 +1290,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SYSTEM_TAKE_SNAPSHOT) {
 	}
 
 	SYSCALL_WRITE(argument1, &bufferSize, sizeof(size_t));
-	SYSCALL_RETURN(MakeConstantBuffer(buffer, bufferSize, currentProcess), false);
+	SYSCALL_RETURN(ConstantBufferCreate(buffer, bufferSize, currentProcess), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESSOR_COUNT) {
@@ -1351,8 +1351,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 	if (argument1 > DESKTOP_MESSAGE_SIZE_LIMIT) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
 	SYSCALL_READ_HEAP(buffer, argument0, argument1);
 
-	SYSCALL_HANDLE_2(argument2, KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE, _window);
-	SYSCALL_HANDLE_2(argument3, KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE, _pipe);
+	SYSCALL_HANDLE_2(argument2, (KernelObjectType) (KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE), _window);
+	SYSCALL_HANDLE_2(argument3, (KernelObjectType) (KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE), _pipe);
 
 	EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
 	Pipe *pipe = (Pipe *) _pipe.object;
@@ -1366,7 +1366,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
 			OpenHandleToObject(pipe, KERNEL_OBJECT_PIPE, PIPE_WRITER);
 		}
 
-		void *constantBuffer = MakeConstantBuffer(buffer, argument1);
+		void *constantBuffer = ConstantBufferCreate(buffer, argument1);
 
 		_EsMessageWithObject m = {};
 		m.message.type = ES_MSG_DESKTOP;
