@@ -7253,8 +7253,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	// Check if the window has been destroyed.
 
 	if (message->type == ES_MSG_WINDOW_DESTROYED) {
-		if (window->instance) {
-			EsAssert(window->instance->window == window);
+		if (window->instance && window->instance->window == window) {
 			window->instance->window = nullptr;
 			EsInstanceCloseReference(window->instance);
 		}

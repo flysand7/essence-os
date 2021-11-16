@@ -1004,6 +1004,7 @@ int PlacesViewCallback(EsElement *element, EsMessage *message) {
 
 int BreadcrumbBarMessage(EsElement *element, EsMessage *message) {
 	Instance *instance = element->instance;
+	EsTextbox *textbox = (EsTextbox *) element;
 
 	if (message->type == ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB) {
 		String section = PathGetSection(instance->folder->path, message->activateBreadcrumb);
@@ -1015,7 +1016,7 @@ int BreadcrumbBarMessage(EsElement *element, EsMessage *message) {
 		InstanceLoadFolder(instance, path);
 	} else if (message->type == ES_MSG_TEXTBOX_EDIT_END) {
 		String section;
-		section.text = EsTextboxGetContents(instance->breadcrumbBar, &section.bytes);
+		section.text = EsTextboxGetContents(textbox, &section.bytes);
 		section.allocated = section.bytes;
 
 		String path = StringAllocateAndFormat("%s%z", 
