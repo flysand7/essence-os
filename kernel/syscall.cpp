@@ -1433,14 +1433,18 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_CREATE) {
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
 	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, Pipe);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_PIPE, _pipe);
+	Pipe *pipe = (Pipe *) _pipe.object;
+	if ((~_pipe.flags & PIPE_READER)) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	SYSCALL_BUFFER(argument1, argument2, 2, false);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, false, true), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {
 	if (!argument2) SYSCALL_RETURN(ES_SUCCESS, false);
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_PIPE, pipe, Pipe);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_PIPE, _pipe);
+	Pipe *pipe = (Pipe *) _pipe.object;
+	if ((~_pipe.flags & PIPE_WRITER)) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	SYSCALL_BUFFER(argument1, argument2, 2, true /* write */);
 	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, true, true), false);
 }
@@ -1617,65 +1621,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 	}
 
 	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_MAILSLOT_CREATE) {
-	if (!OpenHandleToObject(currentProcess, KERNEL_OBJECT_PROCESS, ES_FLAGS_DEFAULT)) {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	}
-
-	Mailslot *mailslot = (Mailslot *) EsHeapAllocate(sizeof(Mailslot), true, K_PAGED);
-
-	if (mailslot) {
-		mailslot->target = currentProcess;
-		mailslot->responseReceivedEvent.autoReset = true;
-		mailslot->available.autoReset = true;
-		mailslot->handles = 1;
-		KEventSet(&mailslot->available);
-
-		EsHandle handle = currentProcess->handleTable.OpenHandle(mailslot, MAILSLOT_RECEIVER, KERNEL_OBJECT_MAILSLOT);
-		SYSCALL_RETURN(handle, false);
-	} else {
-		SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	}
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_MAILSLOT_RESPOND) {
-	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_MAILSLOT, _mailslot);
-	if (~_mailslot.flags & MAILSLOT_RECEIVER) SYSCALL_RETURN(ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS, true);
-	Mailslot *mailslot = (Mailslot *) _mailslot.object;
-	mailslot->response = argument1;
-	__sync_synchronize();
-	KEventSet(&mailslot->responseReceivedEvent, true /* maybe already set */);
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
-SYSCALL_IMPLEMENT(ES_SYSCALL_MAILSLOT_SEND) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_MAILSLOT, mailslot, Mailslot);
-
-	_EsMessageWithObject message;
-	SYSCALL_READ(&message.message, argument2, sizeof(EsMessage));
-	message.object = (void *) argument3;
-
-	currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
-	bool success = KEventWait(&mailslot->available);
-	currentThread->terminatableState = THREAD_IN_SYSCALL;
-
-	if (success) {
-		mailslot->target->messageQueue.SendMessage(&message);
-
-		currentThread->terminatableState = THREAD_USER_BLOCK_REQUEST;
-		success = KEventWait(&mailslot->responseReceivedEvent);
-		currentThread->terminatableState = THREAD_IN_SYSCALL;
-
-		if (success) {
-			SYSCALL_WRITE(argument1, &mailslot->response, sizeof(mailslot->response));
-		}
-
-		KEventSet(&mailslot->available);
-	}
-	
-	SYSCALL_RETURN(success ? ES_SUCCESS : ES_ERROR_TIMEOUT_REACHED, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
