@@ -20,7 +20,7 @@
 // 	Prototyping display: previewing state transitions.
 
 // TODO Additional features:
-// 	Inactive and disabled state.
+// 	Inactive-and-disabled state.
 // 	Undoing a delete does not preserve an instance's layer.
 //	Having to link to the end of a conditional object chain is a bit strange.
 // 	Automatically cleaning up unused objects.
@@ -37,7 +37,7 @@
 // 	Proper bezier path editor.
 // 	Path boolean operations.
 // 	Timeline editor for applying a given state change, with rows for possibly many different layers.
-// 	Metrics: layoutVertical.
+// 	Metrics: layoutVertical, textFigures.
 
 // TODO Reorganize old theming data!
 		
@@ -3057,6 +3057,32 @@ void CanvasZoom100(void *) {
 	UIElementRefresh(canvas);
 }
 
+void CanvasFindByID(void *) {
+	char *id = nullptr;
+	const char *dialog = "Enter the object ID:\n%t\n\n%l\n\n%f%b%b";
+	const char *result = UIDialogShow(window, 0, dialog, &id, "OK", "Cancel");
+
+	if (0 == strcmp(result, "OK")) {
+		uint64_t _id = strtoul(id, 0, 10);
+		Object *object = nullptr;
+
+		for (uintptr_t i = 0; i < objects.Length(); i++) {
+			if (objects[i].id == _id) {
+				object = &objects[i];
+				break;
+			}
+		}
+
+		if (!object) {
+			UIDialogShow(window, 0, "Error: The object was not found.\n%f%b", "OK");
+		} else {
+			CanvasSelectObject(object);
+		}
+	}
+
+	free(id);
+}
+
 //////////////////////////////////////////////////////////////
 
 void ObjectChangeTypeInternal(void *cp) {
@@ -3641,6 +3667,15 @@ void DocumentFileMenu(void *) {
 }
 #endif
 
+void DocumentMenu(void *) {
+	UIMenu *menu = UIMenuCreate(window->pressed, UI_MENU_NO_SCROLL);
+	UIMenuAddItem(menu, 0, "Switch view", -1, CanvasSwitchView, 0);
+	UIMenuAddItem(menu, 0, "Switch selector index", -1, CanvasSwitchSelectorIndex, 0);
+	UIMenuAddItem(menu, 0, "Find by ID", -1, CanvasFindByID, 0);
+	UIMenuAddItem(menu, 0, "Zoom to 100%", -1, CanvasZoom100, 0);
+	UIMenuShow(menu);
+}
+
 int main(int argc, char **argv) {
 #ifndef OS_ESSENCE
 	if (argc == 2) {
@@ -3671,8 +3706,7 @@ int main(int argc, char **argv) {
 #else
 		UIButtonCreate(0, 0, "Save", -1)->invoke = DocumentSave;
 #endif
-		UIButtonCreate(0, 0, "Switch view", -1)->invoke = CanvasSwitchView;
-		UIButtonCreate(0, 0, "Switch selector index", -1)->invoke = CanvasSwitchSelectorIndex;
+		UIButtonCreate(0, 0, "Menu", -1)->invoke = DocumentMenu;
 	UIParentPop();
 	UISpacerCreate(0, UI_SPACER_LINE, 0, 1);
 	inspector = &UIPanelCreate(0, UI_ELEMENT_V_FILL | UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL | UI_PANEL_EXPAND)->e;

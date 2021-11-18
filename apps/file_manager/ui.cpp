@@ -1090,7 +1090,7 @@ void InstanceCreateUI(Instance *instance) {
 	// Toolbar:
 
 	EsElement *toolbar = EsWindowGetToolbar(instance->window);
-	EsPanel *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
+	EsPanel *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL | ES_ELEMENT_AUTO_GROUP);
 	ADD_BUTTON_TO_TOOLBAR(commandGoBackwards, nullptr, ES_ICON_GO_PREVIOUS_SYMBOLIC, 'B', button);
 	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_TOOLBAR(commandGoForwards, nullptr, ES_ICON_GO_NEXT_SYMBOLIC, 'F', button);
@@ -1109,7 +1109,7 @@ void InstanceCreateUI(Instance *instance) {
 
 	EsPanel *statusBar = EsPanelCreate(rootPanel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_STATUS_BAR);
 	instance->status = EsTextDisplayCreate(statusBar, ES_CELL_H_FILL);
-	buttonGroup = EsPanelCreate(statusBar, ES_PANEL_HORIZONTAL);
+	buttonGroup = EsPanelCreate(statusBar, ES_PANEL_HORIZONTAL | ES_ELEMENT_AUTO_GROUP);
 	ADD_BUTTON_TO_STATUS_BAR(commandViewDetails, nullptr, ES_ICON_VIEW_LIST_SYMBOLIC, 0, button);
 	EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 	ADD_BUTTON_TO_STATUS_BAR(commandViewTiles, nullptr, ES_ICON_VIEW_LIST_COMPACT_SYMBOLIC, 0, button);

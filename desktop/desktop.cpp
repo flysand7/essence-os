@@ -631,6 +631,11 @@ WindowTab *WindowTabMoveToNewContainer(WindowTab *tab, ContainerWindow *containe
 	tab->applicationInstance = nullptr;
 	tab->notRespondingInstance = nullptr;
 
+	// Copy across metadata.
+	EsMemoryCopy(newTab->title, tab->title, tab->titleBytes);
+	newTab->titleBytes = tab->titleBytes;
+	newTab->iconID = tab->iconID;
+
 	// Destroy the old tab, and activate the new one.
 	WindowTabDestroy(tab); // Deplaces the embedded window from the old container.
 	WindowTabActivate(newTab);
@@ -1400,7 +1405,7 @@ void ShutdownModalCreate() {
 	EsPanel *stack = EsPanelCreate(window, ES_CELL_FILL | ES_PANEL_Z_STACK);
 	stack->cName = "window stack";
 	EsPanelCreate(stack, ES_CELL_FILL, ES_STYLE_PANEL_SHUTDOWN_OVERLAY)->cName = "modal overlay";
-	EsPanel *dialog = EsPanelCreate(stack, ES_PANEL_VERTICAL | ES_CELL_CENTER, ES_STYLE_DIALOG_SHADOW);
+	EsPanel *dialog = EsPanelCreate(stack, ES_PANEL_VERTICAL | ES_CELL_CENTER | ES_ELEMENT_AUTO_GROUP, ES_STYLE_DIALOG_SHADOW);
 	dialog->cName = "dialog";
 	EsPanel *heading = EsPanelCreate(dialog, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, ES_STYLE_DIALOG_HEADING);
 	EsIconDisplayCreate(heading, ES_FLAGS_DEFAULT, {}, ES_ICON_SYSTEM_SHUTDOWN);

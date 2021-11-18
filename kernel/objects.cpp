@@ -53,6 +53,15 @@ struct MessageQueue {
 	KEvent notEmpty;
 };
 
+struct Mailslot {
+#define MAILSLOT_RECEIVER (1 << 0)
+	struct Process *target; // Owns a handle.
+	KEvent responseReceivedEvent;
+	KEvent available;
+	volatile size_t handles;
+	volatile uintptr_t response;
+};
+
 size_t totalHandleCount;
 
 struct HandleTableL2 {
@@ -362,7 +371,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 
 uintptr_t HandleShare(Handle share, Process *process, uint32_t mode, EsHandle at = ES_INVALID_HANDLE) {
 #define HANDLE_SHARE_TYPE_MASK ((KernelObjectType) (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_CONSTANT_BUFFER | KERNEL_OBJECT_PROCESS \
-		| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE))
+		| KERNEL_OBJECT_DEVICE | KERNEL_OBJECT_NODE | KERNEL_OBJECT_EVENT | KERNEL_OBJECT_PIPE | KERNEL_OBJECT_MAILSLOT))
 
 	if ((share.type & HANDLE_SHARE_TYPE_MASK) == 0) {
 		KernelPanic("HandleShare - Invalid object type %x; allowed types are %x.\n", share.type, HANDLE_SHARE_TYPE_MASK);
@@ -378,6 +387,8 @@ uintptr_t HandleShare(Handle share, Process *process, uint32_t mode, EsHandle at
 		sharedFlags = (mode & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags;
 		if (mode & 2) sharedFlags &= ~_ES_NODE_DIRECTORY_WRITE;
 	} else if (share.type == KERNEL_OBJECT_PIPE) {
+	} else if (share.type == KERNEL_OBJECT_MAILSLOT) {
+		sharedFlags = (mode & 1) ? share.flags : 0;
 	}
 
 	if (!OpenHandleToObject(share.object, share.type, sharedFlags)) {

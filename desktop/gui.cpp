@@ -1461,7 +1461,7 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 
 	int childType = 0;
 
-	if (parent && parent->GetChildCount()) {
+	if (parent && parent->GetChildCount() && (parent->flags & ES_ELEMENT_AUTO_GROUP)) {
 		if (parent->GetChildCount() == 1 && parent->GetChild(0) == this) {
 			childType = THEME_CHILD_TYPE_ONLY;
 		} else if (parent->GetChild(0) == this) {
@@ -3670,7 +3670,7 @@ EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes
 
 	EsElement *wrapper = EsPanelCreate(mainStack, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_DIALOG_WRAPPER);
 	wrapper->cName = "dialog wrapper";
-	dialog->mainPanel = EsPanelCreate(wrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK, ES_STYLE_DIALOG_SHADOW);
+	dialog->mainPanel = EsPanelCreate(wrapper, ES_PANEL_VERTICAL | ES_CELL_SHRINK | ES_ELEMENT_AUTO_GROUP, ES_STYLE_DIALOG_SHADOW);
 	dialog->mainPanel->cName = "dialog";
 	EsElementStartTransition(dialog->mainPanel, ES_TRANSITION_ZOOM_OUT_LIGHT, ES_FLAGS_DEFAULT, 1.0f);
 	window->dialogs.Add(dialog);
@@ -4057,7 +4057,7 @@ EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style
 
 	if (style == ES_STYLE_PUSH_BUTTON_NORMAL || style == ES_STYLE_PUSH_BUTTON_DANGEROUS) {
 		flags |= ES_BUTTON_PUSH;
-	} else if (style == ES_STYLE_PUSH_BUTTON_TOOLBAR || style == ES_STYLE_PUSH_BUTTON_TOOLBAR_MEDIUM 
+	} else if (style == ES_STYLE_PUSH_BUTTON_TOOLBAR
 			|| style == ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG || style == ES_STYLE_PUSH_BUTTON_STATUS_BAR) {
 		flags |= ES_BUTTON_COMPACT | ES_BUTTON_NOT_FOCUSABLE;
 	} else if (style == ES_STYLE_CHECKBOX_NORMAL || style == ES_STYLE_CHECKBOX_RADIOBOX) {
@@ -5692,7 +5692,7 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
 		}
 
-		EsButton *renameButton = EsButtonCreate(EsPanelCreate(panel3, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR);
+		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR);
 		if (!renameButton) goto show;
 		EsButtonSetIcon(renameButton, ES_ICON_DOCUMENT_EDIT_SYMBOLIC);
 		EsButtonOnCommand(renameButton, FileMenuRename);

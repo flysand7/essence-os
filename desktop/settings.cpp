@@ -116,7 +116,7 @@ const EsStyle styleSettingsOverlayPanel = {
 };
 
 const EsStyle styleSettingsButton = {
-	.inherit = ES_STYLE_PUSH_BUTTON_NORMAL,
+	.inherit = ES_STYLE_PUSH_BUTTON_TOOLBAR,
 
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_PREFERRED_HEIGHT | ES_THEME_METRICS_LAYOUT_VERTICAL
@@ -870,8 +870,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 	{
 		EsElement *toolbar = EsWindowGetToolbar(instance->window);
 
-		EsButton *backButton = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 
-				0, INTERFACE_STRING(DesktopSettingsBackButton));
+		EsButton *backButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsBackButton));
 		instance->backButton = backButton;
 		backButton->accessKey = 'A';
 		EsButtonSetIcon(backButton, ES_ICON_GO_HOME_SYMBOLIC);
@@ -880,8 +879,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 
 		EsSpacerCreate(toolbar, ES_CELL_FILL);
 
-		EsButton *undoButton = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 
-				0, INTERFACE_STRING(DesktopSettingsUndoButton));
+		EsButton *undoButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_STICKY_ACCESS_KEY, 0, INTERFACE_STRING(DesktopSettingsUndoButton));
 		instance->undoButton = undoButton;
 		undoButton->accessKey = 'U';
 		EsButtonSetIcon(undoButton, ES_ICON_EDIT_UNDO_SYMBOLIC);

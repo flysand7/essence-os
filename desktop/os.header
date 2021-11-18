@@ -451,6 +451,7 @@ define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 44) // Hint for
 define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 45) // Don't exit access key mode after using the access key.
 define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 46) 
 define ES_ELEMENT_FREE_USER_DATA		((_EsLongConstant) (1) << 47) // Call EsHeapFree on userData when destroying the element.
+define ES_ELEMENT_AUTO_GROUP			((_EsLongConstant) (1) << 48) // Enables autoCorners and autoBorders.
 
 // For children of splitters:
 define ES_CELL_COLLAPSABLE	((_EsLongConstant) (1) << 51)
@@ -857,6 +858,9 @@ private enum EsSyscallType {
 	ES_SYSCALL_PIPE_CREATE
 	ES_SYSCALL_PIPE_WRITE
 	ES_SYSCALL_PIPE_READ
+	ES_SYSCALL_MAILSLOT_CREATE
+	ES_SYSCALL_MAILSLOT_SEND
+	ES_SYSCALL_MAILSLOT_RESPOND
 
 	// Misc.
 

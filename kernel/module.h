@@ -189,6 +189,7 @@ enum KernelObjectType : uint32_t {
 	KERNEL_OBJECT_NODE		= 0x00000010, // A file system node (file or directory).
 	KERNEL_OBJECT_EVENT		= 0x00000020, // A synchronisation event.
 	KERNEL_OBJECT_CONSTANT_BUFFER	= 0x00000040, // A buffer of unmodifiable data stored in the kernel's address space.
+	KERNEL_OBJECT_MAILSLOT		= 0x00000080, // A mailslot into a process's message queue. Can only send messages synchronously.
 #ifdef ENABLE_POSIX_SUBSYSTEM
 	KERNEL_OBJECT_POSIX_FD		= 0x00000100, // A POSIX file descriptor, used in the POSIX subsystem.
 #endif
@@ -271,7 +272,7 @@ void KMutexAssertLocked(KMutex *mutex);
 
 struct KEvent { // Waiting and notifying. Can wait on multiple at once. Can be set and reset with interrupts disabled.
 	volatile bool autoReset; // This should be first field in the structure, so that the type of KEvent can be easily declared with {autoReset}.
-	volatile uintptr_t state;
+	volatile uintptr_t state; // TODO Change this to a bool?
 	K_PRIVATE
 	LinkedList<Thread> blockedThreads;
 	volatile size_t handles;

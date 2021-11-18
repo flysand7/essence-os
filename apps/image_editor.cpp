@@ -721,11 +721,11 @@ void InstanceCreate(EsMessage *message) {
 	EsButton *button;
 
 	EsFileMenuAddToToolbar(toolbar);
-	button = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_DROPDOWN, ES_STYLE_PUSH_BUTTON_TOOLBAR, INTERFACE_STRING(ImageEditorImage));
+	button = EsButtonCreate(toolbar, ES_BUTTON_DROPDOWN, ES_STYLE_PUSH_BUTTON_TOOLBAR, INTERFACE_STRING(ImageEditorImage));
 	EsButtonSetIcon(button, ES_ICON_IMAGE_X_GENERIC);
 	button->accessKey = 'I';
 	EsButtonOnCommand(button, MenuImage);
-	EsPanel *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
+	EsPanel *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL | ES_ELEMENT_AUTO_GROUP);
 	button = EsButtonCreate(buttonGroup);
 	EsCommandAddButton(EsCommandByID(instance, ES_COMMAND_UNDO), button);
 	EsButtonSetIcon(button, ES_ICON_EDIT_UNDO_SYMBOLIC);
@@ -738,13 +738,13 @@ void InstanceCreate(EsMessage *message) {
 
 	EsSpacerCreate(toolbar, ES_CELL_FILL);
 
-	button = instance->toolDropdown = EsButtonCreate(EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL), ES_BUTTON_DROPDOWN,
+	button = instance->toolDropdown = EsButtonCreate(toolbar, ES_BUTTON_DROPDOWN,
 			ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG, INTERFACE_STRING(ImageEditorPickTool));
 	EsButtonSetIcon(button, ES_ICON_DRAW_FREEHAND);
 	EsButtonOnCommand(button, MenuTools);
 	button->accessKey = 'T';
 
-	instance->toolPanel = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
+	instance->toolPanel = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL | ES_ELEMENT_AUTO_GROUP);
 	button = EsButtonCreate(instance->toolPanel, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_TOOLBAR_BIG, INTERFACE_STRING(ImageEditorToolBrush));
 	EsCommandAddButton(&instance->commandBrush, button);
 	EsButtonSetIcon(button, ES_ICON_DRAW_FREEHAND);

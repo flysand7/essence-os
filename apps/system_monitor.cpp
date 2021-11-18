@@ -401,12 +401,15 @@ void ProcessApplicationMessage(EsMessage *message) {
 				ES_CELL_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_V_SCROLL_AUTO, &stylePanelMemoryStatistics);
 		EsPanelSetBands(instance->panelMemoryStatistics, 2 /* columns */);
 
-		EsElement *buttonGroup = EsPanelCreate(EsWindowGetToolbar(window), ES_PANEL_HORIZONTAL);
+		EsElement *toolbar = EsWindowGetToolbar(window);
+		EsSpacerCreate(toolbar, ES_CELL_H_FILL);
+		EsElement *buttonGroup = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL | ES_ELEMENT_AUTO_GROUP);
 		AddTab(buttonGroup, DISPLAY_PROCESSES, "Processes", true);
 		EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 		AddTab(buttonGroup, DISPLAY_GENERAL_LOG, "System log");
 		EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 		AddTab(buttonGroup, DISPLAY_MEMORY, "Memory");
+		EsSpacerCreate(toolbar, ES_CELL_H_FILL);
 	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 		processes.Free();
 	}
