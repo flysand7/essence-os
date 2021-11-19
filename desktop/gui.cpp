@@ -1444,7 +1444,7 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 		}
 	}
 
-	if (state & UI_STATE_INSPECTING) EsPerformanceTimerPush();
+	EsPerformanceTimerPush();
 
 	// Get the interpolated style.
 
@@ -2485,7 +2485,7 @@ void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY
 	} else {
 		// Tell the element to layout its contents.
 
-		if (state & UI_STATE_INSPECTING) EsPerformanceTimerPush();
+		EsPerformanceTimerPush();
 		EsMessage m = { ES_MSG_LAYOUT };
 		m.layout.sizeChanged = hasSizeChanged;
 		EsMessageSend(this, &m);

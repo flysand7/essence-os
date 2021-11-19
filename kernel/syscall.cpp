@@ -59,12 +59,19 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PRINT) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_ALLOCATE) {
-	EsMemoryProtection protection = (EsMemoryProtection) argument2;
-	uint32_t flags = MM_REGION_USER;
-	if (protection == ES_MEMORY_PROTECTION_READ_ONLY) flags |= MM_REGION_READ_ONLY;
-	if (protection == ES_MEMORY_PROTECTION_EXECUTABLE) flags |= MM_REGION_EXECUTABLE;
-	uintptr_t address = (uintptr_t) MMStandardAllocate(currentVMM, argument0, flags, nullptr, argument1 & ES_MEMORY_RESERVE_COMMIT_ALL);
-	SYSCALL_RETURN(address, false);
+	if (argument3) {
+		if (argument0 > ES_SHARED_MEMORY_MAXIMUM_SIZE) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
+		MMSharedRegion *region = MMSharedCreateRegion(argument0, false, 0);
+		if (!region) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
+		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(region, 0, KERNEL_OBJECT_SHMEM), false);
+	} else {
+		EsMemoryProtection protection = (EsMemoryProtection) argument2;
+		uint32_t flags = MM_REGION_USER;
+		if (protection == ES_MEMORY_PROTECTION_READ_ONLY) flags |= MM_REGION_READ_ONLY;
+		if (protection == ES_MEMORY_PROTECTION_EXECUTABLE) flags |= MM_REGION_EXECUTABLE;
+		uintptr_t address = (uintptr_t) MMStandardAllocate(currentVMM, argument0, flags, nullptr, argument1 & ES_MEMORY_RESERVE_COMMIT_ALL);
+		SYSCALL_RETURN(address, false);
+	}
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_FREE) {
@@ -536,21 +543,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_CREATE) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_OPEN) {
-	if (argument0 > ES_SHARED_MEMORY_MAXIMUM_SIZE) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
-	if (argument1 && !argument2) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-	if (argument2 > ES_SHARED_MEMORY_NAME_MAX_LENGTH) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
-
-	char *name;
-	if (argument2 > SYSCALL_BUFFER_LIMIT) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
-	SYSCALL_READ_HEAP(name, argument1, argument2);
-
-	MMSharedRegion *region = MMSharedOpenRegion(name, argument2, argument0, argument3);
-	if (!region) SYSCALL_RETURN(ES_INVALID_HANDLE, false);
-
-	SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(region, 0, KERNEL_OBJECT_SHMEM), false);
-}
-
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE), object);
 
@@ -908,8 +900,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
 		windowManager.cursorShadow = argument3 & (1 << 30);
 
-		int width = imageWidth + CURSOR_SHADOW_OFFSET;
-		int height = imageHeight + CURSOR_SHADOW_OFFSET;
+		int width = imageWidth + CURSOR_SHADOW_OFFSET_X;
+		int height = imageHeight + CURSOR_SHADOW_OFFSET_Y;
 
 		if (windowManager.cursorSurface.Resize(width, height)
 				&& windowManager.cursorSwap.Resize(width, height)

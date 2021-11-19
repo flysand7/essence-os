@@ -360,7 +360,6 @@ define ES_REJECTED    (-2)
 define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1)
 define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (2)
 
-define ES_SHARED_MEMORY_NAME_MAX_LENGTH (32)
 define ES_MAP_OBJECT_ALL (0)
 
 define ES_TEXT_H_LEFT 	                   (1 <<  0)
@@ -407,9 +406,6 @@ define _ES_NODE_DIRECTORY_WRITE		(0x040000)
 define _ES_NODE_NO_WRITE_BASE		(0x080000)
 
 define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
-
-define ES_MEMORY_OPEN_FAIL_IF_FOUND     (0x1000)
-define ES_MEMORY_OPEN_FAIL_IF_NOT_FOUND (0x2000)
 
 define ES_MAP_OBJECT_READ_WRITE         (0)
 define ES_MAP_OBJECT_READ_ONLY          (1)
@@ -639,10 +635,6 @@ define ES_WINDOW_SOLID_TRUE (1 << 0)
 define ES_WINDOW_SOLID_NO_ACTIVATE (1 << 1)
 define ES_WINDOW_SOLID_NO_BRING_TO_FRONT (1 << 2)
 
-define ES_THEME_CURSORS_WIDTH (264)
-define ES_THEME_CURSORS_HEIGHT (128)
-define ES_THEME_CURSORS_NAME "Desktop.ThemeCursors"
-
 define ES_TEXTBOX_MOVE_CARET_SINGLE (2)
 define ES_TEXTBOX_MOVE_CARET_WORD (3)
 define ES_TEXTBOX_MOVE_CARET_LINE (4)
@@ -771,7 +763,6 @@ private enum EsSyscallType {
 	ES_SYSCALL_MEMORY_ALLOCATE
 	ES_SYSCALL_MEMORY_FREE
 	ES_SYSCALL_MEMORY_MAP_OBJECT
-	ES_SYSCALL_MEMORY_OPEN
 	ES_SYSCALL_MEMORY_COMMIT
 	ES_SYSCALL_MEMORY_FAULT_RANGE
 	ES_SYSCALL_MEMORY_GET_AVAILABLE
@@ -1286,7 +1277,10 @@ struct EsMountPoint {
 };
 
 struct EsProcessCreateData {
-	EsHandle environment, initialMountPoints, initialDevices;
+	EsHandle systemData;
+	EsHandle subsystemData;
+	EsGeneric userData;
+	uint8_t subsystemID;
 };
 
 struct EsProcessStartupInformation {
@@ -1296,6 +1290,7 @@ struct EsProcessStartupInformation {
 	uintptr_t tlsImageBytes;
 	uintptr_t tlsBytes; // All bytes after the image are to be zeroed.
 	uintptr_t timeStampTicksPerMs;
+	EsHandle globalDataRegion;
 	EsProcessCreateData data;
 };
 
@@ -2091,6 +2086,7 @@ function_not_in_kernel void *EsHeapReallocate(void *oldAddress, size_t newAlloca
 
 function void EsHeapValidate(); 
 
+function EsHandle EsMemoryCreateShareableRegion(size_t bytes);
 function bool EsMemoryCommit(void *pointer, size_t bytes);
 function int EsMemoryCompare(const void *a, const void *b, size_t bytes); 
 function void EsMemoryCopy(void *destination, const void *source, size_t bytes); 
@@ -2099,7 +2095,6 @@ function bool EsMemoryDecommit(void *pointer, size_t bytes); // May fail in low-
 function void EsMemoryFaultRange(const void *pointer, size_t bytes, uint32_t flags = ES_FLAGS_DEFAULT); // Simulate a page fault in each page in the range.
 function void EsMemoryFill(void *from, void *to, uint8_t byte); 
 function void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace); 
-function EsHandle EsMemoryOpen(size_t size, STRING name, unsigned flags); 
 function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, uint32_t flags = ES_MEMORY_RESERVE_COMMIT_ALL); 
 function EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly); 
 function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes); 
@@ -2246,8 +2241,6 @@ function void EsTimerCancel(EsTimer id);
 function void EsSleep(uint64_t milliseconds); 
 function uintptr_t EsWait(EsHandle *objects, size_t objectCount, uintptr_t timeoutMs); 
 
-function void EsPerformanceTimerPush(); // Stack size should not exceed 100 values.
-function double EsPerformanceTimerPop(); // Returns value in seconds.
 function double EsTimeStampMs(); // Current value of the performance timer, in ms.
 
 function void EsDateNowUTC(EsDateComponents *date); // Don't rely on the accuracy of the millisecond field.

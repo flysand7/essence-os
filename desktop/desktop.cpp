@@ -218,9 +218,9 @@ struct {
 	EsWindow *wallpaperWindow;
 	EsButton *tasksButton;
 
-	bool shutdownWindowOpen;
 	bool setupDesktopUIComplete;
 	uint8_t installationState;
+	bool desktopInspectorOpen;
 
 	EsHandle nextClipboardFile;
 	EsObjectID nextClipboardProcessID;
@@ -233,12 +233,11 @@ struct {
 	double totalUserTaskProgress;
 
 #define SHUTDOWN_TIMEOUT (3000) // Maximum time to wait for applications to exit.
-	EsHandle shutdownReady; // Set when all applications have exited.
+	EsHandle shutdownReadyEvent; // Set when all applications have exited.
 	bool inShutdown;
+	bool shutdownWindowOpen;
 
-	bool inspectorOpen;
-
-	EsHandle clockReady;
+	EsHandle clockReadyEvent;
 } desktop;
 
 int TaskBarButtonMessage(EsElement *element, EsMessage *message);
@@ -678,8 +677,8 @@ int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
 		if (ctrlOnly && scancode == ES_SCANCODE_N && !message->keyboard.repeat && !desktop.installationState) {
 			ApplicationInstanceCreate(APPLICATION_ID_DESKTOP_BLANK_TAB, nullptr, nullptr);
 		} else if (message->keyboard.modifiers == (ES_MODIFIER_CTRL | ES_MODIFIER_FLAG) && scancode == ES_SCANCODE_D) {
-			if (!desktop.inspectorOpen) {
-				desktop.inspectorOpen = true;
+			if (!desktop.desktopInspectorOpen) {
+				desktop.desktopInspectorOpen = true;
 				EsThreadCreate(DesktopInspectorThread, nullptr, 0);
 			} else {
 				// TODO Close the inspector.
@@ -1322,7 +1321,7 @@ int TaskBarTasksButtonMessage(EsElement *element, EsMessage *message) {
 }
 
 void TaskBarClockUpdateThread(EsGeneric _clock) {
-	EsWaitSingle(desktop.clockReady);
+	EsWaitSingle(desktop.clockReadyEvent);
 
 	EsButton *clock = (EsButton *) _clock.p;
 	static EsDateComponents previousTime = {};
@@ -1368,7 +1367,7 @@ void Shutdown(uintptr_t action) {
 	}
 
 	desktop.inShutdown = true;
-	desktop.shutdownReady = EsEventCreate(true);
+	desktop.shutdownReadyEvent = EsEventCreate(true);
 
 	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
 		// Tell all applications to close.
@@ -1377,7 +1376,7 @@ void Shutdown(uintptr_t action) {
 
 	EsThreadCreate([] (EsGeneric action) {
 		// Shut down either when all applications exit, or after the timeout.
-		EsWait(&desktop.shutdownReady, 1, SHUTDOWN_TIMEOUT); 
+		EsWait(&desktop.shutdownReadyEvent, 1, SHUTDOWN_TIMEOUT); 
 		EsSyscall(ES_SYSCALL_SHUTDOWN, action.u, 0, 0, 0);
 	}, nullptr, action);
 }
@@ -1722,6 +1721,7 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 		arguments.executable = executableNode.handle;
 		arguments.permissions = ES_PERMISSION_WINDOW_MANAGER;
 
+		SystemStartupDataHeader header = {};
 		Array<EsMountPoint> initialMountPoints = {};
 		Array<EsMessageDevice> initialDevices = {};
 		Array<EsHandle> handleDuplicateList = {};
@@ -1790,13 +1790,19 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 			}
 		}
 
-		arguments.data.initialMountPoints = EsConstantBufferCreate(initialMountPoints.array, initialMountPoints.Length() * sizeof(EsMountPoint), ES_CURRENT_PROCESS);
-		handleDuplicateList.Add(arguments.data.initialMountPoints);
+		EsBuffer buffer = { .canGrow = true };
+		header.initialMountPointCount = initialMountPoints.Length();
+		header.initialDeviceCount = initialDevices.Length();
+		header.themeCursorData = theming.cursorData;
+		EsBufferWrite(&buffer, &header, sizeof(header));
+		EsBufferWrite(&buffer, initialMountPoints.array, sizeof(EsMountPoint) * header.initialMountPointCount);
+		EsBufferWrite(&buffer, initialDevices.array, sizeof(EsMessageDevice) * header.initialDeviceCount);
+		arguments.data.systemData = EsConstantBufferCreate(buffer.out, buffer.position, ES_CURRENT_PROCESS);
+		handleDuplicateList.Add(arguments.data.systemData);
 		handleModeDuplicateList.Add(0);
-
-		arguments.data.initialDevices = EsConstantBufferCreate(initialDevices.array, initialDevices.Length() * sizeof(EsMessageDevice), ES_CURRENT_PROCESS);
-		handleDuplicateList.Add(arguments.data.initialDevices);
+		handleDuplicateList.Add(header.themeCursorData);
 		handleModeDuplicateList.Add(0);
+		EsHeapFree(buffer.out);
 
 		arguments.handles = handleDuplicateList.array;
 		arguments.handleModes = handleModeDuplicateList.array;
@@ -1806,22 +1812,8 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 		error = EsProcessCreate(&arguments, &information); 
 		EsHandleClose(arguments.executable);
 
-		initialMountPoints.Free();
-		initialDevices.Free();
-		handleDuplicateList.Free();
-		handleModeDuplicateList.Free();
-
-		if (settingsNode.handle) {
-			EsHandleClose(settingsNode.handle);
-		}
-
-		if (arguments.data.initialMountPoints) {
-			EsHandleClose(arguments.data.initialMountPoints);
-		}
-
-		if (arguments.data.initialDevices) {
-			EsHandleClose(arguments.data.initialDevices);
-		}
+		if (settingsNode.handle)       EsHandleClose(settingsNode.handle);
+		if (arguments.data.systemData) EsHandleClose(arguments.data.systemData);
 
 		if (!ES_CHECK_ERROR(error)) {
 			EsHandleClose(information.mainThread.handle);
@@ -2038,7 +2030,7 @@ void ApplicationProcessTerminated(EsObjectID pid) {
 	}
 
 	if (!desktop.allApplicationProcesses.Length() && desktop.inShutdown) {
-		EsEventSet(desktop.shutdownReady);
+		EsEventSet(desktop.shutdownReadyEvent);
 	}
 }
 
@@ -2582,18 +2574,6 @@ void DesktopSetup() {
 		desktop.installationState = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("installation_state"));
 	}
 
-	// Load the theme bitmap.
-
-	if (!desktop.setupDesktopUIComplete) {
-		size_t cursorsBitmapBytes;
-		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
-		EsHandle handle = EsMemoryOpen(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, EsLiteral(ES_THEME_CURSORS_NAME), ES_FLAGS_DEFAULT); 
-		void *destination = EsObjectMap(handle, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MAP_OBJECT_READ_WRITE);
-		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
-		EsObjectUnmap(destination);
-		EsHandleClose(handle);
-	}
-
 	// Create the wallpaper window.
 
 	{
@@ -3069,8 +3049,8 @@ void EmbeddedWindowDestroyed(EsObjectID id) {
 }
 
 void DesktopSendMessage(EsMessage *message) {
-	if (!desktop.clockReady) {
-		desktop.clockReady = EsEventCreate(false);
+	if (!desktop.clockReadyEvent) {
+		desktop.clockReadyEvent = EsEventCreate(false);
 	}
 
 	if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
@@ -3125,7 +3105,7 @@ void DesktopSendMessage(EsMessage *message) {
 				api.global->schedulerTimeOffset = (linear ?: DateToLinear(&reading)) 
 					- api.global->schedulerTimeMs 
 					+ EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("clock_offset_ms"), 0);
-				EsEventSet(desktop.clockReady);
+				EsEventSet(desktop.clockReadyEvent);
 			}
 		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {

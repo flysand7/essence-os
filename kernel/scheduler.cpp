@@ -738,11 +738,9 @@ void ProcessLoadExecutable() {
 
 	if (success) {
 		// We "link" the API by putting its table of function pointers at a known address.
-
-		MMSharedRegion *tableRegion = MMSharedOpenRegion(EsLiteral("Desktop.APITable"), 0xF000, ES_FLAGS_DEFAULT); 
 		// TODO Write protection.
 
-		if (!MMMapShared(thisProcess->vmm, tableRegion, 0, 0xF000, ES_FLAGS_DEFAULT, ES_API_BASE)) { 
+		if (!MMMapShared(thisProcess->vmm, mmAPITableRegion, 0, mmAPITableRegion->sizeBytes, ES_FLAGS_DEFAULT, ES_API_BASE)) { 
 			success = false;
 		}
 	}
@@ -763,6 +761,12 @@ void ProcessLoadExecutable() {
 			startupInformation->tlsImageBytes = application.tlsImageBytes;
 			startupInformation->tlsBytes = application.tlsBytes;
 			startupInformation->timeStampTicksPerMs = timeStampTicksPerMs;
+
+			if (OpenHandleToObject(mmGlobalDataRegion, KERNEL_OBJECT_SHMEM, ES_FLAGS_DEFAULT)) {
+				// TODO Write protection.
+				startupInformation->globalDataRegion = thisProcess->handleTable.OpenHandle(mmGlobalDataRegion, ES_FLAGS_DEFAULT, KERNEL_OBJECT_SHMEM);
+			}
+
 			EsMemoryCopy(&startupInformation->data, &thisProcess->data, sizeof(EsProcessCreateData));
 		}
 	}
@@ -1135,7 +1139,7 @@ void Scheduler::Yield(InterruptContext *context) {
 	if (!local->processorID) {
 		// Update the scheduler's time.
 		timeMs = ArchGetTimeMs();
-		globalData->schedulerTimeMs = timeMs;
+		mmGlobalData->schedulerTimeMs = timeMs;
 
 		// Notify the necessary timers.
 		KSpinlockAcquire(&activeTimersSpinlock);

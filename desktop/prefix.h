@@ -188,6 +188,9 @@ ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uint
 #define ES_PTR64_LS32(x) ((uint32_t) (x))
 #endif
 
+#define EsPerformanceTimerPush() double _performanceTimerStart = EsTimeStampMs()
+#define EsPerformanceTimerPop() ((EsTimeStampMs() - _performanceTimerStart) / 1000.0)
+
 // --------- Algorithms:
 
 #define ES_MACRO_SORT(_name, _type, _compar, _contextType) void _name(_type *base, size_t nmemb, _contextType context) { \
@@ -373,6 +376,9 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define ES_POSIX_SYSCALL_GET_POSIX_FD_PATH (0x10000)
 
 #define DESKTOP_MESSAGE_SIZE_LIMIT (0x4000)
+
+#define ES_THEME_CURSORS_WIDTH (264)
+#define ES_THEME_CURSORS_HEIGHT (128)
 
 #endif
 

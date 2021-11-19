@@ -4,7 +4,8 @@
 
 #ifndef IMPLEMENTATION
 
-#define CURSOR_SHADOW_OFFSET (1)
+#define CURSOR_SHADOW_OFFSET_X (0)
+#define CURSOR_SHADOW_OFFSET_Y (1)
 
 struct Surface : EsPaintTarget {
 	bool Resize(size_t newResX, size_t newResY, uint32_t clearColor = 0, bool copyOldBits = false);
@@ -502,8 +503,8 @@ void Surface::CreateCursorShadow(Surface *temporary) {
 		}
 	}
 
-	for (int32_t i = 0; i < (int32_t) height - CURSOR_SHADOW_OFFSET; i++) {
-		for (int32_t j = 0; j < (int32_t) width - CURSOR_SHADOW_OFFSET; j++) {
+	for (int32_t i = 0; i < (int32_t) height - CURSOR_SHADOW_OFFSET_Y; i++) {
+		for (int32_t j = 0; j < (int32_t) width - CURSOR_SHADOW_OFFSET_X; j++) {
 			uint32_t s = 0;
 
 			for (int32_t k = 0; k < 5; k++) {
@@ -514,7 +515,7 @@ void Surface::CreateCursorShadow(Surface *temporary) {
 				}
 			}
 
-			uint32_t *out = &bits1[(i + CURSOR_SHADOW_OFFSET) * stride / 4 + (j + CURSOR_SHADOW_OFFSET)];
+			uint32_t *out = &bits1[(i + CURSOR_SHADOW_OFFSET_Y) * stride / 4 + (j + CURSOR_SHADOW_OFFSET_X)];
 			*out = EsColorBlend((s >> 16) << 24, *out, true);
 		}
 	}

@@ -114,6 +114,13 @@ struct EsBundle {
 	ptrdiff_t bytes;
 };
 
+struct SystemStartupDataHeader {
+	// TODO Make mount points and devices equal, somehow?
+	size_t initialMountPointCount;
+	size_t initialDeviceCount;
+	EsHandle themeCursorData;
+};
+
 const EsBundle bundleDefault = {
 	.base = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS,
 	.bytes = -1,
@@ -1505,7 +1512,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		ThreadInitialise(&api.firstThreadLocalStorage);
 		EsMessageMutexAcquire();
 
-		api.global = (GlobalData *) EsObjectMap(EsMemoryOpen(sizeof(GlobalData), EsLiteral("Desktop.Global"), ES_FLAGS_DEFAULT), 
+		api.global = (GlobalData *) EsObjectMap(api.startupInformation->globalDataRegion, 
 				0, sizeof(GlobalData), desktop ? ES_MAP_OBJECT_READ_WRITE : ES_MAP_OBJECT_READ_ONLY);
 	}
 
@@ -1539,34 +1546,27 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		SettingsUpdateGlobalAndWindowManager();
 		SettingsWindowColorUpdated();
 	} else {
-		EsHandle initialMountPointsBuffer = api.startupInformation->data.initialMountPoints;
-		EsHandle initialDevicesBuffer = api.startupInformation->data.initialDevices;
+		EsBuffer buffer = {};
+		buffer.bytes = EsConstantBufferGetSize(api.startupInformation->data.systemData);
+		void *_data = EsHeapAllocate(buffer.bytes, false);
+		EsConstantBufferRead(api.startupInformation->data.systemData, _data);
+		EsHandleClose(api.startupInformation->data.systemData);
+		buffer.in = (const uint8_t *) _data;
 
-		if (initialMountPointsBuffer) {
-			size_t initialMountPointCount = EsConstantBufferGetSize(initialMountPointsBuffer) / sizeof(EsMountPoint);
-			EsMountPoint *initialMountPoints = (EsMountPoint *) EsHeapAllocate(initialMountPointCount * sizeof(EsMountPoint), false);
-			EsConstantBufferRead(initialMountPointsBuffer, initialMountPoints);
+		const SystemStartupDataHeader *header = (const SystemStartupDataHeader *) EsBufferRead(&buffer, sizeof(SystemStartupDataHeader));
+		theming.cursorData = header->themeCursorData;
 
-			for (uintptr_t i = 0; i < initialMountPointCount; i++) {
-				NodeAddMountPoint(initialMountPoints[i].prefix, initialMountPoints[i].prefixBytes, initialMountPoints[i].base, true);
-			}
-
-			EsHeapFree(initialMountPoints);
-			EsHandleClose(initialMountPointsBuffer);
+		for (uintptr_t i = 0; i < header->initialMountPointCount; i++) {
+			const EsMountPoint *mountPoint = (const EsMountPoint *) EsBufferRead(&buffer, sizeof(EsMountPoint));
+			NodeAddMountPoint(mountPoint->prefix, mountPoint->prefixBytes, mountPoint->base, true);
 		}
 
-		if (initialDevicesBuffer) {
-			size_t initialDevicesCount = EsConstantBufferGetSize(initialDevicesBuffer) / sizeof(EsMessageDevice);
-			EsMessageDevice *initialDevices = (EsMessageDevice *) EsHeapAllocate(initialDevicesCount * sizeof(EsMessageDevice), false);
-			EsConstantBufferRead(initialDevicesBuffer, initialDevices);
-
-			for (uintptr_t i = 0; i < initialDevicesCount; i++) {
-				api.connectedDevices.Add(initialDevices[i]);
-			}
-
-			EsHeapFree(initialDevices);
-			EsHandleClose(initialDevicesBuffer);
+		for (uintptr_t i = 0; i < header->initialDeviceCount; i++) {
+			const EsMessageDevice *device = (const EsMessageDevice *) EsBufferRead(&buffer, sizeof(EsMessageDevice));
+			api.connectedDevices.Add(*device);
 		}
+
+		EsHeapFree(_data);
 
 		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
 		EsBuffer responseBuffer = { .canGrow = true };
@@ -1687,29 +1687,6 @@ EsCommand *EsCommandByID(EsInstance *_instance, uint32_t id) {
 	EsCommand *command = instance->commands.Get1(&id);
 	EsAssert(command); // Invalid command ID.
 	return command;
-}
-
-void EsPerformanceTimerPush() {
-	EsSpinlockAcquire(&api.performanceTimerStackLock);
-
-	if (api.performanceTimerStackCount < PERFORMANCE_TIMER_STACK_SIZE) {
-		api.performanceTimerStack[api.performanceTimerStackCount++] = EsTimeStampMs();
-	}
-
-	EsSpinlockRelease(&api.performanceTimerStackLock);
-}
-
-double EsPerformanceTimerPop() {
-	double result = 0;
-	EsSpinlockAcquire(&api.performanceTimerStackLock);
-
-	if (api.performanceTimerStackCount) {
-		double start = api.performanceTimerStack[--api.performanceTimerStackCount];
-		result = (EsTimeStampMs() - start) / 1000.0 /* ms to seconds */; 
-	}
-
-	EsSpinlockRelease(&api.performanceTimerStackLock);
-	return result;
 }
 
 uint32_t EsIconIDFromDriveType(uint8_t driveType) {

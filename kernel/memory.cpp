@@ -137,8 +137,6 @@ struct MMSharedRegion {
 	size_t sizeBytes;
 	volatile size_t handles;
 	KMutex mutex;
-	LinkedItem<MMSharedRegion> namedItem;
-	char cName[ES_SHARED_MEMORY_NAME_MAX_LENGTH + 1];
 	void *data;
 };
 
@@ -274,8 +272,6 @@ bool MMDecommitRange(MMSpace *space, MMRegion *region, uintptr_t offset, size_t 
 uintptr_t MMPhysicalAllocate(unsigned flags, uintptr_t count, uintptr_t align, uintptr_t below);
 void MMInitialise();
 MMSharedRegion *MMSharedCreateRegion(size_t sizeBytes, bool fixed, uintptr_t below);
-MMSharedRegion *MMSharedOpenRegion(const char *name, size_t nameBytes, 
-		size_t fallbackSizeBytes /* If the region doesn't exist, the size it should be created with. If 0, it'll fail. */, uint64_t flags);
 MMRegion *MMFindAndPinRegion(MMSpace *space, uintptr_t address, uintptr_t size);
 void MMUnpinRegion(MMSpace *space, MMRegion *region);
 void MMSpaceDestroy(MMSpace *space);
@@ -306,10 +302,8 @@ PMM pmm;
 MMRegion *mmCoreRegions = (MMRegion *) MM_CORE_REGIONS_START;
 size_t mmCoreRegionCount, mmCoreRegionArrayCommit;
 
-LinkedList<MMSharedRegion> mmNamedSharedRegions;
-KMutex mmNamedSharedRegionsMutex;
-
-GlobalData *globalData; // Shared with all processes.
+MMSharedRegion *mmGlobalDataRegion, *mmAPITableRegion;
+GlobalData *mmGlobalData; // Shared with all processes.
 
 // Code!
 
@@ -1401,38 +1395,6 @@ bool MMSharedResizeRegion(MMSharedRegion *region, size_t sizeBytes) {
 	return true;
 }
 
-MMSharedRegion *MMSharedOpenRegion(const char *name, size_t nameBytes, size_t fallbackSizeBytes, uint64_t flags) {
-	if (nameBytes > ES_SHARED_MEMORY_NAME_MAX_LENGTH) return nullptr;
-
-	KMutexAcquire(&mmNamedSharedRegionsMutex);
-	EsDefer(KMutexRelease(&mmNamedSharedRegionsMutex));
-
-	LinkedItem<MMSharedRegion> *item = mmNamedSharedRegions.firstItem;
-
-	while (item) {
-		MMSharedRegion *region = item->thisItem;
-
-		if (EsCStringLength(region->cName) == nameBytes && 0 == EsMemoryCompare(region->cName, name, nameBytes)) {
-			if (flags & ES_MEMORY_OPEN_FAIL_IF_FOUND) return nullptr;
-			OpenHandleToObject(region, KERNEL_OBJECT_SHMEM);
-			return region;
-		}
-
-		item = item->nextItem;
-	}
-
-	if (flags & ES_MEMORY_OPEN_FAIL_IF_NOT_FOUND) return nullptr;
-
-	MMSharedRegion *region = MMSharedCreateRegion(fallbackSizeBytes);
-	if (!region) return nullptr;
-	EsMemoryCopy(region->cName, name, nameBytes);
-
-	region->namedItem.thisItem = region;
-	mmNamedSharedRegions.InsertEnd(&region->namedItem);
-
-	return region;
-}
-
 MMSharedRegion *MMSharedCreateRegion(size_t sizeBytes, bool fixed, uintptr_t below) {
 	if (!sizeBytes) return nullptr;
 
@@ -2303,11 +2265,12 @@ void MMInitialise() {
 	}
 
 	{
-		// Create the global data shared region.
+		// Create the global data shared region, and the API table region.
 
-		MMSharedRegion *region = MMSharedOpenRegion(EsLiteral("Desktop.Global"), sizeof(GlobalData), ES_FLAGS_DEFAULT); 
-		globalData = (GlobalData *) MMMapShared(kernelMMSpace, region, 0, sizeof(GlobalData), MM_REGION_FIXED);
-		MMFaultRange((uintptr_t) globalData, sizeof(GlobalData), MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR);
+		mmAPITableRegion = MMSharedCreateRegion(0xF000, false, 0); 
+		mmGlobalDataRegion = MMSharedCreateRegion(sizeof(GlobalData), false, 0); 
+		mmGlobalData = (GlobalData *) MMMapShared(kernelMMSpace, mmGlobalDataRegion, 0, sizeof(GlobalData), MM_REGION_FIXED);
+		MMFaultRange((uintptr_t) mmGlobalData, sizeof(GlobalData), MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR);
 	}
 }
 

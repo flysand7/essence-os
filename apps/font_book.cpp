@@ -411,6 +411,7 @@ void _start() {
 		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
 			SaveSettings(message->instanceDestroy.instance);
 			EsHeapFree(message->instanceDestroy.instance->previewText);
+			message->instanceDestroy.instance->fonts.Free();
 			// TODO Remove the font added to the font database.
 		}
 	}

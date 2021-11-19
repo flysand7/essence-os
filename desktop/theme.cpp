@@ -357,6 +357,7 @@ struct {
 	EsBuffer system;
 	const ThemeHeader *header;
 	EsPaintTarget cursors;
+	EsHandle cursorData;
 	float scale;
 	HashStore<UIStyleKey, struct UIStyle *> loadedStyles;
 	uint32_t windowColors[6];
@@ -1307,11 +1308,19 @@ bool ThemeInitialise() {
 
 	theming.scale = api.global->uiScale;
 
+	if (!theming.cursorData) {
+		size_t cursorsBitmapBytes;
+		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
+		theming.cursorData = EsMemoryCreateShareableRegion(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4);
+		void *destination = EsObjectMap(theming.cursorData, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MAP_OBJECT_READ_WRITE);
+		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
+		EsObjectUnmap(destination);
+	}
+
 	theming.cursors.width = ES_THEME_CURSORS_WIDTH;
 	theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
 	theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
-	theming.cursors.bits = EsObjectMap(EsMemoryOpen(theming.cursors.height * theming.cursors.stride, EsLiteral(ES_THEME_CURSORS_NAME), 0), 
-			0, ES_MAP_OBJECT_ALL, ES_MAP_OBJECT_READ_ONLY);
+	theming.cursors.bits = EsObjectMap(theming.cursorData, 0, ES_MAP_OBJECT_ALL, ES_MAP_OBJECT_READ_ONLY);
 	theming.cursors.fullAlpha = true;
 	theming.cursors.readOnly = true;
 

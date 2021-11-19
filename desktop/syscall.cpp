@@ -29,6 +29,10 @@ void *EsMemoryReserve(size_t size, EsMemoryProtection protection, uint32_t flags
 	}
 }
 
+EsHandle EsMemoryCreateShareableRegion(size_t bytes) {
+	return EsSyscall(ES_SYSCALL_MEMORY_ALLOCATE, bytes, 0, 0, 1);
+}
+
 void EsMemoryUnreserve(void *address, size_t size) {
 	EsSyscall(ES_SYSCALL_MEMORY_FREE, (uintptr_t) address, size, 0, 0);
 }
@@ -289,11 +293,6 @@ EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destin
 
 	if (!_copyBuffer) EsHeapFree(copyBuffer);
 	return error;
-}
-
-EsHandle EsMemoryOpen(size_t size, const char *name, ptrdiff_t nameLength, unsigned flags) {
-	if (nameLength == -1) nameLength = EsCStringLength(name);
-	return EsSyscall(ES_SYSCALL_MEMORY_OPEN, size, (uintptr_t) name, nameLength, flags);
 }
 
 EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly) {
