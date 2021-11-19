@@ -299,7 +299,7 @@ EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool
 	return EsSyscall(ES_SYSCALL_HANDLE_SHARE, sharedMemoryRegion, targetProcess, readOnly, 0);
 }
 
-void *EsObjectMap(EsHandle sharedMemoryRegion, uintptr_t offset, size_t size, unsigned flags) {
+void *EsMemoryMapObject(EsHandle sharedMemoryRegion, uintptr_t offset, size_t size, unsigned flags) {
 	intptr_t result = EsSyscall(ES_SYSCALL_MEMORY_MAP_OBJECT, sharedMemoryRegion, offset, size, flags);
 
 	if (result >= 0) {
@@ -425,7 +425,7 @@ void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) {
 		EsFileOffsetDifference size = EsFileStoreGetSize(file);
 		if (size == -1) return nullptr;
 		*fileSize = size;
-		return EsObjectMap(file->handle, 0, size, flags); 
+		return EsMemoryMapObject(file->handle, 0, size, flags); 
 	} else if (file->type == FILE_STORE_PATH) {
 		return EsFileMap(file->path, file->pathBytes, fileSize, flags);
 	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
@@ -530,13 +530,13 @@ EsError EsFileDelete(EsHandle handle) {
 
 void *EsFileMap(const char *path, ptrdiff_t pathBytes, size_t *fileSize, uint32_t flags) {
 	EsFileInformation information = EsFileOpen(path, pathBytes, 
-			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE : ES_FILE_READ));
+			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MEMORY_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE : ES_FILE_READ));
 
 	if (ES_CHECK_ERROR(information.error)) {
 		return nullptr;
 	}
 
-	void *base = EsObjectMap(information.handle, 0, information.size, flags); 
+	void *base = EsMemoryMapObject(information.handle, 0, information.size, flags); 
 	EsHandleClose(information.handle);
 	if (fileSize) *fileSize = information.size;
 	return base;

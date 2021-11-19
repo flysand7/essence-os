@@ -373,7 +373,7 @@ uintptr_t HandleShare(Handle share, Process *process, uint32_t mode, EsHandle at
 	// TODO Sort out flag modes.
 
 	if (share.type == KERNEL_OBJECT_SHMEM) {
-		sharedFlags = mode; 
+		sharedFlags &= mode;
 	} else if (share.type == KERNEL_OBJECT_NODE) {
 		sharedFlags = (mode & 1) && (share.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) ? ES_FILE_READ_SHARED : share.flags;
 		if (mode & 2) sharedFlags &= ~_ES_NODE_DIRECTORY_WRITE;

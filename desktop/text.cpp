@@ -758,7 +758,7 @@ Font FontGet(EsFont key) {
 	// EsPrint("Loading font from '%z' (f%d/w%d/i%d).\n", file, key.family, key.weight, key.italic);
 
 	size_t size;
-	void *data = EsFileStoreMap(file, &size, ES_MAP_OBJECT_READ_ONLY);
+	void *data = EsFileStoreMap(file, &size, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 
 	if (!data) {
 		EsPrint("Could not load font (f%d/w%d/i%d).\n", key.family, key.weight, key.italic);

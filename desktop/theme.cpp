@@ -1312,7 +1312,7 @@ bool ThemeInitialise() {
 		size_t cursorsBitmapBytes;
 		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
 		theming.cursorData = EsMemoryCreateShareableRegion(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4);
-		void *destination = EsObjectMap(theming.cursorData, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MAP_OBJECT_READ_WRITE);
+		void *destination = EsMemoryMapObject(theming.cursorData, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MEMORY_MAP_OBJECT_READ_WRITE);
 		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
 		EsObjectUnmap(destination);
 	}
@@ -1320,7 +1320,7 @@ bool ThemeInitialise() {
 	theming.cursors.width = ES_THEME_CURSORS_WIDTH;
 	theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
 	theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
-	theming.cursors.bits = EsObjectMap(theming.cursorData, 0, ES_MAP_OBJECT_ALL, ES_MAP_OBJECT_READ_ONLY);
+	theming.cursors.bits = EsMemoryMapObject(theming.cursorData, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 	theming.cursors.fullAlpha = true;
 	theming.cursors.readOnly = true;
 

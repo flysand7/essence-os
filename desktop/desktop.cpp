@@ -1504,7 +1504,7 @@ void InstanceBlankTabCreate(EsMessage *message) {
 			// TODO Generic icon and thumbnail cache in the API, based off the one from File Manager?
 
 			size_t fileBytes;
-			void *file = EsFileMap(application->cExecutable, -1, &fileBytes, ES_MAP_OBJECT_READ_ONLY);
+			void *file = EsFileMap(application->cExecutable, -1, &fileBytes, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 			EsBundle bundle = { .base = (const BundleHeader *) file, .bytes = (ptrdiff_t) fileBytes };
 
 			if (file) {

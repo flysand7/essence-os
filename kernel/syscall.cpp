@@ -63,7 +63,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_ALLOCATE) {
 		if (argument0 > ES_SHARED_MEMORY_MAXIMUM_SIZE) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
 		MMSharedRegion *region = MMSharedCreateRegion(argument0, false, 0);
 		if (!region) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(region, 0, KERNEL_OBJECT_SHMEM), false);
+		SYSCALL_RETURN(currentProcess->handleTable.OpenHandle(region, ES_SHARED_MEMORY_READ_WRITE, KERNEL_OBJECT_SHMEM), false);
 	} else {
 		EsMemoryProtection protection = (EsMemoryProtection) argument2;
 		uint32_t flags = MM_REGION_USER;
@@ -546,22 +546,33 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_CREATE) {
 SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 	SYSCALL_HANDLE_2(argument0, (KernelObjectType) (KERNEL_OBJECT_SHMEM | KERNEL_OBJECT_NODE), object);
 
+	if (((argument3 & ES_MEMORY_MAP_OBJECT_READ_WRITE) ? 1 : 0)
+			+ ((argument3 & ES_MEMORY_MAP_OBJECT_READ_ONLY) ? 1 : 0)
+			+ ((argument3 & ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE) ? 1 : 0) != 1) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+	}
+
 	if (object.type == KERNEL_OBJECT_SHMEM) {
-		// TODO Access permissions and modes.
 		MMSharedRegion *region = (MMSharedRegion *) object.object;
 
-		if (argument2 == ES_MAP_OBJECT_ALL) {
+		if (argument2 == ES_MEMORY_MAP_OBJECT_ALL) {
 			argument2 = region->sizeBytes;
 		}
 
-		uintptr_t address = (uintptr_t) MMMapShared(currentVMM, region, argument1, argument2, MM_REGION_USER);
+		if ((argument3 == ES_MEMORY_MAP_OBJECT_READ_WRITE && (~object.flags & ES_SHARED_MEMORY_READ_WRITE))
+				|| argument3 == ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE) {
+			SYSCALL_RETURN(ES_FATAL_ERROR_INSUFFICIENT_PERMISSIONS, true);
+		}
+
+		uint32_t flags = MM_REGION_USER | ((argument3 & ES_MEMORY_MAP_OBJECT_READ_ONLY) ? MM_REGION_READ_ONLY : 0);
+		uintptr_t address = (uintptr_t) MMMapShared(currentVMM, region, argument1 /* offset */, argument2 /* bytes */, flags);
 		SYSCALL_RETURN(address, false);
 	} else if (object.type == KERNEL_OBJECT_NODE) {
 		KNode *file = (KNode *) object.object;
 
 		if (file->directoryEntry->type != ES_NODE_FILE) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 
-		if (argument3 == ES_MAP_OBJECT_READ_WRITE) {
+		if (argument3 == ES_MEMORY_MAP_OBJECT_READ_WRITE) {
 			if (!(object.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE))) {
 				SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 			}
@@ -571,7 +582,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_MEMORY_MAP_OBJECT) {
 			}
 		}
 
-		if (argument2 == ES_MAP_OBJECT_ALL) {
+		if (argument2 == ES_MEMORY_MAP_OBJECT_ALL) {
 			argument2 = file->directoryEntry->totalSize;
 		}
 

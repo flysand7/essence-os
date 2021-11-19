@@ -154,7 +154,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			// Map the bundle file.
 
 			if (!MMMapFile(thisProcess->vmm, (FSFile *) node, 
-					0, fileSize, ES_MAP_OBJECT_READ_ONLY, 
+					0, fileSize, ES_MEMORY_MAP_OBJECT_READ_ONLY, 
 					(uint8_t *) header.mapAddress)) {
 				return ES_ERROR_INSUFFICIENT_RESOURCES;
 			}
@@ -239,7 +239,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			success = MMMapFile(thisProcess->vmm, (FSFile *) node, 
 					executableOffset + fileOffset, zeroStart - fileStart, 
-					ES_MAP_OBJECT_COPY_ON_WRITE, 
+					ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE, 
 					(uint8_t *) fileStart, end - zeroStart);
 
 			if (success) {

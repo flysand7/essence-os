@@ -762,9 +762,10 @@ void ProcessLoadExecutable() {
 			startupInformation->tlsBytes = application.tlsBytes;
 			startupInformation->timeStampTicksPerMs = timeStampTicksPerMs;
 
-			if (OpenHandleToObject(mmGlobalDataRegion, KERNEL_OBJECT_SHMEM, ES_FLAGS_DEFAULT)) {
-				// TODO Write protection.
-				startupInformation->globalDataRegion = thisProcess->handleTable.OpenHandle(mmGlobalDataRegion, ES_FLAGS_DEFAULT, KERNEL_OBJECT_SHMEM);
+			uint32_t globalDataRegionFlags = thisProcess->type == PROCESS_DESKTOP ? ES_SHARED_MEMORY_READ_WRITE : ES_FLAGS_DEFAULT;
+
+			if (OpenHandleToObject(mmGlobalDataRegion, KERNEL_OBJECT_SHMEM, globalDataRegionFlags)) {
+				startupInformation->globalDataRegion = thisProcess->handleTable.OpenHandle(mmGlobalDataRegion, globalDataRegionFlags, KERNEL_OBJECT_SHMEM);
 			}
 
 			EsMemoryCopy(&startupInformation->data, &thisProcess->data, sizeof(EsProcessCreateData));

@@ -697,10 +697,11 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 
 	// Get the arguments and environment.
 
-	EsHandle environmentHandle = startupInformation->data.environment;
+	EsHandle environmentHandle = startupInformation->data.subsystemData;
 	char *environmentBuffer = (char *) "./application\0\0LANG=en_US.UTF-8\0PWD=/\0HOME=/\0PATH=/Applications/POSIX/bin\0TMPDIR=/Applications/POSIX/tmp\0\0";
 
 	if (environmentHandle) {
+		EsAssert(startupInformation->data.subsystemID == ES_SUBSYSTEM_ID_POSIX);
 		environmentBuffer = (char *) EsHeapAllocate(ARG_MAX, false);
 		EsConstantBufferRead((EsHandle) environmentHandle, environmentBuffer);
 		EsHandleClose((EsHandle) environmentHandle);

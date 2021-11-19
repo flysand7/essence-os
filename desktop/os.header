@@ -360,8 +360,6 @@ define ES_REJECTED    (-2)
 define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1)
 define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (2)
 
-define ES_MAP_OBJECT_ALL (0)
-
 define ES_TEXT_H_LEFT 	                   (1 <<  0)
 define ES_TEXT_H_CENTER                    (1 <<  1)
 define ES_TEXT_H_RIGHT 	                   (1 <<  2)
@@ -407,9 +405,12 @@ define _ES_NODE_NO_WRITE_BASE		(0x080000)
 
 define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
 
-define ES_MAP_OBJECT_READ_WRITE         (0)
-define ES_MAP_OBJECT_READ_ONLY          (1)
-define ES_MAP_OBJECT_COPY_ON_WRITE      (2)
+define ES_MEMORY_MAP_OBJECT_ALL (0) // Set size to this to map the entire object.
+define ES_MEMORY_MAP_OBJECT_READ_WRITE    (1 << 0)
+define ES_MEMORY_MAP_OBJECT_READ_ONLY     (1 << 1)
+define ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE (1 << 2) // Files only.
+
+define ES_SHARED_MEMORY_READ_WRITE (1 << 0)
 
 define ES_STRING_FORMAT_ENOUGH_SPACE	(-1)
 
@@ -739,6 +740,9 @@ define ES_SCROLL_MODE_AUTO   (3) // The scrollbar is only visible if the content
 define ES_SCROLL_X_DRAG (1 << 0)
 define ES_SCROLL_Y_DRAG (1 << 1)
 private define ES_SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
+
+define ES_SUBSYSTEM_ID_NATIVE (0)
+define ES_SUBSYSTEM_ID_POSIX (1)
 
 include desktop/icons.header
 
@@ -2101,7 +2105,7 @@ function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes);
 function void EsMemoryUnreserve(void *pointer, size_t size = 0); // Must cover the entire reserved region. Leave size 0 if you don't know the size.
 function void EsMemoryZero(void *destination, size_t bytes); 
 
-function void *EsObjectMap(EsHandle object, uintptr_t offset, size_t size, unsigned flags); 
+function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size, uint32_t flags); 
 
 // Standard functions.
 

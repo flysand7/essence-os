@@ -1512,8 +1512,8 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		ThreadInitialise(&api.firstThreadLocalStorage);
 		EsMessageMutexAcquire();
 
-		api.global = (GlobalData *) EsObjectMap(api.startupInformation->globalDataRegion, 
-				0, sizeof(GlobalData), desktop ? ES_MAP_OBJECT_READ_WRITE : ES_MAP_OBJECT_READ_ONLY);
+		api.global = (GlobalData *) EsMemoryMapObject(api.startupInformation->globalDataRegion, 
+				0, sizeof(GlobalData), desktop ? ES_MEMORY_MAP_OBJECT_READ_WRITE : ES_MEMORY_MAP_OBJECT_READ_ONLY);
 	}
 
 	bool uiProcess = true; // TODO Determine this properly.

@@ -1015,7 +1015,7 @@ void MMUnreserve(MMSpace *space, MMRegion *remove, bool unmapPages, bool guardRe
 }
 
 void *MMMapFile(MMSpace *space, FSFile *node, EsFileOffset offset, size_t bytes, int protection, void *baseAddress, size_t zeroedBytes, uint32_t additionalFlags) {
-	if (protection != ES_MAP_OBJECT_READ_ONLY && protection != ES_MAP_OBJECT_COPY_ON_WRITE) {
+	if (protection != ES_MEMORY_MAP_OBJECT_READ_ONLY && protection != ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE) {
 		return nullptr;
 	}
 
@@ -1025,7 +1025,7 @@ void *MMMapFile(MMSpace *space, FSFile *node, EsFileOffset offset, size_t bytes,
 
 	MMRegion *region = nullptr;
 	uint64_t fileHandleFlags = ES_NODE_PREVENT_RESIZE 
-		| (protection == ES_MAP_OBJECT_READ_WRITE ? ES_FILE_WRITE_SHARED : ES_FILE_READ_SHARED);
+		| (protection == ES_MEMORY_MAP_OBJECT_READ_WRITE ? ES_FILE_WRITE_SHARED : ES_FILE_READ_SHARED);
 	bool decommit = false;
 
 	// Register a handle to the node.
@@ -1056,8 +1056,8 @@ void *MMMapFile(MMSpace *space, FSFile *node, EsFileOffset offset, size_t bytes,
 	// Reserve the region.
 
 	region = MMReserve(space, bytes + zeroedBytes, MM_REGION_FILE | additionalFlags
-			| ((protection == ES_MAP_OBJECT_READ_ONLY || protection == ES_MAP_OBJECT_COPY_ON_WRITE) ? MM_REGION_READ_ONLY : 0)
-			| (protection == ES_MAP_OBJECT_COPY_ON_WRITE ? MM_REGION_COPY_ON_WRITE : 0),
+			| ((protection == ES_MEMORY_MAP_OBJECT_READ_ONLY || protection == ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE) ? MM_REGION_READ_ONLY : 0)
+			| (protection == ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE ? MM_REGION_COPY_ON_WRITE : 0),
 			baseAddress ? (uintptr_t) baseAddress - offsetIntoPage : 0);
 
 	if (!region) {
@@ -1066,7 +1066,7 @@ void *MMMapFile(MMSpace *space, FSFile *node, EsFileOffset offset, size_t bytes,
 
 	// Commit copy on write regions.
 
-	if (protection == ES_MAP_OBJECT_COPY_ON_WRITE) {
+	if (protection == ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE) {
 		if (!MMCommit(bytes + zeroedBytes, false)) {
 			goto fail;
 		}
