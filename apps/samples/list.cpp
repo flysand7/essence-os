@@ -1,12 +1,5 @@
 #include <essence.h>
 
-EsListViewColumn columns[] = {
-	// Title                Flags                      Initial width
-	{ "Name",           -1, ES_FLAGS_DEFAULT,          150 },
-	{ "Age",            -1, ES_TEXT_H_RIGHT,           100 },
-	{ "Favorite color", -1, ES_DRAW_CONTENT_RICH_TEXT, 150 },
-};
-
 void AddPerson(EsListView *list, const char *name, int age, const char *favoriteColor) {
 	char ageString[16];
 	EsStringFormat(ageString, sizeof(ageString), "%d%c", age, 0);
@@ -26,7 +19,10 @@ void _start() {
 			EsInstance *instance = EsInstanceCreate(message, "List", -1);
 			EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
 			EsListView *list = EsListViewCreate(wrapper, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_FIXED_ITEMS);
-			EsListViewSetColumns(list, columns, sizeof(columns) / sizeof(columns[0]));
+			EsListViewRegisterColumn(list, 0, "Name",           -1, ES_FLAGS_DEFAULT,          150);
+			EsListViewRegisterColumn(list, 1, "Age",            -1, ES_TEXT_H_RIGHT,           100);
+			EsListViewRegisterColumn(list, 2, "Favorite color", -1, ES_DRAW_CONTENT_RICH_TEXT, 150);
+			EsListViewAddAllColumns(list);
 			AddPerson(list, "Alice",   20, "\a#e00]Red");
 			AddPerson(list, "Bob",     30, "\a#080]Green");
 			AddPerson(list, "Cameron", 40, "\a#00f]Blue");

@@ -41,14 +41,9 @@ const char *errorTypeStrings[] = {
 
 #include "string.cpp"
 
-EsListViewColumn folderOutputColumns[] = {
 #define COLUMN_NAME (0)
-	{ INTERFACE_STRING(FileManagerColumnName), ES_LIST_VIEW_COLUMN_HAS_MENU },
 #define COLUMN_TYPE (1)
-	{ INTERFACE_STRING(FileManagerColumnType), ES_LIST_VIEW_COLUMN_HAS_MENU },
 #define COLUMN_SIZE (2)
-	{ INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT },
-};
 
 #define LOAD_FOLDER_BACK     (1)
 #define LOAD_FOLDER_FORWARD  (2)

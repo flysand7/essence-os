@@ -39,9 +39,18 @@ struct ListViewFixedString {
 
 struct ListViewFixedItem {
 	ListViewFixedString firstColumn;
+	// TODO Store the strings in an array per-ListViewColumn.
 	Array<ListViewFixedString> otherColumns;
 	EsGeneric data;
 	uint32_t iconID;
+};
+
+struct ListViewColumn {
+	char *title;
+	size_t titleBytes;
+	uint32_t id;
+	uint32_t flags;
+	double width;
 };
 
 int ListViewProcessItemMessage(EsElement *element, EsMessage *message);
@@ -88,8 +97,8 @@ struct EsListView : EsElement {
 	size_t emptyMessageBytes;
 
 	EsElement *columnHeader;
-	EsListViewColumn *columns;
-	size_t columnCount;
+	Array<ListViewColumn> registeredColumns;
+	Array<uint32_t> activeColumns; // Indices into registeredColumns.
 	int columnResizingOriginalWidth;
 	int64_t totalColumnWidth;
 
@@ -685,7 +694,7 @@ struct EsListView : EsElement {
 					position += visibleItem->element->width;
 				} else if ((flags & ES_LIST_VIEW_COLUMNS) && ((~flags & ES_LIST_VIEW_CHOICE_SELECT) || (this->scroll.enabled[0]))) {
 					int indent = visibleItem->indent * style->gapWrap;
-					int firstColumn = columns[0].width * theming.scale + secondaryCellStyle->gapMajor;
+					int firstColumn = activeColumns.Length() ? (registeredColumns[activeColumns[0]].width * theming.scale + secondaryCellStyle->gapMajor) : 0;
 					visibleItem->startAtSecondColumn = indent > firstColumn;
 					if (indent > firstColumn) indent = firstColumn;
 					visibleItem->element->InternalMove(totalColumnWidth - indent, visibleItem->size, 
@@ -1174,12 +1183,12 @@ struct EsListView : EsElement {
 			if (flags & ES_LIST_VIEW_COLUMNS) {
 				EsRectangle bounds = EsRectangleAddBorder(element->GetBounds(), element->style->insets);
 
-				for (uintptr_t i = item->startAtSecondColumn ? 1 : 0; i < columnCount; i++) {
-					m.getContent.column = i;
+				for (uintptr_t i = item->startAtSecondColumn ? 1 : 0; i < activeColumns.Length(); i++) {
+					m.getContent.columnID = registeredColumns[activeColumns[i]].id;
 					m.getContent.icon = 0;
 					buffer.position = 0;
 
-					bounds.r = bounds.l + columns[i].width * theming.scale
+					bounds.r = bounds.l + registeredColumns[activeColumns[i]].width * theming.scale
 						- element->style->insets.r - element->style->insets.l;
 
 					if (i == 0) {
@@ -1195,10 +1204,10 @@ struct EsListView : EsElement {
 						UIStyle *style = useSelectedCellStyle ? selectedCellStyle : i ? secondaryCellStyle : primaryCellStyle;
 						style->PaintText(message->painter, element, bounds, 
 								(char *) _buffer, buffer.position, m.getContent.icon,
-								columns[i].flags, i ? nullptr : &selection);
+								registeredColumns[activeColumns[i]].flags, i ? nullptr : &selection);
 					}
 
-					bounds.l += columns[i].width * theming.scale + secondaryCellStyle->gapMajor;
+					bounds.l += registeredColumns[activeColumns[i]].width * theming.scale + secondaryCellStyle->gapMajor;
 
 					if (i == 0) {
 						bounds.l -= item->indent * style->gapWrap;
@@ -1580,7 +1589,7 @@ struct EsListView : EsElement {
 		if (flags & ES_LIST_VIEW_COLUMNS) {
 			int offset = primaryCellStyle->metrics->iconSize + primaryCellStyle->gapMinor 
 				+ style->insets.l - inlineTextbox->style->insets.l;
-			inlineTextbox->InternalMove(columns[0].width * theming.scale - offset, item->element->height, 
+			inlineTextbox->InternalMove(registeredColumns[activeColumns[0]].width * theming.scale - offset, item->element->height, 
 					item->element->offsetX + offset, item->element->offsetY);
 		} else if (flags & ES_LIST_VIEW_TILED) {
 			if (style->metrics->layoutVertical) {
@@ -1669,6 +1678,10 @@ struct EsListView : EsElement {
 				visibleItems[i].element->Destroy();
 			}
 
+			for (uintptr_t i = 0; i < registeredColumns.Length(); i++) {
+				EsHeapFree(registeredColumns[i].title);
+			}
+
 			for (uintptr_t i = 0; i < fixedItems.Length(); i++) {
 				for (uintptr_t j = 0; j < fixedItems[i].otherColumns.Length(); j++) {
 					EsHeapFree(fixedItems[i].otherColumns[j].string);
@@ -1685,6 +1698,8 @@ struct EsListView : EsElement {
 			fixedItems.Free();
 			visibleItems.Free();
 			groups.Free();
+			activeColumns.Free();
+			registeredColumns.Free();
 		} else if (message->type == ES_MSG_KEY_UP) {
 			if (message->keyboard.scancode == ES_SCANCODE_LEFT_CTRL || message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL) {
 				SelectPreview();
@@ -1874,10 +1889,10 @@ struct EsListView : EsElement {
 			EsAssert(index < fixedItems.Length());
 			ListViewFixedString emptyString = {};
 			ListViewFixedItem *item = &fixedItems[index];
-			ListViewFixedString *string = message->getContent.column == 0 ? &item->firstColumn 
-				: message->getContent.column <= item->otherColumns.Length() ? &item->otherColumns[message->getContent.column - 1] : &emptyString;
+			ListViewFixedString *string = message->getContent.columnID == 0 ? &item->firstColumn 
+				: message->getContent.columnID <= item->otherColumns.Length() ? &item->otherColumns[message->getContent.columnID - 1] : &emptyString;
 			EsBufferFormat(message->getContent.buffer, "%s", string->bytes, string->string);
-			if (message->getContent.column == 0) message->getContent.icon = item->iconID;
+			if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) message->getContent.icon = item->iconID;
 		} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			message->selectItem.isSelected = message->selectItem.index == fixedItemSelection;
 		} else {
@@ -1900,9 +1915,28 @@ int ListViewProcessItemMessage(EsElement *_element, EsMessage *message) {
 void ListViewCalculateTotalColumnWidth(EsListView *view) {
 	view->totalColumnWidth = -view->secondaryCellStyle->gapMajor;
 
-	for (uintptr_t i = 0; i < view->columnCount; i++) {
-		view->totalColumnWidth += view->columns[i].width * theming.scale + view->secondaryCellStyle->gapMajor;
+	for (uintptr_t i = 0; i < view->activeColumns.Length(); i++) {
+		view->totalColumnWidth += view->registeredColumns[view->activeColumns[i]].width * theming.scale + view->secondaryCellStyle->gapMajor;
 	}
+}
+
+int ListViewColumnHeaderMessage(EsElement *element, EsMessage *message) {
+	EsListView *view = (EsListView *) element->userData.p;
+
+	if (message->type == ES_MSG_LAYOUT) {
+		int x = view->style->insets.l - view->scroll.position[0];
+
+		for (uintptr_t i = 0; i < element->children.Length(); i += 2) {
+			EsElement *item = element->children[i], *splitter = element->children[i + 1];
+			ListViewColumn *column = &view->registeredColumns[item->userData.u];
+			int splitterLeft = splitter->style->preferredWidth - view->secondaryCellStyle->gapMajor;
+			item->InternalMove(column->width * theming.scale - splitterLeft, element->height, x, 0);
+			splitter->InternalMove(splitter->style->preferredWidth, element->height, x + column->width * theming.scale - splitterLeft, 0);
+			x += column->width * theming.scale + view->secondaryCellStyle->gapMajor;
+		}
+	}
+
+	return 0;
 }
 
 void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
@@ -1938,29 +1972,11 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 		view->columnHeader = EsCustomElementCreate(view, ES_CELL_FILL, ES_STYLE_LIST_COLUMN_HEADER);
 		view->columnHeader->cName = "column header";
 		view->columnHeader->userData = view;
-
-		view->columnHeader->messageUser = [] (EsElement *element, EsMessage *message) {
-			EsListView *view = (EsListView *) element->userData.p;
-
-			if (message->type == ES_MSG_LAYOUT) {
-				int x = view->style->insets.l - view->scroll.position[0];
-
-				for (uintptr_t i = 0; i < element->children.Length(); i += 2) {
-					EsElement *item = element->children[i], *splitter = element->children[i + 1];
-					EsListViewColumn *column = view->columns + item->userData.u;
-					int splitterLeft = splitter->style->preferredWidth - view->secondaryCellStyle->gapMajor;
-					item->InternalMove(column->width * theming.scale - splitterLeft, element->height, x, 0);
-					splitter->InternalMove(splitter->style->preferredWidth, element->height, x + column->width * theming.scale - splitterLeft, 0);
-					x += column->width * theming.scale + view->secondaryCellStyle->gapMajor;
-				}
-			}
-
-			return 0;
-		};
-
+		view->columnHeader->messageUser = ListViewColumnHeaderMessage;
 		view->scroll.fixedViewport[1] = view->columnHeader->style->preferredHeight;
 	} else if ((~view->flags & ES_LIST_VIEW_COLUMNS) && view->columnHeader) {
 		EsElementDestroy(view->columnHeader);
+		view->activeColumns.Free();
 		view->columnHeader = nullptr;
 		view->scroll.fixedViewport[1] = 0;
 	}
@@ -2245,7 +2261,7 @@ void EsListViewRemoveAll(EsListView *view, EsListViewIndex group) {
 
 int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 	EsListView *view = (EsListView *) element->parent->parent;
-	EsListViewColumn *column = view->columns + element->userData.u;
+	ListViewColumn *column = &view->registeredColumns[element->userData.u];
 
 	if (message->type == ES_MSG_PAINT) {
 		EsMessage m = { ES_MSG_LIST_VIEW_GET_COLUMN_SORT };
@@ -2267,57 +2283,65 @@ int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount) {
-	EsMessageMutexCheck();
+int ListViewColumnSplitterMessage(EsElement *element, EsMessage *message) {
+	EsListView *view = (EsListView *) element->parent->parent;
+	ListViewColumn *column = &view->registeredColumns[element->userData.u];
 
-	EsAssert(view->flags & ES_LIST_VIEW_COLUMNS); // List view does not have columns flag set.
+	if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+		view->columnResizingOriginalWidth = column->width * theming.scale;
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
+		int width = message->mouseDragged.newPositionX - message->mouseDragged.originalPositionX + view->columnResizingOriginalWidth;
+		int minimumWidth = element->style->metrics->minimumWidth;
+		if (width < minimumWidth) width = minimumWidth;
+		column->width = width / theming.scale;
+		ListViewCalculateTotalColumnWidth(view);
+		EsElementRelayout(element->parent);
+		EsElementRelayout(view);
+	} else {
+		return 0;
+	}
 
+	return ES_HANDLED;
+}
+
+void EsListViewAddAllColumns(EsListView *view) {
 	EsElementDestroyContents(view->columnHeader);
+	view->activeColumns.Free();
 
-	view->columns = columns;
-	view->columnCount = columnCount;
+	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
+		view->activeColumns.Add(i);
 
-	for (uintptr_t i = 0; i < columnCount; i++) {
-		EsElement *columnHeaderItem = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, 
-				(columns[i].flags & ES_LIST_VIEW_COLUMN_HAS_MENU) ? ES_STYLE_LIST_COLUMN_HEADER_ITEM_HAS_MENU : ES_STYLE_LIST_COLUMN_HEADER_ITEM);
-
+		EsStyle *style = (view->registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_HAS_MENU) ? ES_STYLE_LIST_COLUMN_HEADER_ITEM_HAS_MENU : ES_STYLE_LIST_COLUMN_HEADER_ITEM;
+		EsElement *columnHeaderItem = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, style);
 		columnHeaderItem->messageUser = ListViewColumnHeaderItemMessage;
 		columnHeaderItem->cName = "column header item";
 		columnHeaderItem->userData = i;
 
-		if (!columns[i].width) {
-			columns[i].width = (i ? view->secondaryCellStyle : view->primaryCellStyle)->preferredWidth / theming.scale;
-		}
-
 		EsElement *splitter = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, ES_STYLE_LIST_COLUMN_HEADER_SPLITTER);
-
-		splitter->messageUser = [] (EsElement *element, EsMessage *message) {
-			EsListViewColumn *column = (EsListViewColumn *) element->userData.p;
-			EsListView *view = (EsListView *) element->parent->parent;
-
-			if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
-				view->columnResizingOriginalWidth = column->width * theming.scale;
-			} else if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
-				int width = message->mouseDragged.newPositionX - message->mouseDragged.originalPositionX + view->columnResizingOriginalWidth;
-				int minimumWidth = element->style->metrics->minimumWidth;
-				if (width < minimumWidth) width = minimumWidth;
-				column->width = width / theming.scale;
-				ListViewCalculateTotalColumnWidth(view);
-				EsElementRelayout(element->parent);
-				EsElementRelayout(view);
-			} else {
-				return 0;
-			}
-
-			return ES_HANDLED;
-		},
-
+		splitter->messageUser = ListViewColumnSplitterMessage;
 		splitter->cName = "column header splitter";
-		splitter->userData = columns + i;
+		splitter->userData = i;
 	}
 
 	ListViewCalculateTotalColumnWidth(view);
 	view->scroll.Refresh();
+}
+
+void EsListViewRegisterColumn(EsListView *view, uint32_t id, const char *title, ptrdiff_t titleBytes, uint32_t flags, double initialWidth) {
+	EsMessageMutexCheck();
+	EsAssert(view->flags & ES_LIST_VIEW_COLUMNS); // List view does not have columns flag set.
+
+	if (!initialWidth) {
+		initialWidth = (view->registeredColumns.Length() ? view->secondaryCellStyle : view->primaryCellStyle)->preferredWidth / theming.scale;
+	}
+
+	ListViewColumn column = {};
+	column.id = id;
+	column.flags = flags;
+	column.width = initialWidth;
+	if (titleBytes == -1) titleBytes = EsCStringLength(title);
+	HeapDuplicate((void **) &column.title, &column.titleBytes, title, titleBytes);
+	view->registeredColumns.Add(column);
 }
 
 void EsListViewContentChanged(EsListView *view) {

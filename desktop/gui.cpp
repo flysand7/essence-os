@@ -7559,12 +7559,6 @@ struct InspectorWindow : EsInstance {
 	EsTextbox *textboxCategoryFilter;
 };
 
-EsListViewColumn inspectorElementListColumns[] = {
-	{ "Name", -1, 0, 300 },
-	{ "Bounds", -1, 0, 200 },
-	{ "Information", -1, 0, 200 },
-};
-
 int InspectorElementItemCallback(EsElement *element, EsMessage *message) {
 	InspectorWindow *inspector = (InspectorWindow *) element->instance;
 
@@ -7670,7 +7664,7 @@ int InspectorElementListCallback(EsElement *element, EsMessage *message) {
 	InspectorWindow *inspector = (InspectorWindow *) element->instance;
 
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index;
+		int column = message->getContent.columnID, index = message->getContent.index;
 		EsAssert(index >= 0 && index < (int) inspector->elements.Length());
 		InspectorElementEntry *entry = &inspector->elements[index];
 
@@ -8047,7 +8041,10 @@ void InspectorSetup(EsWindow *window) {
 
 	inspector->elementList = EsListViewCreate(panel1, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);
 	inspector->elementList->messageUser = InspectorElementListCallback;
-	EsListViewSetColumns(inspector->elementList, inspectorElementListColumns, sizeof(inspectorElementListColumns) / sizeof(EsListViewColumn));
+	EsListViewRegisterColumn(inspector->elementList, 0, "Name", -1, 0, 300);
+	EsListViewRegisterColumn(inspector->elementList, 1, "Bounds", -1, 0, 200);
+	EsListViewRegisterColumn(inspector->elementList, 2, "Information", -1, 0, 200);
+	EsListViewAddAllColumns(inspector->elementList);
 	EsListViewInsertGroup(inspector->elementList, 0);
 
 	{

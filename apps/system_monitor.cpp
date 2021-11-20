@@ -26,23 +26,6 @@ struct Instance : EsInstance {
 #define DISPLAY_GENERAL_LOG (3)
 #define DISPLAY_MEMORY (12)
 
-EsListViewColumn listViewProcessesColumns[] = {
-	{ "Name", -1, 0, 150 },
-	{ "PID", -1, ES_TEXT_H_RIGHT, 120 },
-	{ "Memory", -1, ES_TEXT_H_RIGHT, 120 },
-	{ "CPU", -1, ES_TEXT_H_RIGHT, 120 },
-	{ "Handles", -1, ES_TEXT_H_RIGHT, 120 },
-	{ "Threads", -1, ES_TEXT_H_RIGHT, 120 },
-};
-
-EsListViewColumn listViewContextSwitchesColumns[] = {
-	{ "Time stamp (ms)", -1, ES_TEXT_H_RIGHT, 150 },
-	{ "CPU", -1, ES_TEXT_H_RIGHT, 150 },
-	{ "Process", -1, 0, 150 },
-	{ "Thread", -1, 0, 150 },
-	{ "Count", -1, 0, 150 },
-};
-
 const EsStyle styleMonospacedTextbox = {
 	.inherit = ES_STYLE_TEXTBOX_NO_BORDER,
 
@@ -323,7 +306,7 @@ void UpdateDisplay(Instance *instance, int index) {
 
 int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index;
+		int column = message->getContent.columnID, index = message->getContent.index;
 		ProcessItem *item = &processes[index];
 		if      (column == 0) GET_CONTENT("%s", item->data.nameBytes, item->data.name);
 		else if (column == 1) { if (item->data.pid == -1) GET_CONTENT("n/a"); else GET_CONTENT("%d", item->data.pid); }
@@ -357,13 +340,6 @@ void AddTab(EsElement *toolbar, uintptr_t index, const char *label, bool asDefau
 	if (asDefault) EsButtonSetCheck(button, ES_CHECK_CHECKED);
 }
 
-void AddListView(EsListView **pointer, EsElement *switcher, EsUICallback callback, EsListViewColumn *columns, size_t columnsSize, uint64_t additionalFlags) {
-	*pointer = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | additionalFlags);
-	(*pointer)->messageUser = callback;
-	EsListViewSetColumns(*pointer, columns, columnsSize / sizeof(EsListViewColumn));
-	EsListViewInsertGroup(*pointer, 0);
-}
-
 void TerminateProcess(Instance *instance, EsElement *, EsCommand *) {
 	if (selectedPID == 0 /* Kernel */) {
 		// Terminating the kernel process is a meaningless action; the closest equivalent is shutting down.
@@ -394,8 +370,16 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL | ES_ELEMENT_DISABLED, &styleMonospacedTextbox);
 
-		AddListView(&instance->listViewProcesses, switcher, ListViewProcessesCallback, 
-				listViewProcessesColumns, sizeof(listViewProcessesColumns), ES_LIST_VIEW_SINGLE_SELECT);
+		instance->listViewProcesses = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);
+		instance->listViewProcesses->messageUser = ListViewProcessesCallback;
+		EsListViewRegisterColumn(instance->listViewProcesses, 0, "Name", -1, 0, 150);
+		EsListViewRegisterColumn(instance->listViewProcesses, 1, "PID", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, 2, "Memory", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, 3, "CPU", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, 4, "Handles", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, 5, "Threads", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewAddAllColumns(instance->listViewProcesses);
+		EsListViewInsertGroup(instance->listViewProcesses, 0);
 
 		instance->panelMemoryStatistics = EsPanelCreate(switcher, 
 				ES_CELL_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_V_SCROLL_AUTO, &stylePanelMemoryStatistics);

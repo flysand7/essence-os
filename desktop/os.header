@@ -1417,12 +1417,6 @@ struct EsCommand {
 	STRING title;
 };
 
-struct EsListViewColumn {
-	STRING title;
-	uint32_t flags;
-	double width;
-};
-
 struct EsApplicationStartupRequest {
 	int64_t id;
 	STRING filePath;
@@ -1642,8 +1636,8 @@ struct EsMessageGetContent {
 	EsListViewIndex group;
 	uint32_t icon;
 	uint32_t drawContentFlags;
+	uint32_t columnID;
 	EsBuffer *buffer;
-	uint8_t column;
 };
 
 struct EsMessageGetIndent {
@@ -2570,7 +2564,8 @@ function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLA
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL);
 function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback);
 
-function void EsListViewSetColumns(EsListView *view, EsListViewColumn *columns, size_t columnCount);
+function void EsListViewRegisterColumn(EsListView *view, uint32_t id, STRING title = BLANK_STRING, uint32_t flags = ES_FLAGS_DEFAULT, double initialWidth = 0);
+function void EsListViewAddAllColumns(EsListView *view); // Call after registering the columns to add them to the header. Call again after EsListViewChangeStyles, as needed.
 function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);
 function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand);
 function void EsListViewSelectNone(EsListView *view);

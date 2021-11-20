@@ -167,24 +167,16 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 }
 
 void InstanceRefreshViewType(Instance *instance) {
+	EsCommandSetCheck(&instance->commandViewDetails,    instance->viewSettings.viewType == VIEW_DETAILS    ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
+	EsCommandSetCheck(&instance->commandViewTiles,      instance->viewSettings.viewType == VIEW_TILES      ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
+	EsCommandSetCheck(&instance->commandViewThumbnails, instance->viewSettings.viewType == VIEW_THUMBNAILS ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
+
 	if (instance->viewSettings.viewType == VIEW_DETAILS) {
-		EsCommandSetCheck(&instance->commandViewDetails, ES_CHECK_CHECKED, false);
-		EsCommandSetCheck(&instance->commandViewTiles, ES_CHECK_UNCHECKED, false);
-		EsCommandSetCheck(&instance->commandViewThumbnails, ES_CHECK_UNCHECKED, false);
-
 		EsListViewChangeStyles(instance->list, &styleFolderView, ES_STYLE_LIST_ITEM, nullptr, nullptr, ES_LIST_VIEW_COLUMNS, ES_LIST_VIEW_TILED);
-		EsListViewSetColumns(instance->list, folderOutputColumns, sizeof(folderOutputColumns) / sizeof(folderOutputColumns[0]));
+		EsListViewAddAllColumns(instance->list);
 	} else if (instance->viewSettings.viewType == VIEW_TILES) {
-		EsCommandSetCheck(&instance->commandViewTiles, ES_CHECK_CHECKED, false);
-		EsCommandSetCheck(&instance->commandViewDetails, ES_CHECK_UNCHECKED, false);
-		EsCommandSetCheck(&instance->commandViewThumbnails, ES_CHECK_UNCHECKED, false);
-
 		EsListViewChangeStyles(instance->list, &styleFolderViewTiled, ES_STYLE_LIST_ITEM_TILE, nullptr, nullptr, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
 	} else if (instance->viewSettings.viewType == VIEW_THUMBNAILS) {
-		EsCommandSetCheck(&instance->commandViewThumbnails, ES_CHECK_CHECKED, false);
-		EsCommandSetCheck(&instance->commandViewTiles, ES_CHECK_UNCHECKED, false);
-		EsCommandSetCheck(&instance->commandViewDetails, ES_CHECK_UNCHECKED, false);
-
 		EsListViewChangeStyles(instance->list, &styleFolderViewTiled, &styleFolderItemThumbnail, nullptr, nullptr, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
 	}
 }
@@ -738,7 +730,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_PASTE), nullptr);
 		return 0;
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.column, index = message->getContent.index;
+		int column = message->getContent.columnID, index = message->getContent.index;
 		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
 		ListEntry *listEntry = &instance->listContents[index];
 		FolderEntry *entry = listEntry->entry;
@@ -1084,7 +1076,10 @@ void InstanceCreateUI(Instance *instance) {
 	instance->list = EsListViewCreate(splitter, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_MULTI_SELECT, &styleFolderView);
 	instance->list->accessKey = 'L';
 	instance->list->messageUser = ListCallback;
-	EsListViewSetColumns(instance->list, folderOutputColumns, sizeof(folderOutputColumns) / sizeof(folderOutputColumns[0]));
+	EsListViewRegisterColumn(instance->list, COLUMN_NAME, INTERFACE_STRING(FileManagerColumnName), ES_LIST_VIEW_COLUMN_HAS_MENU);
+	EsListViewRegisterColumn(instance->list, COLUMN_TYPE, INTERFACE_STRING(FileManagerColumnType), ES_LIST_VIEW_COLUMN_HAS_MENU);
+	EsListViewRegisterColumn(instance->list, COLUMN_SIZE, INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT);
+	EsListViewAddAllColumns(instance->list);
 	EsListViewInsertGroup(instance->list, 0);
 
 	// Toolbar:
