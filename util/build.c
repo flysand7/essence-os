@@ -1432,6 +1432,38 @@ void DoCommand(const char *l) {
 		printf(ColorNormal);
 	} else if (0 == memcmp(l, "a2l ", 4)) {
 		AddressToLine(l + 3);
+	} else if (0 == strcmp(l, "build-port")) {
+		printf("\nAvailable ports:\n");
+		DIR *directory = opendir("ports");
+		struct dirent *entry;
+
+		while ((entry = readdir(directory))) {
+			char buffer[4096];
+			snprintf(buffer, sizeof(buffer), "ports/%s/port.sh", entry->d_name);
+			FILE *f = fopen(buffer, "rb");
+			
+			if (f) {
+				printf("\t%s\n", entry->d_name);
+				fclose(f);
+			}
+		}
+
+		closedir(directory);
+
+		LoadOptions();
+
+		if (!IsOptionEnabled("Flag.ENABLE_POSIX_SUBSYSTEM")) {
+			printf("\nMost ports require the POSIX subsystem to be enabled.\n");
+			printf("Run " ColorHighlight "config" ColorNormal " and select " ColorHighlight "Flag.ENABLE_POSIX_SUBSYSTEM" ColorNormal " to enable it.\n");
+		}
+
+		printf("\nEnter the port to be built: ");
+		char *l2 = NULL;
+		size_t pos;
+		getline(&l2, &pos, stdin);
+		l2[strlen(l2) - 1] = 0;
+		CallSystemF("ports/%s/port.sh", l2);
+		free(l2);
 	} else if (0 == memcmp(l, "get-source ", 11)) {
 		if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
 			exit(1);

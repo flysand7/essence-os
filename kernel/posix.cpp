@@ -506,15 +506,22 @@ namespace POSIX {
 				EsMemoryCopy(path, (void *) syscall.arguments[0], syscall.arguments[1]);
 
 				Process *process = currentThread->posixData->forkProcess;
-				process->data.environment = ConstantBufferCreate((void *) syscall.arguments[2], syscall.arguments[3], process);
+				process->data.subsystemID = ES_SUBSYSTEM_ID_POSIX;
+				process->data.subsystemData = ConstantBufferCreate((void *) syscall.arguments[2], syscall.arguments[3], process);
 				process->posixForking = true;
 				process->permissions = currentProcess->permissions;
 
-				EsMountPoint mountPoint = {};
+				struct {
+					SystemStartupDataHeader header;
+					EsMountPoint mountPoint;
+				} systemData;
+
+				EsMemoryZero(&systemData, sizeof(systemData));
 				OpenHandleToObject((void *) syscall.arguments[4], KERNEL_OBJECT_NODE, _ES_NODE_DIRECTORY_WRITE);
-				mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
-				mountPoint.prefixBytes = EsStringFormat(mountPoint.prefix, sizeof(mountPoint.prefix), "|POSIX:");
-				process->data.initialMountPoints = ConstantBufferCreate(&mountPoint, sizeof(EsMountPoint), process);
+				systemData.mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
+				systemData.mountPoint.prefixBytes = EsStringFormat(systemData.mountPoint.prefix, sizeof(systemData.mountPoint.prefix), "|POSIX:");
+				systemData.header.initialMountPointCount = 1;
+				process->data.systemData = ConstantBufferCreate(&systemData, sizeof(systemData), process);
 
 				// Start the process.
 
@@ -546,8 +553,6 @@ namespace POSIX {
 				currentThread->posixData->forkProcess = nullptr;
 				currentThread->posixData->forkStack = nullptr;
 				currentThread->posixData->forkUSP = 0;
-
-				if (!process) return -ENOMEM;
 
 				return currentProcess->handleTable.OpenHandle(process, 0, KERNEL_OBJECT_PROCESS);
 			} break;

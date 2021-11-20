@@ -337,6 +337,13 @@ struct GlobalData {
 	volatile uint16_t keyboardLayout;
 };
 
+struct SystemStartupDataHeader {
+	// TODO Make mount points and devices equal, somehow?
+	size_t initialMountPointCount;
+	size_t initialDeviceCount;
+	uintptr_t themeCursorData;
+};
+
 #ifdef KERNEL
 #define K_BOOT_DRIVE ""
 #else

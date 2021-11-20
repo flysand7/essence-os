@@ -114,13 +114,6 @@ struct EsBundle {
 	ptrdiff_t bytes;
 };
 
-struct SystemStartupDataHeader {
-	// TODO Make mount points and devices equal, somehow?
-	size_t initialMountPointCount;
-	size_t initialDeviceCount;
-	EsHandle themeCursorData;
-};
-
 const EsBundle bundleDefault = {
 	.base = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS,
 	.bytes = -1,
