@@ -82,10 +82,25 @@ DEFINE_INTERFACE_STRING(CommonEmpty, "empty");
 
 DEFINE_INTERFACE_STRING(CommonUnitPercent, "%");
 DEFINE_INTERFACE_STRING(CommonUnitBytes, " B");
-DEFINE_INTERFACE_STRING(CommonUnitKilobytes, " KB");
+DEFINE_INTERFACE_STRING(CommonUnitKilobytes, " kB"); // We use this for 10^3, so let's go for the proper SI prefix, rather than the traditional "KB".
 DEFINE_INTERFACE_STRING(CommonUnitMegabytes, " MB");
 DEFINE_INTERFACE_STRING(CommonUnitGigabytes, " GB");
 DEFINE_INTERFACE_STRING(CommonUnitMilliseconds, " ms");
+DEFINE_INTERFACE_STRING(CommonUnitSeconds, " s");
+DEFINE_INTERFACE_STRING(CommonUnitBits, " bits");
+DEFINE_INTERFACE_STRING(CommonUnitPixels, " px");
+DEFINE_INTERFACE_STRING(CommonUnitDPI, " dpi");
+DEFINE_INTERFACE_STRING(CommonUnitBps, " Bps");
+DEFINE_INTERFACE_STRING(CommonUnitKBps, " kBps");
+DEFINE_INTERFACE_STRING(CommonUnitMBps, " MBps");
+DEFINE_INTERFACE_STRING(CommonUnitHz, " Hz");
+DEFINE_INTERFACE_STRING(CommonUnitKHz, " kHz");
+DEFINE_INTERFACE_STRING(CommonUnitMHz, " MHz");
+
+DEFINE_INTERFACE_STRING(CommonBooleanYes, "Yes");
+DEFINE_INTERFACE_STRING(CommonBooleanNo, "No");
+DEFINE_INTERFACE_STRING(CommonBooleanOn, "On");
+DEFINE_INTERFACE_STRING(CommonBooleanOff, "Off");
 
 // Desktop.
 

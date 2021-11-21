@@ -42,13 +42,23 @@ struct ListViewFixedItem {
 	uint32_t iconID;
 };
 
+struct ListViewFixedItemData {
+	union {
+		ListViewFixedString s;
+		double d;
+		int64_t i;
+	};
+};
+
 struct ListViewColumn {
 	char *title;
 	size_t titleBytes;
 	uint32_t id;
 	uint32_t flags;
 	double width;
-	Array<ListViewFixedString> items;
+	Array<ListViewFixedItemData> items;
+	const EsListViewEnumString *enumStrings;
+	size_t enumStringCount;
 };
 
 int ListViewProcessItemMessage(EsElement *element, EsMessage *message);
@@ -1678,8 +1688,10 @@ struct EsListView : EsElement {
 			}
 
 			for (uintptr_t i = 0; i < registeredColumns.Length(); i++) {
-				for (uintptr_t j = 0; j < registeredColumns[i].items.Length(); j++) {
-					EsHeapFree(registeredColumns[i].items[j].string);
+				if ((registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+					for (uintptr_t j = 0; j < registeredColumns[i].items.Length(); j++) {
+						EsHeapFree(registeredColumns[i].items[j].s.string);
+					}
 				}
 
 				EsHeapFree(registeredColumns[i].title);
@@ -1882,12 +1894,82 @@ struct EsListView : EsElement {
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			uintptr_t index = message->getContent.index;
 			EsAssert(index < fixedItems.Length());
-			ListViewFixedString emptyString = {};
+			ListViewFixedItemData emptyData = {};
 			ListViewFixedItem *item = &fixedItems[index];
 			ListViewColumn *column = &registeredColumns[(flags & ES_LIST_VIEW_COLUMNS) ? activeColumns[message->getContent.activeColumnIndex] : 0];
-			ListViewFixedString *string = index < column->items.Length() ? &column->items[index] : &emptyString;
-			EsBufferFormat(message->getContent.buffer, "%s", string->bytes, string->string);
-			if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) message->getContent.icon = item->iconID;
+			ListViewFixedItemData *data = index < column->items.Length() ? &column->items[index] : &emptyData;
+			uint32_t format = column->flags & ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK;
+			uint32_t type = column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK;
+
+			if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) {
+				message->getContent.icon = item->iconID;
+			}
+
+#define BOOLEAN_FORMAT(trueString, falseString) \
+	if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) { \
+		EsBufferFormat(message->getContent.buffer, "%z", data->i ? interfaceString_ ## trueString : interfaceString_ ## falseString); \
+	} else { \
+		EsAssert(false); \
+	}
+#define NUMBER_FORMAT(unitString) \
+	if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) { \
+		EsBufferFormat(message->getContent.buffer, "%d%z", data->i, interfaceString_ ## unitString); \
+	} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) { \
+		EsBufferFormat(message->getContent.buffer, "%F%z", data->d, interfaceString_ ## unitString); \
+	} else { \
+		EsAssert(false); \
+	}
+#define UNIT_FORMAT(unitString1, unitString2, unitString3) \
+	double d = type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS ? data->i : type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES ? data->d : 0; \
+	if (d < 10000)         EsBufferFormat(message->getContent.buffer, "%F%z",     d,           interfaceString_ ## unitString1); \
+	else if (d < 10000000) EsBufferFormat(message->getContent.buffer, "%.F%z", 1, d / 1000,    interfaceString_ ## unitString2); \
+	else                   EsBufferFormat(message->getContent.buffer, "%.F%z", 1, d / 1000000, interfaceString_ ## unitString3);
+
+			if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DEFAULT) {
+				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+					EsBufferFormat(message->getContent.buffer, "%s", data->s.bytes, data->s.string);
+				} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
+					EsBufferFormat(message->getContent.buffer, "%F", data->d);
+				} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+					EsBufferFormat(message->getContent.buffer, "%d", data->i);
+				}
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES) {
+				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+					EsBufferFormat(message->getContent.buffer, "%D", data->i);
+				} else {
+					EsAssert(false);
+				}
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING) {
+				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+					EsAssert(data->i >= 0 && (uintptr_t) data->i < column->enumStringCount);
+					EsBufferFormat(message->getContent.buffer, "%s", column->enumStrings[data->i].stringBytes, column->enumStrings[data->i].string);
+				} else {
+					EsAssert(false);
+				}
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_YES_NO) {
+				BOOLEAN_FORMAT(CommonBooleanYes, CommonBooleanNo);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ON_OFF) {
+				BOOLEAN_FORMAT(CommonBooleanOn, CommonBooleanOff);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE) {
+				NUMBER_FORMAT(CommonUnitPercent);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BITS) {
+				NUMBER_FORMAT(CommonUnitBits);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PIXELS) {
+				NUMBER_FORMAT(CommonUnitPixels);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DPI) {
+				NUMBER_FORMAT(CommonUnitDPI);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_SECONDS) {
+				NUMBER_FORMAT(CommonUnitSeconds);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_HERTZ) {
+				UNIT_FORMAT(CommonUnitHz, CommonUnitKHz, CommonUnitMHz);
+			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTE_RATE) {
+				UNIT_FORMAT(CommonUnitBps, CommonUnitKBps, CommonUnitMBps);
+			} else {
+				EsAssert(false);
+			}
+
+#undef NUMBER_FORMAT
+#undef BOOLEAN_FORMAT
 		} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
 			message->selectItem.isSelected = message->selectItem.index == fixedItemSelection;
 		} else {
@@ -2452,13 +2534,13 @@ EsListViewIndex EsListViewFixedItemInsert(EsListView *view, EsGeneric data, EsLi
 	item.iconID = iconID;
 	view->fixedItems.Insert(item, index);
 
-	ListViewFixedString emptyString = {};
+	ListViewFixedItemData emptyData = {};
 
 	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
 		ListViewColumn *column = &view->registeredColumns[i];
 
 		if (column->items.Length() >= (uintptr_t) index) {
-			column->items.InsertPointer(&emptyString, index);
+			column->items.InsertPointer(&emptyData, index);
 		}
 	}
 
@@ -2467,38 +2549,55 @@ EsListViewIndex EsListViewFixedItemInsert(EsListView *view, EsGeneric data, EsLi
 	return index;
 }
 
-void EsListViewFixedItemSet(EsListView *view, EsListViewIndex index, uint32_t columnID, const char *string, ptrdiff_t stringBytes) {
+void ListViewFixedItemSetInternal(EsListView *view, EsListViewIndex index, uint32_t columnID, ListViewFixedItemData data, uint32_t dataType) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 	EsMessageMutexCheck();
 	EsAssert(index >= 0 && index < (intptr_t) view->fixedItems.Length());
+
+	ListViewColumn *column = nullptr;
+
+	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
+		if (view->registeredColumns[i].id == columnID) {
+			column = &view->registeredColumns[i];
+			break;
+		}
+	}
+
+	EsAssert(column);
+	EsAssert((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == dataType);
+
+	// Make sure that the column's array of items has been updated to match to the size of fixedItems.
+	if (column->items.Length() < view->fixedItems.Length()) {
+		uintptr_t oldLength = column->items.Length();
+		column->items.SetLength(view->fixedItems.Length());
+		EsMemoryZero(&column->items[oldLength], (view->fixedItems.Length() - oldLength) * sizeof(column->items[0]));
+	}
+
+	if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+		EsHeapFree(column->items[index].s.string);
+	}
+
+	column->items[index] = data;
+	EsListViewInvalidateContent(view, 0, index);
+}
+
+void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex index, uint32_t columnID, const char *string, ptrdiff_t stringBytes) {
 	ListViewFixedString fixedString = {};
 	fixedString.bytes = stringBytes == -1 ? EsCStringLength(string) : stringBytes;
 	size_t outBytes;
 	HeapDuplicate((void **) &fixedString, &outBytes, string, fixedString.bytes);
 
 	if (outBytes == fixedString.bytes) {
-		ListViewColumn *column = nullptr;
-
-		for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
-			if (view->registeredColumns[i].id == columnID) {
-				column = &view->registeredColumns[i];
-				break;
-			}
-		}
-
-		EsAssert(column);
-
-		// Make sure that the column's array of items has been updated to match to the size of fixedItems.
-		if (column->items.Length() < view->fixedItems.Length()) {
-			uintptr_t oldLength = column->items.Length();
-			column->items.SetLength(view->fixedItems.Length());
-			EsMemoryZero(&column->items[oldLength], (view->fixedItems.Length() - oldLength) * sizeof(column->items[0]));
-		}
-
-		EsHeapFree(column->items[index].string);
-		column->items[index] = fixedString;
-		EsListViewInvalidateContent(view, 0, index);
+		ListViewFixedItemSetInternal(view, index, columnID, { .s = fixedString }, ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS);
 	}
+}
+
+void EsListViewFixedItemSetDouble(EsListView *view, EsListViewIndex index, uint32_t columnID, double number) {
+	ListViewFixedItemSetInternal(view, index, columnID, { .d = number }, ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES);
+}
+
+void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex index, uint32_t columnID, int64_t number) {
+	ListViewFixedItemSetInternal(view, index, columnID, { .i = number }, ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS);
 }
 
 bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index) {
@@ -2545,7 +2644,10 @@ bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data) {
 			ListViewColumn *column = &view->registeredColumns[i];
 
 			if ((uintptr_t) index < column->items.Length()) {
-				EsHeapFree(column->items[index].string);
+				if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+					EsHeapFree(column->items[index].s.string);
+				}
+
 				column->items.Delete(index);
 
 				if (!column->items.Length()) {
@@ -2570,6 +2672,19 @@ bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data) {
 		*data = view->fixedItems[view->fixedItemSelection].data;
 		return true;
 	}
+}
+
+void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount) {
+	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
+		if (view->registeredColumns[i].id == columnID) {
+			view->registeredColumns[i].enumStrings = strings;
+			view->registeredColumns[i].enumStringCount = stringCount;
+			EsListViewInvalidateAll(view);
+			return;
+		}
+	}
+
+	EsAssert(false);
 }
 
 int ListViewInlineTextboxMessage(EsElement *element, EsMessage *message) {

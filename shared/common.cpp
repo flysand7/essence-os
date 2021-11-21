@@ -540,6 +540,7 @@ void WriteCStringToCallback(FormatCallback callback, void *callbackData, const c
 void _StringFormat(FormatCallback callback, void *callbackData, const char *format, va_list arguments) {
 	int c;
 	int pad = 0;
+	int decimalPlaces = -1;
 	uint32_t flags = 0;
 
 	char buffer[32];
@@ -647,13 +648,18 @@ void _StringFormat(FormatCallback callback, void *callbackData, const char *form
 				} break;
 
 				case 's': {
-					size_t length = va_arg(arguments, size_t);
+					ptrdiff_t length = va_arg(arguments, ptrdiff_t);
 					char *string = va_arg(arguments, char *);
-					char *position = string;
 
-					while (position < string + length) {
-						callback(utf8_value(position), callbackData);
-						position = utf8_advance(position);
+					if (length == -1) {
+						WriteCStringToCallback(callback, callbackData, string ?: "[null]");
+					} else {
+						char *position = string;
+
+						while (position < string + length) {
+							callback(utf8_value(position), callbackData);
+							position = utf8_advance(position);
+						}
 					}
 				} break;
 
@@ -731,18 +737,26 @@ void _StringFormat(FormatCallback callback, void *callbackData, const char *form
 					_FormatInteger(callback, callbackData, integer, pad, flags & ES_STRING_FORMAT_SIMPLE);
 
 					// Decimal separator.
-					if (digitCount) {
+					if (digitCount && decimalPlaces) {
 						callback('.', callbackData);
 					}
 
 					// Fractional digits.
 					for (uintptr_t i = 0; i < digitCount; i++) {
+						if ((int) i == decimalPlaces) break;
 						callback('0' + digits[i], callbackData);
 					}
+
+					decimalPlaces = -1;
 				} break;
 
 				case '*': {
 					pad = va_arg(arguments, int);
+					goto repeat;
+				} break;
+
+				case '.': {
+					decimalPlaces = va_arg(arguments, int);
 					goto repeat;
 				} break;
 

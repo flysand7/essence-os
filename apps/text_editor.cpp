@@ -141,17 +141,17 @@ void FormatPopupCreate(Instance *instance) {
 
 		if (currentSize < presetTextSizes[0]) {
 			// The current size is not in the list; add it.
-			EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, currentSize), 0, buffer, 
+			EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, currentSize), 0, buffer, 
 					EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize));
 		}
 
 		for (uintptr_t i = 0; i < presetSizeCount; i++) {
-			EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, presetTextSizes[i]), 0, buffer, 
+			EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, presetTextSizes[i]), 0, buffer, 
 					EsStringFormat(buffer, sizeof(buffer), "%d pt", presetTextSizes[i]));
 
 			if (currentSize > presetTextSizes[i] && (i == presetSizeCount - 1 || (i != presetSizeCount - 1 && currentSize < presetTextSizes[i + 1]))) {
 				// The current size is not in the list; add it.
-				EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, currentSize), 0, buffer, 
+				EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, currentSize), 0, buffer, 
 						EsStringFormat(buffer, sizeof(buffer), "%d pt", currentSize));
 			}
 		}
@@ -177,9 +177,9 @@ void FormatPopupCreate(Instance *instance) {
 		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, &styleFormatPopupColumn);
 		EsTextDisplayCreate(column, ES_CELL_H_EXPAND, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(CommonFormatLanguage));
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
-		EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, 0), 0, INTERFACE_STRING(CommonFormatPlainText));
-		EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C), 0, "C/C++", -1);
-		EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI), 0, "Ini", -1);
+		EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, 0), 0, INTERFACE_STRING(CommonFormatPlainText));
+		EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C), 0, "C/C++", -1);
+		EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI), 0, "Ini", -1);
 		EsListViewFixedItemSelect(list, instance->syntaxHighlightingLanguage);
 
 		list->messageUser = [] (EsElement *element, EsMessage *message) {

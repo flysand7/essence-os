@@ -357,9 +357,6 @@ define ES_SYSTEM_SNAPSHOT_PROCESSES 		(1)
 define ES_HANDLED     (-1)
 define ES_REJECTED    (-2)
 
-define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1)
-define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (2)
-
 define ES_TEXT_H_LEFT 	                   (1 <<  0)
 define ES_TEXT_H_CENTER                    (1 <<  1)
 define ES_TEXT_H_RIGHT 	                   (1 <<  2)
@@ -380,10 +377,36 @@ define ES_DRAW_CONTENT_TABULAR             (1 <<  8)
 define ES_DRAW_CONTENT_MARKER_DOWN_ARROW   (1 <<  9)
 define ES_DRAW_CONTENT_MARKER_UP_ARROW     (1 << 10)
 define ES_DRAW_CONTENT_RICH_TEXT           (1 << 12)
-// ...plus alignment flags, if CHANGE_ALIGNMENT set.
+// ...plus alignment flags.
 
-define ES_LIST_VIEW_COLUMN_HAS_MENU        (1 << 16) // The header can be clicked to open a menu.
+define ES_LIST_VIEW_COLUMN_HAS_MENU                 ( 1 << 16) // The header can be clicked to open a menu.
+define ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS       ( 0 << 22) // Data types for fixed items.
+define ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS      ( 1 << 22)
+define ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES       ( 2 << 22)
+define ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK          ( 3 << 22)
+define ES_LIST_VIEW_COLUMN_FIXED_SORT_DEFAULT       ( 0 << 24) // Sort types for fixed items.
+define ES_LIST_VIEW_COLUMN_FIXED_SORT_TIME          ( 1 << 24)
+define ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE          ( 2 << 24)
+define ES_LIST_VIEW_COLUMN_FIXED_SORT_NONE          ( 3 << 24)
+define ES_LIST_VIEW_COLUMN_FIXED_SORT_MASK          ( 7 << 24)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DEFAULT     ( 0 << 27) // Format types for fixed items.
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_YES_NO      ( 1 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ON_OFF      ( 2 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE  ( 3 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES       ( 4 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BITS        ( 5 << 27) 
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTE_RATE   ( 6 << 27) // Bytes per second.
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_SECONDS     ( 7 << 27) 
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_HERTZ       ( 8 << 27) 
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PIXELS      ( 9 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DPI         (10 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING (11 << 27)
+define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK        (31 << 27)
 // ...plus draw content flags and alignment flags.
+
+// For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
+define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1 << 0)
+define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (1 << 1)
 
 define ES_FILE_READ_SHARED		(0x1) // Read-only. The file can still be opened for writing.
 define ES_FILE_READ			(0x2) // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
@@ -1944,6 +1967,10 @@ struct EsDateComponents {
 	uint16_t millisecond; // 0-999.
 };
 
+struct EsListViewEnumString {
+	STRING string;
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -2591,7 +2618,10 @@ function void EsListViewRemoveAll(EsListView *view, EsListViewIndex group);
 // (Fixed items.)
 function EsListViewIndex EsListViewFixedItemInsert(EsListView *view, EsGeneric data = ES_NULL, EsListViewIndex index = -1, uint32_t iconID = 0);
 function bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data); // Returns false if the item was not found.
-function void EsListViewFixedItemSet(EsListView *view, EsListViewIndex index, uint32_t columnID, STRING string = BLANK_STRING);
+function void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex index, uint32_t columnID, STRING string = BLANK_STRING);
+function void EsListViewFixedItemSetDouble(EsListView *view, EsListViewIndex index, uint32_t columnID, double number);
+function void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex index, uint32_t columnID, int64_t number);
 function bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index); // Returns false if the item was not found.
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
+function void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount);
