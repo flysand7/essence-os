@@ -56,8 +56,15 @@ DEFINE_INTERFACE_STRING(CommonSearchPrompt2, "Enter text to search for.");
 DEFINE_INTERFACE_STRING(CommonItemFolder, "Folder");
 DEFINE_INTERFACE_STRING(CommonItemFile, "File");
 
+DEFINE_INTERFACE_STRING(CommonSortHeader, "Sort" ELLIPSIS);
 DEFINE_INTERFACE_STRING(CommonSortAscending, "Sort ascending");
 DEFINE_INTERFACE_STRING(CommonSortDescending, "Sort descending");
+DEFINE_INTERFACE_STRING(CommonSortAToZ, "A to Z");
+DEFINE_INTERFACE_STRING(CommonSortZToA, "Z to A");
+DEFINE_INTERFACE_STRING(CommonSortSmallToLarge, "Smallest first");
+DEFINE_INTERFACE_STRING(CommonSortLargeToSmall, "Largest first");
+DEFINE_INTERFACE_STRING(CommonSortOldToNew, "Oldest first");
+DEFINE_INTERFACE_STRING(CommonSortNewToOld, "Newest first");
 
 DEFINE_INTERFACE_STRING(CommonDriveHDD, "Hard disk");
 DEFINE_INTERFACE_STRING(CommonDriveSSD, "SSD");

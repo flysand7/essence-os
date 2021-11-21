@@ -1699,8 +1699,9 @@ struct EsMessageFocus {
 };
 
 struct EsMessageColumnMenu {
-	uint8_t index;
 	EsElement *source;
+	uint32_t columnID;
+	uint16_t activeColumnIndex;
 };
 
 struct EsMessageGetColumnSort {
@@ -2621,7 +2622,6 @@ function bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data); // Re
 function void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex index, uint32_t columnID, STRING string = BLANK_STRING);
 function void EsListViewFixedItemSetDouble(EsListView *view, EsListViewIndex index, uint32_t columnID, double number);
 function void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex index, uint32_t columnID, int64_t number);
-function bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index); // Returns false if the item was not found.
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
 function void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount);

@@ -980,6 +980,10 @@ int EsStringCompare(const char *s1, ptrdiff_t _length1, const char *s2, ptrdiff_
 	size_t length1 = _length1, length2 = _length2;
 
 	while (length1 || length2) {
+		// Skip over rich text markup.
+		if (*s1 == '\a') while (length1 && *s1 != ']') s1++, length1--;
+		if (*s2 == '\a') while (length2 && *s2 != ']') s2++, length2--;
+
 		if (!length1) return -1;
 		if (!length2) return 1;
 

@@ -829,11 +829,30 @@ int ListCallback(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_LIST_VIEW_COLUMN_MENU) {
 		EsMenu *menu = EsMenuCreate(message->columnMenu.source);
-		uint32_t index = (uint32_t) message->columnMenu.index;
+		uint32_t index = message->columnMenu.columnID;
+		const char *ascending = nullptr;
+		const char *descending = nullptr;
+
+		if (index == COLUMN_NAME) {
+			ascending = interfaceString_CommonSortAToZ;
+			descending = interfaceString_CommonSortZToA;
+		} else if (index == COLUMN_TYPE) {
+			ascending = interfaceString_CommonSortAToZ;
+			descending = interfaceString_CommonSortZToA;
+		} else if (index == COLUMN_SIZE) {
+			ascending = interfaceString_CommonSortSmallToLarge;
+			descending = interfaceString_CommonSortLargeToSmall;
+		}
+
+#define COLUMN_NAME (0)
+#define COLUMN_TYPE (1)
+#define COLUMN_SIZE (2)
+
+		EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortHeader));
 		EsMenuAddItem(menu, instance->viewSettings.sortColumn == index ? ES_MENU_ITEM_CHECKED : 0, 
-				INTERFACE_STRING(CommonSortAscending), InstanceChangeSortColumn, index);
+				ascending, -1, InstanceChangeSortColumn, index);
 		EsMenuAddItem(menu, instance->viewSettings.sortColumn == (index | (1 << 8)) ? ES_MENU_ITEM_CHECKED : 0, 
-				INTERFACE_STRING(CommonSortDescending), InstanceChangeSortColumn, index | (1 << 8));
+				descending, -1, InstanceChangeSortColumn, index | (1 << 8));
 		EsMenuShow(menu);
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_COLUMN_SORT) {
 		if (message->getColumnSort.index == (instance->viewSettings.sortColumn & 0xFF)) {
