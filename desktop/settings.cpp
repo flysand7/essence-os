@@ -649,7 +649,7 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 
 	while (EsINIParse(&s)) {
 		if (s.key[0] != ';') {
-			EsListViewFixedItemInsert(list, s.value, s.valueBytes, s.key);
+			EsListViewFixedItemSet(list, EsListViewFixedItemInsert(list, s.key), 0, s.value, s.valueBytes);
 			EsAssert(s.keyBytes == 2);
 
 			if (s.key[0] + ((uint16_t) s.key[1] << 8) == api.global->keyboardLayout) {

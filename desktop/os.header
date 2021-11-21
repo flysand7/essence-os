@@ -1634,10 +1634,11 @@ struct EsMessageCreateItem {
 struct EsMessageGetContent {
 	EsListViewIndex index;
 	EsListViewIndex group;
+	EsBuffer *buffer;
 	uint32_t icon;
 	uint32_t drawContentFlags;
 	uint32_t columnID;
-	EsBuffer *buffer;
+	uint16_t activeColumnIndex;
 };
 
 struct EsMessageGetIndent {
@@ -2588,9 +2589,9 @@ function void EsListViewInsert(EsListView *view, EsListViewIndex group, EsListVi
 function void EsListViewRemove(EsListView *view, EsListViewIndex group, EsListViewIndex firstIndex, EsListViewIndex count);
 function void EsListViewRemoveAll(EsListView *view, EsListViewIndex group);
 // (Fixed items.)
-function EsListViewIndex EsListViewFixedItemInsert(EsListView *view, STRING string = BLANK_STRING, EsGeneric data = ES_NULL, EsListViewIndex index = -1, uint32_t iconID = 0);
+function EsListViewIndex EsListViewFixedItemInsert(EsListView *view, EsGeneric data = ES_NULL, EsListViewIndex index = -1, uint32_t iconID = 0);
 function bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data); // Returns false if the item was not found.
-function void EsListViewFixedItemAddString(EsListView *view, EsListViewIndex index, STRING string = BLANK_STRING); // For additional columns.
+function void EsListViewFixedItemSet(EsListView *view, EsListViewIndex index, uint32_t columnID, STRING string = BLANK_STRING);
 function bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index); // Returns false if the item was not found.
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
