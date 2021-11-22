@@ -8,7 +8,6 @@ const EsListViewEnumString colorStrings[] = {
 	// We are using enum strings for the favorite color.
 	// "\a ... ]" is a bit of rich text markup.
 	// "#" sets the color to the hex code.
-	
 #define COLOR_RED (0)
 	{ "\a#e00]Red", -1 },
 #define COLOR_GREEN (1)

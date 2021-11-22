@@ -6,6 +6,10 @@
 
 #define CURSOR_SHADOW_OFFSET_X (0)
 #define CURSOR_SHADOW_OFFSET_Y (1)
+#define CURSOR_PADDING_T (2)
+#define CURSOR_PADDING_B (4)
+#define CURSOR_PADDING_L (3)
+#define CURSOR_PADDING_R (3)
 
 struct Surface : EsPaintTarget {
 	bool Resize(size_t newResX, size_t newResY, uint32_t clearColor = 0, bool copyOldBits = false);
@@ -483,7 +487,7 @@ void Surface::Draw(Surface *source, EsRectangle destinationRegion, int sourceX, 
 }
 
 void Surface::CreateCursorShadow(Surface *temporary) {
-	const uint32_t kernel[] = { 14, 43, 82, 43, 14 };
+	const uint32_t kernel[] = { 14, 43, 82, 39, 11 };
 	uint32_t *bits1 = (uint32_t *) bits;
 	uint32_t *bits2 = (uint32_t *) temporary->bits;
 

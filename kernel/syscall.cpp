@@ -911,13 +911,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
 		windowManager.cursorShadow = argument3 & (1 << 30);
 
-		int width = imageWidth + CURSOR_SHADOW_OFFSET_X;
-		int height = imageHeight + CURSOR_SHADOW_OFFSET_Y;
+		int width = imageWidth + CURSOR_PADDING_L + CURSOR_PADDING_R;
+		int height = imageHeight + CURSOR_PADDING_T + CURSOR_PADDING_B;
 
 		if (windowManager.cursorSurface.Resize(width, height)
 				&& windowManager.cursorSwap.Resize(width, height)
 				&& windowManager.cursorTemporary.Resize(width, height)) {
-			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, ES_RECT_2S(imageWidth, imageHeight));
+			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, 
+					ES_RECT_4PD(CURSOR_PADDING_L, CURSOR_PADDING_T, imageWidth, imageHeight));
 
 			if (windowManager.cursorShadow) {
 				windowManager.cursorSurface.CreateCursorShadow(&windowManager.cursorTemporary);

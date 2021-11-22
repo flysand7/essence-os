@@ -7237,8 +7237,8 @@ bool UISetCursor(EsWindow *window) {
 		CURSOR(case ES_CURSOR_MOVE_DRAG, 197, 13, 10, 10, 24, 24);
 		CURSOR(case ES_CURSOR_ROTATE_HOVER, 228, 49, 9, 10, 24, 32);
 		CURSOR(case ES_CURSOR_ROTATE_DRAG, 198, 49, 9, 10, 22, 22);
-		CURSOR(case ES_CURSOR_BLANK, 5, 13, 0, 0, 1, 1);
-		CURSOR(default, 23, 18, 1, 1, 15, 24);
+		CURSOR(case ES_CURSOR_BLANK, 0, 0, 0, 0, 1, 1);
+		CURSOR(default, 24, 19, 0, 0, 11, 20);
 	}
 
 	bool shadow = cursorStyle != ES_CURSOR_TEXT && api.global->showCursorShadow;
