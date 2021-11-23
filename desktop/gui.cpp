@@ -1630,6 +1630,10 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 			}
 		}
 
+		m.type = ES_MSG_PAINT_FOREGROUND;
+		m.painter = painter;
+		EsMessageSend(this, &m);
+		
 		// Let the inspector draw some decorations over the element.
 
 		painter->clip = oldClip;

@@ -961,6 +961,8 @@ enum EsMessageType {
 	ES_MSG_GET_ACCESS_KEY_HINT_BOUNDS	= 0x2029	// Get the bounds to display an access key hint.
 	ES_MSG_UI_SCALE_CHANGED			= 0x202A	// The UI scale has changed.
 	ES_MSG_TRANSITION_COMPLETE		= 0x202B	// The transition started with EsElementStartTransition completed.
+	ES_MSG_PAINT_FOREGROUND			= 0x202C	// Paint the element's foreground. Sent after the children are painted.
+								// The width/height parameters of EsPainter may be larger than expected - this includes the 'non-client' area.
 
 	// State change messages: (causes a style refresh)
 	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
