@@ -907,8 +907,8 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 
 	if (!window->closed && different && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
 		windowManager.cursorID = argument1;
-		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF);
-		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF);
+		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF) - CURSOR_PADDING_L;
+		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF) - CURSOR_PADDING_T;
 		windowManager.cursorShadow = argument3 & (1 << 30);
 
 		int width = imageWidth + CURSOR_PADDING_L + CURSOR_PADDING_R;

@@ -107,6 +107,8 @@ EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int of
 const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent);
 void AccessKeysCenterHint(EsElement *element, EsMessage *message);
 void UIRemoveFocusFromElement(EsElement *oldFocus);
+void UIQueueEnsureVisibleMessage(EsElement *element);
+void ColorPickerCreate(EsElement *parent, struct ColorPickerHost host, uint32_t initialColor, bool showTextbox);
 
 void InspectorSetup(EsWindow *window);
 void InspectorNotifyElementEvent(EsElement *element, const char *cCategory, const char *cFormat, ...);
@@ -116,31 +118,36 @@ void InspectorNotifyElementMoved(EsElement *element, EsRectangle takenBounds);
 void InspectorNotifyElementPainted(EsElement *element, EsPainter *painter);
 void InspectorNotifyElementContentChanged(EsElement *element);
 
-#define UI_STATE_RELAYOUT 		(1 <<  2)
-#define UI_STATE_RELAYOUT_CHILD		(1 <<  3)
-#define UI_STATE_DESTROYING		(1 <<  4)
-#define UI_STATE_DESTROYING_CHILD	(1 <<  5)
+// Updating:
+#define UI_STATE_RELAYOUT 		(1 <<  0)
+#define UI_STATE_RELAYOUT_CHILD		(1 <<  1)
+#define UI_STATE_DESTROYING		(1 <<  2)
+#define UI_STATE_DESTROYING_CHILD	(1 <<  3)
 
-#define UI_STATE_HOVERED		(1 <<  6)
-#define UI_STATE_LEFT_PRESSED		(1 <<  7)
-#define UI_STATE_STRONG_PRESSED		(1 <<  8)
-#define UI_STATE_FOCUS_WITHIN		(1 <<  9)
-#define UI_STATE_FOCUSED		(1 << 10)
-#define UI_STATE_LOST_STRONG_FOCUS	(1 << 11)
-#define UI_STATE_MENU_SOURCE		(1 << 12)
+// Interaction state:
+#define UI_STATE_FOCUS_WITHIN		(1 <<  4)
+#define UI_STATE_FOCUSED		(1 <<  5)
+#define UI_STATE_LOST_STRONG_FOCUS	(1 <<  6)
+#define UI_STATE_ENTERED		(1 <<  7)
 
-#define UI_STATE_ANIMATING		(1 << 13)
-#define UI_STATE_ENTERED		(1 << 14)
-#define UI_STATE_BLOCK_INTERACTION	(1 << 16)
+// Presence on arrays:
+#define UI_STATE_ANIMATING		(1 <<  8)
+#define UI_STATE_CHECK_VISIBLE		(1 <<  9)
+#define UI_STATE_QUEUED_ENSURE_VISIBLE	(1 << 10)
 
-#define UI_STATE_TEMP			(1 << 17)
-#define UI_STATE_Z_STACK		(1 << 18)
-#define UI_STATE_COMMAND_BUTTON		(1 << 19)
+// Behaviour modifiers:
+#define UI_STATE_STRONG_PRESSED		(1 << 11)
+#define UI_STATE_Z_STACK		(1 << 12)
+#define UI_STATE_COMMAND_BUTTON		(1 << 13)
+#define UI_STATE_BLOCK_INTERACTION	(1 << 14)
+#define UI_STATE_RADIO_GROUP		(1 << 15)
+
+// Miscellaneous state bits:
+#define UI_STATE_TEMP			(1 << 16)
+#define UI_STATE_MENU_SOURCE		(1 << 17)
+#define UI_STATE_MENU_EXITING           (1 << 18)
+#define UI_STATE_INSPECTING		(1 << 19)
 #define UI_STATE_USE_MEASUREMENT_CACHE	(1 << 20)
-#define UI_STATE_CHECK_VISIBLE		(1 << 21)
-#define UI_STATE_INSPECTING		(1 << 22)
-#define UI_STATE_RADIO_GROUP		(1 << 23)
-#define UI_STATE_MENU_EXITING           (1 << 24)
 
 struct EsElement : EsElementPublic {
 	EsUICallback messageClass;
@@ -334,7 +341,7 @@ struct EsImageDisplay : EsElement {
 
 struct ScrollPane {
 	EsElement *parent, *pad;
-	EsScrollbar *bar[2];
+	struct Scrollbar *bar[2];
 	double position[2];
 	int64_t limit[2];
 	int32_t fixedViewport[2];
@@ -430,8 +437,6 @@ struct ColorPickerHost {
 	bool hasOpacity;
 };
 
-void ColorPickerCreate(EsElement *parent, ColorPickerHost host, uint32_t initialColor, bool showTextbox);
-
 void HeapDuplicate(void **pointer, size_t *outBytes, const void *data, size_t bytes) {
 	if (*pointer) {
 		EsHeapFree(*pointer);
@@ -481,8 +486,7 @@ struct EsWindow : EsElement {
 		  *pressed, 
 		  *focused,
 		  *inactiveFocus,
-		  *dragged,
-		  *ensureVisible;
+		  *dragged;
 
 	EsButton *enterButton, 
 		 *escapeButton, 
@@ -502,12 +506,19 @@ struct EsWindow : EsElement {
 	EsRectangle updateRegionInProgress; // For visualizePaintSteps.
 
 	Array<struct SizeAlternative> sizeAlternatives;
+	Array<struct UpdateAction> updateActions;
 
 	EsElement *source; // Menu source.
 	EsWindow *targetMenu; // The menu that keyboard events should be sent to.
 
 	EsPoint announcementBase;
 	double announcementTimeMs;
+};
+
+struct UpdateAction {
+	EsElement *element;
+	EsGeneric context;
+	void (*callback)(EsElement *, EsGeneric);
 };
 
 struct SizeAlternative {
@@ -789,6 +800,7 @@ void UIWindowDestroy(EsWindow *window) {
 	EsHandleClose(window->handle);
 	window->checkVisible.Free();
 	window->sizeAlternatives.Free();
+	window->updateActions.Free();
 	window->dialogs.Free();
 	window->handle = ES_INVALID_HANDLE;
 }
@@ -910,9 +922,9 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 	}
 
 	window->id = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, window->handle, 0, 0, 0);
+	window->window = window;
 	window->Initialise(nullptr, ES_CELL_FILL, ProcessRootMessage, nullptr);
 	window->cName = "window";
-	window->window = window;
 	window->width = window->windowWidth, window->height = window->windowHeight;
 	window->hovered = window;
 	window->hovering = true;
@@ -1741,13 +1753,14 @@ bool EsElement::RefreshStyleState() {
 
 	if (flags & ES_ELEMENT_DISABLED) {
 		styleStateFlags |= THEME_PRIMARY_STATE_DISABLED;
-	} else if (window && !window->activated && !window->appearActivated) {
+	} else if (!window->activated && !window->appearActivated) {
 		styleStateFlags |= THEME_PRIMARY_STATE_INACTIVE;
 	} else {
-		if (((state & UI_STATE_LEFT_PRESSED) && ((state & UI_STATE_HOVERED) || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) 
+		if (((window->pressed == this && gui.lastClickButton == ES_MSG_MOUSE_LEFT_DOWN) 
+					&& (window->hovered == this || gui.draggingStarted || (state & UI_STATE_STRONG_PRESSED))) 
 				|| (state & UI_STATE_MENU_SOURCE)) {
 			styleStateFlags |= THEME_PRIMARY_STATE_PRESSED;
-		} else if (((state & UI_STATE_HOVERED) && !window->pressed && api.global->enableHoverState) || (window && window->pressed == this)) {
+		} else if ((window->hovered == this && !window->pressed && api.global->enableHoverState) || window->pressed == this) {
 			styleStateFlags |= THEME_PRIMARY_STATE_HOVERED;
 		} else {
 			styleStateFlags |= THEME_PRIMARY_STATE_IDLE;
@@ -2550,7 +2563,7 @@ void EsElementUpdateContentSize(EsElement *element, uint32_t flags) {
 
 // #define ENABLE_SMOOTH_SCROLLING
 
-struct EsScrollbar : EsElement {
+struct Scrollbar : EsElement {
 	EsButton *up, *down;
 	EsElement *thumb;
 	double position, autoScrollSpeed, smoothScrollTarget;
@@ -2558,7 +2571,7 @@ struct EsScrollbar : EsElement {
 	bool horizontal;
 };
 
-void ScrollbarLayout(EsScrollbar *scrollbar) {
+void ScrollbarLayout(Scrollbar *scrollbar) {
 	if (scrollbar->viewportSize >= scrollbar->contentSize || scrollbar->viewportSize <= 0 || scrollbar->contentSize <= 0) {
 		EsElementSetDisabled(scrollbar, true);
 	} else {
@@ -2607,7 +2620,7 @@ void ScrollbarLayout(EsScrollbar *scrollbar) {
 	}
 }
 
-void ScrollbarSetMeasurements(EsScrollbar *scrollbar, int viewportSize, int contentSize) {
+void ScrollbarSetMeasurements(Scrollbar *scrollbar, int viewportSize, int contentSize) {
 	EsMessageMutexCheck();
 
 	if (scrollbar->viewportSize == viewportSize && scrollbar->contentSize == contentSize) {
@@ -2620,7 +2633,7 @@ void ScrollbarSetMeasurements(EsScrollbar *scrollbar, int viewportSize, int cont
 	ScrollbarLayout(scrollbar);
 }
 
-void ScrollbarSetPosition(EsScrollbar *scrollbar, double position, bool sendMovedMessage, bool smoothScroll) {
+void ScrollbarSetPosition(Scrollbar *scrollbar, double position, bool sendMovedMessage, bool smoothScroll) {
 	EsMessageMutexCheck();
 
 	if (position > scrollbar->contentSize - scrollbar->viewportSize) position = scrollbar->contentSize - scrollbar->viewportSize;
@@ -2648,8 +2661,8 @@ void ScrollbarSetPosition(EsScrollbar *scrollbar, double position, bool sendMove
 
 	if (sendMovedMessage && scrollbar->oldPosition != (int) scrollbar->position) {
 		EsMessage m = { ES_MSG_SCROLLBAR_MOVED };
-		m.scrollbarMoved.scroll = (int) position;
-		m.scrollbarMoved.previous = previous;
+		m.scroll.scroll = (int) position;
+		m.scroll.previous = previous;
 		EsMessageSend(scrollbar, &m);
 	}
 
@@ -2662,7 +2675,7 @@ void ScrollbarSetPosition(EsScrollbar *scrollbar, double position, bool sendMove
 }
 
 int ProcessScrollbarButtonMessage(EsElement *element, EsMessage *message) {
-	EsScrollbar *scrollbar = (EsScrollbar *) element->parent;
+	Scrollbar *scrollbar = (Scrollbar *) element->parent;
 
 	if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
 		element->state |= UI_STATE_STRONG_PRESSED;
@@ -2693,8 +2706,8 @@ int ProcessScrollbarButtonMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
-	EsScrollbar *scrollbar = (EsScrollbar *) EsHeapAllocate(sizeof(EsScrollbar), true);
+Scrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
+	Scrollbar *scrollbar = (Scrollbar *) EsHeapAllocate(sizeof(Scrollbar), true);
 	if (!scrollbar) return nullptr;
 	scrollbar->thumb = (EsElement *) EsHeapAllocate(sizeof(EsElement), true);
 
@@ -2703,7 +2716,7 @@ EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 	}
 
 	scrollbar->Initialise(parent, flags, [] (EsElement *element, EsMessage *message) {
-		EsScrollbar *scrollbar = (EsScrollbar *) element;
+		Scrollbar *scrollbar = (Scrollbar *) element;
 
 		if (message->type == ES_MSG_LAYOUT) {
 			ScrollbarLayout(scrollbar);
@@ -2730,7 +2743,7 @@ EsScrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 	scrollbar->down->messageUser = ProcessScrollbarButtonMessage;
 
 	scrollbar->thumb->Initialise(scrollbar, ES_CELL_FILL, [] (EsElement *element, EsMessage *message) {
-		EsScrollbar *scrollbar = (EsScrollbar *) element->parent;
+		Scrollbar *scrollbar = (Scrollbar *) element->parent;
 		EsRectangle bounds = scrollbar->GetBounds();
 
 		if (message->type == ES_MSG_MOUSE_LEFT_DRAG) {
@@ -2804,7 +2817,7 @@ void ScrollPane::Setup(EsElement *_parent, uint8_t _xMode, uint8_t _yMode, uint1
 					int axis = (element->flags & ES_SCROLLBAR_HORIZONTAL) ? 0 : 1;
 					EsMessage m = *message;
 					m.type = axis ? ES_MSG_SCROLL_Y : ES_MSG_SCROLL_X;
-					pane->position[axis] = m.scrollbarMoved.scroll;
+					pane->position[axis] = m.scroll.scroll;
 					EsMessageSend(pane->parent, &m);
 				}
 
@@ -2901,8 +2914,8 @@ void ScrollPane::SetPosition(int axis, double newScroll, bool sendMovedMessage) 
 	if (sendMovedMessage) {
 		EsMessage m = {};
 		m.type = axis ? ES_MSG_SCROLL_Y : ES_MSG_SCROLL_X;
-		m.scrollbarMoved.scroll = position[axis];
-		m.scrollbarMoved.previous = previous;
+		m.scroll.scroll = position[axis];
+		m.scroll.previous = previous;
 		EsMessageSend(parent, &m);
 	}
 }
@@ -2966,6 +2979,8 @@ void ScrollPane::Refresh() {
 
 	EsRectangle border = parent->style->borders;
 
+	bool previousEnabled[2] = { enabled[0], enabled[1] };
+
 	if (bar[0]) {
 		bar[0]->InternalMove(parent->width - parent->internalOffsetRight - border.r - border.l, bar[0]->style->preferredHeight, 
 				border.l, parent->height - parent->internalOffsetBottom - border.b);
@@ -2981,6 +2996,12 @@ void ScrollPane::Refresh() {
 	if (pad) {
 		pad->InternalMove(parent->internalOffsetRight, parent->internalOffsetBottom, 
 				parent->width - parent->internalOffsetRight - border.r, parent->height - parent->internalOffsetBottom - border.b);
+	}
+
+	if ((bar[0] && previousEnabled[0] != enabled[0]) || (bar[1] && previousEnabled[1] != enabled[1])) {
+		// The scroll bars have moved, and so the internal offsets have changed.
+		// Therefore we need to tell the element to relayout.
+		EsElementRelayout(parent);
 	}
 }
 
@@ -3188,7 +3209,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 			child->state |= UI_STATE_BLOCK_INTERACTION;
 		}
 	} else if (message->type == ES_MSG_SCROLL_X || message->type == ES_MSG_SCROLL_Y) {
-		int delta = message->scrollbarMoved.scroll - message->scrollbarMoved.previous;
+		int delta = message->scroll.scroll - message->scroll.previous;
 		int deltaX = message->type == ES_MSG_SCROLL_X ? delta : 0; 
 		int deltaY = message->type == ES_MSG_SCROLL_Y ? delta : 0; 
 
@@ -5801,7 +5822,6 @@ void EsElement::Destroy(bool manual) {
 
 	if (window->hovered == this) {
 		window->hovered = window;
-		window->state |= UI_STATE_HOVERED;
 		EsMessage m = {};
 		m.type = ES_MSG_HOVERED_START;
 		EsMessageSend(window, &m);
@@ -5819,7 +5839,6 @@ void EsElement::Destroy(bool manual) {
 	if (window->defaultEnterButton 	== this) window->defaultEnterButton = nullptr;		
 	if (window->enterButton 	== this) window->enterButton = window->defaultEnterButton;
 	if (window->escapeButton 	== this) window->escapeButton = nullptr;
-	if (window->ensureVisible 	== this) window->ensureVisible = nullptr;
 	if (window->dragged 		== this) window->dragged = nullptr;
 	if (gui.clickChainElement       == this) gui.clickChainElement = nullptr;
 
@@ -6084,16 +6103,15 @@ void UIFindHoverElement(EsWindow *window) {
 		element = UIFindHoverElementRecursively(window, 0, 0, position);
 	}
 
-	if (element->state & UI_STATE_HOVERED) {
-		EsAssert(window->hovered == element); // Window's hovered element mismatched element state flags.
-	} else {
+	if (window->hovered != element) {
+		EsElement *previous = window->hovered;
+		window->hovered = element;
+
 		EsMessage m = {};
 		m.type = ES_MSG_HOVERED_END;
-		window->hovered->state &= ~UI_STATE_HOVERED;
-		EsMessageSend(window->hovered, &m);
-		element->state |= UI_STATE_HOVERED;
+		EsMessageSend(previous, &m);
 		m.type = ES_MSG_HOVERED_START;
-		EsMessageSend((window->hovered = element), &m);
+		EsMessageSend(element, &m);
 	}
 }
 
@@ -6122,6 +6140,34 @@ void UIMaybeRemoveFocusedElement(EsWindow *window) {
 
 bool EsElementIsFocused(EsElement *element) {
 	return element->window->focused == element;
+}
+
+void UISendEnsureVisibleMessage(EsElement *element, EsGeneric) {
+	EsElement *child = element, *e = element;
+	EsAssert(element->state & UI_STATE_QUEUED_ENSURE_VISIBLE);
+	element->state &= ~UI_STATE_QUEUED_ENSURE_VISIBLE;
+
+	while (e->parent) {
+		EsMessage m = { ES_MSG_ENSURE_VISIBLE };
+		m.child = child;
+		e = e->parent;
+
+		if (ES_HANDLED == EsMessageSend(e, &m)) {
+			child = e;
+		}
+	}
+
+	EsAssert(~element->state & UI_STATE_QUEUED_ENSURE_VISIBLE);
+}
+
+void UIQueueEnsureVisibleMessage(EsElement *element) {
+	if (~element->state & UI_STATE_QUEUED_ENSURE_VISIBLE) {
+		element->state |= UI_STATE_QUEUED_ENSURE_VISIBLE;
+		UpdateAction action = {};
+		action.element = element;
+		action.callback = UISendEnsureVisibleMessage;
+		element->window->updateActions.Add(action);
+	}
 }
 
 void EsElementFocus(EsElement *element, uint32_t flags) {
@@ -6195,7 +6241,7 @@ void EsElementFocus(EsElement *element, uint32_t flags) {
 	// Ensure the element is visible.
 
 	if ((flags & ES_ELEMENT_FOCUS_ENSURE_VISIBLE) && element) {
-		window->ensureVisible = element;
+		UIQueueEnsureVisibleMessage(element);
 	}
 }
 
@@ -6585,10 +6631,6 @@ void UIMouseDown(EsWindow *window, EsMessage *message) {
 		// window->hovered will be set to nullptr, so save the element here.
 		EsElement *element = window->hovered;
 
-		if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
-			element->state |= UI_STATE_LEFT_PRESSED;
-		}
-
 		window->pressed = element;
 		EsMessage m = { ES_MSG_PRESSED_START };
 		EsMessageSend(element, &m);
@@ -6630,11 +6672,10 @@ void UIMouseUp(EsWindow *window, EsMessage *message, bool sendClick) {
 			EsMessageSend(pressed, &m);
 		}
 
-		pressed->state &= ~UI_STATE_LEFT_PRESSED;
 		EsMessage m = { ES_MSG_PRESSED_END };
 		EsMessageSend(pressed, &m);
 
-		if (message && (pressed->state & UI_STATE_HOVERED) && !gui.draggingStarted && sendClick) {
+		if (message && window->hovered == pressed && !gui.draggingStarted && sendClick) {
 			if (message->type == ES_MSG_MOUSE_LEFT_UP) {
 				m.type = ES_MSG_MOUSE_LEFT_CLICK;
 				EsMessageSend(pressed, &m);
@@ -7157,20 +7198,14 @@ void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing) {
 
 	window->InternalMove(window->width, window->height, 0, 0);
 
-	if (window->ensureVisible) {
-		EsElement *child = window->ensureVisible, *e = window->ensureVisible;
+	while (window->updateActions.Length()) {
+		// TODO Preventing/detecting infinite cycles?
+		UpdateAction action = window->updateActions[0];
+		window->updateActions.DeleteSwap(0);
 
-		while (e->parent) {
-			EsMessage m = { ES_MSG_ENSURE_VISIBLE };
-			m.child = child;
-			e = e->parent;
-
-			if (ES_HANDLED == EsMessageSend(e, &m)) {
-				child = e;
-			}
+		if (~action.element->state & UI_STATE_DESTROYING) {
+			action.callback(action.element, action.context);
 		}
-
-		window->ensureVisible = nullptr;
 	}
 
 	if (window->processCheckVisible) {

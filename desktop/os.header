@@ -5,7 +5,6 @@
 opaque_type EsElement          EsElementPublic;
 opaque_type EsPanel            EsElement;
 opaque_type EsWindow           EsElement;
-opaque_type EsScrollbar        EsElement;
 opaque_type EsButton           EsElement;
 opaque_type EsTextDisplay      EsElement;
 opaque_type EsIconDisplay      EsElement;
@@ -1627,6 +1626,10 @@ struct EsMessageItemToString {
 	STRING text;
 };
 
+struct EsMessageScroll {
+	int scroll, previous;
+};
+
 // List view messages.
 
 struct EsMessageIterateIndex {
@@ -1711,10 +1714,6 @@ struct EsMessageGetColumnSort {
 };
 
 // Specific element messages.
-
-struct EsMessageScrollbarMoved {
-	int scroll, previous;
-};
 
 struct EsMessageSliderMoved {
 	double value, previous;
@@ -1847,6 +1846,7 @@ struct EsMessage {
 		EsMessageFocus focus;
 		EsMessageScrollWheel scrollWheel;
 		EsMessageWindowActivated windowActivated;
+		EsMessageScroll scroll;
 		const EsStyle *childStyleVariant;
 		EsRectangle *accessKeyHintBounds;
 		EsPainter *painter;
@@ -1868,7 +1868,6 @@ struct EsMessage {
 		EsMessageGetColumnSort getColumnSort;
 
 		// Specific element messages:
-		EsMessageScrollbarMoved scrollbarMoved;
 		EsMessageSliderMoved sliderMoved;
 		EsMessageColorChanged colorChanged;
 		EsMessageNumberDragDelta numberDragDelta;

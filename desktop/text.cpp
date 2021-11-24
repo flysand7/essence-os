@@ -3570,11 +3570,13 @@ void TextboxRefreshVisibleLines(EsTextbox *textbox, bool repaint = true) {
 
 	if (refreshXLimit) {
 		textbox->scroll.Refresh();
-		EsElementRelayout(textbox);
 	}
 
 	textbox->scroll.SetX(scrollX);
-	if (repaint) textbox->Repaint(true);
+
+	if (repaint) {
+		textbox->Repaint(true);
+	}
 }
 
 void TextboxLineCountChangeCleanup(EsTextbox *textbox, int32_t offsetDelta, int32_t startLine) {
@@ -4284,6 +4286,8 @@ int ProcessTextboxMarginMessage(EsElement *element, EsMessage *message) {
 			EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, label, textRun, 1);
 			if (plan) EsDrawText(painter, plan, bounds, nullptr, nullptr);
 		}
+	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+		return ES_HANDLED;
 	}
 
 	return 0;
@@ -4555,7 +4559,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			TextboxFindLongestLine(textbox);
 			textbox->scroll.Refresh();
 			EsTextboxEnsureCaretVisible(textbox);
-			textbox->window->ensureVisible = textbox;
+			UIQueueEnsureVisibleMessage(textbox);
 		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
 		TextboxMoveCaretToCursor(textbox, message->mouseDown.positionX, message->mouseDown.positionY, message->type == ES_MSG_MOUSE_RIGHT_DOWN);
@@ -4676,7 +4680,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		DocumentLine *lastLine = &textbox->lines.Last();
 		message->measure.height = lastLine->yPosition + lastLine->height + textbox->insets.t + textbox->insets.b;
 	} else if (message->type == ES_MSG_SCROLL_X) {
-		TextboxSetHorizontalScroll(textbox, message->scrollbarMoved.scroll);
+		TextboxSetHorizontalScroll(textbox, message->scroll.scroll);
 	} else if (message->type == ES_MSG_SCROLL_Y) {
 		TextboxRefreshVisibleLines(textbox, false);
 		EsElementRepaintForScroll(textbox, message, EsRectangleAdd(element->GetInternalOffset(), element->style->borders));

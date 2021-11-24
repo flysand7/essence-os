@@ -954,7 +954,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 		}
 
 		EsMenuShow(menu);
-	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && ((element->state & UI_STATE_HOVERED) || (tab->closeButton->state & UI_STATE_HOVERED))) {
+	} else if (message->type == ES_MSG_MOUSE_MIDDLE_UP && element->window->hovered == element) {
 		if (EsButtonGetCheck(tab->closeButton) == ES_CHECK_CHECKED) {
 			// The tab contains a modified document, so it will probably popup a dialog after it receives the close request.
 			// Therefore, we should switch to that tab.
@@ -974,7 +974,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 WindowTab *WindowTabCreate(ContainerWindow *container) {
 	WindowTab *tab = (WindowTab *) EsHeapAllocate(sizeof(WindowTab), true);
 	tab->container = container;
-	tab->Initialise(container->tabBand, ES_CELL_H_SHRINK | ES_CELL_V_BOTTOM, WindowTabMessage, nullptr);
+	tab->Initialise(container->tabBand, ES_CELL_H_FILL | ES_CELL_V_BOTTOM, WindowTabMessage, nullptr);
 	tab->cName = "window tab";
 	container->openTabs.Add(tab);
 

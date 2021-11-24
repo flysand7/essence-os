@@ -64,6 +64,8 @@ struct ListViewColumn {
 int ListViewProcessItemMessage(EsElement *element, EsMessage *message);
 void ListViewSetSortAscending(EsMenu *menu, EsGeneric context);
 void ListViewSetSortDescending(EsMenu *menu, EsGeneric context);
+void ListViewPopulateActionCallback(EsElement *element, EsGeneric);
+void ListViewEnsureVisibleActionCallback(EsElement *element, EsGeneric);
 
 struct EsListView : EsElement {
 	ScrollPane scroll;
@@ -122,6 +124,7 @@ struct EsListView : EsElement {
 	EsListViewIndex ensureVisibleIndex;
 	uint8_t ensureVisibleAlign;
 	bool ensureVisibleQueued;
+	bool populateQueued;
 
 	// Fixed item storage:
 	Array<ListViewFixedItem> fixedItems;
@@ -334,11 +337,17 @@ struct EsListView : EsElement {
 	}
 
 	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
-		ensureVisibleQueued = true;
 		ensureVisibleGroupIndex = groupIndex;
 		ensureVisibleIndex = index;
 		ensureVisibleAlign = align;
-		EsElementRelayout(this);
+
+		if (!ensureVisibleQueued) {
+			UpdateAction action = {};
+			action.element = this;
+			action.callback = ListViewEnsureVisibleActionCallback;
+			window->updateActions.Add(action);
+			ensureVisibleQueued = true;
+		}
 	}
 
 	void _EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
@@ -528,7 +537,7 @@ struct EsListView : EsElement {
 		}
 	}
 
-	void Populate() {
+	void _Populate() {
 #if 0
 		EsPrint("--- Before Populate() ---\n");
 		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - style->insets.t));
@@ -742,6 +751,21 @@ struct EsListView : EsElement {
 			visibleItem->element->index = visibleIndex;
 			visibleItem->element->Destroy();
 			visibleItems.Delete(visibleIndex);
+		}
+
+		if (inlineTextbox) {
+			ListViewItem *item = FindVisibleItem(inlineTextboxGroup, inlineTextboxIndex);
+			if (item) MoveInlineTextbox(item);
+		}
+	}
+
+	void Populate() {
+		if (!populateQueued) {
+			UpdateAction action = {};
+			action.element = this;
+			action.callback = ListViewPopulateActionCallback;
+			window->updateActions.Add(action);
+			populateQueued = true;
 		}
 	}
 
@@ -1649,25 +1673,13 @@ struct EsListView : EsElement {
 			firstLayout = true;
 			Wrap(message->layout.sizeChanged);
 
-			if (ensureVisibleQueued) {
-				ensureVisibleQueued = false;
-				_EnsureItemVisible(ensureVisibleGroupIndex, ensureVisibleIndex, ensureVisibleAlign);
-				// TODO _EnsureItemVisible may call Populate; if this happens, we don't need to call it below.
+			if (columnHeader) {
+				columnHeader->InternalMove(Width(GetBounds()), columnHeader->style->preferredHeight, 0, 0);
 			}
 
 			Populate();
-
-			if (columnHeader) {
-				EsRectangle bounds = GetBounds();
-				columnHeader->InternalMove(Width(bounds), columnHeader->style->preferredHeight, 0, 0);
-			}
-
-			if (inlineTextbox) {
-				ListViewItem *item = FindVisibleItem(inlineTextboxGroup, inlineTextboxIndex);
-				if (item) MoveInlineTextbox(item);
-			}
 		} else if (message->type == ES_MSG_SCROLL_X || message->type == ES_MSG_SCROLL_Y) {
-			int64_t delta = message->scrollbarMoved.scroll - message->scrollbarMoved.previous;
+			int64_t delta = message->scroll.scroll - message->scroll.previous;
 
 			if ((message->type == ES_MSG_SCROLL_X) == ((flags & ES_LIST_VIEW_HORIZONTAL) ? true : false)) {
 				for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
@@ -1870,7 +1882,7 @@ struct EsListView : EsElement {
 			for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
 				if (hasFocusedItem && visibleItems[i].index == focusedItemIndex && visibleItems[i].group == focusedItemGroup) {
 					focused = i;
-				} else if (visibleItems[i].element->state & UI_STATE_HOVERED) {
+				} else if (window->hovered == visibleItems[i].element) {
 					hovered = i;
 				} else {
 					zOrderItems.Add(visibleItems[i].element);
@@ -2012,6 +2024,22 @@ struct EsListView : EsElement {
 		return ES_HANDLED;
 	}
 };
+
+void ListViewPopulateActionCallback(EsElement *element, EsGeneric) {
+	EsListView *view = (EsListView *) element;
+	EsAssert(view->populateQueued);
+	view->populateQueued = false;
+	view->_Populate();
+	EsAssert(!view->populateQueued);
+}
+
+void ListViewEnsureVisibleActionCallback(EsElement *element, EsGeneric) {
+	EsListView *view = (EsListView *) element;
+	EsAssert(view->ensureVisibleQueued);
+	view->ensureVisibleQueued = false;
+	view->_EnsureItemVisible(view->ensureVisibleGroupIndex, view->ensureVisibleIndex, view->ensureVisibleAlign);
+	EsAssert(!view->ensureVisibleQueued);
+}
 
 int ListViewProcessMessage(EsElement *element, EsMessage *message) {
 	return ((EsListView *) element)->ProcessMessage(message);
