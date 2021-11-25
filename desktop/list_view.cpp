@@ -1806,6 +1806,10 @@ struct EsListView : EsElement {
 				selectionBoxPositionX = message->mouseDragged.newPositionX + scroll.position[0];
 				selectionBoxPositionY = message->mouseDragged.newPositionY + scroll.position[1];
 
+				// Inclusive rectangle.
+				if (selectionBoxPositionX >= selectionBoxAnchorX) selectionBoxPositionX++;
+				if (selectionBoxPositionY >= selectionBoxAnchorY) selectionBoxPositionY++;
+
 				SelectPreview();
 			} else if (flags & ES_LIST_VIEW_CHOICE_SELECT) {
 				DragSelect();
