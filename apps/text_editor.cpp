@@ -416,6 +416,8 @@ void _start() {
 		}
 	}
 
+	EsHeapFree(state.buffer);
+
 	while (true) {
 		ProcessApplicationMessage(EsMessageReceive());
 	}

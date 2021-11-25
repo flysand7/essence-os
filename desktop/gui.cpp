@@ -123,31 +123,32 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_RELAYOUT_CHILD		(1 <<  1)
 #define UI_STATE_DESTROYING		(1 <<  2)
 #define UI_STATE_DESTROYING_CHILD	(1 <<  3)
+#define UI_STATE_IN_LAYOUT		(1 <<  4)
 
 // Interaction state:
-#define UI_STATE_FOCUS_WITHIN		(1 <<  4)
-#define UI_STATE_FOCUSED		(1 <<  5)
-#define UI_STATE_LOST_STRONG_FOCUS	(1 <<  6)
-#define UI_STATE_ENTERED		(1 <<  7)
+#define UI_STATE_FOCUS_WITHIN		(1 <<  5)
+#define UI_STATE_FOCUSED		(1 <<  6)
+#define UI_STATE_LOST_STRONG_FOCUS	(1 <<  7)
+#define UI_STATE_ENTERED		(1 <<  8)
 
 // Presence on arrays:
-#define UI_STATE_ANIMATING		(1 <<  8)
-#define UI_STATE_CHECK_VISIBLE		(1 <<  9)
-#define UI_STATE_QUEUED_ENSURE_VISIBLE	(1 << 10)
+#define UI_STATE_ANIMATING		(1 <<  9)
+#define UI_STATE_CHECK_VISIBLE		(1 << 10)
+#define UI_STATE_QUEUED_ENSURE_VISIBLE	(1 << 11)
 
 // Behaviour modifiers:
-#define UI_STATE_STRONG_PRESSED		(1 << 11)
-#define UI_STATE_Z_STACK		(1 << 12)
-#define UI_STATE_COMMAND_BUTTON		(1 << 13)
-#define UI_STATE_BLOCK_INTERACTION	(1 << 14)
-#define UI_STATE_RADIO_GROUP		(1 << 15)
+#define UI_STATE_STRONG_PRESSED		(1 << 12)
+#define UI_STATE_Z_STACK		(1 << 13)
+#define UI_STATE_COMMAND_BUTTON		(1 << 14)
+#define UI_STATE_BLOCK_INTERACTION	(1 << 15)
+#define UI_STATE_RADIO_GROUP		(1 << 16)
 
 // Miscellaneous state bits:
-#define UI_STATE_TEMP			(1 << 16)
-#define UI_STATE_MENU_SOURCE		(1 << 17)
-#define UI_STATE_MENU_EXITING           (1 << 18)
-#define UI_STATE_INSPECTING		(1 << 19)
-#define UI_STATE_USE_MEASUREMENT_CACHE	(1 << 20)
+#define UI_STATE_TEMP			(1 << 17)
+#define UI_STATE_MENU_SOURCE		(1 << 18)
+#define UI_STATE_MENU_EXITING           (1 << 19)
+#define UI_STATE_INSPECTING		(1 << 20)
+#define UI_STATE_USE_MEASUREMENT_CACHE	(1 << 21)
 
 struct EsElement : EsElementPublic {
 	EsUICallback messageClass;
@@ -864,14 +865,16 @@ int ProcessRootMessage(EsElement *element, EsMessage *message) {
 				EsElement *toolbar = window->toolbarSwitcher;
 
 				if (window->toolbarFillMode) {
+					EsElementMove(window->GetChild(0), 0, 0, 0, 0);
 					EsElementMove(toolbar, 0, 0, bounds.r, bounds.b);
 				} else {
 					int toolbarHeight = toolbar->GetChildCount() ? toolbar->GetHeight(bounds.r) 
 						: toolbar->style->metrics->minimumHeight;
 					EsElementMove(window->GetChild(0), 0, toolbarHeight, bounds.r, bounds.b - toolbarHeight);
 					EsElementMove(toolbar, 0, 0, bounds.r, toolbarHeight);
-					EsElementMove(window->GetChild(2), 0, 0, bounds.r, bounds.b);
 				}
+
+				EsElementMove(window->GetChild(2), 0, 0, bounds.r, bounds.b);
 			}
 		}
 	} else if (window->windowStyle == ES_WINDOW_TIP || window->windowStyle == ES_WINDOW_PLAIN) {
@@ -2451,6 +2454,8 @@ int EsElement::GetHeight(int width) {
 }
 
 void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY) {
+	EsAssert(~state & UI_STATE_IN_LAYOUT);
+
 	// Add the internal offset.
 
 	if (parent) {
@@ -2505,8 +2510,20 @@ void EsElement::InternalMove(int _width, int _height, int _offsetX, int _offsetY
 		EsPerformanceTimerPush();
 		EsMessage m = { ES_MSG_LAYOUT };
 		m.layout.sizeChanged = hasSizeChanged;
+		state |= UI_STATE_IN_LAYOUT;
 		EsMessageSend(this, &m);
-		if (state & UI_STATE_INSPECTING) InspectorNotifyElementEvent(this, "layout", "Layout in %Fms.\n", EsPerformanceTimerPop() * 1000);
+		state &= ~UI_STATE_IN_LAYOUT;
+
+		if (state & UI_STATE_INSPECTING) {
+			InspectorNotifyElementEvent(this, "layout", "Layout in %Fms.\n", EsPerformanceTimerPop() * 1000);
+		}
+
+		// Ensure that any visible children that requested relayout were indeed updated.
+
+		for (uintptr_t i = 0; i < children.Length(); i++) {
+			EsAssert((children[i]->flags & ES_ELEMENT_HIDDEN) 
+					|| !(children[i]->state & (UI_STATE_RELAYOUT | UI_STATE_RELAYOUT_CHILD)));
+		}
 
 		// Repaint.
 
@@ -2529,11 +2546,11 @@ EsRectangle EsElementGetPreferredSize(EsElement *element) {
 }
 
 void EsElementRelayout(EsElement *element) {
-	if (element->state & UI_STATE_DESTROYING) return;
+	if (element->state & (UI_STATE_DESTROYING | UI_STATE_IN_LAYOUT)) return;
 	element->state |= UI_STATE_RELAYOUT;
 	UIWindowNeedsUpdate(element->window);
 
-	while (element) {
+	while (element && (~element->state & UI_STATE_IN_LAYOUT)) {
 		element->state |= UI_STATE_RELAYOUT_CHILD;
 		element = element->parent;
 	}
@@ -2543,7 +2560,7 @@ void EsElementUpdateContentSize(EsElement *element, uint32_t flags) {
 	if (element->state & UI_STATE_DESTROYING) return;
 	if (!flags) flags = ES_ELEMENT_UPDATE_CONTENT_WIDTH | ES_ELEMENT_UPDATE_CONTENT_HEIGHT;
 
-	while (element && flags) {
+	while (element && (~element->state & UI_STATE_IN_LAYOUT) && flags) {
 		element->state &= ~UI_STATE_USE_MEASUREMENT_CACHE;
 		EsElementRelayout(element);
 
@@ -3207,6 +3224,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 		} else if (panel->flags & ES_PANEL_SWITCHER) {
 			EsElement *child = (EsElement *) message->child;
 			child->state |= UI_STATE_BLOCK_INTERACTION;
+			child->flags |= ES_ELEMENT_HIDDEN;
 		}
 	} else if (message->type == ES_MSG_SCROLL_X || message->type == ES_MSG_SCROLL_Y) {
 		int delta = message->scroll.scroll - message->scroll.previous;
@@ -7434,7 +7452,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
 
-		if (element && (~element->state & UI_STATE_BLOCK_INTERACTION)) {
+		if (element && (~element->state & UI_STATE_BLOCK_INTERACTION) && !gui.accessKeyMode) {
 			UIMessageSendPropagateToAncestors(element, message);
 		}
 	} else if (message->type == ES_MSG_WINDOW_RESIZED) {
@@ -7536,7 +7554,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		return;
 	}
 
-	if (window->receivedFirstResize || window->windowStyle != ES_WINDOW_NORMAL) {
+	if (window->receivedFirstResize /* don't try to layout an embedded window until its size is known */
+			|| window->windowStyle != ES_WINDOW_NORMAL) {
 		UIWindowLayoutNow(window, timing);
 	}
 

@@ -876,11 +876,6 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 			if (!ApplicationStartupInformationParse(apiInstance->startupInformation, message->createInstance.dataBytes - 1)) {
 				EsHeapFree(apiInstance->startupInformation);
 				apiInstance->startupInformation = nullptr;
-			} else {
-				// Duplicate the file path, so that it can be modified in response to ES_MSG_INSTANCE_DOCUMENT_RENAMED messages.
-				char *filePath = (char *) EsHeapAllocate(apiInstance->startupInformation->filePathBytes, false);
-				EsMemoryCopy(filePath, apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes);
-				apiInstance->startupInformation->filePath = filePath;
 			}
 		}
 	}

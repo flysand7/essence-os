@@ -189,11 +189,13 @@ int FontListMessage(EsElement *element, EsMessage *message) {
 }
 
 void FontSizeTextboxUpdate(Instance *instance) {
-	char result[64];
-	size_t resultBytes = EsStringFormat(result, sizeof(result), "%d", instance->fontSize);
-	EsTextboxSelectAll(instance->fontSizeTextbox);
-	EsTextboxInsert(instance->fontSizeTextbox, result, resultBytes);
-	EsListViewInvalidateAll(instance->fontList);
+	if (instance->fontSizeTextbox && instance->fontList) {
+		char result[64];
+		size_t resultBytes = EsStringFormat(result, sizeof(result), "%d", instance->fontSize);
+		EsTextboxSelectAll(instance->fontSizeTextbox);
+		EsTextboxInsert(instance->fontSizeTextbox, result, resultBytes);
+		EsListViewInvalidateAll(instance->fontList);
+	}
 }
 
 int FontSizeTextboxMessage(EsElement *element, EsMessage *message) {
@@ -225,7 +227,7 @@ int PreviewTextTextboxMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_TEXTBOX_UPDATED) {
 		EsHeapFree(element->instance->previewText);
 		element->instance->previewText = EsTextboxGetContents((EsTextbox *) element, &element->instance->previewTextBytes);
-		EsListViewInvalidateAll(element->instance->fontList);
+		if (element->instance->fontList) EsListViewInvalidateAll(element->instance->fontList);
 	} else {
 		return 0;
 	}
@@ -372,6 +374,15 @@ void _start() {
 			button->accessKey = 'B';
 			EsButtonSetIcon(button, ES_ICON_GO_PREVIOUS_SYMBOLIC);
 			EsButtonOnCommand(button, BackCommand);
+		} else if (message->type == ES_MSG_INSTANCE_CLOSE) {
+			Instance *instance = message->instanceClose.instance;
+			instance->switcher = nullptr;
+			instance->fontList = nullptr;
+			instance->fontSizeTextbox = nullptr;
+			instance->previewTextTextbox = nullptr;
+			instance->fontPreview = nullptr;
+			instance->fontListToolbar = nullptr;
+			instance->fontPreviewToolbar = nullptr;
 		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
 			if (!message->instanceOpen.update) {
 				Instance *instance = message->instanceOpen.instance;
