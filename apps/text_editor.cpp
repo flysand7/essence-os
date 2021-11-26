@@ -406,7 +406,9 @@ void ProcessApplicationMessage(EsMessage *message) {
 void _start() {
 	_init();
 
-	EsINIState state = { (char *) EsFileReadAll(EsLiteral(SETTINGS_FILE), &state.bytes) };
+	size_t settingsFileBytes = 0;
+	char *settingsFile = (char *) EsFileReadAll(EsLiteral(SETTINGS_FILE), &settingsFileBytes);
+	EsINIState state = { .buffer = settingsFile, .bytes = settingsFileBytes };
 
 	while (EsINIParse(&state)) {
 		if (0 == EsStringCompareRaw(state.section, state.sectionBytes, EsLiteral("general"))) {
@@ -416,7 +418,7 @@ void _start() {
 		}
 	}
 
-	EsHeapFree(state.buffer);
+	EsHeapFree(settingsFile);
 
 	while (true) {
 		ProcessApplicationMessage(EsMessageReceive());
