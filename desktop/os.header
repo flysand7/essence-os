@@ -2626,3 +2626,4 @@ function void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex in
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.
 function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
 function void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount);
+function void EsListViewFixedItemSortAll(EsListView *view); // Re-sort the list after inserting new items or modifying existing items. TODO EsListViewFixedItemSortSingleItem.

@@ -61,6 +61,8 @@ struct ListViewColumn {
 	size_t enumStringCount;
 };
 
+typedef void (*ListViewSortFunction)(EsListViewIndex *, size_t, ListViewColumn *);
+
 int ListViewProcessItemMessage(EsElement *element, EsMessage *message);
 void ListViewSetSortAscending(EsMenu *menu, EsGeneric context);
 void ListViewSetSortDescending(EsMenu *menu, EsGeneric context);
@@ -2582,6 +2584,42 @@ void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsList
 	}
 }
 
+#define LIST_VIEW_SORT_FUNCTION(_name, _line) \
+	ES_MACRO_SORT(_name, EsListViewIndex, { \
+		ListViewFixedItemData *left = (ListViewFixedItemData *) &context->items[*_left]; \
+		ListViewFixedItemData *right = (ListViewFixedItemData *) &context->items[*_right]; \
+		result = _line; \
+	}, ListViewColumn *)
+
+LIST_VIEW_SORT_FUNCTION(ListViewSortByStringsAscending, EsStringCompare(left->s.string, left->s.bytes, right->s.string, right->s.bytes));
+LIST_VIEW_SORT_FUNCTION(ListViewSortByStringsDescending, -EsStringCompare(left->s.string, left->s.bytes, right->s.string, right->s.bytes));
+LIST_VIEW_SORT_FUNCTION(ListViewSortByEnumsAscending, EsStringCompare(context->enumStrings[left->i].string, context->enumStrings[left->i].stringBytes, 
+			context->enumStrings[right->i].string, context->enumStrings[right->i].stringBytes));
+LIST_VIEW_SORT_FUNCTION(ListViewSortByEnumsDescending, -EsStringCompare(context->enumStrings[left->i].string, context->enumStrings[left->i].stringBytes, 
+			context->enumStrings[right->i].string, context->enumStrings[right->i].stringBytes));
+LIST_VIEW_SORT_FUNCTION(ListViewSortByIntegersAscending, left->i > right->i ? 1 : left->i == right->i ? 0 : -1);
+LIST_VIEW_SORT_FUNCTION(ListViewSortByIntegersDescending, left->i < right->i ? 1 : left->i == right->i ? 0 : -1);
+LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesAscending, left->d > right->d ? 1 : left->d == right->d ? 0 : -1);
+LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesDescending, left->d < right->d ? 1 : left->d == right->d ? 0 : -1);
+
+ListViewSortFunction ListViewGetSortFunction(ListViewColumn *column, uint8_t direction) {
+	if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+		return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByStringsDescending : ListViewSortByStringsAscending);
+	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+		if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK) == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING) {
+			return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByEnumsDescending : ListViewSortByEnumsAscending);
+		} else {
+			return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByIntegersDescending : ListViewSortByIntegersAscending);
+		}
+	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
+		return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByDoublesDescending : ListViewSortByDoublesAscending);
+	} else {
+		EsAssert(false);
+	}
+
+	return nullptr;
+}
+
 EsListViewIndex EsListViewFixedItemInsert(EsListView *view, EsGeneric data, EsListViewIndex index, uint32_t iconID) {
 	EsAssert(view->flags & ES_LIST_VIEW_FIXED_ITEMS);
 
@@ -2643,12 +2681,32 @@ void ListViewFixedItemSetInternal(EsListView *view, EsListViewIndex index, uint3
 		EsMemoryZero(&column->items[oldLength], (view->fixedItems.Length() - oldLength) * sizeof(column->items[0]));
 	}
 
+	bool changed = false;
+
+	if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+		changed = EsStringCompareRaw(column->items[index].s.string, column->items[index].s.bytes, data.s.string, data.s.bytes);
+	} else if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
+		changed = column->items[index].d != data.d;
+	} else if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+		changed = column->items[index].i != data.i;
+	} else {
+		EsAssert(false);
+	}
+
 	if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
 		EsHeapFree(column->items[index].s.string);
 	}
 
 	column->items[index] = data;
-	EsListViewInvalidateContent(view, 0, index);
+
+	if (changed) {
+		for (uintptr_t i = 0; i < view->fixedItemIndices.Length(); i++) {
+			if (view->fixedItemIndices[i] == index) {
+				EsListViewInvalidateContent(view, 0, i);
+				break;
+			}
+		}
+	}
 }
 
 void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex index, uint32_t columnID, const char *string, ptrdiff_t stringBytes) {
@@ -2765,29 +2823,11 @@ void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t colum
 	EsAssert(false);
 }
 
-#define LIST_VIEW_SORT_FUNCTION(_name, _line) \
-	ES_MACRO_SORT(_name, EsListViewIndex, { \
-		ListViewFixedItemData *left = (ListViewFixedItemData *) &context->items[*_left]; \
-		ListViewFixedItemData *right = (ListViewFixedItemData *) &context->items[*_right]; \
-		result = _line; \
-	}, ListViewColumn *)
-
-LIST_VIEW_SORT_FUNCTION(ListViewSortByStringsAscending, EsStringCompare(left->s.string, left->s.bytes, right->s.string, right->s.bytes));
-LIST_VIEW_SORT_FUNCTION(ListViewSortByStringsDescending, -EsStringCompare(left->s.string, left->s.bytes, right->s.string, right->s.bytes));
-LIST_VIEW_SORT_FUNCTION(ListViewSortByEnumsAscending, EsStringCompare(context->enumStrings[left->i].string, context->enumStrings[left->i].stringBytes, 
-			context->enumStrings[right->i].string, context->enumStrings[right->i].stringBytes));
-LIST_VIEW_SORT_FUNCTION(ListViewSortByEnumsDescending, -EsStringCompare(context->enumStrings[left->i].string, context->enumStrings[left->i].stringBytes, 
-			context->enumStrings[right->i].string, context->enumStrings[right->i].stringBytes));
-LIST_VIEW_SORT_FUNCTION(ListViewSortByIntegersAscending, left->i > right->i ? 1 : left->i == right->i ? 0 : -1);
-LIST_VIEW_SORT_FUNCTION(ListViewSortByIntegersDescending, left->i < right->i ? 1 : left->i == right->i ? 0 : -1);
-LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesAscending, left->d > right->d ? 1 : left->d == right->d ? 0 : -1);
-LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesDescending, left->d < right->d ? 1 : left->d == right->d ? 0 : -1);
-
-void ListViewSetSortDirection(EsListView *view, uint32_t columnID, uint8_t direction) {
+void EsListViewFixedItemSortAll(EsListView *view) {
 	ListViewColumn *column = nullptr;
 
 	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
-		if (view->registeredColumns[i].id == columnID) {
+		if (view->registeredColumns[i].id == view->fixedItemSortColumnID) {
 			column = &view->registeredColumns[i];
 			break;
 		}
@@ -2795,34 +2835,12 @@ void ListViewSetSortDirection(EsListView *view, uint32_t columnID, uint8_t direc
 
 	EsAssert(column);
 
-	if (view->fixedItemSortColumnID == columnID && view->fixedItemSortDirection == direction) {
-		return;
-	}
-
-	view->fixedItemSortColumnID = columnID;
-	view->fixedItemSortDirection = direction;
-
 	EsAssert(view->fixedItems.Length() == view->fixedItemIndices.Length());
 
-	void (*sortFunction)(EsListViewIndex *, size_t, ListViewColumn *) = nullptr;
-
-	if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
-		sortFunction = (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByStringsDescending : ListViewSortByStringsAscending);
-	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
-		if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK) == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING) {
-			sortFunction = (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByEnumsDescending : ListViewSortByEnumsAscending);
-		} else {
-			sortFunction = (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByIntegersDescending : ListViewSortByIntegersAscending);
-		}
-	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
-		sortFunction = (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByDoublesDescending : ListViewSortByDoublesAscending);
-	} else {
-		EsAssert(false);
-	}
-	
 	EsListViewIndex previousSelectionIndex = view->fixedItemSelection >= 0 && (uintptr_t) view->fixedItemSelection < view->fixedItemIndices.Length() 
 		? view->fixedItemIndices[view->fixedItemSelection] : -1;
 
+	ListViewSortFunction sortFunction = ListViewGetSortFunction(column, view->fixedItemSortDirection);
 	sortFunction(view->fixedItemIndices.array, view->fixedItems.Length(), column);
 	EsListViewInvalidateAll(view);
 
@@ -2835,6 +2853,14 @@ void ListViewSetSortDirection(EsListView *view, uint32_t columnID, uint8_t direc
 				break;
 			}
 		}
+	}
+}
+
+void ListViewSetSortDirection(EsListView *view, uint32_t columnID, uint8_t direction) {
+	if (view->fixedItemSortColumnID != columnID || view->fixedItemSortDirection != direction) {
+		view->fixedItemSortColumnID = columnID;
+		view->fixedItemSortDirection = direction;
+		EsListViewFixedItemSortAll(view);
 	}
 }
 

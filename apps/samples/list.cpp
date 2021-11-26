@@ -63,7 +63,7 @@ void _start() {
 					"Age", -1,                                // Its title string.
 					ES_LIST_VIEW_COLUMN_HAS_MENU              // Column header has a menu.
 					| ES_TEXT_H_RIGHT                         // Align the text in the column to the right.
-					| ES_DRAW_CONTENT_TABULAR                 // Use the tabular digits style, so that digits between items line up.
+					| ES_DRAW_CONTENT_TABULAR                 // Use the tabular digits style, so that digits line up between rows.
 					| ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS // We're storing integers in this column (the default is strings).
 					| ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE,    // The items in the column can be sorted by their size.
 					100);                                     // Initial width.

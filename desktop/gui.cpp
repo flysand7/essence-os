@@ -11,12 +11,11 @@
 // TODO Close menus within menus (bug).
 // TODO Keyboard navigation - menus; escape to restore default focus.
 // TODO Middle click panning.
-// TODO Scrollbar middle click and zooming; scroll wheel.
+// TODO Scrollbar middle click and zooming.
 // TODO Textboxes: date/time overlays, keyboard shortcut overlay, custom overlays.
 // TODO Breadcrumb bar overflow menu; keep hover after recreating UI.
 // TODO Textbox embedded objects.
 // TODO Closing windows in menu/access key mode.
-// TODO Ignore ES_MSG_LAYOUT in panels if layout.sizeChanged is false?
 
 // Behaviour of activation clicks. --> Only ignore activation clicks from menus.
 // Behaviour of the scroll wheel with regards to focused/hovered elements --> Scroll the hovered element only.

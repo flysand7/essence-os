@@ -26,6 +26,13 @@ struct Instance : EsInstance {
 #define DISPLAY_GENERAL_LOG (3)
 #define DISPLAY_MEMORY (12)
 
+#define PROCESSES_COLUMN_NAME    (0)
+#define PROCESSES_COLUMN_PID     (1)
+#define PROCESSES_COLUMN_MEMORY  (2)
+#define PROCESSES_COLUMN_CPU     (3)
+#define PROCESSES_COLUMN_HANDLES (4)
+#define PROCESSES_COLUMN_THREADS (5)
+
 const EsStyle styleMonospacedTextbox = {
 	.inherit = ES_STYLE_TEXTBOX_NO_BORDER,
 
@@ -156,7 +163,8 @@ void UpdateProcesses(Instance *instance) {
 
 	for (uintptr_t i = 0; i < previous.Length(); i++) {
 		if (!FindProcessByPID(processes, previous[i].data.pid)) {
-			EsListViewRemove(instance->listViewProcesses, 0, i, 1);
+			bool found = EsListViewFixedItemRemove(instance->listViewProcesses, previous[i].data.pid);
+			EsAssert(found);
 			previous.Delete(i--);
 		}
 	}
@@ -194,11 +202,21 @@ void UpdateProcesses(Instance *instance) {
 
 	for (uintptr_t i = 0; i < processes.Length(); i++) {
 		if (!FindProcessByPID(previous, processes[i].data.pid)) {
-			EsListViewInsert(instance->listViewProcesses, 0, i, 1);
+			EsListViewIndex index = EsListViewFixedItemInsert(instance->listViewProcesses, processes[i].data.pid);
+			EsAssert(index == (EsListViewIndex) i);
 		}
 	}
 
-	EsListViewInvalidateAll(instance->listViewProcesses);
+	for (uintptr_t i = 0; i < processes.Length(); i++) {
+		EsListViewFixedItemSetString (instance->listViewProcesses, i, PROCESSES_COLUMN_NAME,    processes[i].data.name, processes[i].data.nameBytes);
+		EsListViewFixedItemSetInteger(instance->listViewProcesses, i, PROCESSES_COLUMN_PID,     processes[i].data.pid);
+		EsListViewFixedItemSetInteger(instance->listViewProcesses, i, PROCESSES_COLUMN_MEMORY,  processes[i].data.memoryUsage);
+		EsListViewFixedItemSetInteger(instance->listViewProcesses, i, PROCESSES_COLUMN_CPU,     processes[i].cpuUsage);
+		EsListViewFixedItemSetInteger(instance->listViewProcesses, i, PROCESSES_COLUMN_HANDLES, processes[i].data.handleCount);
+		EsListViewFixedItemSetInteger(instance->listViewProcesses, i, PROCESSES_COLUMN_THREADS, processes[i].data.threadCount);
+	}
+
+	EsListViewFixedItemSortAll(instance->listViewProcesses);
 	EsCommandSetDisabled(&instance->commandTerminateProcess, selectedPID < 0 || !FindProcessByPID(processes, selectedPID));
 
 	EsTimerSet(REFRESH_INTERVAL, [] (EsGeneric context) {
@@ -305,17 +323,7 @@ void UpdateDisplay(Instance *instance, int index) {
 #define GET_CONTENT(...) EsBufferFormat(message->getContent.buffer, __VA_ARGS__)
 
 int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
-	if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
-		int column = message->getContent.columnID, index = message->getContent.index;
-		ProcessItem *item = &processes[index];
-		if      (column == 0) GET_CONTENT("%s", item->data.nameBytes, item->data.name);
-		else if (column == 1) { if (item->data.pid == -1) GET_CONTENT("n/a"); else GET_CONTENT("%d", item->data.pid); }
-		else if (column == 2) GET_CONTENT("%D", item->data.memoryUsage);
-		else if (column == 3) GET_CONTENT("%d%%", item->cpuUsage);
-		else if (column == 4) GET_CONTENT("%d", item->data.handleCount);
-		else if (column == 5) GET_CONTENT("%d", item->data.threadCount);
-		else EsAssert(false);
-	} else if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
+	if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
 		message->selectItem.isSelected = processes[message->selectItem.index].data.pid == selectedPID;
 	} else if (message->type == ES_MSG_LIST_VIEW_SELECT && message->selectItem.isSelected) {
 		selectedPID = processes[message->selectItem.index].data.pid;
@@ -370,16 +378,17 @@ void ProcessApplicationMessage(EsMessage *message) {
 
 		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL | ES_ELEMENT_DISABLED, &styleMonospacedTextbox);
 
-		instance->listViewProcesses = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);
+		instance->listViewProcesses = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT | ES_LIST_VIEW_FIXED_ITEMS);
 		instance->listViewProcesses->messageUser = ListViewProcessesCallback;
-		EsListViewRegisterColumn(instance->listViewProcesses, 0, "Name", -1, 0, 150);
-		EsListViewRegisterColumn(instance->listViewProcesses, 1, "PID", -1, ES_TEXT_H_RIGHT, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, 2, "Memory", -1, ES_TEXT_H_RIGHT, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, 3, "CPU", -1, ES_TEXT_H_RIGHT, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, 4, "Handles", -1, ES_TEXT_H_RIGHT, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, 5, "Threads", -1, ES_TEXT_H_RIGHT, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_NAME, "Name", -1, ES_LIST_VIEW_COLUMN_HAS_MENU, 150);
+		uint32_t numericColumnFlags = ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT | ES_DRAW_CONTENT_TABULAR 
+			| ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS | ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE;
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_PID, "PID", -1, numericColumnFlags, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_MEMORY, "Memory", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_CPU, "CPU", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_HANDLES, "Handles", -1, numericColumnFlags, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_THREADS, "Threads", -1, numericColumnFlags, 120);
 		EsListViewAddAllColumns(instance->listViewProcesses);
-		EsListViewInsertGroup(instance->listViewProcesses, 0);
 
 		instance->panelMemoryStatistics = EsPanelCreate(switcher, 
 				ES_CELL_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_V_SCROLL_AUTO, &stylePanelMemoryStatistics);
