@@ -2717,7 +2717,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				} 
 
 				if (object->type == OBJ_COMMENT || canvas->zoom > 0.1f) {
-					UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
+					UIDrawString(painter, UI_RECT_4(bounds.l, element->bounds.r, bounds.t - ui.activeFont->glyphHeight, bounds.t), 
 							object->cName, -1, 0xFF000000, UI_ALIGN_LEFT, nullptr);
 				}
 
@@ -2726,7 +2726,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 				UIDrawBlock(painter, UI_RECT_4(bounds.r, bounds.r + 1, bounds.t + 1, bounds.b + 1), 0xFF404040);
 
 				if (isConditional && canvas->zoom > 0.1f) {
-					UIRectangle indicator = UI_RECT_4(bounds.l - ui.glyphWidth, bounds.l, bounds.t, bounds.t + ui.glyphHeight);
+					UIRectangle indicator = UI_RECT_4(bounds.l - ui.activeFont->glyphWidth, bounds.l, bounds.t, bounds.t + ui.activeFont->glyphHeight);
 					UIDrawBlock(painter, indicator, 0xFFFFFF00);
 					UIDrawString(painter, indicator, "?", -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 				}
@@ -2737,7 +2737,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			if (selectedObjectID == object->id && canvas->resizing) {
 				char buffer[32];
 				snprintf(buffer, sizeof(buffer), "%dx%d", UI_RECT_WIDTH(bounds), UI_RECT_HEIGHT(bounds));
-				UIDrawString(painter, UI_RECT_4(bounds.l, bounds.r, bounds.t - ui.glyphHeight, bounds.t), 
+				UIDrawString(painter, UI_RECT_4(bounds.l, bounds.r, bounds.t - ui.activeFont->glyphHeight, bounds.t), 
 						buffer, -1, 0xFF000000, UI_ALIGN_CENTER, nullptr);
 			}
 
