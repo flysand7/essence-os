@@ -93,6 +93,21 @@ struct EsListView : EsElement {
 	EsListViewIndex anchorItemGroup;
 	EsListViewIndex anchorItemIndex;
 
+	bool hasScrollItem; // Used to preserve the scroll position when resizing a wrapped list view.
+	bool useScrollItem;
+	int64_t scrollItemOffset;
+	EsListViewIndex scrollItemGroup;
+	EsListViewIndex scrollItemIndex;
+
+#define ENSURE_VISIBLE_ALIGN_TOP             (1 << 0)
+#define ENSURE_VISIBLE_ALIGN_CENTER          (1 << 1)
+#define ENSURE_VISIBLE_ALIGN_FOR_SCROLL_ITEM (1 << 2)
+	EsListViewIndex ensureVisibleGroupIndex;
+	EsListViewIndex ensureVisibleIndex;
+	uint8_t ensureVisibleFlags;
+	bool ensureVisibleQueued;
+	bool populateQueued;
+
 	// Valid only during Z-order messages.
 	Array<EsElement *> zOrderItems;
 
@@ -121,12 +136,6 @@ struct EsListView : EsElement {
 	EsListViewIndex inlineTextboxIndex;
 
 	int maximumItemsPerBand;
-
-	EsListViewIndex ensureVisibleGroupIndex;
-	EsListViewIndex ensureVisibleIndex;
-	uint8_t ensureVisibleAlign;
-	bool ensureVisibleQueued;
-	bool populateQueued;
 
 	// Fixed item storage:
 	Array<ListViewFixedItem> fixedItems;
@@ -338,10 +347,10 @@ struct EsListView : EsElement {
 		*_itemSize = itemSize;
 	}
 
-	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
+	void EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t visibleFlags) {
 		ensureVisibleGroupIndex = groupIndex;
 		ensureVisibleIndex = index;
-		ensureVisibleAlign = align;
+		ensureVisibleFlags = visibleFlags;
 
 		if (!ensureVisibleQueued) {
 			UpdateAction action = {};
@@ -352,7 +361,7 @@ struct EsListView : EsElement {
 		}
 	}
 
-	void _EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t align) {
+	void _EnsureItemVisible(EsListViewIndex groupIndex, EsListViewIndex index, uint8_t visibleFlags) {
 		EsRectangle contentBounds = GetListBounds();
 
 		int64_t startInset = flags & ES_LIST_VIEW_HORIZONTAL ? style->insets.l : style->insets.t,
@@ -362,17 +371,28 @@ struct EsListView : EsElement {
 		int64_t position, itemSize;
 		GetItemPosition(groupIndex, index, &position, &itemSize);
 
+		if (visibleFlags & ENSURE_VISIBLE_ALIGN_FOR_SCROLL_ITEM) {
+			if (flags & ES_LIST_VIEW_HORIZONTAL) {
+				scroll.SetX(scroll.position[0] + position - scrollItemOffset);
+			} else {
+				scroll.SetY(scroll.position[1] + position - scrollItemOffset);
+			}
+
+			useScrollItem = true;
+			return;
+		}
+
 		if (position >= 0 && position + itemSize <= contentSize - endInset) {
 			return;
 		}
 
-		if (align == 1) {
+		if (visibleFlags & ENSURE_VISIBLE_ALIGN_TOP) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
 				scroll.SetX(scroll.position[0] + position - startInset);
 			} else {
 				scroll.SetY(scroll.position[1] + position - startInset);
 			}
-		} else if (align == 2) {
+		} else if (visibleFlags & ENSURE_VISIBLE_ALIGN_CENTER) {
 			if (flags & ES_LIST_VIEW_HORIZONTAL) {
 				scroll.SetX(scroll.position[0] + position + itemSize / 2 - contentSize / 2);
 			} else {
@@ -759,6 +779,13 @@ struct EsListView : EsElement {
 			ListViewItem *item = FindVisibleItem(inlineTextboxGroup, inlineTextboxIndex);
 			if (item) MoveInlineTextbox(item);
 		}
+
+		if (visibleItems.Length() && (!useScrollItem || !hasScrollItem)) {
+			scrollItemGroup = visibleItems.First().group;
+			scrollItemIndex = visibleItems.First().index;
+			scrollItemOffset = visibleItems.First().element->offsetY;
+			hasScrollItem = true;
+		}
 	}
 
 	void Populate() {
@@ -771,7 +798,7 @@ struct EsListView : EsElement {
 		}
 	}
 
-	void Wrap(bool autoScroll) {
+	void Wrap(bool sizeChanged) {
 		if (~flags & ES_LIST_VIEW_TILED) return;
 
 		totalSize = 0;
@@ -804,8 +831,12 @@ struct EsListView : EsElement {
 
 		scroll.Refresh();
 
-		if (visibleItems.Length() && autoScroll) {
-			EnsureItemVisible(visibleItems[0].group, visibleItems[0].index, true);
+		if (sizeChanged) {
+			useScrollItem = true;
+		}
+
+		if (useScrollItem && hasScrollItem) {
+			EnsureItemVisible(scrollItemGroup, scrollItemIndex, ENSURE_VISIBLE_ALIGN_FOR_SCROLL_ITEM);
 		}
 	}
 
@@ -829,6 +860,7 @@ struct EsListView : EsElement {
 			}
 		}
 
+		useScrollItem = false;
 		scroll.Refresh();
 		EsElementUpdateContentSize(this);
 	}
@@ -1422,7 +1454,7 @@ struct EsListView : EsElement {
 
 			focusedItemIndex = m.getContent.index;
 			focusedItemGroup = m.getContent.group;
-			EnsureItemVisible(focusedItemGroup, focusedItemIndex, false);
+			EnsureItemVisible(focusedItemGroup, focusedItemIndex, ES_FLAGS_DEFAULT);
 		}
 
 		ListViewItem *newFocus = FindVisibleItem(focusedItemGroup, focusedItemIndex);
@@ -1548,7 +1580,7 @@ struct EsListView : EsElement {
 			}
 
 			if (!keepSearchBuffer) ClearSearchBuffer();
-			EnsureItemVisible(focusedItemGroup, focusedItemIndex, isPrevious || isHome || isPageUp || isPreviousBand);
+			EnsureItemVisible(focusedItemGroup, focusedItemIndex, (isPrevious || isHome || isPageUp || isPreviousBand) ? ENSURE_VISIBLE_ALIGN_TOP : ES_FLAGS_DEFAULT);
 			Select(focusedItemGroup, focusedItemIndex, shift, ctrl, ctrl && !shift);
 			return true;
 		} else if (isSpace && ctrl && !shift && hasFocusedItem) {
@@ -1690,10 +1722,11 @@ struct EsListView : EsElement {
 				}
 			}
 
+			useScrollItem = false;
 			Populate();
 			Repaint(true);
 
-			if (columnHeader) {
+			if (columnHeader && message->type == ES_MSG_SCROLL_X) {
 				EsElementRelayout(columnHeader);
 			}
 
@@ -2043,7 +2076,7 @@ void ListViewEnsureVisibleActionCallback(EsElement *element, EsGeneric) {
 	EsListView *view = (EsListView *) element;
 	EsAssert(view->ensureVisibleQueued);
 	view->ensureVisibleQueued = false;
-	view->_EnsureItemVisible(view->ensureVisibleGroupIndex, view->ensureVisibleIndex, view->ensureVisibleAlign);
+	view->_EnsureItemVisible(view->ensureVisibleGroupIndex, view->ensureVisibleIndex, view->ensureVisibleFlags);
 	EsAssert(!view->ensureVisibleQueued);
 }
 
@@ -2501,6 +2534,9 @@ void EsListViewContentChanged(EsListView *view) {
 	view->scroll.SetX(0);
 	view->scroll.SetY(0);
 
+	view->hasScrollItem = false;
+	view->useScrollItem = false;
+
 	EsListViewInvalidateAll(view);
 }
 
@@ -2523,7 +2559,7 @@ void EsListViewFocusItem(EsListView *view, EsListViewIndex group, EsListViewInde
 		newFocus->element->MaybeRefreshStyle();
 	}
 
-	view->EnsureItemVisible(group, index, false);
+	view->EnsureItemVisible(group, index, ES_FLAGS_DEFAULT);
 }
 
 bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index) {
@@ -2753,7 +2789,7 @@ bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data) {
 
 		// TODO Maybe you should have to separately call EsListViewFocusItem to get this behaviour?
 		EsListViewFocusItem(view, 0, index);
-		view->EnsureItemVisible(0, index, 2 /* center */);
+		view->EnsureItemVisible(0, index, ENSURE_VISIBLE_ALIGN_CENTER);
 	}
 
 	return found;
@@ -2849,7 +2885,7 @@ void EsListViewFixedItemSortAll(EsListView *view) {
 			if (view->fixedItemIndices[i] == previousSelectionIndex) {
 				EsListViewSelect(view, 0, i);
 				EsListViewFocusItem(view, 0, i);
-				view->EnsureItemVisible(0, i, 2 /* center */);
+				view->EnsureItemVisible(0, i, ENSURE_VISIBLE_ALIGN_CENTER);
 				break;
 			}
 		}
@@ -2893,7 +2929,7 @@ EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group
 
 	view->inlineTextboxGroup = group;
 	view->inlineTextboxIndex = index;
-	view->EnsureItemVisible(group, index, true);
+	view->EnsureItemVisible(group, index, ENSURE_VISIBLE_ALIGN_TOP);
 
 	uint64_t textboxFlags = ES_CELL_FILL | ES_TEXTBOX_EDIT_BASED | ES_TEXTBOX_ALLOW_TABS;
 	
