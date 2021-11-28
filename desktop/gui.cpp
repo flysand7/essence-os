@@ -6523,7 +6523,7 @@ void UIScaleChanged(EsElement *element, EsMessage *message) {
 	EsMessageMutexCheck();
 
 	element->RefreshStyle(nullptr, false, true);
-	element->state |= UI_STATE_RELAYOUT | UI_STATE_RELAYOUT_CHILD;
+	element->offsetX = element->offsetY = element->width = element->height = 0;
 	EsMessageSend(element, message);
 
 	for (uintptr_t i = 0; i < element->children.Length(); i++) {
@@ -6537,7 +6537,7 @@ void _EsUISetFont(EsFontFamily id) {
 
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 		UIScaleChanged(gui.allWindows[i], &m);
-		UIWindowNeedsUpdate(gui.allWindows[i]);
+		EsElementRelayout(gui.allWindows[i]);
 	}
 }
 
@@ -7213,7 +7213,7 @@ void UIWindowPaintNow(EsWindow *window, ProcessMessageTiming *timing, bool after
 void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing) {
 	if (timing) timing->startLayout = EsTimeStampMs();
 
-	window->InternalMove(window->width, window->height, 0, 0);
+	window->InternalMove(window->windowWidth, window->windowHeight, 0, 0);
 
 	while (window->updateActions.Length()) {
 		// TODO Preventing/detecting infinite cycles?
@@ -7466,8 +7466,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			UIRefreshPrimaryClipboard(window); // Embedded window activated.
 		}
 
-		window->width = window->windowWidth = message->windowResized.content.r;
-		window->height = window->windowHeight = message->windowResized.content.b;
+		window->windowWidth = message->windowResized.content.r;
+		window->windowHeight = message->windowResized.content.b;
 
 		if (window->windowStyle == ES_WINDOW_CONTAINER) {
 			EsRectangle opaqueBounds = ES_RECT_4(CONTAINER_OPAQUE_C, window->windowWidth - CONTAINER_OPAQUE_C, 

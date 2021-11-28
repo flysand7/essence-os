@@ -91,15 +91,6 @@ const EsStyle styleSettingsGroupContainer3 = {
 	},
 };
 
-const EsStyle styleSettingsNumberTextbox = {
-	.inherit = ES_STYLE_TEXTBOX_BORDERED_SINGLE,
-
-	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
-		.preferredWidth = 80,
-	},
-};
-
 const EsStyle styleSettingsCheckboxGroup = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR,
@@ -435,7 +426,7 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	control->discreteStep = discreteStep;
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, string, stringBytes); 
-	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, &styleSettingsNumberTextbox);
+	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	EsTextboxUseNumberOverlay(textbox, false);
 	textbox->userData = control;
 	textbox->accessKey = accessKey;
@@ -674,19 +665,19 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsPanelSetBands(table, 2);
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'D';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "400 ms");
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'R';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "40 ms");
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, &styleSettingsNumberTextbox);
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'B';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "500 ms");

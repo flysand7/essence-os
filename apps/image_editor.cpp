@@ -83,7 +83,7 @@ const EsStyle styleBitmapSizeTextbox = {
 
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
-		.preferredWidth = 70,
+		.preferredWidth = 80,
 	},
 };
 
@@ -677,7 +677,7 @@ void MenuImage(Instance *instance, EsElement *element, EsCommand *) {
 
 	bytes = EsStringFormat(buffer, sizeof(buffer), "%d", instance->bitmapWidth);
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(ImageEditorPropertyWidth));
-	textbox = EsTextboxCreate(table, ES_TEXTBOX_EDIT_BASED, &styleBitmapSizeTextbox);
+	textbox = EsTextboxCreate(table, ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	EsTextboxInsert(textbox, buffer, bytes, false);
 	textbox->userData.i = 0;
 	textbox->messageUser = BitmapSizeTextboxMessage;

@@ -1257,8 +1257,7 @@ EsMessage *EsMessageReceive() {
 
 				for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 					UIScaleChanged(gui.allWindows[i], &message.message);
-					gui.allWindows[i]->state |= UI_STATE_RELAYOUT;
-					UIWindowNeedsUpdate(gui.allWindows[i]);
+					EsElementRelayout(gui.allWindows[i]);
 				}
 
 				return &message.message;

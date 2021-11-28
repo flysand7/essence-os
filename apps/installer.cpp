@@ -53,15 +53,6 @@ const EsStyle styleButtonsRow = {
 	},
 };
 
-const EsStyle styleTextboxMedium = {
-	.inherit = ES_STYLE_TEXTBOX_BORDERED_SINGLE,
-
-	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
-		.preferredWidth = 80,
-	},
-};
-
 InstallerMetadata *metadata;
 Array<EsMessageDevice> connectedDrives;
 EsListView *drivesList;
@@ -1139,7 +1130,7 @@ void _start() {
 
 		// TODO Make a date/time entry element or textbox overlay.
 		EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(InstallerTime));
-		timeTextbox = EsTextboxCreate(table, ES_CELL_H_LEFT, &styleTextboxMedium);
+		timeTextbox = EsTextboxCreate(table, ES_CELL_H_LEFT, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 		EsTextboxInsert(timeTextbox, timeBuffer, timeBytes);
 		// TODO A date field.
 
