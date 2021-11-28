@@ -378,29 +378,29 @@ define ES_DRAW_CONTENT_MARKER_UP_ARROW     (1 << 10)
 define ES_DRAW_CONTENT_RICH_TEXT           (1 << 12)
 // ...plus alignment flags.
 
-define ES_LIST_VIEW_COLUMN_HAS_MENU                 ( 1 << 16) // The header can be clicked to open a menu.
-define ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS       ( 0 << 22) // Data types for fixed items.
-define ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS      ( 1 << 22)
-define ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES       ( 2 << 22)
-define ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK          ( 3 << 22)
-define ES_LIST_VIEW_COLUMN_FIXED_SORT_DEFAULT       ( 0 << 24) // Sort types for fixed items.
-define ES_LIST_VIEW_COLUMN_FIXED_SORT_TIME          ( 1 << 24)
-define ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE          ( 2 << 24)
-define ES_LIST_VIEW_COLUMN_FIXED_SORT_NONE          ( 3 << 24)
-define ES_LIST_VIEW_COLUMN_FIXED_SORT_MASK          ( 7 << 24)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DEFAULT     ( 0 << 27) // Format types for fixed items.
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_YES_NO      ( 1 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ON_OFF      ( 2 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE  ( 3 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES       ( 4 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BITS        ( 5 << 27) 
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTE_RATE   ( 6 << 27) // Bytes per second.
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_SECONDS     ( 7 << 27) 
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_HERTZ       ( 8 << 27) 
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PIXELS      ( 9 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DPI         (10 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING (11 << 27)
-define ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK        (31 << 27)
+define ES_LIST_VIEW_COLUMN_HAS_MENU           ( 1 << 16) // The header can be clicked to open a menu.
+define ES_LIST_VIEW_COLUMN_DATA_STRINGS       ( 0 << 22) // Data types for fixed items or GET_ITEM_DATA.
+define ES_LIST_VIEW_COLUMN_DATA_INTEGERS      ( 1 << 22)
+define ES_LIST_VIEW_COLUMN_DATA_DOUBLES       ( 2 << 22)
+define ES_LIST_VIEW_COLUMN_DATA_MASK          ( 3 << 22)
+define ES_LIST_VIEW_COLUMN_SORT_DEFAULT       ( 0 << 24) // Sort types for fixed items or GET_ITEM_DATA.
+define ES_LIST_VIEW_COLUMN_SORT_TIME          ( 1 << 24)
+define ES_LIST_VIEW_COLUMN_SORT_SIZE          ( 2 << 24)
+define ES_LIST_VIEW_COLUMN_SORT_NONE          ( 3 << 24)
+define ES_LIST_VIEW_COLUMN_SORT_MASK          ( 7 << 24)
+define ES_LIST_VIEW_COLUMN_FORMAT_DEFAULT     ( 0 << 27) // Format types for fixed items or GET_ITEM_DATA.
+define ES_LIST_VIEW_COLUMN_FORMAT_YES_NO      ( 1 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_ON_OFF      ( 2 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_PERCENTAGE  ( 3 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_BYTES       ( 4 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_BITS        ( 5 << 27) 
+define ES_LIST_VIEW_COLUMN_FORMAT_BYTE_RATE   ( 6 << 27) // Bytes per second.
+define ES_LIST_VIEW_COLUMN_FORMAT_SECONDS     ( 7 << 27) 
+define ES_LIST_VIEW_COLUMN_FORMAT_HERTZ       ( 8 << 27) 
+define ES_LIST_VIEW_COLUMN_FORMAT_PIXELS      ( 9 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_DPI         (10 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING (11 << 27)
+define ES_LIST_VIEW_COLUMN_FORMAT_MASK        (31 << 27)
 // ...plus draw content flags and alignment flags.
 
 // For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
@@ -1033,22 +1033,23 @@ enum EsMessageType {
 	ES_MSG_TEXTBOX_ACTIVATE_BREADCRUMB	= 0x5208 	// For EsTextboxUseBreadcrumbOverlay.
 
 	// List view messages:
-	ES_MSG_LIST_VIEW_FIND_INDEX		= 0x5305
-	ES_MSG_LIST_VIEW_MEASURE_RANGE		= 0x5307
-	ES_MSG_LIST_VIEW_MEASURE_ITEM		= 0x5308
-	ES_MSG_LIST_VIEW_CREATE_ITEM		= 0x5309
-	ES_MSG_LIST_VIEW_GET_CONTENT		= 0x530A
-	ES_MSG_LIST_VIEW_GET_INDENT		= 0x530B
-	ES_MSG_LIST_VIEW_FIND_POSITION		= 0x530C
-	ES_MSG_LIST_VIEW_IS_SELECTED		= 0x530D
-	ES_MSG_LIST_VIEW_SELECT			= 0x530E
-	ES_MSG_LIST_VIEW_SELECT_RANGE		= 0x530F
-	ES_MSG_LIST_VIEW_CHOOSE_ITEM		= 0x5310
-	ES_MSG_LIST_VIEW_SEARCH			= 0x5311
-	ES_MSG_LIST_VIEW_CONTEXT_MENU		= 0x5312
-	ES_MSG_LIST_VIEW_COLUMN_MENU		= 0x5313
-	ES_MSG_LIST_VIEW_GET_SUMMARY		= 0x5314
-	ES_MSG_LIST_VIEW_GET_COLUMN_SORT	= 0x5315
+	ES_MSG_LIST_VIEW_FIND_INDEX		= 0x5301
+	ES_MSG_LIST_VIEW_MEASURE_RANGE		= 0x5302
+	ES_MSG_LIST_VIEW_MEASURE_ITEM		= 0x5303
+	ES_MSG_LIST_VIEW_CREATE_ITEM		= 0x5304
+	ES_MSG_LIST_VIEW_GET_CONTENT		= 0x5305
+	ES_MSG_LIST_VIEW_GET_INDENT		= 0x5306
+	ES_MSG_LIST_VIEW_FIND_POSITION		= 0x5307
+	ES_MSG_LIST_VIEW_IS_SELECTED		= 0x5308
+	ES_MSG_LIST_VIEW_SELECT			= 0x5309
+	ES_MSG_LIST_VIEW_SELECT_RANGE		= 0x530A
+	ES_MSG_LIST_VIEW_CHOOSE_ITEM		= 0x530B
+	ES_MSG_LIST_VIEW_SEARCH			= 0x530C
+	ES_MSG_LIST_VIEW_CONTEXT_MENU		= 0x530D
+	ES_MSG_LIST_VIEW_COLUMN_MENU		= 0x530E
+	ES_MSG_LIST_VIEW_GET_SUMMARY		= 0x530F
+	ES_MSG_LIST_VIEW_GET_COLUMN_SORT	= 0x5310
+	ES_MSG_LIST_VIEW_GET_ITEM_DATA		= 0x5311
 
 	// Reorder list messages:
 	ES_MSG_REORDER_ITEM_TEST		= 0x5400
@@ -1669,10 +1670,23 @@ struct EsMessageGetContent {
 	uint16_t activeColumnIndex;
 };
 
+struct EsMessageGetItemData {
+	EsListViewIndex index;
+	EsListViewIndex group;
+	uint32_t columnID;
+	uint16_t activeColumnIndex;
+	uint32_t icon;
+
+	union {
+		struct { STRING s; };
+		int64_t i;
+		double d;
+	};
+};
+
 struct EsMessageGetIndent {
 	EsListViewIndex group;
 	EsListViewIndex index;
-
 	uint8_t indent;
 };
 
@@ -1866,6 +1880,7 @@ struct EsMessage {
 		EsMessageSearchItem searchItem;
 		EsMessageColumnMenu columnMenu;
 		EsMessageGetColumnSort getColumnSort;
+		EsMessageGetItemData getItemData;
 
 		// Specific element messages:
 		EsMessageSliderMoved sliderMoved;

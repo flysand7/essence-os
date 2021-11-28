@@ -1742,7 +1742,7 @@ struct EsListView : EsElement {
 			}
 
 			for (uintptr_t i = 0; i < registeredColumns.Length(); i++) {
-				if ((registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+				if ((registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
 					for (uintptr_t j = 0; j < registeredColumns[i].items.Length(); j++) {
 						EsHeapFree(registeredColumns[i].items[j].s.string);
 					}
@@ -1949,79 +1949,104 @@ struct EsListView : EsElement {
 			selectedCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SELECTED_CHOICE_CELL, 0), false);
 
 			EsListViewChangeStyles(this, nullptr, nullptr, nullptr, nullptr, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
-		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (flags & ES_LIST_VIEW_FIXED_ITEMS)) {
+		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
 			uintptr_t index = message->getContent.index;
-			EsAssert(index < fixedItems.Length());
-			index = fixedItemIndices[index];
-			ListViewFixedItemData emptyData = {};
-			ListViewFixedItem *item = &fixedItems[index];
-			ListViewColumn *column = &registeredColumns[(flags & ES_LIST_VIEW_COLUMNS) ? activeColumns[message->getContent.activeColumnIndex] : 0];
-			ListViewFixedItemData *data = index < column->items.Length() ? &column->items[index] : &emptyData;
-			uint32_t format = column->flags & ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK;
-			uint32_t type = column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK;
 
-			if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) {
-				message->getContent.icon = item->iconID;
+			ListViewFixedItemData data = {};
+
+			ListViewColumn *column = &registeredColumns[(flags & ES_LIST_VIEW_COLUMNS) ? activeColumns[message->getContent.activeColumnIndex] : 0];
+			uint32_t format = column->flags & ES_LIST_VIEW_COLUMN_FORMAT_MASK;
+			uint32_t type = column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK;
+
+			if (flags & ES_LIST_VIEW_FIXED_ITEMS) {
+				EsAssert(index < fixedItems.Length());
+				index = fixedItemIndices[index];
+				ListViewFixedItem *item = &fixedItems[index];
+				if (index < column->items.Length()) data = column->items[index];
+
+				if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) {
+					message->getContent.icon = item->iconID;
+				}
+			} else {
+				EsMessage m = { .type = ES_MSG_LIST_VIEW_GET_ITEM_DATA };
+				m.getItemData.index = message->getContent.index;
+				m.getItemData.group = message->getContent.group;
+				m.getItemData.columnID = message->getContent.columnID;
+				m.getItemData.activeColumnIndex = message->getContent.activeColumnIndex;
+				EsMessageSend(this, &m);
+
+				if (type == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
+					data.s.string = (char *) m.getItemData.s;
+					data.s.bytes = m.getItemData.sBytes;
+				} else if (type == ES_LIST_VIEW_COLUMN_DATA_DOUBLES) {
+					data.d = m.getItemData.d;
+				} else if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
+					data.i = m.getItemData.i;
+				}
+
+				if (!activeColumns.Length() || message->getContent.columnID == registeredColumns[activeColumns[0]].id) {
+					message->getContent.icon = m.getItemData.icon;
+				}
 			}
 
 #define BOOLEAN_FORMAT(trueString, falseString) \
-	if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) { \
-		EsBufferFormat(message->getContent.buffer, "%z", data->i ? interfaceString_ ## trueString : interfaceString_ ## falseString); \
+	if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) { \
+		EsBufferFormat(message->getContent.buffer, "%z", data.i ? interfaceString_ ## trueString : interfaceString_ ## falseString); \
 	} else { \
 		EsAssert(false); \
 	}
 #define NUMBER_FORMAT(unitString) \
-	if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) { \
-		EsBufferFormat(message->getContent.buffer, "%d%z", data->i, interfaceString_ ## unitString); \
-	} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) { \
-		EsBufferFormat(message->getContent.buffer, "%F%z", data->d, interfaceString_ ## unitString); \
+	if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) { \
+		EsBufferFormat(message->getContent.buffer, "%d%z", data.i, interfaceString_ ## unitString); \
+	} else if (type == ES_LIST_VIEW_COLUMN_DATA_DOUBLES) { \
+		EsBufferFormat(message->getContent.buffer, "%F%z", data.d, interfaceString_ ## unitString); \
 	} else { \
 		EsAssert(false); \
 	}
 #define UNIT_FORMAT(unitString1, unitString2, unitString3) \
-	double d = type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS ? data->i : type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES ? data->d : 0; \
+	double d = type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS ? data.i : type == ES_LIST_VIEW_COLUMN_DATA_DOUBLES ? data.d : 0; \
 	if (d < 10000)         EsBufferFormat(message->getContent.buffer, "%F%z",     d,           interfaceString_ ## unitString1); \
 	else if (d < 10000000) EsBufferFormat(message->getContent.buffer, "%.F%z", 1, d / 1000,    interfaceString_ ## unitString2); \
 	else                   EsBufferFormat(message->getContent.buffer, "%.F%z", 1, d / 1000000, interfaceString_ ## unitString3);
 
-			if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DEFAULT) {
-				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
-					EsBufferFormat(message->getContent.buffer, "%s", data->s.bytes, data->s.string);
-				} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
-					EsBufferFormat(message->getContent.buffer, "%F", data->d);
-				} else if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
-					EsBufferFormat(message->getContent.buffer, "%d", data->i);
+			if (format == ES_LIST_VIEW_COLUMN_FORMAT_DEFAULT) {
+				if (type == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
+					EsBufferFormat(message->getContent.buffer, "%s", data.s.bytes, data.s.string);
+				} else if (type == ES_LIST_VIEW_COLUMN_DATA_DOUBLES) {
+					EsBufferFormat(message->getContent.buffer, "%F", data.d);
+				} else if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
+					EsBufferFormat(message->getContent.buffer, "%d", data.i);
 				}
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES) {
-				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
-					EsBufferFormat(message->getContent.buffer, "%D", data->i);
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_BYTES) {
+				if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
+					EsBufferFormat(message->getContent.buffer, "%D", data.i);
 				} else {
 					EsAssert(false);
 				}
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING) {
-				if (type == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
-					EsAssert(data->i >= 0 && (uintptr_t) data->i < column->enumStringCount);
-					EsBufferFormat(message->getContent.buffer, "%s", column->enumStrings[data->i].stringBytes, column->enumStrings[data->i].string);
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING) {
+				if (type == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
+					EsAssert(data.i >= 0 && (uintptr_t) data.i < column->enumStringCount);
+					EsBufferFormat(message->getContent.buffer, "%s", column->enumStrings[data.i].stringBytes, column->enumStrings[data.i].string);
 				} else {
 					EsAssert(false);
 				}
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_YES_NO) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_YES_NO) {
 				BOOLEAN_FORMAT(CommonBooleanYes, CommonBooleanNo);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ON_OFF) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_ON_OFF) {
 				BOOLEAN_FORMAT(CommonBooleanOn, CommonBooleanOff);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_PERCENTAGE) {
 				NUMBER_FORMAT(CommonUnitPercent);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BITS) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_BITS) {
 				NUMBER_FORMAT(CommonUnitBits);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PIXELS) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_PIXELS) {
 				NUMBER_FORMAT(CommonUnitPixels);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_DPI) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_DPI) {
 				NUMBER_FORMAT(CommonUnitDPI);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_SECONDS) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_SECONDS) {
 				NUMBER_FORMAT(CommonUnitSeconds);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_HERTZ) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_HERTZ) {
 				UNIT_FORMAT(CommonUnitHz, CommonUnitKHz, CommonUnitMHz);
-			} else if (format == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTE_RATE) {
+			} else if (format == ES_LIST_VIEW_COLUMN_FORMAT_BYTE_RATE) {
 				UNIT_FORMAT(CommonUnitBps, CommonUnitKBps, CommonUnitMBps);
 			} else {
 				EsAssert(false);
@@ -2036,20 +2061,20 @@ struct EsListView : EsElement {
 			menu->userData = this;
 
 			ListViewColumn *column = &registeredColumns[activeColumns[message->columnMenu.activeColumnIndex]];
-			uint32_t sortMode = column->flags & ES_LIST_VIEW_COLUMN_FIXED_SORT_MASK;
+			uint32_t sortMode = column->flags & ES_LIST_VIEW_COLUMN_SORT_MASK;
 			uint64_t checkAscending  = (fixedItemSortDirection == LIST_SORT_DIRECTION_ASCENDING  && column->id == fixedItemSortColumnID) ? ES_MENU_ITEM_CHECKED : 0;
 			uint64_t checkDescending = (fixedItemSortDirection == LIST_SORT_DIRECTION_DESCENDING && column->id == fixedItemSortColumnID) ? ES_MENU_ITEM_CHECKED : 0;
 
-			if (sortMode != ES_LIST_VIEW_COLUMN_FIXED_SORT_NONE) {
+			if (sortMode != ES_LIST_VIEW_COLUMN_SORT_NONE) {
 				EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(CommonSortHeader));
 
-				if (sortMode == ES_LIST_VIEW_COLUMN_FIXED_SORT_DEFAULT) {
+				if (sortMode == ES_LIST_VIEW_COLUMN_SORT_DEFAULT) {
 					EsMenuAddItem(menu, checkAscending, INTERFACE_STRING(CommonSortAToZ), ListViewSetSortAscending, column->id);
 					EsMenuAddItem(menu, checkDescending, INTERFACE_STRING(CommonSortZToA), ListViewSetSortDescending, column->id);
-				} else if (sortMode == ES_LIST_VIEW_COLUMN_FIXED_SORT_TIME) {
+				} else if (sortMode == ES_LIST_VIEW_COLUMN_SORT_TIME) {
 					EsMenuAddItem(menu, checkAscending, INTERFACE_STRING(CommonSortOldToNew), ListViewSetSortAscending, column->id);
 					EsMenuAddItem(menu, checkDescending, INTERFACE_STRING(CommonSortNewToOld), ListViewSetSortDescending, column->id);
-				} else if (sortMode == ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE) {
+				} else if (sortMode == ES_LIST_VIEW_COLUMN_SORT_SIZE) {
 					EsMenuAddItem(menu, checkAscending, INTERFACE_STRING(CommonSortSmallToLarge), ListViewSetSortAscending, column->id);
 					EsMenuAddItem(menu, checkDescending, INTERFACE_STRING(CommonSortLargeToSmall), ListViewSetSortDescending, column->id);
 				}
@@ -2639,15 +2664,15 @@ LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesAscending, left->d > right->d ? 1 :
 LIST_VIEW_SORT_FUNCTION(ListViewSortByDoublesDescending, left->d < right->d ? 1 : left->d == right->d ? 0 : -1);
 
 ListViewSortFunction ListViewGetSortFunction(ListViewColumn *column, uint8_t direction) {
-	if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+	if ((column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
 		return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByStringsDescending : ListViewSortByStringsAscending);
-	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
-		if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_FORMAT_MASK) == ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING) {
+	} else if ((column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
+		if ((column->flags & ES_LIST_VIEW_COLUMN_FORMAT_MASK) == ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING) {
 			return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByEnumsDescending : ListViewSortByEnumsAscending);
 		} else {
 			return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByIntegersDescending : ListViewSortByIntegersAscending);
 		}
-	} else if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
+	} else if ((column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == ES_LIST_VIEW_COLUMN_DATA_DOUBLES) {
 		return (direction == LIST_SORT_DIRECTION_DESCENDING ? ListViewSortByDoublesDescending : ListViewSortByDoublesAscending);
 	} else {
 		EsAssert(false);
@@ -2708,7 +2733,7 @@ void ListViewFixedItemSetInternal(EsListView *view, EsListViewIndex index, uint3
 	}
 
 	EsAssert(column);
-	EsAssert((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == dataType);
+	EsAssert((column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == dataType);
 
 	// Make sure that the column's array of items has been updated to match to the size of fixedItems.
 	if (column->items.Length() < view->fixedItems.Length()) {
@@ -2719,17 +2744,17 @@ void ListViewFixedItemSetInternal(EsListView *view, EsListViewIndex index, uint3
 
 	bool changed = false;
 
-	if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+	if (dataType == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
 		changed = EsStringCompareRaw(column->items[index].s.string, column->items[index].s.bytes, data.s.string, data.s.bytes);
-	} else if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES) {
+	} else if (dataType == ES_LIST_VIEW_COLUMN_DATA_DOUBLES) {
 		changed = column->items[index].d != data.d;
-	} else if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS) {
+	} else if (dataType == ES_LIST_VIEW_COLUMN_DATA_INTEGERS) {
 		changed = column->items[index].i != data.i;
 	} else {
 		EsAssert(false);
 	}
 
-	if (dataType == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+	if (dataType == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
 		EsHeapFree(column->items[index].s.string);
 	}
 
@@ -2752,16 +2777,16 @@ void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex index, uint3
 	HeapDuplicate((void **) &fixedString, &outBytes, string, fixedString.bytes);
 
 	if (outBytes == fixedString.bytes) {
-		ListViewFixedItemSetInternal(view, index, columnID, { .s = fixedString }, ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS);
+		ListViewFixedItemSetInternal(view, index, columnID, { .s = fixedString }, ES_LIST_VIEW_COLUMN_DATA_STRINGS);
 	}
 }
 
 void EsListViewFixedItemSetDouble(EsListView *view, EsListViewIndex index, uint32_t columnID, double number) {
-	ListViewFixedItemSetInternal(view, index, columnID, { .d = number }, ES_LIST_VIEW_COLUMN_FIXED_DATA_DOUBLES);
+	ListViewFixedItemSetInternal(view, index, columnID, { .d = number }, ES_LIST_VIEW_COLUMN_DATA_DOUBLES);
 }
 
 void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex index, uint32_t columnID, int64_t number) {
-	ListViewFixedItemSetInternal(view, index, columnID, { .i = number }, ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS);
+	ListViewFixedItemSetInternal(view, index, columnID, { .i = number }, ES_LIST_VIEW_COLUMN_DATA_INTEGERS);
 }
 
 bool EsListViewFixedItemFindIndex(EsListView *view, EsGeneric data, EsListViewIndex *index) {
@@ -2809,7 +2834,7 @@ bool EsListViewFixedItemRemove(EsListView *view, EsGeneric data) {
 			ListViewColumn *column = &view->registeredColumns[i];
 
 			if ((uintptr_t) fixedIndex < column->items.Length()) {
-				if ((column->flags & ES_LIST_VIEW_COLUMN_FIXED_DATA_MASK) == ES_LIST_VIEW_COLUMN_FIXED_DATA_STRINGS) {
+				if ((column->flags & ES_LIST_VIEW_COLUMN_DATA_MASK) == ES_LIST_VIEW_COLUMN_DATA_STRINGS) {
 					EsHeapFree(column->items[fixedIndex].s.string);
 				}
 

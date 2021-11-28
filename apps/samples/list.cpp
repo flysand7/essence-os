@@ -59,24 +59,24 @@ void _start() {
 
 			// Register the age column.
 			EsListViewRegisterColumn(list, 
-					COLUMN_AGE,                               // The column's ID.
-					"Age", -1,                                // Its title string.
-					ES_LIST_VIEW_COLUMN_HAS_MENU              // Column header has a menu.
-					| ES_TEXT_H_RIGHT                         // Align the text in the column to the right.
-					| ES_DRAW_CONTENT_TABULAR                 // Use the tabular digits style, so that digits line up between rows.
-					| ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS // We're storing integers in this column (the default is strings).
-					| ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE,    // The items in the column can be sorted by their size.
-					100);                                     // Initial width.
+					COLUMN_AGE,                         // The column's ID.
+					"Age", -1,                          // Its title string.
+					ES_LIST_VIEW_COLUMN_HAS_MENU        // Column header has a menu.
+					| ES_TEXT_H_RIGHT                   // Align the text in the column to the right.
+					| ES_DRAW_CONTENT_TABULAR           // Use the tabular digits style, so that digits line up between rows.
+					| ES_LIST_VIEW_COLUMN_DATA_INTEGERS // We're storing integers in this column (the default is strings).
+					| ES_LIST_VIEW_COLUMN_SORT_SIZE,    // The items in the column can be sorted by their size.
+					100);                               // Initial width.
 
 			// Register the favorite color columns.
 			EsListViewRegisterColumn(list, 
-					COLUMN_FAVORITE_COLOR,                         // The column's ID.
-					"Favorite color", -1,                          // Its title string.
-					ES_LIST_VIEW_COLUMN_HAS_MENU                   // Column header has a menu.
-					| ES_DRAW_CONTENT_RICH_TEXT                    // Parse rich text markup in the strings. (See colorStrings above).
-					| ES_LIST_VIEW_COLUMN_FIXED_FORMAT_ENUM_STRING // To display an item, lookup an enum string from the array.
-					| ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS,     // The enum values are stored as integers.
-					150);                                          // Initial widths.
+					COLUMN_FAVORITE_COLOR,                   // The column's ID.
+					"Favorite color", -1,                    // Its title string.
+					ES_LIST_VIEW_COLUMN_HAS_MENU             // Column header has a menu.
+					| ES_DRAW_CONTENT_RICH_TEXT              // Parse rich text markup in the strings. (See colorStrings above).
+					| ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING // To display an item, lookup an enum string from the array.
+					| ES_LIST_VIEW_COLUMN_DATA_INTEGERS,     // The enum values are stored as integers.
+					150);                                    // Initial widths.
 			EsListViewFixedItemSetEnumStringsForColumn(list, 
 					COLUMN_FAVORITE_COLOR,                           // Set the enum strings for the favorite color column.
 					colorStrings,                                    // The strings to use for the enum items in this column.

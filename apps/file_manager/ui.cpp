@@ -747,6 +747,23 @@ int ListCallback(EsElement *element, EsMessage *message) {
 				EsBufferFormat(message->getContent.buffer, "%D", entry->size);
 			}
 		}
+	} else if (message->type == ES_MSG_LIST_VIEW_GET_ITEM_DATA) {
+		int column = message->getItemData.columnID, index = message->getItemData.index;
+		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
+		ListEntry *listEntry = &instance->listContents[index];
+		FolderEntry *entry = listEntry->entry;
+		FileType *fileType = FolderEntryGetType(instance->folder, entry);
+
+		if (column == COLUMN_NAME) {
+			String name = entry->GetName();
+			message->getItemData.s = name.text;
+			message->getItemData.sBytes = name.bytes;
+		} else if (column == COLUMN_TYPE) {
+			message->getItemData.s = fileType->name;
+			message->getItemData.sBytes = fileType->nameBytes;
+		} else if (column == COLUMN_SIZE) {
+			message->getItemData.i = entry->size;
+		}
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_SUMMARY) {
 		int index = message->getContent.index;
 		EsAssert(index < (int) instance->listContents.Length() && index >= 0);
@@ -1097,7 +1114,8 @@ void InstanceCreateUI(Instance *instance) {
 	instance->list->messageUser = ListCallback;
 	EsListViewRegisterColumn(instance->list, COLUMN_NAME, INTERFACE_STRING(FileManagerColumnName), ES_LIST_VIEW_COLUMN_HAS_MENU);
 	EsListViewRegisterColumn(instance->list, COLUMN_TYPE, INTERFACE_STRING(FileManagerColumnType), ES_LIST_VIEW_COLUMN_HAS_MENU);
-	EsListViewRegisterColumn(instance->list, COLUMN_SIZE, INTERFACE_STRING(FileManagerColumnSize), ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT);
+	EsListViewRegisterColumn(instance->list, COLUMN_SIZE, INTERFACE_STRING(FileManagerColumnSize), 
+			ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT | ES_LIST_VIEW_COLUMN_DATA_INTEGERS | ES_LIST_VIEW_COLUMN_FORMAT_BYTES);
 	EsListViewAddAllColumns(instance->list);
 	EsListViewInsertGroup(instance->list, 0);
 

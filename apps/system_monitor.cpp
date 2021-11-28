@@ -320,8 +320,6 @@ void UpdateDisplay(Instance *instance, int index) {
 	}
 }
 
-#define GET_CONTENT(...) EsBufferFormat(message->getContent.buffer, __VA_ARGS__)
-
 int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
 		message->selectItem.isSelected = processes[message->selectItem.index].data.pid == selectedPID;
@@ -382,10 +380,10 @@ void ProcessApplicationMessage(EsMessage *message) {
 		instance->listViewProcesses->messageUser = ListViewProcessesCallback;
 		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_NAME, "Name", -1, ES_LIST_VIEW_COLUMN_HAS_MENU, 150);
 		uint32_t numericColumnFlags = ES_LIST_VIEW_COLUMN_HAS_MENU | ES_TEXT_H_RIGHT | ES_DRAW_CONTENT_TABULAR 
-			| ES_LIST_VIEW_COLUMN_FIXED_DATA_INTEGERS | ES_LIST_VIEW_COLUMN_FIXED_SORT_SIZE;
+			| ES_LIST_VIEW_COLUMN_DATA_INTEGERS | ES_LIST_VIEW_COLUMN_SORT_SIZE;
 		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_PID, "PID", -1, numericColumnFlags, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_MEMORY, "Memory", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FIXED_FORMAT_BYTES, 120);
-		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_CPU, "CPU", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FIXED_FORMAT_PERCENTAGE, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_MEMORY, "Memory", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FORMAT_BYTES, 120);
+		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_CPU, "CPU", -1, numericColumnFlags | ES_LIST_VIEW_COLUMN_FORMAT_PERCENTAGE, 120);
 		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_HANDLES, "Handles", -1, numericColumnFlags, 120);
 		EsListViewRegisterColumn(instance->listViewProcesses, PROCESSES_COLUMN_THREADS, "Threads", -1, numericColumnFlags, 120);
 		EsListViewAddAllColumns(instance->listViewProcesses);
