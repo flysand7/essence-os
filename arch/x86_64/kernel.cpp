@@ -411,6 +411,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 		}
 
 		bool supervisor = (context->cs & 3) == 0;
+		Thread *currentThread = GetCurrentThread();
 
 		if (!supervisor) {
 			// EsPrint("User interrupt: %x/%x/%x\n", interrupt, context->cr2, context->errorCode);
@@ -424,9 +425,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 			}
 
 			// User-code exceptions are *basically* the same thing as system calls.
-			Thread *currentThread = GetCurrentThread();
-			ThreadTerminatableState previousTerminatableState;
-			previousTerminatableState = currentThread->terminatableState;
+			ThreadTerminatableState previousTerminatableState = currentThread->terminatableState;
 			currentThread->terminatableState = THREAD_IN_SYSCALL;
 
 			if (local && local->spinlockCount) {
@@ -435,6 +434,7 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 			// Re-enable interrupts during exception handling.
 			ProcessorEnableInterrupts();
+			local = nullptr; // The CPU we're executing on could change.
 
 			if (interrupt == 14) {
 				bool success = MMArchHandlePageFault(context->cr2, (context->errorCode & 2) ? MM_HANDLE_PAGE_FAULT_WRITE : 0);
@@ -450,10 +450,10 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 
 			// TODO Usermode exceptions and debugging.
 			KernelLog(LOG_ERROR, "Arch", "unhandled userland exception", 
-					"InterruptHandler - Exception (%z) in userland process (%z).\nRIP = %x (CPU %d)\nRSP = %x\nX86_64 error codes: [err] %x, [cr2] %x\n", 
+					"InterruptHandler - Exception (%z) in userland process (%z).\nRIP = %x\nRSP = %x\nX86_64 error codes: [err] %x, [cr2] %x\n", 
 					exceptionInformation[interrupt], 
 					currentThread->process->cExecutableName,
-					context->rip, local->processorID, context->rsp, context->errorCode, context->cr2);
+					context->rip, context->rsp, context->errorCode, context->cr2);
 
 			EsPrint("Attempting to make a stack trace...\n");
 
@@ -507,19 +507,20 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 					goto fault;
 				}
 
-				if ((context->flags & 0x200) && context->cr8 != 0xE) {
-					ProcessorEnableInterrupts();
-				}
-
 				if (local && local->spinlockCount && ((context->cr2 >= 0xFFFF900000000000 && context->cr2 < 0xFFFFF00000000000) 
 							|| context->cr2 < 0x8000000000000000)) {
 					KernelPanic("HandlePageFault - Page fault occurred with spinlocks active at %x (S = %x, B = %x, LG = %x, CR2 = %x, local = %x).\n", 
 							context->rip, context->rsp, context->rbp, local->currentThread->lastKnownExecutionAddress, context->cr2, local);
 				}
-				
+
+				if ((context->flags & 0x200) && context->cr8 != 0xE) {
+					ProcessorEnableInterrupts();
+					local = nullptr; // The CPU we're executing on could change.
+				}
+
 				if (!MMArchHandlePageFault(context->cr2, MM_HANDLE_PAGE_FAULT_FOR_SUPERVISOR
 							| ((context->errorCode & 2) ? MM_HANDLE_PAGE_FAULT_WRITE : 0))) {
-					if (local->currentThread->inSafeCopy && context->cr2 < 0x8000000000000000) {
+					if (currentThread->inSafeCopy && context->cr2 < 0x8000000000000000) {
 						context->rip = context->r8; // See definition of MMArchSafeCopy.
 					} else {
 						goto fault;
@@ -529,11 +530,11 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 				ProcessorDisableInterrupts();
 			} else {
 				fault:
-				KernelPanic("Unresolvable processor exception encountered in supervisor mode.\n%z\nRIP = %x (CPU %d)\nX86_64 error codes: [err] %x, [cr2] %x\n"
+				KernelPanic("Unresolvable processor exception encountered in supervisor mode.\n%z\nRIP = %x\nX86_64 error codes: [err] %x, [cr2] %x\n"
 						"Stack: [rsp] %x, [rbp] %x\nRegisters: [rax] %x, [rbx] %x, [rsi] %x, [rdi] %x.\nThread ID = %d\n", 
-						exceptionInformation[interrupt], context->rip, local ? local->processorID : -1, context->errorCode, context->cr2, 
+						exceptionInformation[interrupt], context->rip, context->errorCode, context->cr2, 
 						context->rsp, context->rbp, context->rax, context->rbx, context->rsi, context->rdi, 
-						local && local->currentThread ? local->currentThread->id : -1);
+						currentThread ? currentThread->id : -1);
 			}
 		}
 	} else if (interrupt == 0xFF) {
