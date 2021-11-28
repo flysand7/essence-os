@@ -152,6 +152,7 @@ char apiLinkFlags2[4096] = " -lgcc ";
 char apiLinkFlags3[4096] = " -Wl,--end-group -Lroot/Applications/POSIX/lib ";
 char kernelLinkFlags[4096] = " -ffreestanding -nostdlib -lgcc -g -z max-page-size=0x1000 ";
 char commonAssemblyFlags[4096] = " -Fdwarf ";
+const char *desktopProfilingFlags = "";
 
 // Specific configuration options:
 
@@ -568,10 +569,11 @@ void BuildDesktop(Application *application) {
 
 	snprintf(buffer, sizeof(buffer), "arch/%s/api.s", target);
 	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/api1.d", "-o", "bin/api1.o", ArgString(commonAssemblyFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags));
+	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags), ArgString(desktopProfilingFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/posix.cpp", "-o", "bin/api3.o", ArgString(commonCompileFlags));
+	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/profiling.cpp", "-o", "bin/api4.o", "-DPROFILING_IMPLEMENTATION", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/crti.o", "bin/crtbegin.o", 
-			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/crtend.o", "bin/crtn.o", 
+			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/api4.o", "bin/crtend.o", "bin/crtn.o", 
 			ArgString(apiLinkFlags1), ArgString(apiLinkFlags2), ArgString(apiLinkFlags3));
 	ExecuteForApp(application, toolchainStrip, "-o", "bin/Desktop.no_symbols", "--strip-all", "bin/Desktop");
 
@@ -1350,6 +1352,8 @@ int main(int argc, char **argv) {
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {
 					strcat(commonAssemblyFlags, " -DCOM_OUTPUT ");
 					strcat(commonCompileFlags, " -DCOM_OUTPUT ");
+				} else if (0 == strcmp(s.key, "Flag.PROFILE_DESKTOP_FUNCTIONS") && atoi(s.value)) {
+					desktopProfilingFlags = "-finstrument-functions";
 				} else if (0 == strcmp(s.key, "BuildCore.NoImportPOSIX")) {
 					noImportPOSIX = !!atoi(s.value);
 				} else if (0 == memcmp(s.key, "General.", 8)) {
@@ -1575,6 +1579,7 @@ int main(int argc, char **argv) {
 			ADD_DEPENDENCY_FILE(application, "bin/api1.d", "API1");
 			ADD_DEPENDENCY_FILE(application, "bin/api2.d", "API2");
 			ADD_DEPENDENCY_FILE(application, "bin/api3.d", "API3");
+			ADD_DEPENDENCY_FILE(application, "bin/api4.d", "API4");
 			arrput(applications, application);
 		}
 

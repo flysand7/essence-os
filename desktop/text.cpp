@@ -822,6 +822,7 @@ void FontDatabaseFree() {
 
 // --------------------------------- Blitting rendered glyphs.
 
+__attribute__((no_instrument_function))
 inline static void DrawStringPixel(int oX, int oY, void *bitmap, size_t stride, uint32_t textColor, 
 		uint32_t selectionColor, int32_t backgroundColor, uint32_t pixel, bool selected, bool fullAlpha) {
 	uint32_t *destination = (uint32_t *) ((uint8_t *) bitmap + (oX) * 4 + (oY) * stride);

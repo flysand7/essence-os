@@ -1139,6 +1139,8 @@ void DoCommand(const char *l) {
 		BuildAndRun(OPTIMISE_OFF, true /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "t3") || 0 == strcmp(l, "qemu-without-compile")) {
 		BuildAndRun(OPTIMISE_OFF, false /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "t4")) {
+		BuildAndRun(OPTIMISE_FULL, true /* compile */, false /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "e")) {
 		Run(EMULATOR_QEMU, LOG_NORMAL, DEBUG_LATER);
 	} else if (0 == strcmp(l, "k") || 0 == strcmp(l, "qemu-with-kvm")) {

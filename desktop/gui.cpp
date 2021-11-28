@@ -8035,6 +8035,13 @@ void InspectorVisualizeLayoutBounds(EsInstance *instance, EsElement *, EsCommand
 	EsElementRepaint(window);
 }
 
+#ifdef PROFILE_DESKTOP_FUNCTIONS
+void InspectorBeginProfiling(EsInstance *, EsElement *, EsCommand *) {
+	size_t entryCount = 3000000;
+	ProfilingSetup((ProfilingEntry *) EsHeapAllocate(sizeof(ProfilingEntry) * entryCount, false), entryCount);
+}
+#endif
+
 void InspectorAddElement2(EsMenu *menu, EsGeneric context) {
 	InspectorWindow *inspector = (InspectorWindow *) menu->instance; 
 	if (inspector->selectedElement == -1) return;
@@ -8094,6 +8101,10 @@ void InspectorSetup(EsWindow *window) {
 		EsButtonOnCommand(inspector->visualizeLayoutBounds, InspectorVisualizeLayoutBounds);
 		inspector->visualizePaintSteps = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR, 0, "Visualize paint steps");
 		EsButtonOnCommand(inspector->visualizePaintSteps, InspectorVisualizePaintSteps);
+		EsSpacerCreate(toolbar, ES_CELL_H_FILL);
+#ifdef PROFILE_DESKTOP_FUNCTIONS
+		EsButtonOnCommand(EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR, 0, "Begin profiling"), InspectorBeginProfiling);
+#endif
 	}
 
 	inspector->elementList = EsListViewCreate(panel1, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT);

@@ -261,11 +261,10 @@ struct APIInstance {
 
 #include "renderer.cpp"
 #include "theme.cpp"
-
 #define TEXT_RENDERER
 #include "text.cpp"
 #undef TEXT_RENDERER
-
+#include "profiling.cpp"
 #include "gui.cpp"
 
 #ifndef NO_API_TABLE
@@ -1106,12 +1105,13 @@ EsMessage *EsMessageReceive() {
 			ProcessMessageTiming timing = {};
 			double start = EsTimeStampMs();
 			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, &timing);
-			EsPrint("Processed message from WM %x in %Fms (%Fms logic, %Fms layout, %Fms paint, %Fms update screen).\n", 
+			EsPrint("Processed message from WM %x in %Fms (%Fms logic, %Fms layout, %Fms paint, %Fms update screen). Profiling buffer %F%% full.\n", 
 					type, EsTimeStampMs() - start, 
 					timing.endLogic - timing.startLogic, 
 					timing.endLayout - timing.startLayout,
 					timing.endPaint - timing.startPaint,
-					timing.endUpdate - timing.startUpdate);
+					timing.endUpdate - timing.startUpdate,
+					profilingBufferSize ? profilingBufferPosition * 100.0 / profilingBufferSize : 0);
 #else
 			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
 #endif
@@ -1470,6 +1470,7 @@ uintptr_t EsSystemGetOptimalWorkQueueThreadCount() {
 	return EsSyscall(ES_SYSCALL_PROCESSOR_COUNT, 0, 0, 0, 0);
 }
 
+__attribute__((no_instrument_function))
 void ThreadInitialise(ThreadLocalStorage *local) {
 	EsMemoryZero(local, sizeof(ThreadLocalStorage));
 	EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_THREAD, (uintptr_t) &local->id, 0, 0);

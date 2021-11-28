@@ -95,6 +95,7 @@ EsRectangle EsRectangleBounding(EsRectangle a, EsRectangle b) {
 	return a;
 }
 
+__attribute__((no_instrument_function))
 EsRectangle EsRectangleIntersection(EsRectangle a, EsRectangle b) {
 	if (a.l < b.l) a.l = b.l;
 	if (a.t < b.t) a.t = b.t;
@@ -164,6 +165,7 @@ EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side) {
 #if defined(SHARED_COMMON_WANT_RENDERING) || defined(SHARED_COMMON_WANT_ALL)
 
 ES_FUNCTION_OPTIMISE_O3 
+__attribute__((no_instrument_function))
 void BlendPixel(uint32_t *destinationPixel, uint32_t modified, bool fullAlpha) {
 	if ((modified & 0xFF000000) == 0xFF000000) {
 		*destinationPixel = modified;
@@ -1252,6 +1254,7 @@ double EsDoubleParse(const char *nptr, ptrdiff_t maxBytes, char **endptr) {
 
 #ifdef SHARED_COMMON_WANT_ALL
 
+__attribute__((no_instrument_function))
 void EsMemoryCopy(void *_destination, const void *_source, size_t bytes) {
 	// TODO Prevent this from being optimised out in the kernel.
 
@@ -1282,6 +1285,7 @@ void EsMemoryCopy(void *_destination, const void *_source, size_t bytes) {
 	}
 }
 
+__attribute__((no_instrument_function))
 void EsMemoryCopyReverse(void *_destination, void *_source, size_t bytes) {
 	// TODO Prevent this from being optimised out in the kernel.
 
@@ -1304,6 +1308,7 @@ void EsMemoryCopyReverse(void *_destination, void *_source, size_t bytes) {
 	}
 }
 
+__attribute__((no_instrument_function))
 void EsMemoryZero(void *destination, size_t bytes) {
 	// TODO Prevent this from being optimised out in the kernel.
 
@@ -1316,6 +1321,7 @@ void EsMemoryZero(void *destination, size_t bytes) {
 	}
 }
 
+__attribute__((no_instrument_function))
 void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace) {
 	// TODO Prevent this from being optimised out in the kernel.
 
@@ -1342,6 +1348,7 @@ void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace
 	}
 }
 
+__attribute__((no_instrument_function))
 int EsMemoryCompare(const void *a, const void *b, size_t bytes) {
 	if (!bytes) {
 		return 0;
@@ -1361,6 +1368,7 @@ int EsMemoryCompare(const void *a, const void *b, size_t bytes) {
 	return 0;
 }
 
+__attribute__((no_instrument_function))
 uint8_t EsMemorySumBytes(uint8_t *source, size_t bytes) {
 	if (!bytes) {
 		return 0;
@@ -1375,6 +1383,7 @@ uint8_t EsMemorySumBytes(uint8_t *source, size_t bytes) {
 	return total;
 }
 
+__attribute__((no_instrument_function))
 void EsMemoryFill(void *from, void *to, uint8_t byte) {
 	uint8_t *a = (uint8_t *) from;
 	uint8_t *b = (uint8_t *) to;
@@ -1679,12 +1688,14 @@ void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int des
 
 #ifdef SHARED_COMMON_WANT_ALL
 
+__attribute__((no_instrument_function))
 void EsSpinlockAcquire(EsSpinlock *spinlock) {
 	__sync_synchronize();
 	while (__sync_val_compare_and_swap(&spinlock->state, 0, 1));
 	__sync_synchronize();
 }
 
+__attribute__((no_instrument_function))
 void EsSpinlockRelease(EsSpinlock *spinlock) {
 	__sync_synchronize();
 

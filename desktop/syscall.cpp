@@ -120,6 +120,7 @@ int EsProcessGetExitStatus(EsHandle process) {
 
 void ThreadInitialise(ThreadLocalStorage *local);
 
+__attribute__((no_instrument_function))
 void ThreadEntry(EsGeneric argument, EsThreadEntryCallback entryFunction) {
 	ThreadLocalStorage local;
 	ThreadInitialise(&local);

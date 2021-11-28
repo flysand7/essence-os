@@ -33,6 +33,7 @@ inline int DistanceSquared(int x1, int y1, int x2, int y2) {
 	return dx * dx + dy * dy;
 }
 
+__attribute__((no_instrument_function))
 inline int ClampInteger(int low, int high, int integer) {
 	if (integer < low) return low;
 	if (integer > high) return high;
@@ -51,6 +52,7 @@ inline intptr_t ClampIntptr(intptr_t low, intptr_t high, intptr_t integer) {
 	return integer;
 }
 
+__attribute__((no_instrument_function))
 inline int MaximumInteger(int a, int b) {
 	return a > b ? a : b;
 }
@@ -58,14 +60,17 @@ inline int MaximumInteger(int a, int b) {
 #define MaximumInteger3 MaximumInteger
 #define MinimumInteger3 MinimumInteger
 
+__attribute__((no_instrument_function))
 inline int MaximumInteger(int a, int b, int c) {
 	return MaximumInteger(MaximumInteger(a, b), c);
 }
 
+__attribute__((no_instrument_function))
 inline int MaximumInteger(int a, int b, int c, int d) {
 	return MaximumInteger(MaximumInteger(a, b, c), d);
 }
 
+__attribute__((no_instrument_function))
 inline int MinimumInteger(int a, int b) {
 	return a < b ? a : b;
 }
@@ -99,6 +104,7 @@ float LinearMap(float inFrom, float inTo, float outFrom, float outTo, float valu
 	return raw * (outTo - outFrom) + outFrom;
 }
 
+__attribute__((no_instrument_function))
 float LinearInterpolate(float from, float to, float progress) {
 	return from + progress * (to - from);
 }

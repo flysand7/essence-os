@@ -286,6 +286,7 @@ Option options[] = {
 	{ "Flag.ENABLE_POSIX_SUBSYSTEM", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Flag.DEBUG_BUILD", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Flag.USE_SMP", OPTION_TYPE_BOOL, { .b = true } },
+	{ "Flag.PROFILE_DESKTOP_FUNCTIONS", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Flag.BGA_RESOLUTION_WIDTH", OPTION_TYPE_STRING, { .s = "1600" } },
 	{ "Flag.BGA_RESOLUTION_HEIGHT", OPTION_TYPE_STRING, { .s = "900" } },
 	{ "Flag.VGA_TEXT_MODE", OPTION_TYPE_BOOL, { .b = false } },

@@ -27,7 +27,7 @@ template <class T, EsHeap *heap = nullptr>
 struct Array {
 	T *array;
 
-	inline size_t Length() { return array ? ArrayHeader(array)->length : 0; }
+	__attribute__((no_instrument_function)) inline size_t Length() { return array ? ArrayHeader(array)->length : 0; }
 	inline T &First() { return array[0]; }
 	inline T &Last() { return array[Length() - 1]; }
 	inline void Delete(uintptr_t position) { _ArrayDelete(array, position, sizeof(T), 1); }
