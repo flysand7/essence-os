@@ -1,4 +1,4 @@
-function CompileHarfbuzz() {
+CompileHarfbuzz() {
 	$CC -c hb-aat-layout.cc -o hb-aat-layout.o
 	$CC -c hb-aat-map.cc -o hb-aat-map.o
 	$CC -c hb-blob.cc -o hb-blob.o
@@ -75,7 +75,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 
 	SED=sed
 
-	if [[ "$OSTYPE" == "darwin"* ]]; then
+	if [ "$OSTYPE" = "darwin"* ]; then
 		SED=gsed
 	fi
 
