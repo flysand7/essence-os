@@ -1,10 +1,16 @@
 # **Essence** — An Operating System
 
+![Screenshot showing the file manager, text editor, and bitmap image editor.](https://nakst.gitlab.io/essence.jpg)
+
 Video demonstration as of October 2021, running on real hardware: (YouTube) 
 
 [![Video demonstration as of October 2021.](http://img.youtube.com/vi/aGxt-tQ5BtM/0.jpg)](http://www.youtube.com/watch?v=aGxt-tQ5BtM "Essence — October ’21 Progress")
 
-## Support
+## Links
+
+For discussion, join our Discord server: https://discord.gg/skeP9ZGDK8
+
+Alternatively, visit the forums (not very active): https://essence.handmade.network/forums.
 
 To support development, you can donate to my Patreon: https://www.patreon.com/nakst.
 
@@ -50,12 +56,6 @@ Desktop
 * Tabbed windows.
 * Multi-lingual text rendering and layout with FreeType and Harfbuzz.
 
-## Discussion
-
-Join our Discord server: https://discord.gg/skeP9ZGDK8
-
-Alternatively, visit the forums (not very active): https://essence.handmade.network/forums.
-
 ## Building
 
 **Warning: This software is still in development. Expect bugs.**
@@ -77,15 +77,17 @@ Once complete, you can test the operating system in an emulator.
 * If you have Qemu installed, run `t2` in the build system.
 * If you have VirtualBox installed, make a 128MB drive called `vbox.vdi` in the `bin` folder, attach it to a virtual machine called "Essence" (choose "Windows 7 64-bit" as the OS), and run `v` in the build system.
 
-## Keyboard layout
-
-To set the default keyboard layout for use in the emulator to match your current one, run:
-
-    setxkbmap -query | grep layout | awk '{OFS=""; print "General.keyboard_layout=", $2}' >> bin/config.ini
+Run `build-port` in the build system to view a list of optional ports that can be built.
 
 ## Configuration
 
 From within the build system, run the command `config` to open the configuration editor. Click an option to change its value, and then click the `Save` button. You changes are saved locally, and will not be uploaded by Git. Not all configurations are likely to work; if you don't know what you're doing, it's probably best to stick with the defaults.
+
+### Keyboard layout
+
+To set the default keyboard layout for use in the emulator to match your current one, run:
+
+    setxkbmap -query | grep layout | awk '{OFS=""; print "General.keyboard_layout=", $2}' >> bin/config.ini
 
 ## Generating the API header
 
