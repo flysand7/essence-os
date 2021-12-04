@@ -823,6 +823,15 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 		KernelPanic("PostContextSwitch - spinlockCount is non-zero (%x).\n", local);
 	}
 
+	currentThread->timerAdjustTicks += ProcessorReadTimeStamp() - local->currentThread->lastInterruptTimeStamp;
+
+	if (currentThread->timerAdjustAddress && MMArchIsBufferInUserRange(currentThread->timerAdjustAddress, sizeof(uint64_t))) {
+		// TODO If the MMArchSafeCopy fails, then the kernel will panic because interrupts are disabled here.
+		// 	We probably need a special version of MMArchSafeCopy that doesn't try to resolve page faults and fails faster.
+		// TODO Instead of timerAdjustAddress, maybe copy it onto a fixed location at the base of thread's stack?
+		MMArchSafeCopy(currentThread->timerAdjustAddress, (uintptr_t) &local->currentThread->timerAdjustTicks, sizeof(uint64_t));
+	}
+
 #ifdef ES_ARCH_X86_32
 	if (context->fromRing0) {
 		// Returning to a kernel thread; we need to fix the stack.

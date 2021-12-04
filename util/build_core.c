@@ -571,9 +571,8 @@ void BuildDesktop(Application *application) {
 	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/api1.d", "-o", "bin/api1.o", ArgString(commonAssemblyFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags), ArgString(desktopProfilingFlags));
 	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/posix.cpp", "-o", "bin/api3.o", ArgString(commonCompileFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/profiling.cpp", "-o", "bin/api4.o", "-DPROFILING_IMPLEMENTATION", ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/crti.o", "bin/crtbegin.o", 
-			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/api4.o", "bin/crtend.o", "bin/crtn.o", 
+			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/crtend.o", "bin/crtn.o", 
 			ArgString(apiLinkFlags1), ArgString(apiLinkFlags2), ArgString(apiLinkFlags3));
 	ExecuteForApp(application, toolchainStrip, "-o", "bin/Desktop.no_symbols", "--strip-all", "bin/Desktop");
 
@@ -1579,7 +1578,6 @@ int main(int argc, char **argv) {
 			ADD_DEPENDENCY_FILE(application, "bin/api1.d", "API1");
 			ADD_DEPENDENCY_FILE(application, "bin/api2.d", "API2");
 			ADD_DEPENDENCY_FILE(application, "bin/api3.d", "API3");
-			ADD_DEPENDENCY_FILE(application, "bin/api4.d", "API4");
 			arrput(applications, application);
 		}
 

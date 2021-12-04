@@ -1949,7 +1949,7 @@ struct EsListView : EsElement {
 			selectedCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SELECTED_CHOICE_CELL, 0), false);
 
 			EsListViewChangeStyles(this, nullptr, nullptr, nullptr, nullptr, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
-		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && activeColumns.Length()) {
+		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (activeColumns.Length() || (flags & ES_LIST_VIEW_FIXED_ITEMS))) {
 			uintptr_t index = message->getContent.index;
 
 			ListViewFixedItemData data = {};

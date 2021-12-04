@@ -1,55 +1,51 @@
-// TODO Adjust time stamps for thread preemption.
-
-#include <stdint.h>
-#include <stddef.h>
+// TODO Include external events on the flame graph, such as context switches.
 
 struct ProfilingEntry {
 	void *thisFunction;
 	uint64_t timeStamp;
 };
 
-extern ptrdiff_t tlsStorageOffset;
-extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
-extern "C" uint64_t ProcessorReadTimeStamp();
-void EnterDebugger();
+ProfilingEntry *gfProfilingBuffer;
+size_t gfProfilingBufferSize;
+uintptr_t gfProfilingBufferPosition;
+volatile ThreadLocalStorage *gfProfilingThread;
+uint64_t gfProfilingTicksPerMs;
 
-extern size_t profilingBufferSize;
-extern uintptr_t profilingBufferPosition;
-void ProfilingSetup(ProfilingEntry *buffer, size_t size /* number of entries */);
-
-#ifdef PROFILING_IMPLEMENTATION
-
-ProfilingEntry *profilingBuffer;
-size_t profilingBufferSize;
-uintptr_t profilingBufferPosition;
-uintptr_t profilingThread;
-
-#define PROFILING_FUNCTION(_exiting) \
+#define GF_PROFILING_FUNCTION(_exiting) \
 	(void) callSite; \
 	\
-	if (profilingBufferPosition < profilingBufferSize && profilingThread == ProcessorTLSRead(tlsStorageOffset)) { \
-		ProfilingEntry *entry = (ProfilingEntry *) &profilingBuffer[profilingBufferPosition++]; \
+	if (gfProfilingBufferPosition < gfProfilingBufferSize \
+			&& gfProfilingThread == (ThreadLocalStorage *) ProcessorTLSRead(tlsStorageOffset)) { \
+		ProfilingEntry *entry = (ProfilingEntry *) &gfProfilingBuffer[gfProfilingBufferPosition++]; \
 		entry->thisFunction = thisFunction; \
-		entry->timeStamp = ProcessorReadTimeStamp() | ((uint64_t) _exiting << 63); \
-	} else if (profilingBufferSize && profilingThread == ProcessorTLSRead(tlsStorageOffset)) { \
-		profilingBufferSize = 0; \
-		EnterDebugger(); \
+		entry->timeStamp = (ProcessorReadTimeStamp() - gfProfilingThread->timerAdjustTicks) | ((uint64_t) _exiting << 63); \
 	}
 
-extern "C" void __cyg_profile_func_enter(void *thisFunction, void *callSite) {
-	PROFILING_FUNCTION(0);
+extern "C" __attribute__((no_instrument_function))
+void __cyg_profile_func_enter(void *thisFunction, void *callSite) {
+	GF_PROFILING_FUNCTION(0);
 }
 
-extern "C" void __cyg_profile_func_exit(void *thisFunction, void *callSite) {
-	PROFILING_FUNCTION(1);
+extern "C" __attribute__((no_instrument_function))
+void __cyg_profile_func_exit(void *thisFunction, void *callSite) {
+	GF_PROFILING_FUNCTION(1);
 }
 
-void ProfilingSetup(ProfilingEntry *buffer, size_t size) {
-	profilingThread = ProcessorTLSRead(tlsStorageOffset);
+__attribute__((no_instrument_function))
+void GfProfilingInitialise(ProfilingEntry *buffer, size_t size, uint64_t ticksPerMs) {
+	gfProfilingTicksPerMs = ticksPerMs;
+	gfProfilingBuffer = buffer;
+	gfProfilingBufferSize = size;
+}
+
+__attribute__((no_instrument_function))
+void GfProfilingStart() {
+	gfProfilingThread = GetThreadLocalStorage();
+	gfProfilingBufferPosition = 0;
+}
+
+__attribute__((no_instrument_function))
+void GfProfilingStop() {
+	gfProfilingThread = nullptr;
 	__sync_synchronize();
-	profilingBuffer = buffer;
-	profilingBufferSize = size;
-	profilingBufferPosition = 0;
 }
-
-#endif

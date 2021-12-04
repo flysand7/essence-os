@@ -382,6 +382,10 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 	CPULocalStorage *local = GetLocalStorage();
 	uintptr_t interrupt = context->interruptNumber;
 
+	if (local && local->currentThread) {
+		local->currentThread->lastInterruptTimeStamp = ProcessorReadTimeStamp();
+	}
+
 	if (local && local->spinlockCount && context->cr8 != 0xE) {
 		KernelPanic("InterruptHandler - Local spinlockCount is %d but interrupts were enabled (%x/%x).\n", local->spinlockCount, local, context);
 	}

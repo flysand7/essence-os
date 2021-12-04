@@ -670,7 +670,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 		case -1000: {
 			// Update thread local storage:
 			void *apiTLS = ProcessorTLSRead(tlsStorageOffset);
-			EsSyscall(ES_SYSCALL_PROCESS_SET_TLS, a1, 0, 0, 0);
+			EsSyscall(ES_SYSCALL_THREAD_SET_TLS, a1, 0, 0, 0);
 			tlsStorageOffset = -a2;
 			ProcessorTLSWrite(tlsStorageOffset, apiTLS);
 		} break;

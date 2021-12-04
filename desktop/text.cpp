@@ -3385,6 +3385,8 @@ void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
 
 		textbox->scroll.SetX(scrollX);
 	}
+
+	UIQueueEnsureVisibleMessage(textbox);
 }
 
 bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int moveType, bool strongWhitespace = false) {
@@ -4418,10 +4420,6 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		}
 
 		TextboxRefreshVisibleLines(textbox);
-
-		if (textbox->editing && (~textbox->flags & ES_TEXTBOX_MULTILINE)) {
-			EsTextboxEnsureCaretVisible(textbox);
-		}
 	} else if (message->type == ES_MSG_DESTROY) {
 		textbox->visibleLines.Free();
 		textbox->lines.Free();
@@ -4560,7 +4558,6 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			TextboxFindLongestLine(textbox);
 			textbox->scroll.Refresh();
 			EsTextboxEnsureCaretVisible(textbox);
-			UIQueueEnsureVisibleMessage(textbox);
 		}
 	} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
 		TextboxMoveCaretToCursor(textbox, message->mouseDown.positionX, message->mouseDown.positionY, message->type == ES_MSG_MOUSE_RIGHT_DOWN);

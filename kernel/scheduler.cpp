@@ -84,9 +84,14 @@ struct Thread {
 	uintptr_t userStackBase;
 	uintptr_t kernelStackBase;
 	uintptr_t kernelStack;
-	uintptr_t tlsAddress;
 	size_t userStackReserve;
 	volatile size_t userStackCommit;
+
+	uintptr_t tlsAddress;
+
+	uintptr_t timerAdjustAddress;
+	uint64_t timerAdjustTicks;
+	uint64_t lastInterruptTimeStamp;
 
 	ThreadType type;
 	bool isKernelThread, isPageGenerator;

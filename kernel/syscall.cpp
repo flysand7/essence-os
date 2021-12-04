@@ -1313,9 +1313,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_OPEN) {
 	}
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_SET_TLS) {
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_SET_TLS) {
 	currentThread->tlsAddress = argument0; // Set this first, otherwise we could get pre-empted and restore without TLS set.
 	ProcessorSetThreadStorage(argument0);
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
+SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS) {
+	currentThread->timerAdjustAddress = argument0;
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 

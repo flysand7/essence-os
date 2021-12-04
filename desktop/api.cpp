@@ -90,6 +90,7 @@ struct ThreadLocalStorage {
 	ThreadLocalStorage *self;
 
 	EsObjectID id;
+	uint64_t timerAdjustTicks;
 };
 
 struct MountPoint : EsMountPoint {
@@ -1105,13 +1106,12 @@ EsMessage *EsMessageReceive() {
 			ProcessMessageTiming timing = {};
 			double start = EsTimeStampMs();
 			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, &timing);
-			EsPrint("Processed message from WM %x in %Fms (%Fms logic, %Fms layout, %Fms paint, %Fms update screen). Profiling buffer %F%% full.\n", 
+			EsPrint("Processed message from WM %x in %Fms (%Fms logic, %Fms layout, %Fms paint, %Fms update screen).\n", 
 					type, EsTimeStampMs() - start, 
 					timing.endLogic - timing.startLogic, 
 					timing.endLayout - timing.startLayout,
 					timing.endPaint - timing.startPaint,
-					timing.endUpdate - timing.startUpdate,
-					profilingBufferSize ? profilingBufferPosition * 100.0 / profilingBufferSize : 0);
+					timing.endUpdate - timing.startUpdate);
 #else
 			UIProcessWindowManagerMessage((EsWindow *) message.object, &message.message, nullptr);
 #endif
@@ -1474,7 +1474,8 @@ void ThreadInitialise(ThreadLocalStorage *local) {
 	EsMemoryZero(local, sizeof(ThreadLocalStorage));
 	EsSyscall(ES_SYSCALL_THREAD_GET_ID, ES_CURRENT_THREAD, (uintptr_t) &local->id, 0, 0);
 	local->self = local;
-	EsSyscall(ES_SYSCALL_PROCESS_SET_TLS, (uintptr_t) local - tlsStorageOffset, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_THREAD_SET_TLS, (uintptr_t) local - tlsStorageOffset, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS, (uintptr_t) &local->timerAdjustTicks, 0, 0, 0);
 }
 
 #include "desktop.cpp"
@@ -1508,6 +1509,12 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 	if (desktop) {
 		EsPrint("Reached Desktop process.\n");
+
+#ifdef PROFILE_DESKTOP_FUNCTIONS
+		size_t profilingBufferSize = 64 * 1024 * 1024;
+		GfProfilingInitialise((ProfilingEntry *) EsHeapAllocate(profilingBufferSize, true), 
+				profilingBufferSize / sizeof(ProfilingEntry), api.startupInformation->timeStampTicksPerMs);
+#endif
 
 		// Process messages until we find the boot file system.
 
