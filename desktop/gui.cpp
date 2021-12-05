@@ -106,7 +106,7 @@ EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int of
 const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent);
 void AccessKeysCenterHint(EsElement *element, EsMessage *message);
 void UIRemoveFocusFromElement(EsElement *oldFocus);
-void UIQueueEnsureVisibleMessage(EsElement *element);
+void UIQueueEnsureVisibleMessage(EsElement *element, bool center);
 void ColorPickerCreate(EsElement *parent, struct ColorPickerHost host, uint32_t initialColor, bool showTextbox);
 
 void InspectorSetup(EsWindow *window);
@@ -134,6 +134,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_ANIMATING		(1 <<  9)
 #define UI_STATE_CHECK_VISIBLE		(1 << 10)
 #define UI_STATE_QUEUED_ENSURE_VISIBLE	(1 << 11)
+#define UI_STATE_ENSURE_VISIBLE_CENTER  (1 << 12)
 
 // Behaviour modifiers:
 #define UI_STATE_STRONG_PRESSED		(1 << 12)
@@ -2588,6 +2589,8 @@ struct Scrollbar : EsElement {
 };
 
 void ScrollbarLayout(Scrollbar *scrollbar) {
+	// TODO Do this as an UpdateAction?
+
 	if (scrollbar->viewportSize >= scrollbar->contentSize || scrollbar->viewportSize <= 0 || scrollbar->contentSize <= 0) {
 		EsElementSetDisabled(scrollbar, true);
 	} else {
@@ -3194,12 +3197,16 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_ENSURE_VISIBLE) {
 		if (panel->scroll.enabled[0] || panel->scroll.enabled[1]) {
-			EsElement *child = message->child, *e = child;
-			int offsetX = panel->scroll.position[0], offsetY = panel->scroll.position[1];
+			EsElement *child = message->ensureVisible.descendent, *e = child;
+			int offsetX = 0, offsetY = 0;
 			while (e != element) offsetX += e->offsetX, offsetY += e->offsetY, e = e->parent;
 			EsRectangle bounds = panel->GetBounds();
-			panel->scroll.SetX(offsetX + child->width / 2 - bounds.r / 2);
-			panel->scroll.SetY(offsetY + child->height / 2 - bounds.b / 2);
+
+			if (message->ensureVisible.center || !EsRectangleContainsAll(bounds, ES_RECT_4PD(offsetX, offsetY, child->width, child->height))) {
+				panel->scroll.SetX(offsetX + panel->scroll.position[0] + child->width / 2 - bounds.r / 2);
+				panel->scroll.SetY(offsetY + panel->scroll.position[1] + child->height / 2 - bounds.b / 2);
+			}
+
 			return ES_HANDLED;
 		} else {
 			// This is not a scroll container, so don't update the child element being made visible.
@@ -6161,12 +6168,14 @@ bool EsElementIsFocused(EsElement *element) {
 
 void UISendEnsureVisibleMessage(EsElement *element, EsGeneric) {
 	EsElement *child = element, *e = element;
+	bool center = element->state & UI_STATE_ENSURE_VISIBLE_CENTER;
 	EsAssert(element->state & UI_STATE_QUEUED_ENSURE_VISIBLE);
-	element->state &= ~UI_STATE_QUEUED_ENSURE_VISIBLE;
+	element->state &= ~(UI_STATE_QUEUED_ENSURE_VISIBLE | UI_STATE_ENSURE_VISIBLE_CENTER);
 
 	while (e->parent) {
 		EsMessage m = { ES_MSG_ENSURE_VISIBLE };
-		m.child = child;
+		m.ensureVisible.descendent = child;
+		m.ensureVisible.center = center;
 		e = e->parent;
 
 		if (ES_HANDLED == EsMessageSend(e, &m)) {
@@ -6177,7 +6186,11 @@ void UISendEnsureVisibleMessage(EsElement *element, EsGeneric) {
 	EsAssert(~element->state & UI_STATE_QUEUED_ENSURE_VISIBLE);
 }
 
-void UIQueueEnsureVisibleMessage(EsElement *element) {
+void UIQueueEnsureVisibleMessage(EsElement *element, bool center) {
+	if (center) {
+		element->state |= UI_STATE_ENSURE_VISIBLE_CENTER;
+	}
+
 	if (~element->state & UI_STATE_QUEUED_ENSURE_VISIBLE) {
 		element->state |= UI_STATE_QUEUED_ENSURE_VISIBLE;
 		UpdateAction action = {};
@@ -6258,7 +6271,7 @@ void EsElementFocus(EsElement *element, uint32_t flags) {
 	// Ensure the element is visible.
 
 	if ((flags & ES_ELEMENT_FOCUS_ENSURE_VISIBLE) && element) {
-		UIQueueEnsureVisibleMessage(element);
+		UIQueueEnsureVisibleMessage(element, true);
 	}
 }
 

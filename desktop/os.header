@@ -1632,6 +1632,11 @@ struct EsMessageScroll {
 	int scroll, previous;
 };
 
+struct EsMessageEnsureVisible {
+	bool center; // If false, only center the element if it is partially obscured.
+	EsElement *descendent;
+};
+
 // List view messages.
 
 struct EsMessageIterateIndex {
@@ -1862,11 +1867,12 @@ struct EsMessage {
 		EsMessageScrollWheel scrollWheel;
 		EsMessageWindowActivated windowActivated;
 		EsMessageScroll scroll;
+		EsMessageEnsureVisible ensureVisible;
 		const EsStyle *childStyleVariant;
 		EsRectangle *accessKeyHintBounds;
 		EsPainter *painter;
-		EsElement *child;
 		EsCursorStyle cursorStyle;
+		EsElement *child;
 
 		// List view messages:
 		EsMessageIterateIndex iterateIndex;

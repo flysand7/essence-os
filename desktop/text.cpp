@@ -2919,6 +2919,8 @@ struct EsTextbox : EsElement {
 	char *editStartContent;
 	int32_t editStartContentBytes;
 
+	bool ensureCaretVisibleQueued;
+
 	EsUICallback overlayCallback;
 	EsGeneric overlayData;
 
@@ -2926,7 +2928,7 @@ struct EsTextbox : EsElement {
 	uintptr_t activeLineAllocated;
 	int32_t activeLineIndex, activeLineStart, activeLineOldBytes, activeLineBytes;
 
-	int32_t longestLine, longestLineWidth; // To set the horizontal scrollbar's size.
+	int32_t longestLine, longestLineWidth; // To set the horizontal scroll bar's size.
 
 	TextboxCaret carets[2]; // carets[1] is the actual caret; carets[0] is the selection anchor.
 	TextboxCaret wordSelectionAnchor, wordSelectionAnchor2;
@@ -3341,11 +3343,22 @@ TextboxVisibleLine *TextboxGetVisibleLine(EsTextbox *textbox, int32_t documentLi
 		? nullptr : &textbox->visibleLines[documentLineIndex - textbox->firstVisibleLine];
 }
 
-void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
+void TextboxEnsureCaretVisibleActionCallback(EsElement *element, EsGeneric context) {
+	EsTextbox *textbox = (EsTextbox *) element;
+	bool verticallyCenter = context.u;
 	TextboxCaret caret = textbox->carets[1];
-	EsRectangle bounds = textbox->GetBounds();
 
-	{
+	EsPrint("TextboxEnsureCaretVisibleActionCallback ------------\n");
+
+	for (uintptr_t i = 0; i < 3; i++) {
+		// ScrollPane::SetY causes ES_MSG_SCROLL_Y to get sent to the textbox.
+		// This causes a TextboxRefreshVisibleLines, which may cause new lines to added.
+		// If these lines had not been previously horizontally measured, this will then occur.
+		// This then causes a ScrollPane::Refresh for the new horizontal width.
+		// If this causes the horizontal scroll bar to appear, then the caret may no longer be fully visible.
+		// Therefore, we repeat up to 3 times to ensure that the caret is definitely fully visible.
+		
+		EsRectangle bounds = textbox->GetBounds();
 		DocumentLine *line = &textbox->lines[caret.line];
 		int caretY = line->yPosition + textbox->insets.t;
 
@@ -3364,13 +3377,21 @@ void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
 				}
 			}
 
-			textbox->scroll.SetY(scrollY);
+			if (textbox->scroll.position[1] != scrollY) {
+				EsPrint("     new scroll %d\n", scrollY);
+				textbox->scroll.SetY(scrollY);
+			} else {
+				break;
+			}
+		} else {
+			break;
 		}
 	}
 
 	TextboxVisibleLine *visibleLine = TextboxGetVisibleLine(textbox, caret.line);
 
 	if (visibleLine) {
+		EsRectangle bounds = textbox->GetBounds();
 		DocumentLine *line = &textbox->lines[caret.line];
 		int scrollX = textbox->scroll.position[0];
 		int viewportWidth = bounds.r;
@@ -3386,7 +3407,19 @@ void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
 		textbox->scroll.SetX(scrollX);
 	}
 
-	UIQueueEnsureVisibleMessage(textbox);
+	UIQueueEnsureVisibleMessage(textbox, false);
+	textbox->ensureCaretVisibleQueued = false;
+}
+
+void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter) {
+	if (!textbox->ensureCaretVisibleQueued) {
+		UpdateAction action = {};
+		action.element = textbox;
+		action.callback = TextboxEnsureCaretVisibleActionCallback;
+		action.context.u = verticallyCenter;
+		textbox->window->updateActions.Add(action);
+		textbox->ensureCaretVisibleQueued = true;
+	}
 }
 
 bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int moveType, bool strongWhitespace = false) {
@@ -3667,6 +3700,7 @@ void TextboxUndoItemCallback(const void *item, EsUndoManager *manager, EsMessage
 		textbox->carets[0] = header->caretsBefore[0];
 		textbox->carets[1] = header->caretsBefore[1];
 		EsTextboxInsert(textbox, (const char *) (header + 1), header->insertBytes, true);
+		EsTextboxEnsureCaretVisible(textbox);
 	} else if (message->type == ES_MSG_UNDO_CANCEL) {
 		// Nothing to do.
 	}
