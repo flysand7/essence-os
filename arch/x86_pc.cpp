@@ -826,9 +826,8 @@ extern "C" bool PostContextSwitch(InterruptContext *context, MMSpace *oldAddress
 	currentThread->timerAdjustTicks += ProcessorReadTimeStamp() - local->currentThread->lastInterruptTimeStamp;
 
 	if (currentThread->timerAdjustAddress && MMArchIsBufferInUserRange(currentThread->timerAdjustAddress, sizeof(uint64_t))) {
-		// TODO If the MMArchSafeCopy fails, then the kernel will panic because interrupts are disabled here.
-		// 	We probably need a special version of MMArchSafeCopy that doesn't try to resolve page faults and fails faster.
-		// TODO Instead of timerAdjustAddress, maybe copy it onto a fixed location at the base of thread's stack?
+		// ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS ensures that this address is on the thread's user stack,
+		// which is managed by the kernel.
 		MMArchSafeCopy(currentThread->timerAdjustAddress, (uintptr_t) &local->currentThread->timerAdjustTicks, sizeof(uint64_t));
 	}
 

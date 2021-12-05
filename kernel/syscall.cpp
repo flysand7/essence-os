@@ -1139,7 +1139,11 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_STACK_SIZE) {
 		MMRegion *region = MMFindAndPinRegion(currentVMM, thread->userStackBase, thread->userStackReserve);
 		KMutexAcquire(&currentVMM->reserveMutex);
 
-		if (thread->userStackCommit <= argument3 && argument3 <= thread->userStackReserve && !(argument3 & (K_PAGE_BITS - 1)) && region) {
+		if (argument3 >= K_PAGE_SIZE /* see ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS */
+				&& thread->userStackCommit <= argument3 
+				&& argument3 <= thread->userStackReserve 
+				&& !(argument3 & (K_PAGE_BITS - 1)) 
+				&& region) {
 #ifdef K_ARCH_STACK_GROWS_DOWN
 			success = MMCommitRange(currentVMM, region, (thread->userStackReserve - argument3) / K_PAGE_SIZE, argument3 / K_PAGE_SIZE); 
 #else
@@ -1320,8 +1324,18 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_SET_TLS) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS) {
-	currentThread->timerAdjustAddress = argument0;
-	SYSCALL_RETURN(ES_SUCCESS, false);
+#ifdef K_ARCH_STACK_GROWS_DOWN
+	uintptr_t page = currentThread->userStackBase + currentThread->userStackReserve - K_PAGE_SIZE;
+#else
+	uintptr_t page = currentThread->userStackBase;
+#endif
+
+	if (argument0 >= page && argument0 <= page + K_PAGE_SIZE - sizeof(uint64_t)) {
+		currentThread->timerAdjustAddress = argument0;
+		SYSCALL_RETURN(ES_SUCCESS, false);
+	} else {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_MEMORY_REGION, true);
+	}
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_TLS) {

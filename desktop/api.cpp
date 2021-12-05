@@ -151,8 +151,6 @@ struct {
 	double performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
 	uintptr_t performanceTimerStackCount;
 
-	ThreadLocalStorage firstThreadLocalStorage;
-
 	EsHandle workAvailable;
 	EsMutex workMutex;
 	Array<Work> workQueue;
@@ -1481,6 +1479,8 @@ void ThreadInitialise(ThreadLocalStorage *local) {
 #include "desktop.cpp"
 
 extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
+	ThreadLocalStorage threadLocalStorage;
+
 	api.startupInformation = _startupInformation;
 	bool desktop = api.startupInformation->isDesktop;
 	
@@ -1498,7 +1498,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		_init();
 		EsRandomSeed(ProcessorReadTimeStamp());
-		ThreadInitialise(&api.firstThreadLocalStorage);
+		ThreadInitialise(&threadLocalStorage);
 		EsMessageMutexAcquire();
 
 		api.global = (GlobalData *) EsMemoryMapObject(api.startupInformation->globalDataRegion, 
