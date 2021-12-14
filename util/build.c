@@ -41,6 +41,7 @@
 #define ColorNormal "\033[0m"
 
 bool acceptedLicense;
+bool automatedBuild;
 bool foundValidCrossCompiler;
 bool coloredOutput;
 bool encounteredErrors;
@@ -596,7 +597,7 @@ void BuildCrossCompiler() {
 #ifdef __linux__
 		printf("You can either use a pre-built cross compiler (~40MB download), or build one locally.\n");
 		printf("Type 'yes' if you want to use the pre-built cross compiler.\n");
-		usePreBuilt = GetYes();
+		usePreBuilt = automatedBuild || GetYes();
 #else
 		printf("A cross compiler will be built for you automatically.\n");
 #endif
@@ -1152,6 +1153,10 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 	} else if (emulator != -1) {
 		Run(emulator, log, debug);
 	}
+
+	if (automatedBuild) {
+		exit(encounteredErrors ? 1 : 0);
+	}
 }
 
 void DoCommand(const char *l) {
@@ -1660,6 +1665,7 @@ int main(int _argc, char **_argv) {
 			EsINIZeroTerminate(&s);
 
 			INI_READ_BOOL(accepted_license, acceptedLicense);
+			INI_READ_BOOL(automated_build, automatedBuild);
 			INI_READ_STRING(compiler_path, path);
 
 			if (0 == strcmp("cross_compiler_index", s.key)) {
