@@ -560,6 +560,28 @@ void Run(int emulator, int log, int debug) {
 	}
 }
 
+bool AddCompilerToPath() {
+	char path[65536];
+	char *originalPath = getenv("PATH");
+
+	if (strlen(originalPath) > 32768) {
+		printf("PATH too long\n");
+		return false;
+	}
+
+	strcpy(path, compilerPath);
+	strcat(path, ":");
+	strcat(path, originalPath);
+
+	if (strstr(path, "::")) {
+		printf("PATH contains double colon\n");
+		return false;
+	}
+
+	setenv("PATH", path, 1);
+	return true;
+}
+
 void BuildCrossCompiler() {
 	if (!CallSystem("whoami | grep root")) {
 		printf("Error: Build should not be run as root.\n");
@@ -596,8 +618,9 @@ void BuildCrossCompiler() {
 		MAKE_TOOLCHAIN_WRAPPER("ld");
 		MAKE_TOOLCHAIN_WRAPPER("nm");
 		MAKE_TOOLCHAIN_WRAPPER("strip");
+		if (!AddCompilerToPath()) goto fail;
 		SaveConfig();
-		exit(0);
+		return;
 	}
 
 	{
@@ -647,7 +670,6 @@ void BuildCrossCompiler() {
 
 		char installationFolder[4096];
 		char sysrootFolder[4096];
-		char path[65536];
 
 		int processorCount = sysconf(_SC_NPROCESSORS_CONF);
 		if (processorCount < 1) processorCount = 1;
@@ -667,24 +689,8 @@ void BuildCrossCompiler() {
 			if (!GetYes()) { printf("The build has been canceled.\n"); exit(0); }
 		}
 
-		{
-			char *originalPath = getenv("PATH");
-
-			if (strlen(originalPath) > 32768) {
-				printf("PATH too long\n");
-				goto fail;
-			}
-
-			strcpy(path, compilerPath);
-			strcat(path, ":");
-			strcat(path, originalPath);
-
-			if (strstr(path, "::")) {
-				printf("PATH contains double colon\n");
-				goto fail;
-			}
-
-			setenv("PATH", path, 1);
+		if (!AddCompilerToPath()) {
+			goto fail;
 		}
 
 		{
@@ -766,6 +772,7 @@ void BuildCrossCompiler() {
 
 		{
 			CallSystem("echo Modifying headers... >> bin/build_cross.log");
+			char path[65536];
 			sprintf(path, "%s/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/include/mm_malloc.h", installationFolder);
 			FILE *file = fopen(path, "w");
 			if (!file) {
