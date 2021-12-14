@@ -1746,7 +1746,7 @@ int main(int _argc, char **_argv) {
 	printf("Enter 'help' to get a list of commands.\n");
 	char *prev = NULL;
 
-	canBuildLuigi = !CallSystem("gcc -o bin/luigi.h.gch util/luigi.h -D UI_IMPLEMENTATION -D UI_LINUX");
+	canBuildLuigi = !CallSystem("gcc -o bin/luigi.h.gch util/luigi.h -D UI_IMPLEMENTATION -D UI_LINUX 2> /dev/null");
 
 	while (true) {
 		char *l = NULL;
