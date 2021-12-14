@@ -115,7 +115,8 @@ int main(int argc, char **argv) {
 			if (ReplaceString(pid, registers.rsp, (uintptr_t *) &registers.rdi)) {
 				ptrace(PTRACE_SETREGS, pid, 0, &registers);
 			}
-		} else if (registers.orig_rax == SYS_faccessat2
+		} else if (registers.orig_rax == 439 /* faccessat2 */
+				|| registers.orig_rax == SYS_faccessat
 				|| registers.orig_rax == SYS_newfstatat
 				|| registers.orig_rax == SYS_openat) {
 			if (ReplaceString(pid, registers.rsp, (uintptr_t *) &registers.rsi)) {
