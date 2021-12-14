@@ -215,6 +215,8 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 }
 
 void BuildUtilities();
+void DoCommand(const char *l);
+void SaveConfig();
 
 #define COMPILE_SKIP_COMPILE         (1 << 1)
 #define COMPILE_DO_BUILD             (1 << 2)
@@ -364,7 +366,6 @@ void BuildUtilities() {
 	}
 
 	BUILD_UTILITY("render_svg", "-lm", "");
-	BUILD_UTILITY("change_sysroot", "", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
 
 	if (canBuildLuigi) {
@@ -562,12 +563,44 @@ void Run(int emulator, int log, int debug) {
 void BuildCrossCompiler() {
 	if (!CallSystem("whoami | grep root")) {
 		printf("Error: Build should not be run as root.\n");
-		return;
+		exit(0);
 	}
+
+	bool usePreBuilt;
 
 	{
 		printf("\n");
-		printf("A cross compiler for Essence needs to be built.\n");
+		printf("To build Essence, you need a cross compiler.\n");
+#ifdef __linux__
+		printf("You can either use a pre-built cross compiler (~40MB download), or build one locally.\n");
+		printf("Type 'yes' if you want to use the pre-built cross compiler.\n");
+		usePreBuilt = GetYes();
+#else
+		printf("A cross compiler will be built for you automatically.\n");
+#endif
+	}
+
+	if (usePreBuilt) {
+		DoCommand("get-source prefix https://github.com/nakst/build-gcc-x86_64-essence/releases/download/gcc-v11.1.0/out.tar.xz");
+		if (CallSystem("mv bin/source cross")) goto fail;
+		if (CallSystem("mkdir -p cross/bin2")) goto fail;
+		foundValidCrossCompiler = true;
+		getcwd(compilerPath, sizeof(compilerPath));
+		strcat(compilerPath, "/cross/bin2");
+		if (CallSystem("gcc -o bin/change_sysroot util/change_sysroot.c -Wall -Wextra")) goto fail;
+#define MAKE_TOOLCHAIN_WRAPPER(tool) \
+	if (CallSystem("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool " util/toolchain_wrapper.c -Wall -Wextra -g -DTOOL=" TOOLCHAIN_PREFIX "-" tool)) goto fail;
+		MAKE_TOOLCHAIN_WRAPPER("ar");
+		MAKE_TOOLCHAIN_WRAPPER("gcc");
+		MAKE_TOOLCHAIN_WRAPPER("g++");
+		MAKE_TOOLCHAIN_WRAPPER("ld");
+		MAKE_TOOLCHAIN_WRAPPER("nm");
+		MAKE_TOOLCHAIN_WRAPPER("strip");
+		SaveConfig();
+		exit(0);
+	}
+
+	{
 		printf("- You need to be connected to the internet. ~100MB will be downloaded.\n");
 		printf("- You need ~3GB of drive space available.\n");
 		printf("- You need ~8GB of RAM available.\n");
@@ -1531,7 +1564,7 @@ void DoCommand(const char *l) {
 
 		if (f) {
 			fclose(f);
-		} else if (CallSystemF("curl %s > %s", url, name)) {
+		} else if (CallSystemF("curl -L %s > %s", url, name)) {
 			CallSystemF("rm %s", name); // Remove partially downloaded file.
 			exit(1);
 		}

@@ -107,6 +107,7 @@ int main(int argc, char **argv) {
 		ptrace(PTRACE_GETREGS, pid, 0, &registers);
 
 		if (registers.orig_rax == SYS_access
+				|| registers.orig_rax == SYS_chown
 				|| registers.orig_rax == SYS_lstat
 				|| registers.orig_rax == SYS_readlink
 				|| registers.orig_rax == SYS_stat
@@ -129,17 +130,21 @@ int main(int argc, char **argv) {
 				|| registers.orig_rax == SYS_fcntl
 				|| registers.orig_rax == SYS_fstat
 				|| registers.orig_rax == SYS_getcwd
+				|| registers.orig_rax == SYS_getdents64
 				|| registers.orig_rax == SYS_getrandom
 				|| registers.orig_rax == SYS_getrusage
 				|| registers.orig_rax == SYS_ioctl
 				|| registers.orig_rax == SYS_lseek
+				|| registers.orig_rax == SYS_madvise
 				|| registers.orig_rax == SYS_mmap
 				|| registers.orig_rax == SYS_mprotect
+				|| registers.orig_rax == SYS_mremap
 				|| registers.orig_rax == SYS_munmap
 				|| registers.orig_rax == SYS_pipe2
 				|| registers.orig_rax == SYS_pread64
 				|| registers.orig_rax == SYS_prlimit64
 				|| registers.orig_rax == SYS_read
+				|| registers.orig_rax == SYS_rename
 				|| registers.orig_rax == SYS_rt_sigaction
 				|| registers.orig_rax == SYS_rt_sigprocmask
 				|| registers.orig_rax == SYS_set_robust_list
