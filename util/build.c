@@ -1570,11 +1570,11 @@ void DoCommand(const char *l) {
 		strcat(cwd, "/crash-report.tar.gz");
 		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
 	} else if (0 == strcmp(l, "setup-pre-built-toolchain")) {
-		if (CallSystem("mv bin/source cross")) goto fail;
-		if (CallSystem("mkdir -p cross/bin2")) goto fail;
-		if (CallSystem("gcc -o bin/change_sysroot util/change_sysroot.c -Wall -Wextra")) goto fail;
+		CallSystem("mv bin/source cross");
+		CallSystem("mkdir -p cross/bin2");
+		CallSystem("gcc -o bin/change_sysroot util/change_sysroot.c -Wall -Wextra");
 #define MAKE_TOOLCHAIN_WRAPPER(tool) \
-		if (CallSystem("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool " util/toolchain_wrapper.c -Wall -Wextra -g -DTOOL=" TOOLCHAIN_PREFIX "-" tool)) goto fail;
+		CallSystem("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool " util/toolchain_wrapper.c -Wall -Wextra -g -DTOOL=" TOOLCHAIN_PREFIX "-" tool)
 		MAKE_TOOLCHAIN_WRAPPER("ar");
 		MAKE_TOOLCHAIN_WRAPPER("gcc");
 		MAKE_TOOLCHAIN_WRAPPER("g++");
