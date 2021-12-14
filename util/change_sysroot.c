@@ -132,6 +132,7 @@ int main(int argc, char **argv) {
 				|| registers.orig_rax == SYS_fstat
 				|| registers.orig_rax == SYS_getcwd
 				|| registers.orig_rax == SYS_getdents64
+				|| registers.orig_rax == SYS_getpid
 				|| registers.orig_rax == SYS_getrandom
 				|| registers.orig_rax == SYS_getrusage
 				|| registers.orig_rax == SYS_ioctl
