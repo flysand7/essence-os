@@ -78,15 +78,6 @@ const EsInstanceClassEditorSettings editorSettings = {
 	ES_ICON_IMAGE_X_GENERIC,
 };
 
-const EsStyle styleBitmapSizeTextbox = {
-	.inherit = ES_STYLE_TEXTBOX_BORDERED_SINGLE_COMPACT,
-
-	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
-		.preferredWidth = 80,
-	},
-};
-
 const EsStyle styleImageMenuTable = {
 	.inherit = ES_STYLE_PANEL_FORM_TABLE,
 
@@ -685,7 +676,7 @@ void MenuImage(Instance *instance, EsElement *element, EsCommand *) {
 
 	bytes = EsStringFormat(buffer, sizeof(buffer), "%d", instance->bitmapHeight);
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(ImageEditorPropertyHeight));
-	textbox = EsTextboxCreate(table, ES_TEXTBOX_EDIT_BASED, &styleBitmapSizeTextbox);
+	textbox = EsTextboxCreate(table, ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	EsTextboxInsert(textbox, buffer, bytes, false);
 	textbox->userData.i = 1;
 	textbox->messageUser = BitmapSizeTextboxMessage;

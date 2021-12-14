@@ -4,7 +4,6 @@
 
 #include <module.h>
 
-// TODO Device attach and detach.
 // TODO Babble error recovery.
 
 #define SPEED_LOW (1)

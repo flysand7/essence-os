@@ -36,16 +36,6 @@ struct SettingsControl {
 	EsElement *element;
 };
 
-const EsStyle styleSettingsGroupContainer = {
-	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
-
-	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS,
-		.insets = ES_RECT_1(5),
-		.preferredWidth = 400,
-	},
-};
-
 const EsStyle styleAllSettingsGroupContainer = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_ALL,
@@ -78,17 +68,6 @@ const uint32_t windowColors[][7] = {
 	{ 0xFFFF7F24, 0xFFF7BC93, 0xFFDFA57D, 0xFFC7825F, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
 	{ 0xFFE8ECF9, 0xFFE9EBF1, 0xFFD2D3D9, 0xFFA9AAB0, 0xFFEAEAEC, 0xFFF1F1F4, 0xFFD6D7D9 },
 	{ 0xFFB7BBC5, 0xFFB8BABE, 0xFF9A9BA0, 0xFF85878B, 0xFFE9E9EA, 0xFFDEDFE1, 0xFFB9BABC },
-};
-
-const EsStyle styleSettingsGroupContainer3 = {
-	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
-
-	.metrics = {
-		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
-		.insets = ES_RECT_1(15),
-		.preferredWidth = 600,
-		.gapMajor = 15,
-	},
 };
 
 const EsStyle styleSettingsCheckboxGroup = {

@@ -358,12 +358,13 @@ void BuildUtilities() {
 
 #define BUILD_UTILITY(x, y, z) \
 	if (CheckDependencies("Utilities." x)) { \
-		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g -std=c2x " WARNING_FLAGS " " y)) { \
+		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g " WARNING_FLAGS " " y)) { \
 			ParseDependencies("bin/" x ".d", "Utilities." x, false); \
 		} \
 	}
 
 	BUILD_UTILITY("render_svg", "-lm", "");
+	BUILD_UTILITY("change_sysroot", "", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
 
 	if (canBuildLuigi) {
@@ -520,14 +521,16 @@ void Run(int emulator, int log, int debug) {
 				serialFlags[0] = 0;
 			}
 
-			CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
+			if (CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
 					" %s %s %s %s %s %s %s ", 
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
-					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags);
+					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags)) {
+				printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
+			}
 		} break;
 
 		case EMULATOR_BOCHS: {
@@ -573,6 +576,8 @@ void BuildCrossCompiler() {
 		printf("- You must fully update your system before building.\n\n");
 
 		bool missingPackages = false;
+		bool missingLibraries = false;
+
 		if (CallSystem("which g++ > /dev/null 2>&1")) { printf("Error: Missing GCC/G++.\n"); missingPackages = true; }
 		if (CallSystem("which make > /dev/null 2>&1")) { printf("Error: Missing GNU Make.\n"); missingPackages = true; }
 		if (CallSystem("which bison > /dev/null 2>&1")) { printf("Error: Missing GNU Bison.\n"); missingPackages = true; }
@@ -588,16 +593,24 @@ void BuildCrossCompiler() {
 		if (CallSystem("which awk > /dev/null 2>&1")) { printf("Error: Missing awk.\n"); missingPackages = true; }
 
 #ifdef __APPLE__
-		if (CallSystem("gcc -L/opt/homebrew/lib -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
-		if (CallSystem("gcc -L/opt/homebrew/lib -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
-		if (CallSystem("gcc -L/opt/homebrew/lib -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+		if (CallSystem("gcc -L/opt/homebrew/lib -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingLibraries = true; }
+		if (CallSystem("gcc -L/opt/homebrew/lib -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingLibraries = true; }
+		if (CallSystem("gcc -L/opt/homebrew/lib -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingLibraries = true; }
 #else
-		if (CallSystem("gcc -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingPackages = true; }
-		if (CallSystem("gcc -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingPackages = true; }
-		if (CallSystem("gcc -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingPackages = true; }
+		if (CallSystem("gcc -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingLibraries = true; }
+		if (CallSystem("gcc -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingLibraries = true; }
+		if (CallSystem("gcc -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingLibraries = true; }
 #endif
 
-		if (missingPackages) exit(0);
+		if (missingPackages || missingLibraries) {
+			if (missingLibraries) {
+				printf("Make sure you install the *development* versions of MPC, MPFR and GMP.\n"
+						"Depending on your package manager, you might have to suffix the package name with \"-dev\" or \"-devel\".\n"
+						"For example, on Ubuntu, you can run: \"apt-get install libgmp-dev libmpc-dev libmpfr.dev\".\n");
+			}
+
+			exit(0);
+		}
 
 		char installationFolder[4096];
 		char sysrootFolder[4096];
@@ -1197,7 +1210,14 @@ void DoCommand(const char *l) {
 		CallSystem("mv bin/installer_metadata.dat root/Installer\\ Data/metadata.dat");
 	} else if (0 == strcmp(l, "config")) {
 		BuildUtilities();
-		CallSystem("bin/config_editor");
+
+		if (CallSystem("bin/config_editor")) {
+			printf("The config editor could not be opened.\n"
+					"This likely means your system does not have X11 setup.\n"
+					"If needed, you can manually modify the config file, \"bin/config.ini\".\n"
+					"See the \"options\" array in \"util/build_common.h\" for a list of options.\n"
+					"But please bare in mind that manually editing the config file is not recommended.\n");
+		}
 	} else if (0 == strcmp(l, "designer2")) {
 		BuildUtilities();
 		CallSystem("bin/designer2");
@@ -1325,7 +1345,7 @@ void DoCommand(const char *l) {
 		closedir(directory);
 	} else if (0 == memcmp(l, "do ", 3)) {
 		CallSystem(l + 3);
-	} else if (0 == memcmp(l, "live ", 5)) {
+	} else if (0 == memcmp(l, "live ", 5) || 0 == strcmp(l, "live")) {
 		if (interactiveMode) {
 			fprintf(stderr, "This command cannot be used in interactive mode. Type \"quit\" and then run \"./start.sh live <...>\".\n");
 			return;
