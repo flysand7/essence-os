@@ -61,6 +61,13 @@ if [ $? -ne 0 ]; then
 	exit
 fi
 
+# Check make is available.
+make --version > /dev/null
+if [ $? -ne 0 ]; then
+	echo "Error: Missing make."
+	exit
+fi
+
 # Compile and run Build.
 gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} \
 		-Wall -Wextra -Wno-format-security -Wno-format-overflow -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation \
