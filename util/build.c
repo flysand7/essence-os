@@ -1581,6 +1581,9 @@ void DoCommand(const char *l) {
 		MAKE_TOOLCHAIN_WRAPPER("ld");
 		MAKE_TOOLCHAIN_WRAPPER("nm");
 		MAKE_TOOLCHAIN_WRAPPER("strip");
+		foundValidCrossCompiler = true;
+		getcwd(compilerPath, sizeof(compilerPath) - 64);
+		strcat(compilerPath, "/cross/bin2");
 		SaveConfig();
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
