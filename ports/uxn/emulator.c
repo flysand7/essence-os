@@ -1,17 +1,23 @@
 // Ported by nakst.
+//
+// Unfortunately, Uxn doesn't have a proper platform layer, so this port is a bit of a bodge.
+// Perhaps once there is a more stable release of Uxn, someone can invest the time into making a proper port.
+//
 // TODO Keyboard support.
 // TODO Audio support.
+// TODO File support.
 // TODO Time and date support.
 
 #include <essence.h>
 
 #define PPW (sizeof(unsigned int) * 2)
 #define realloc EsCRTrealloc
+#define memset EsCRTmemset
 #define Uint32 uint32_t
 
 typedef struct Ppu {
-	unsigned short width, height;
-	unsigned int *dat, stride;
+	uint16_t width, height;
+	uint8_t *pixels, reqdraw;
 } Ppu;
 
 #ifdef DEBUG_BUILD
@@ -65,15 +71,8 @@ domouse(int mx, int my, bool pressed, bool released, bool right)
 	if (released) devmouse->dat[6] &= ~flag;
 }
 
-static Uint8
-get_pixel(int x, int y)
-{
-	unsigned int i = x / PPW + y * ppu.stride, shift = x % PPW * 4;
-	return (ppu.dat[i] >> shift) & 0xf;
-}
-
 void
-update_palette(Uint8 *addr)
+set_palette(Uint8 *addr)
 {
 	int i;
 	for(i = 0; i < 4; ++i) {
@@ -88,51 +87,49 @@ update_palette(Uint8 *addr)
 	reqdraw = 1;
 }
 
-static int
-system_talk(Device *d, Uint8 b0, Uint8 w)
+static Uint8
+system_dei(Device *d, Uint8 port)
 {
-	if(!w) { /* read */
-		switch(b0) {
-		case 0x2: d->dat[0x2] = d->u->wst.ptr; break;
-		case 0x3: d->dat[0x3] = d->u->rst.ptr; break;
-		}
-	} else { /* write */
-		switch(b0) {
-		case 0x2: d->u->wst.ptr = d->dat[0x2]; break;
-		case 0x3: d->u->rst.ptr = d->dat[0x3]; break;
-		case 0xf: return 0;
-		}
-		if(b0 > 0x7 && b0 < 0xe)
-			update_palette(&d->dat[0x8]);
+	switch(port) {
+	case 0x2: return d->u->wst.ptr;
+	case 0x3: return d->u->rst.ptr;
+	default: return d->dat[port];
 	}
-	return 1;
 }
 
-static int
-console_talk(Device *d, Uint8 b0, Uint8 w)
+static void
+system_deo(Device *d, Uint8 port)
 {
-	return 1;
+	switch(port) {
+	case 0x2: d->u->wst.ptr = d->dat[port]; break;
+	case 0x3: d->u->rst.ptr = d->dat[port]; break;
+	}
+	if(port > 0x7 && port < 0xe)
+		set_palette(&d->dat[0x8]);
 }
 
-static int
-screen_talk(Device *d, Uint8 b0, Uint8 w)
+static Uint8
+screen_dei(Device *d, Uint8 port)
 {
-	if(!w) switch(b0) {
-		case 0x2: d->dat[0x2] = ppu.width >> 8; break;
-		case 0x3: d->dat[0x3] = ppu.width; break;
-		case 0x4: d->dat[0x4] = ppu.height >> 8; break;
-		case 0x5: d->dat[0x5] = ppu.height; break;
-		}
-	else
-		switch(b0) {
-		case 0x5:
-			ppu_set_size(&ppu, peek16(d->dat, 0x2), peek16(d->dat, 0x4));
-			break;
+	switch(port) {
+	case 0x2: return ppu.width >> 8;
+	case 0x3: return ppu.width;
+	case 0x4: return ppu.height >> 8;
+	case 0x5: return ppu.height;
+	default: return d->dat[port];
+	}
+}
+
+static void
+screen_deo(Device *d, Uint8 port)
+{
+		switch(port) {
+		case 0x1: d->vector = peek16(d->dat, 0x0); break;
 		case 0xe: {
 			Uint16 x = peek16(d->dat, 0x8);
 			Uint16 y = peek16(d->dat, 0xa);
 			Uint8 layer = d->dat[0xe] & 0x40;
-			reqdraw |= ppu_pixel(&ppu, layer, x, y, d->dat[0xe] & 0x3);
+			ppu_write(&ppu, !!layer, x, y, d->dat[0xe] & 0x3);
 			if(d->dat[0x6] & 0x01) poke16(d->dat, 0x8, x + 1); /* auto x+1 */
 			if(d->dat[0x6] & 0x02) poke16(d->dat, 0xa, y + 1); /* auto y+1 */
 			break;
@@ -143,10 +140,10 @@ screen_talk(Device *d, Uint8 b0, Uint8 w)
 			Uint8 layer = d->dat[0xf] & 0x40;
 			Uint8 *addr = &d->mem[peek16(d->dat, 0xc)];
 			if(d->dat[0xf] & 0x80) {
-				reqdraw |= ppu_2bpp(&ppu, layer, x, y, addr, d->dat[0xf] & 0xf, d->dat[0xf] & 0x10, d->dat[0xf] & 0x20);
+				ppu_2bpp(&ppu, !!layer, x, y, addr, d->dat[0xf] & 0xf, d->dat[0xf] & 0x10, d->dat[0xf] & 0x20);
 				if(d->dat[0x6] & 0x04) poke16(d->dat, 0xc, peek16(d->dat, 0xc) + 16); /* auto addr+16 */
 			} else {
-				reqdraw |= ppu_1bpp(&ppu, layer, x, y, addr, d->dat[0xf] & 0xf, d->dat[0xf] & 0x10, d->dat[0xf] & 0x20);
+				ppu_1bpp(&ppu, !!layer, x, y, addr, d->dat[0xf] & 0xf, d->dat[0xf] & 0x10, d->dat[0xf] & 0x20);
 				if(d->dat[0x6] & 0x04) poke16(d->dat, 0xc, peek16(d->dat, 0xc) + 8); /* auto addr+8 */
 			}
 			if(d->dat[0x6] & 0x01) poke16(d->dat, 0x8, x + 8); /* auto x+8 */
@@ -154,7 +151,6 @@ screen_talk(Device *d, Uint8 b0, Uint8 w)
 			break;
 		}
 		}
-	return 1;
 }
 
 static int
@@ -188,30 +184,35 @@ file_talk(Device *d, Uint8 b0, Uint8 w)
 	return 1;
 }
 
-static int
-datetime_talk(Device *d, Uint8 b0, Uint8 w)
+uint16_t file_init(void *filename) { return 0; }
+uint16_t file_read(void *dest, uint16_t len) { return 0; }
+uint16_t file_write(void *dest, uint16_t len, uint8_t flags) { return 0; }
+uint16_t file_stat(void *dest, uint16_t len) { return 0; }
+uint16_t file_delete() { return 0; }
+
+static void
+file_deo(Device *d, Uint8 port)
 {
-	poke16(d->dat, 0x0, 0);
-	d->dat[0x2] = 0;
-	d->dat[0x3] = 0;
-	d->dat[0x4] = 0;
-	d->dat[0x5] = 0;
-	d->dat[0x6] = 0;
-	d->dat[0x7] = 0;
-	poke16(d->dat, 0x08, 0);
-	d->dat[0xa] = 0;
-	(void)b0;
-	(void)w;
-	return 1;
+	switch(port) {
+	case 0x1: d->vector = peek16(d->dat, 0x0); break;
+	case 0x9: poke16(d->dat, 0x2, file_init(&d->mem[peek16(d->dat, 0x8)])); break;
+	case 0xd: poke16(d->dat, 0x2, file_read(&d->mem[peek16(d->dat, 0xc)], peek16(d->dat, 0xa))); break;
+	case 0xf: poke16(d->dat, 0x2, file_write(&d->mem[peek16(d->dat, 0xe)], peek16(d->dat, 0xa), d->dat[0x7])); break;
+	case 0x5: poke16(d->dat, 0x2, file_stat(&d->mem[peek16(d->dat, 0x4)], peek16(d->dat, 0xa))); break;
+	case 0x6: poke16(d->dat, 0x2, file_delete()); break;
+	}
 }
 
-static int
-nil_talk(Device *d, Uint8 b0, Uint8 w)
+static Uint8
+nil_dei(Device *d, Uint8 port)
 {
-	(void)d;
-	(void)b0;
-	(void)w;
-	return 1;
+	return d->dat[port];
+}
+
+static void
+nil_deo(Device *d, Uint8 port)
+{
+	if(port == 0x1) d->vector = peek16(d->dat, 0x0);
 }
 
 static const char *errors[] = {"underflow", "overflow", "division by zero"};
@@ -234,22 +235,22 @@ bool Launch(const void *rom, size_t romBytes) {
 	const Uint16 width = 64 * 8, height = 40 * 8;
 	ppu_set_size(&ppu, width, height);
 
-	/* system   */ devsystem = uxn_port(&u, 0x0, system_talk);
-	/* console  */ uxn_port(&u, 0x1, console_talk);
-	/* screen   */ devscreen = uxn_port(&u, 0x2, screen_talk);
-	/* audio0   */ uxn_port(&u, 0x3, nil_talk);
-	/* audio1   */ uxn_port(&u, 0x4, nil_talk);
-	/* audio2   */ uxn_port(&u, 0x5, nil_talk);
-	/* audio3   */ uxn_port(&u, 0x6, nil_talk);
-	/* unused   */ uxn_port(&u, 0x7, nil_talk);
-	/* control  */ devctrl = uxn_port(&u, 0x8, nil_talk);
-	/* mouse    */ devmouse = uxn_port(&u, 0x9, nil_talk);
-	/* file     */ uxn_port(&u, 0xa, file_talk);
-	/* datetime */ uxn_port(&u, 0xb, datetime_talk);
-	/* unused   */ uxn_port(&u, 0xc, nil_talk);
-	/* unused   */ uxn_port(&u, 0xd, nil_talk);
-	/* unused   */ uxn_port(&u, 0xe, nil_talk);
-	/* unused   */ uxn_port(&u, 0xf, nil_talk);
+	/* system   */ devsystem = uxn_port(&u, 0x0, system_dei, system_deo);
+	/* console  */ uxn_port(&u, 0x1, nil_dei, nil_deo);
+	/* screen   */ devscreen = uxn_port(&u, 0x2, screen_dei, screen_deo);
+	/* audio0   */ uxn_port(&u, 0x3, nil_dei, nil_deo);
+	/* audio1   */ uxn_port(&u, 0x4, nil_dei, nil_deo);
+	/* audio2   */ uxn_port(&u, 0x5, nil_dei, nil_deo);
+	/* audio3   */ uxn_port(&u, 0x6, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&u, 0x7, nil_dei, nil_deo);
+	/* control  */ devctrl = uxn_port(&u, 0x8, nil_dei, nil_deo);
+	/* mouse    */ devmouse = uxn_port(&u, 0x9, nil_dei, nil_deo);
+	/* file     */ uxn_port(&u, 0xa, nil_dei, file_deo);
+	/* datetime */ uxn_port(&u, 0xb, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&u, 0xc, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&u, 0xd, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&u, 0xe, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&u, 0xf, nil_dei, nil_deo);
 
 	uxn_eval(&u, PAGE_PROGRAM);
 
@@ -312,7 +313,7 @@ int CanvasMessage(EsElement *element, EsMessage *message) {
 			timeDeltaMs -= 16;
 		}
 
-		if (needsRedraw) {
+		if (needsRedraw || ppu.reqdraw) {
 			if (imageWidth != ppu.width || imageHeight != ppu.height) {
 				imageWidth = ppu.width, imageHeight = ppu.height;
 				imageBits = (uint32_t *) EsHeapReallocate(imageBits, imageWidth * imageHeight * 4, false, NULL);
@@ -320,13 +321,14 @@ int CanvasMessage(EsElement *element, EsMessage *message) {
 
 			for (uint16_t y = 0; y < ppu.height; y++) {
 				for (uint16_t x = 0; x < ppu.width; x++) {
-					imageBits[x + y * ppu.width] = palette[get_pixel(x, y)] | 0xFF000000;
+					imageBits[x + y * ppu.width] = palette[ppu_read(&ppu, x, y)] | 0xFF000000;
 				}
 			}
 
 			EsRectangle imageBounds = GetImageBounds(EsElementGetInsetBounds(element));
 			EsElementRepaint(element, &imageBounds);
 			reqdraw = false;
+			ppu.reqdraw = false;
 		}
 	} else {
 		return 0;
