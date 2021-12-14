@@ -666,7 +666,7 @@ void UIElementRefresh(UIElement *element);
 void UIElementRepaint(UIElement *element, UIRectangle *region);
 void UIElementMove(UIElement *element, UIRectangle bounds, bool alwaysLayout);
 int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp);
-void UIElementChangeParent(UIElement *element, UIElement *newParent, bool insertAtStart);
+void UIElementChangeParent(UIElement *element, UIElement *newParent, UIElement *insertBefore); // Set insertBefore to null to insert at the end.
 
 UIElement *UIParentPush(UIElement *element);
 UIElement *UIParentPop();
@@ -1444,7 +1444,7 @@ int UIElementMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	}
 }
 
-void UIElementChangeParent(UIElement *element, UIElement *newParent, bool insertAtStart) {
+void UIElementChangeParent(UIElement *element, UIElement *newParent, UIElement *insertBefore) {
 	UIElement **link = &element->parent->children;
 
 	while (true) {
@@ -1456,20 +1456,15 @@ void UIElementChangeParent(UIElement *element, UIElement *newParent, bool insert
 		}
 	}
 
-	if (insertAtStart) {
-		element->next = newParent->children;
-		newParent->children = element;
-	} else {
-		link = &newParent->children;
-		element->next = NULL;
+	link = &newParent->children;
+	element->next = insertBefore;
 
-		while (true) {
-			if (!(*link)) {
-				*link = element;
-				break;
-			} else {
-				link = &(*link)->next;
-			}
+	while (true) {
+		if ((*link) == insertBefore) {
+			*link = element;
+			break;
+		} else {
+			link = &(*link)->next;
 		}
 	}
 
@@ -1723,7 +1718,6 @@ void _UIButtonCalculateColors(UIElement *element, uint32_t *color, uint32_t *tex
 	*textColor = disabled ? ui.theme.textDisabled 
 		: *color == ui.theme.selected ? ui.theme.textSelected : ui.theme.text;
 }
-
 
 int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	UIButton *button = (UIButton *) element;
@@ -5331,7 +5325,7 @@ int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_DESTROY) {
 		// TODO Non-main windows.
 		element->window = NULL;
-		EsInstanceDestroy(ui.instance);
+		EsInstanceClose(ui.instance);
 	}
 
 	return _UIWindowMessageCommon(element, message, di, dp);
