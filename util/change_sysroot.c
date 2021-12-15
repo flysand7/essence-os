@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
 		basePID = pid;
 	}
 
-	while (kill(basePID, 0) == 0 /* still alive */) {
+	while (true) {
 		struct user_regs_struct registers = { 0 };
 
 		pid_t pid = waitpid(-1, 0, 0);
@@ -161,15 +161,18 @@ int main(int argc, char **argv) {
 			printf("unhandled syscall %llu\n", registers.orig_rax);
 		}
 
+		int status;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
-		waitpid(pid, 0, 0);
+		waitpid(pid, &status, 0);
 
 		if (ptrace(PTRACE_GETREGS, pid, 0, &registers) == -1) {
-			// The process has likely exited.
+			// The process has exited.
+
+			if (pid == basePID) {
+				return WEXITSTATUS(status);
+			}
 		} else {
 			ptrace(PTRACE_SYSCALL, pid, 0, 0);
 		}
 	}
-
-	return 0;
 }
