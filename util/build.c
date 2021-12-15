@@ -1585,11 +1585,22 @@ void DoCommand(const char *l) {
 		CallSystem("gcc -o bin/change_sysroot util/change_sysroot.c -Wall -Wextra");
 #define MAKE_TOOLCHAIN_WRAPPER(tool) \
 		CallSystem("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool " util/toolchain_wrapper.c -Wall -Wextra -g -DTOOL=" TOOLCHAIN_PREFIX "-" tool)
+		MAKE_TOOLCHAIN_WRAPPER("addr2line");
 		MAKE_TOOLCHAIN_WRAPPER("ar");
-		MAKE_TOOLCHAIN_WRAPPER("gcc");
+		MAKE_TOOLCHAIN_WRAPPER("as");
+		MAKE_TOOLCHAIN_WRAPPER("c++");
+		MAKE_TOOLCHAIN_WRAPPER("cpp");
 		MAKE_TOOLCHAIN_WRAPPER("g++");
+		MAKE_TOOLCHAIN_WRAPPER("gcc");
 		MAKE_TOOLCHAIN_WRAPPER("ld");
+		MAKE_TOOLCHAIN_WRAPPER("lto-dump");
 		MAKE_TOOLCHAIN_WRAPPER("nm");
+		MAKE_TOOLCHAIN_WRAPPER("objcopy");
+		MAKE_TOOLCHAIN_WRAPPER("objdump");
+		MAKE_TOOLCHAIN_WRAPPER("ranlib");
+		MAKE_TOOLCHAIN_WRAPPER("readelf");
+		MAKE_TOOLCHAIN_WRAPPER("size");
+		MAKE_TOOLCHAIN_WRAPPER("strings");
 		MAKE_TOOLCHAIN_WRAPPER("strip");
 		foundValidCrossCompiler = true;
 		getcwd(compilerPath, sizeof(compilerPath) - 64);
