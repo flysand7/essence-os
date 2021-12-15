@@ -1503,10 +1503,14 @@ void DoCommand(const char *l) {
 			l2 = (char *) l + 11;
 		}
 
-		CallSystemF("ports/%s/port.sh", l2);
+		int status = CallSystemF("ports/%s/port.sh", l2);
 
 		if (!alreadyNamedPort) {
 			free(l2);
+		}
+
+		if (automatedBuild) {
+			exit(status);
 		}
 	} else if (0 == memcmp(l, "get-source ", 11)) {
 		if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
