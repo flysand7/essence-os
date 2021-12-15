@@ -102,9 +102,16 @@ int main(int argc, char **argv) {
 
 	while (true) {
 		struct user_regs_struct registers = { 0 };
+		int status;
+		pid_t pid = waitpid(-1, &status, 0);
 
-		pid_t pid = waitpid(-1, 0, 0);
-		ptrace(PTRACE_GETREGS, pid, 0, &registers);
+		if (ptrace(PTRACE_GETREGS, pid, 0, &registers) == -1) {
+			if (pid == basePID) {
+				return WEXITSTATUS(status);
+			} else {
+				continue;
+			}
+		}
 
 		if (registers.orig_rax == SYS_access
 				|| registers.orig_rax == SYS_chown
@@ -161,7 +168,6 @@ int main(int argc, char **argv) {
 			printf("unhandled syscall %llu\n", registers.orig_rax);
 		}
 
-		int status;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
 		waitpid(pid, &status, 0);
 

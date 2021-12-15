@@ -157,7 +157,7 @@ export gl_cv_func_working_strerror="yes"
 mkdir bin/build-gmp
 cd bin/build-gmp
 ../gmp-src/configure --host=x86_64-essence --prefix=/Applications/POSIX --without-readline CC=x86_64-essence-gcc CXX=x86_64-essence-g++
-make
+make -j`nproc`
 make DESTDIR=$SYSROOT install
 cd ../..
 rm -rf bin/build-gmp
@@ -165,7 +165,7 @@ rm -rf bin/build-gmp
 mkdir bin/build-mpfr
 cd bin/build-mpfr
 ../mpfr-src/configure --host=x86_64-essence --prefix=/Applications/POSIX CC=x86_64-essence-gcc CXX=x86_64-essence-g++
-make
+make -j`nproc`
 make DESTDIR=$SYSROOT install
 cd ../..
 rm -rf bin/build-mpfr
@@ -173,7 +173,7 @@ rm -rf bin/build-mpfr
 mkdir bin/build-mpc
 cd bin/build-mpc
 ../mpc-src/configure --host=x86_64-essence --prefix=/Applications/POSIX CC=x86_64-essence-gcc CXX=x86_64-essence-g++
-make
+make -j`nproc`
 make DESTDIR=$SYSROOT install
 cd ../..
 rm -rf bin/build-mpc
@@ -181,7 +181,7 @@ rm -rf bin/build-mpc
 mkdir bin/build-binutils
 cd bin/build-binutils
 ../binutils-src/configure --host=x86_64-essence --target=x86_64-essence --prefix=/Applications/POSIX --with-local-prefix=/Applications/POSIX/local --with-build-sysroot=$SYSROOT --without-isl --disable-nls --disable-werror --without-target-bdw-gc CC=x86_64-essence-gcc CXX=x86_64-essence-g++
-make -j4
+make -j`nproc`
 make DESTDIR=$SYSROOT install
 cd ../..
 rm -rf bin/build-binutils
@@ -189,8 +189,8 @@ rm -rf bin/build-binutils
 mkdir bin/build-gcc
 cd bin/build-gcc
 ../gcc-src/configure --host=x86_64-essence --target=x86_64-essence --prefix=/Applications/POSIX --with-local-prefix=/Applications/POSIX/local --with-build-sysroot=$SYSROOT --without-isl --disable-nls --disable-werror --without-target-bdw-gc --enable-languages=c,c++ CC=x86_64-essence-gcc CXX=x86_64-essence-g++ LD=x86_64-essence-ld
-make all-gcc -j4
-make all-target-libgcc
+make all-gcc -j`nproc`
+make all-target-libgcc -j`nproc`
 make DESTDIR=$SYSROOT install-strip-gcc
 make DESTDIR=$SYSROOT install-target-libgcc
 cd ../..
