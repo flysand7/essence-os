@@ -197,6 +197,8 @@ static bool ReadWrite(FSNode *file, uint64_t offset, uint64_t count, uint8_t *bu
 	ESFS_CHECK(data, "Read - Expected data attribute.");
 
 	if (data->indirection == ESFS_INDIRECTION_DIRECT) {
+		EsAssert(data->dataOffset + offset <= data->size && data->dataOffset + offset + count <= data->size);
+
 		if (write) {
 			EsMemoryCopy((uint8_t *) data + data->dataOffset + offset, buffer, count);
 		} else {
@@ -1423,15 +1425,18 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 
 	// EsPrint("\tpositionOfLastEntry = %d\n\tThis node Reference = %d/%d\n", positionOfLastEntry, file->reference.block, file->reference.offsetIntoBlock);
 
-	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), "Remove - Could not load the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), 
+			"Remove - Could not load the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 	ESFS_CHECK_TO_ERROR(ReadWrite(directory, positionOfLastEntry & ~(superblock->blockSize - 1), superblock->blockSize, 
 				blockBuffers + superblock->blockSize, false, false), "Remove - Could not load the last block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
-	ESFS_CHECK_TO_ERROR(0 == EsMemoryCompare(blockBuffers + file->reference.offsetIntoBlock, &file->entry, sizeof(DirectoryEntry)), "Remove - Inconsistent file entry.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+	ESFS_CHECK_TO_ERROR(0 == EsMemoryCompare(blockBuffers + file->reference.offsetIntoBlock, &file->entry, sizeof(DirectoryEntry)), 
+			"Remove - Inconsistent file entry.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 
 	DirectoryEntry *movedEntry = (DirectoryEntry *) (blockBuffers + superblock->blockSize + (positionOfLastEntry & (superblock->blockSize - 1)));
 	DirectoryEntry *deletedEntry = (DirectoryEntry *) (blockBuffers + file->reference.offsetIntoBlock);
 	EsMemoryCopy(deletedEntry, movedEntry, sizeof(DirectoryEntry));
-	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "Remove - Could not save the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), 
+			"Remove - Could not save the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 
 	// Step 2: Update the node for the moved entry.
 
@@ -1450,7 +1455,8 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 
 			uint64_t key = CalculateCRC64(filename->filename, filename->length);
 			// EsPrint("\tModify index key for %s\n", filename->length, filename->filename);
-			ESFS_CHECK_TO_ERROR(IndexModifyKey(volume, key, file->reference, directoryAttribute->indexRootBlock, blockBuffers + superblock->blockSize), "Remove - Could not update index (2).", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+			ESFS_CHECK_TO_ERROR(IndexModifyKey(volume, key, file->reference, directoryAttribute->indexRootBlock, blockBuffers + superblock->blockSize), 
+					"Remove - Could not update index (2).", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 		}
 	}
 

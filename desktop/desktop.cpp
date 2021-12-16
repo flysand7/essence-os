@@ -131,14 +131,10 @@ struct InstalledApplication {
 	EsFileOffset totalSize; // 0 if uncalculated.
 };
 
-struct CommonDesktopInstance : EsInstance {
-	void (*destroy)(EsInstance *);
+struct CrashedTabInstance : EsInstance {
 };
 
-struct CrashedTabInstance : CommonDesktopInstance {
-};
-
-struct BlankTabInstance : CommonDesktopInstance {
+struct BlankTabInstance : EsInstance {
 };
 
 struct ApplicationProcess {
@@ -3133,12 +3129,6 @@ void DesktopSendMessage(EsMessage *message) {
 			DesktopSetup(); // Refresh desktop UI.
 		} else {
 			// The screen resolution will be correctly queried in DesktopSetup.
-		}
-	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-		CommonDesktopInstance *instance = (CommonDesktopInstance *) message->instanceDestroy.instance;
-
-		if (instance->destroy) {
-			instance->destroy(instance);
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		ProcessGlobalKeyboardShortcuts(nullptr, message);

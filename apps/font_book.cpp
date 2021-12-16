@@ -298,6 +298,62 @@ void BackCommand(Instance *instance, EsElement *, EsCommand *) {
 	EsWindowSwitchToolbar(instance->window, instance->fontListToolbar, ES_TRANSITION_SLIDE_DOWN);
 }
 
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_CLOSE) {
+		instance->switcher = nullptr;
+		instance->fontList = nullptr;
+		instance->fontSizeTextbox = nullptr;
+		instance->previewTextTextbox = nullptr;
+		instance->fontPreview = nullptr;
+		instance->fontListToolbar = nullptr;
+		instance->fontPreviewToolbar = nullptr;
+	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		SaveSettings(instance);
+		EsHeapFree(instance->previewText);
+		instance->fonts.Free();
+		// TODO Remove the font added to the font database.
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+		if (!message->instanceOpen.update) {
+			EsFontInformation information = {};
+			information.availableWeightsNormal = 1 << 4 /* regular */;
+			instance->fontPreviewID = EsFontDatabaseInsertFile(&information, message->instanceOpen.file);
+			// TODO Check that the font is valid.
+
+			EsElementDestroyContents(instance->fontPreview);
+
+			EsPanel *titleRow = EsPanelCreate(instance->fontPreview, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+			EsIconDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY, ES_ICON_FONT_X_GENERIC);
+			EsTextDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_HEADING0, message->instanceOpen.name, message->instanceOpen.nameBytes);
+			EsSpacerCreate(instance->fontPreview, ES_FLAGS_DEFAULT, 0, 0, 20);
+
+			int sizes[] = { 12, 18, 24, 36, 48, 60, 72, 0 };
+
+			for (uintptr_t i = 0; sizes[i]; i++) {
+				EsPanel *row = EsPanelCreate(instance->fontPreview, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+				char buffer[64];
+				EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, buffer, EsStringFormat(buffer, sizeof(buffer), "%d", sizes[i]));
+				EsTextDisplay *display = EsTextDisplayCreate(row, ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION);
+				const char *string = interfaceString_FontBookPreviewTextLongDefault;
+				EsTextRun runs[2] = {};
+				EsElementGetTextStyle(display, &runs[0].style);
+				runs[0].style.size = sizes[i];
+				runs[0].style.font.family = instance->fontPreviewID;
+				runs[1].offset = EsCStringLength(string);
+				EsTextDisplaySetStyledContents(display, string, runs, 1);
+			}
+
+			EsPanelSwitchTo(instance->switcher, instance->fontPreview, ES_TRANSITION_NONE);
+			EsWindowSwitchToolbar(instance->window, instance->fontPreviewToolbar, ES_TRANSITION_SLIDE_UP);
+		}
+
+		EsInstanceOpenComplete(instance, message->instanceOpen.file, true);
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
 void _start() {
 	_init();
 
@@ -306,6 +362,7 @@ void _start() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(FontBookTitle)); 
+			instance->callback = InstanceCallback;
 			EsWindowSetIcon(instance->window, ES_ICON_APPLICATIONS_FONTS);
 			EsPanel *rootPanel = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
 
@@ -374,56 +431,6 @@ void _start() {
 			button->accessKey = 'B';
 			EsButtonSetIcon(button, ES_ICON_GO_PREVIOUS_SYMBOLIC);
 			EsButtonOnCommand(button, BackCommand);
-		} else if (message->type == ES_MSG_INSTANCE_CLOSE) {
-			Instance *instance = message->instanceClose.instance;
-			instance->switcher = nullptr;
-			instance->fontList = nullptr;
-			instance->fontSizeTextbox = nullptr;
-			instance->previewTextTextbox = nullptr;
-			instance->fontPreview = nullptr;
-			instance->fontListToolbar = nullptr;
-			instance->fontPreviewToolbar = nullptr;
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			if (!message->instanceOpen.update) {
-				Instance *instance = message->instanceOpen.instance;
-				EsFontInformation information = {};
-				information.availableWeightsNormal = 1 << 4 /* regular */;
-				instance->fontPreviewID = EsFontDatabaseInsertFile(&information, message->instanceOpen.file);
-				// TODO Check that the font is valid.
-
-				EsElementDestroyContents(instance->fontPreview);
-
-				EsPanel *titleRow = EsPanelCreate(instance->fontPreview, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
-				EsIconDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY, ES_ICON_FONT_X_GENERIC);
-				EsTextDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_HEADING0, message->instanceOpen.name, message->instanceOpen.nameBytes);
-				EsSpacerCreate(instance->fontPreview, ES_FLAGS_DEFAULT, 0, 0, 20);
-
-				int sizes[] = { 12, 18, 24, 36, 48, 60, 72, 0 };
-
-				for (uintptr_t i = 0; sizes[i]; i++) {
-					EsPanel *row = EsPanelCreate(instance->fontPreview, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
-					char buffer[64];
-					EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, buffer, EsStringFormat(buffer, sizeof(buffer), "%d", sizes[i]));
-					EsTextDisplay *display = EsTextDisplayCreate(row, ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION);
-					const char *string = interfaceString_FontBookPreviewTextLongDefault;
-					EsTextRun runs[2] = {};
-					EsElementGetTextStyle(display, &runs[0].style);
-					runs[0].style.size = sizes[i];
-					runs[0].style.font.family = instance->fontPreviewID;
-					runs[1].offset = EsCStringLength(string);
-					EsTextDisplaySetStyledContents(display, string, runs, 1);
-				}
-
-				EsPanelSwitchTo(instance->switcher, instance->fontPreview, ES_TRANSITION_NONE);
-				EsWindowSwitchToolbar(instance->window, instance->fontPreviewToolbar, ES_TRANSITION_SLIDE_UP);
-			}
-
-			EsInstanceOpenComplete(message, true);
-		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-			SaveSettings(message->instanceDestroy.instance);
-			EsHeapFree(message->instanceDestroy.instance->previewText);
-			message->instanceDestroy.instance->fonts.Free();
-			// TODO Remove the font added to the font database.
 		}
 	}
 }

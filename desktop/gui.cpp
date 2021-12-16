@@ -151,7 +151,7 @@ void InspectorNotifyElementContentChanged(EsElement *element);
 #define UI_STATE_USE_MEASUREMENT_CACHE	(1 << 21)
 
 struct EsElement : EsElementPublic {
-	EsUICallback messageClass;
+	EsElementCallback messageClass;
 	EsElement *parent;
 	Array<EsElement *> children; 
 	uint32_t state;
@@ -262,7 +262,7 @@ struct EsElement : EsElementPublic {
 
 	void Repaint(bool all, EsRectangle region = ES_RECT_1(0) /* client coordinates */);
 
-	void Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *style);
+	void Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, const EsStyle *style);
 };
 
 struct MeasurementCache {
@@ -6301,7 +6301,7 @@ void EsElementInsertAfter(EsElement *element) {
 	gui.insertAfter = element;
 }
 
-void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsUICallback _classCallback, const EsStyle *_style) {
+void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, const EsStyle *_style) {
 	EsMessageMutexCheck();
 
 	// EsPrint("New element '%z' %x with parent %x.\n", _debugName, this, _parent);
@@ -6409,7 +6409,7 @@ float EsElementGetScaleFactor(EsElement *element) {
 	return theming.scale;
 }
 
-void EsElementSetCallback(EsElement *element, EsUICallback callback) {
+void EsElementSetCallback(EsElement *element, EsElementCallback callback) {
 	EsMessageMutexCheck();
 	element->messageUser = callback;
 }
@@ -8090,7 +8090,6 @@ void InspectorSetup(EsWindow *window) {
 	EsInstanceOpenReference(inspector);
 	
 	inspector->instance = window->instance;
-	((APIInstance *) inspector->_private)->internalOnly = true;
 	window->instance = inspector;
 
 	inspector->selectedElement = -1;

@@ -445,18 +445,8 @@ int ParserText(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *_insta
 	return 0;
 }
 
-void ProcessApplicationMessage(EsMessage *message) {
-	if (message->type == ES_MSG_INSTANCE_CREATE) {
-		Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(MarkdownViewerTitle));
-		EsInstanceSetClassViewer(instance, nullptr);
-		EsWindow *window = instance->window;
-		EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-		EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleBackground);
-		instance->root = EsPanelCreate(background, ES_CELL_H_SHRINK, &styleRoot);
-		EsWindowSetIcon(window, ES_ICON_TEXT_MARKDOWN);
-	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-		Instance *instance = message->instanceOpen.instance;
-		
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_OPEN) {
 		if (message->instanceOpen.update) {
 			EsElementStartTransition(instance->root, ES_TRANSITION_ZOOM_IN);
 		}
@@ -467,8 +457,8 @@ void ProcessApplicationMessage(EsMessage *message) {
 		char *file = (char *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
 
 		if (!file || !EsUTF8IsValid(file, fileSize)) {
-			EsInstanceOpenComplete(message, false);
-			return;
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false);
+			return ES_HANDLED;
 		} 
 
 		MD_PARSER parser = {};
@@ -481,12 +471,29 @@ void ProcessApplicationMessage(EsMessage *message) {
 		instance->active = instance->root;
 		int result = md_parse(file, fileSize, &parser, instance);
 		if (result) EsElementDestroyContents(instance->root); // An error occurred.
-		EsInstanceOpenComplete(message, result == 0);
+		EsInstanceOpenComplete(instance, message->instanceOpen.file, result == 0);
 		EsHeapFree(file);
 
 		EsElementRelayout(instance->root);
 		instance->spans.Free();
 		instance->text.Free();
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
+void ProcessApplicationMessage(EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_CREATE) {
+		Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(MarkdownViewerTitle));
+		instance->callback = InstanceCallback;
+		EsInstanceSetClassViewer(instance, nullptr);
+		EsWindow *window = instance->window;
+		EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
+		EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleBackground);
+		instance->root = EsPanelCreate(background, ES_CELL_H_SHRINK, &styleRoot);
+		EsWindowSetIcon(window, ES_ICON_TEXT_MARKDOWN);
 	}
 }
 

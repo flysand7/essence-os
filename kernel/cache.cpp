@@ -1094,6 +1094,7 @@ EsError CCSpaceAccess(CCSpace *cache, K_USER_BUFFER void *_buffer, EsFileOffset 
 			KMutexRelease(&cache->cachedSectionsMutex);
 
 			if (error != ES_SUCCESS) {
+				CCActiveSectionReturnToLists(section, false);
 				return error;
 			}
 

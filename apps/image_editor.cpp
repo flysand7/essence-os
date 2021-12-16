@@ -692,8 +692,111 @@ void MenuImage(Instance *instance, EsElement *element, EsCommand *) {
 	EsMenuShow(menu);
 }
 
+void WriteCallback(void *context, void *data, int size) {
+	EsBufferWrite((EsBuffer *) context, data, size);
+}
+
+void SwapRedAndBlueChannels(uint32_t *bits, size_t width, size_t height, size_t stride) {
+	for (uintptr_t i = 0; i < height; i++) {
+		for (uintptr_t j = 0; j < width; j++) {
+			uint32_t *pixel = &bits[i * stride / 4 + j];
+			*pixel = (*pixel & 0xFF00FF00) | (((*pixel >> 16) | (*pixel << 16)) & 0x00FF00FF);
+		}
+	}
+}
+
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		EsPaintTargetDestroy(instance->bitmap);
+		ImageDelete(instance->image);
+	} else if (message->type == ES_MSG_INSTANCE_SAVE) {
+		// TODO Error handling.
+
+		uintptr_t extensionOffset = message->instanceSave.nameBytes;
+
+		while (extensionOffset) {
+			if (message->instanceSave.name[extensionOffset - 1] == '.') {
+				break;
+			} else {
+				extensionOffset--;
+			}
+		}
+
+		const char *extension = extensionOffset ? message->instanceSave.name + extensionOffset : "png";
+		size_t extensionBytes = extensionOffset ? message->instanceSave.nameBytes - extensionOffset : 3;
+
+		uint32_t *bits;
+		size_t width, height, stride;
+		EsPaintTargetStartDirectAccess(instance->bitmap, &bits, &width, &height, &stride);
+		EsAssert(stride == width * 4); // TODO Other strides.
+		SwapRedAndBlueChannels(bits, width, height, stride); // stbi_write uses the other order. We swap back below.
+
+		size_t _bufferBytes = 262144;
+		uint8_t *_buffer = (uint8_t *) EsHeapAllocate(_bufferBytes, false);
+		EsBuffer buffer = { .out = _buffer, .bytes = _bufferBytes };
+		buffer.fileStore = message->instanceSave.file;
+
+		if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpg"))
+				|| 0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpeg"))) {
+			stbi_write_jpg_to_func(WriteCallback, &buffer, width, height, 4, bits, 90);
+		} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("bmp"))) {
+			stbi_write_bmp_to_func(WriteCallback, &buffer, width, height, 4, bits);
+		} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("tga"))) {
+			stbi_write_tga_to_func(WriteCallback, &buffer, width, height, 4, bits);
+		} else {
+			stbi_write_png_to_func(WriteCallback, &buffer, width, height, 4, bits, stride);
+		}
+
+		SwapRedAndBlueChannels(bits, width, height, stride); // Swap back.
+		EsBufferFlushToFileStore(&buffer);
+		EsHeapFree(_buffer);
+		EsPaintTargetEndDirectAccess(instance->bitmap);
+		EsInstanceSaveComplete(instance, message->instanceSave.file, true);
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+		size_t fileSize;
+		uint8_t *file = (uint8_t *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
+
+		if (!file) {
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false);
+			return ES_HANDLED;
+		}
+
+		uint32_t width, height;
+		uint8_t *bits = EsImageLoad(file, fileSize, &width, &height, 4);
+		EsHeapFree(file);
+
+		if (!bits) {
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false, INTERFACE_STRING(ImageEditorUnsupportedFormat));
+			return ES_HANDLED;
+		}
+
+		EsPaintTargetDestroy(instance->bitmap);
+		ImageDelete(instance->image);
+
+		instance->bitmapWidth = width;
+		instance->bitmapHeight = height;
+		instance->bitmap = EsPaintTargetCreate(instance->bitmapWidth, instance->bitmapHeight, false);
+		EsPainter painter = {};
+		painter.clip = ES_RECT_4(0, instance->bitmapWidth, 0, instance->bitmapHeight);
+		painter.target = instance->bitmap;
+		EsDrawBitmap(&painter, painter.clip, (uint32_t *) bits, width * 4, 0xFF);
+		instance->image = ImageFork(instance, {}, instance->bitmapWidth, instance->bitmapHeight);
+		ImageCopyFromPaintTarget(instance, &instance->image, painter.clip);
+		EsElementRelayout(EsElementGetLayoutParent(instance->canvas));
+
+		EsHeapFree(bits);
+		EsInstanceOpenComplete(instance, message->instanceOpen.file, true);
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
 void InstanceCreate(EsMessage *message) {
 	Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(ImageEditorTitle));
+	instance->callback = InstanceCallback;
+
 	EsElement *toolbar = EsWindowGetToolbar(instance->window);
 	EsInstanceSetClassEditor(instance, &editorSettings);
 
@@ -802,19 +905,6 @@ void InstanceCreate(EsMessage *message) {
 	ImageCopyFromPaintTarget(instance, &instance->image, painter.clip);
 }
 
-void WriteCallback(void *context, void *data, int size) {
-	EsBufferWrite((EsBuffer *) context, data, size);
-}
-
-void SwapRedAndBlueChannels(uint32_t *bits, size_t width, size_t height, size_t stride) {
-	for (uintptr_t i = 0; i < height; i++) {
-		for (uintptr_t j = 0; j < width; j++) {
-			uint32_t *pixel = &bits[i * stride / 4 + j];
-			*pixel = (*pixel & 0xFF00FF00) | (((*pixel >> 16) | (*pixel << 16)) & 0x00FF00FF);
-		}
-	}
-}
-
 void _start() {
 	_init();
 
@@ -823,86 +913,6 @@ void _start() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			InstanceCreate(message);
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			Instance *instance = message->instanceOpen.instance;
-			size_t fileSize;
-			uint8_t *file = (uint8_t *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
-
-			if (!file) {
-				EsInstanceOpenComplete(message, false);
-				continue;
-			}
-
-			uint32_t width, height;
-			uint8_t *bits = EsImageLoad(file, fileSize, &width, &height, 4);
-			EsHeapFree(file);
-
-			if (!bits) {
-				EsInstanceOpenComplete(message, false, INTERFACE_STRING(ImageEditorUnsupportedFormat));
-				continue;
-			}
-
-			EsPaintTargetDestroy(instance->bitmap);
-			ImageDelete(instance->image);
-
-			instance->bitmapWidth = width;
-			instance->bitmapHeight = height;
-			instance->bitmap = EsPaintTargetCreate(instance->bitmapWidth, instance->bitmapHeight, false);
-			EsPainter painter = {};
-			painter.clip = ES_RECT_4(0, instance->bitmapWidth, 0, instance->bitmapHeight);
-			painter.target = instance->bitmap;
-			EsDrawBitmap(&painter, painter.clip, (uint32_t *) bits, width * 4, 0xFF);
-			instance->image = ImageFork(instance, {}, instance->bitmapWidth, instance->bitmapHeight);
-			ImageCopyFromPaintTarget(instance, &instance->image, painter.clip);
-			EsElementRelayout(EsElementGetLayoutParent(instance->canvas));
-
-			EsHeapFree(bits);
-			EsInstanceOpenComplete(message, true);
-		} else if (message->type == ES_MSG_INSTANCE_SAVE) {
-			Instance *instance = message->instanceSave.instance;
-
-			uintptr_t extensionOffset = message->instanceSave.nameBytes;
-
-			while (extensionOffset) {
-				if (message->instanceSave.name[extensionOffset - 1] == '.') {
-					break;
-				} else {
-					extensionOffset--;
-				}
-			}
-
-			const char *extension = extensionOffset ? message->instanceSave.name + extensionOffset : "png";
-			size_t extensionBytes = extensionOffset ? message->instanceSave.nameBytes - extensionOffset : 3;
-
-			uint32_t *bits;
-			size_t width, height, stride;
-			EsPaintTargetStartDirectAccess(instance->bitmap, &bits, &width, &height, &stride);
-			EsAssert(stride == width * 4); // TODO Other strides.
-			SwapRedAndBlueChannels(bits, width, height, stride); // stbi_write uses the other order. We swap back below.
-
-			uint8_t _buffer[4096];
-			EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
-			buffer.fileStore = message->instanceSave.file;
-
-			if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpg"))
-					|| 0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpeg"))) {
-				stbi_write_jpg_to_func(WriteCallback, &buffer, width, height, 4, bits, 90);
-			} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("bmp"))) {
-				stbi_write_bmp_to_func(WriteCallback, &buffer, width, height, 4, bits);
-			} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("tga"))) {
-				stbi_write_tga_to_func(WriteCallback, &buffer, width, height, 4, bits);
-			} else {
-				stbi_write_png_to_func(WriteCallback, &buffer, width, height, 4, bits, stride);
-			}
-
-			SwapRedAndBlueChannels(bits, width, height, stride); // Swap back.
-			EsBufferFlushToFileStore(&buffer);
-			EsPaintTargetEndDirectAccess(instance->bitmap);
-			EsInstanceSaveComplete(message, true);
-		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-			Instance *instance = message->instanceDestroy.instance;
-			EsPaintTargetDestroy(instance->bitmap);
-			ImageDelete(instance->image);
 		}
 	}
 }

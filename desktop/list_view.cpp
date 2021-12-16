@@ -1757,6 +1757,7 @@ struct EsListView : EsElement {
 			secondaryCellStyle->CloseReference();
 			selectedCellStyle->CloseReference();
 			fixedItems.Free();
+			fixedItemIndices.Free();
 			visibleItems.Free();
 			groups.Free();
 			activeColumns.Free();

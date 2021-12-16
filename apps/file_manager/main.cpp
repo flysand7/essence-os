@@ -495,6 +495,30 @@ void LoadSettings() {
 	}
 }
 
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_CLOSE) {
+		EsAssert(!instance->closed);
+		instance->closed = true;
+		instance->list = nullptr;
+		instance->placesView = nullptr;
+		instance->breadcrumbBar = nullptr;
+		instance->newFolderButton = nullptr;
+		instance->status = nullptr;
+		instance->blockingDialog = nullptr;
+	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
+
+		if (request.flags & ES_APPLICATION_STARTUP_BACKGROUND_SERVICE) {
+			// No cleanup to do.
+		} else {
+			InstanceDestroy(instance);
+			instances.FindAndDeleteSwap(instance, true);
+		}
+	}
+
+	return 0;
+}
+
 void _start() {
 	_init();
 
@@ -514,6 +538,7 @@ void _start() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(FileManagerTitle));
+			instance->callback = InstanceCallback;
 
 			EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
 			
@@ -522,26 +547,6 @@ void _start() {
 			} else {
 				instances.Add(instance);
 				InstanceCreateUI(instance);
-			}
-		} else if (message->type == ES_MSG_INSTANCE_CLOSE) {
-			Instance *instance = message->instanceClose.instance;
-			EsAssert(!instance->closed);
-			instance->closed = true;
-			instance->list = nullptr;
-			instance->placesView = nullptr;
-			instance->breadcrumbBar = nullptr;
-			instance->newFolderButton = nullptr;
-			instance->status = nullptr;
-			instance->blockingDialog = nullptr;
-		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-			Instance *instance = message->instanceDestroy.instance;
-			EsApplicationStartupRequest request = EsInstanceGetStartupRequest(instance);
-			
-			if (request.flags & ES_APPLICATION_STARTUP_BACKGROUND_SERVICE) {
-				// No cleanup to do.
-			} else {
-				InstanceDestroy(instance);
-				instances.FindAndDeleteSwap(instance, true);
 			}
 		} else if (message->type == ES_MSG_APPLICATION_EXIT) {
 #ifdef DEBUG_BUILD

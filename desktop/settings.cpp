@@ -2,7 +2,7 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-struct SettingsInstance : CommonDesktopInstance {
+struct SettingsInstance : EsInstance {
 	EsPanel *switcher;
 	EsPanel *mainPage;
 	EsButton *undoButton, *backButton;
@@ -885,7 +885,11 @@ void InstanceSettingsCreate(EsMessage *message) {
 		}
 	}
 
-	instance->destroy = [] (EsInstance *) {
-		ConfigurationWriteToFile();
+	instance->callback = [] (EsInstance *, EsMessage *message) {
+		if (message->type == ES_MSG_INSTANCE_DESTROY) {
+			ConfigurationWriteToFile();
+		}
+
+		return 0;
 	};
 }

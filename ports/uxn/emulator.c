@@ -337,20 +337,28 @@ int CanvasMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
+int InstanceCallback(EsInstance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_OPEN) {
+		size_t romBytes;
+		void *rom = EsFileStoreReadAll(message->instanceOpen.file, &romBytes);
+		EsInstanceOpenComplete(instance, message->instanceOpen.file, rom && Launch(rom, romBytes), NULL, 0);
+		EsHeapFree(rom, 0, NULL);
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
 void _start() {
 	while (true) {
 		EsMessage *message = EsMessageReceive();
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			EsInstance *instance = EsInstanceCreate(message, "Uxn Emulator", -1);
+			instance->callback = InstanceCallback;
 			canvas = EsCustomElementCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-			canvas->messageUser = (EsUICallback) CanvasMessage;
+			canvas->messageUser = (EsElementCallback) CanvasMessage;
 			EsElementStartAnimating(canvas);
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			size_t romBytes;
-			void *rom = EsFileStoreReadAll(message->instanceOpen.file, &romBytes);
-			EsInstanceOpenComplete(message, rom && Launch(rom, romBytes), NULL, 0);
-			EsHeapFree(rom, 0, NULL);
 		}
 	}
 }

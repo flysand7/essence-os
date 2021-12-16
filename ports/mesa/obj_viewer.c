@@ -298,6 +298,19 @@ bool LoadModel(char *model, size_t modelBytes) {
 	return true;
 }
 
+int InstanceCallback(EsInstance *, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_OPEN) {
+		size_t modelBytes;
+		void *model = EsFileStoreReadAll(message->instanceOpen.file, &modelBytes);
+		EsInstanceOpenComplete(message, LoadModel(model, modelBytes), NULL, 0);
+		EsHeapFree(model, 0, NULL);
+		loadedModel = true;
+		return ES_HANDLED;
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	(void) argc;
 	(void) argv;
@@ -436,16 +449,11 @@ int main(int argc, char **argv) {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			EsInstance *instance = EsInstanceCreate(message, "Object Viewer", -1);
+			instance->callback = InstanceCallback;
 			EsWindowSetIcon(instance->window, ES_ICON_MODEL);
 			EsElement *canvas = EsCustomElementCreate(instance->window, ES_CELL_FILL, 0);
 			canvas->messageUser = (EsUICallback) CanvasCallback;
 			EsElementStartAnimating(canvas);
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			size_t modelBytes;
-			void *model = EsFileStoreReadAll(message->instanceOpen.file, &modelBytes);
-			EsInstanceOpenComplete(message, LoadModel(model, modelBytes), NULL, 0);
-			EsHeapFree(model, 0, NULL);
-			loadedModel = true;
 		}
 	}
 

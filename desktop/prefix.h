@@ -387,6 +387,30 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define ES_THEME_CURSORS_WIDTH (264)
 #define ES_THEME_CURSORS_HEIGHT (128)
 
+// Desktop messages: 
+#define ES_MSG_EMBEDDED_WINDOW_DESTROYED 	((EsMessageType) (ES_MSG_SYSTEM_START + 0x001))
+#define ES_MSG_SET_SCREEN_RESOLUTION		((EsMessageType) (ES_MSG_SYSTEM_START + 0x002))
+#define ES_MSG_DESKTOP	                        ((EsMessageType) (ES_MSG_SYSTEM_START + 0x005))
+
+// Messages sent from Desktop to application instances:
+#define ES_MSG_TAB_INSPECT_UI			((EsMessageType) (ES_MSG_SYSTEM_START + 0x101))
+#define ES_MSG_TAB_CLOSE_REQUEST		((EsMessageType) (ES_MSG_SYSTEM_START + 0x102))
+#define ES_MSG_INSTANCE_SAVE_RESPONSE		((EsMessageType) (ES_MSG_SYSTEM_START + 0x103)) // Sent by Desktop after an application requested to save its document.
+#define ES_MSG_INSTANCE_DOCUMENT_RENAMED	((EsMessageType) (ES_MSG_SYSTEM_START + 0x104))
+#define ES_MSG_INSTANCE_DOCUMENT_UPDATED	((EsMessageType) (ES_MSG_SYSTEM_START + 0x105))
+#define ES_MSG_INSTANCE_RENAME_RESPONSE		((EsMessageType) (ES_MSG_SYSTEM_START + 0x107))
+
+// Debugger messages:
+#define ES_MSG_APPLICATION_CRASH		((EsMessageType) (ES_MSG_SYSTEM_START + 0x201))
+#define ES_MSG_PROCESS_TERMINATED		((EsMessageType) (ES_MSG_SYSTEM_START + 0x202))
+
+// Misc messages:
+#define ES_MSG_EYEDROP_REPORT			((EsMessageType) (ES_MSG_SYSTEM_START + 0x301))
+#define ES_MSG_TIMER				((EsMessageType) (ES_MSG_SYSTEM_START + 0x302))
+#define ES_MSG_PING				((EsMessageType) (ES_MSG_SYSTEM_START + 0x303)) // Sent by Desktop to check processes are processing messages.
+#define ES_MSG_WAKEUP				((EsMessageType) (ES_MSG_SYSTEM_START + 0x304)) // Sent to wakeup the message thread, so that it can process locally posted messages.
+#define ES_MSG_INSTANCE_OPEN_DELAYED		((EsMessageType) (ES_MSG_SYSTEM_START + 0x305))
+
 #endif
 
 // --------- CRT function macros:

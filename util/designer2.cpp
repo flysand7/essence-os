@@ -38,8 +38,6 @@
 // 	Path boolean operations.
 // 	Timeline editor for applying a given state change, with rows for possibly many different layers.
 // 	Metrics: layoutVertical, textFigures.
-
-// TODO Reorganize old theming data!
 		
 //////////////////////////////////////////////////////////////
 
@@ -3760,19 +3758,25 @@ int main(int argc, char **argv) {
 }
 
 #ifdef OS_ESSENCE
-void _UIMessageProcess(EsMessage *message) {
-	if (message->type == ES_MSG_INSTANCE_OPEN) {
+void _UIMessageProcess(EsMessage *message) {}
+
+int _UIInstanceCallback(EsInstance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_SAVE) {
+		fileStore = message->instanceSave.file;
+		DocumentSave(nullptr);
+		EsInstanceSaveComplete(instance, fileStore, true);
+		fileStore = nullptr;
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
 		DocumentFree();
 		fileStore = message->instanceOpen.file;
 		DocumentLoad();
+		EsInstanceOpenComplete(instance, fileStore, true);
 		fileStore = nullptr;
-		EsInstanceOpenComplete(message, true);
-	} else if (message->type == ES_MSG_INSTANCE_SAVE) {
-		fileStore = message->instanceSave.file;
-		DocumentSave(nullptr);
-		fileStore = nullptr;
-		EsInstanceSaveComplete(message, true);
+	} else {
+		return 0;
 	}
+
+	return ES_HANDLED;
 }
 
 void _start() {

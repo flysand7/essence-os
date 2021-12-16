@@ -913,8 +913,14 @@ EsError FSDirectoryEntryFound(KNode *_parent, KNodeMetadata *metadata,
 					nameBytes, name, parent);
 		}
 
+		if (update) {
+			EsMemoryCopy(existingEntry->thisItem + 1, driverData, driverDataBytes);
+		}
+
 		if (node) {
 			if (!update) {
+				// Only try to create a node for this directory entry if update is false.
+
 				if (existingEntry->thisItem->node) {
 					KernelPanic("FSDirectoryEntryFound - Entry exists and is created on file system.\n");
 				}
@@ -927,9 +933,9 @@ EsError FSDirectoryEntryFound(KNode *_parent, KNodeMetadata *metadata,
 			}
 
 			*node = existingEntry->thisItem->node;
-		} else if (update) {
-			EsMemoryCopy(existingEntry->thisItem + 1, driverData, driverDataBytes);
-		} else if (EsMemoryCompare(existingEntry->thisItem + 1, driverData, driverDataBytes)) {
+		} 
+		
+		if (!node && !update && EsMemoryCompare(existingEntry->thisItem + 1, driverData, driverDataBytes)) {
 			// NOTE This can be caused by a directory containing an entry with the same name multiple times.
 			KernelLog(LOG_ERROR, "FS", "directory entry driverData changed", "FSDirectoryEntryFound - 'update' is false but driverData has changed.\n");
 		}

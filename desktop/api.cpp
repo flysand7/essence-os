@@ -238,10 +238,6 @@ struct APIInstance {
 
 	bool closeAfterSaveCompletes;
 
-	// Do not propagate messages about this instance to the application. 
-	// Currently only used for inspectors.
-	bool internalOnly; 
-
 	union {
 		EsInstanceClassEditorSettings editorSettings;
 		EsInstanceClassViewerSettings viewerSettings;
@@ -799,17 +795,6 @@ void InstanceCreateFileStore(APIInstance *instance, EsHandle handle) {
 	instance->fileStore = FileStoreCreateFromHandle(handle);
 }
 
-void InstancePostOpenMessage(EsInstance *_instance, bool update) {
-	APIInstance *instance = (APIInstance *) _instance->_private;
-	EsMessage m = { ES_MSG_INSTANCE_OPEN };
-	m.instanceOpen.instance = _instance;
-	m.instanceOpen.name = instance->startupInformation->filePath;
-	m.instanceOpen.nameBytes = instance->startupInformation->filePathBytes;
-	m.instanceOpen.file = instance->fileStore;
-	m.instanceOpen.update = update;
-	EsMessagePost(nullptr, &m);
-}
-
 APIInstance *InstanceSetup(EsInstance *instance) {
 	APIInstance *apiInstance = (APIInstance *) EsHeapAllocate(sizeof(APIInstance), true);
 
@@ -886,9 +871,15 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 
 		if (apiInstance->startupInformation && apiInstance->startupInformation->readHandle) {
 			InstanceCreateFileStore(apiInstance, apiInstance->startupInformation->readHandle);
-			InstancePostOpenMessage(instance, false);
 			EsWindowSetTitle(instance->window, apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes);
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
+
+			// HACK Delay sending the instance open message so that application has a chance to initialise the instance.
+			// TODO Change how this works!!
+			// TODO Can the posted message be raced by a ES_MSG_INSTANCE_DOCUMENT_UPDATED?
+			EsMessage m = { ES_MSG_INSTANCE_OPEN_DELAYED };
+			m._argument = instance;
+			EsMessagePost(nullptr, &m);
 		}
 	}
 
@@ -922,19 +913,61 @@ void EsInstanceCloseReference(EsInstance *_instance) {
 	instance->referenceCount--;
 
 	if (!instance->referenceCount) {
-		EsMessage m = {};
-		m.type = ES_MSG_INSTANCE_DESTROY;
-		m.instanceDestroy.instance = _instance;
-		EsMessagePost(nullptr, &m); 
+		if (_instance->callback) {
+			EsMessage m = {};
+			m.type = ES_MSG_INSTANCE_DESTROY;
+			_instance->callback(_instance, &m);
+		}
+
+		if (instance->startupInformation) {
+			EsHeapFree((void *) instance->startupInformation->filePath);
+			EsHeapFree((void *) instance->startupInformation->containingFolder);
+		}
+
+		EsHeapFree(instance->startupInformation);
+		EsHeapFree(instance->documentPath);
+		EsHeapFree(instance->newName);
+
+		for (uintptr_t i = 0; i < instance->commands.Count(); i++) {
+			EsCommand *command = instance->commands[i];
+			EsAssert(command->registered);
+			EsAssert(!ArrayLength(command->elements));
+			Array<EsElement *> elements = { command->elements };
+			elements.Free();
+		}
+
+		instance->commands.Free();
+		if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
+		EsHeapFree(instance);
+		EsHeapFree(_instance);
 	}
 }
 
 void EsInstanceClose(EsInstance *instance) {
 	EsMessageMutexCheck();
-	EsMessage m = {};
-	m.type = ES_MSG_INSTANCE_CLOSE;
-	m.instanceClose.instance = instance;
-	EsMessagePost(nullptr, &m); 
+
+	if (instance->callback) {
+		EsMessage m = {};
+		m.type = ES_MSG_INSTANCE_CLOSE;
+		instance->callback(instance, &m);
+	}
+
+	InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
+
+	if (*inspector) {
+		EsInstance *instance2 = *inspector;
+		UndoManagerDestroy(instance2->undoManager);
+		EsAssert(instance2->window->instance == instance2);
+		EsElementDestroy(instance2->window);
+		EsInstanceCloseReference(instance2);
+		instance2->window->InternalDestroy();
+		*inspector = nullptr;
+	}
+
+	UndoManagerDestroy(instance->undoManager);
+	EsAssert(instance->window->instance == instance);
+	EsElementDestroy(instance->window);
+	EsInstanceCloseReference(instance);
 }
 
 EsWindow *WindowFromWindowID(EsObjectID id) {
@@ -950,6 +983,22 @@ EsWindow *WindowFromWindowID(EsObjectID id) {
 EsInstance *InstanceFromWindowID(EsObjectID id) {
 	EsWindow *window = WindowFromWindowID(id);
 	return window ? window->instance : nullptr;
+}
+
+void InstanceSendOpenMessage(EsInstance *instance, bool update) {
+	APIInstance *apiInstance = (APIInstance *) instance->_private;
+
+	EsMessage m = { .type = ES_MSG_INSTANCE_OPEN };
+	m.instanceOpen.name = apiInstance->startupInformation->filePath;
+	m.instanceOpen.nameBytes = apiInstance->startupInformation->filePathBytes;
+	m.instanceOpen.file = apiInstance->fileStore;
+	m.instanceOpen.update = update;
+
+	int response = instance->callback ? instance->callback(instance, &m) : 0;
+	if (!response) EsInstanceOpenComplete(instance, m.instanceOpen.file, true); // Ignored.
+
+	// TODO Support multithreaded file operations.
+	EsAssert(m.instanceOpen.file->operationComplete);
 }
 
 EsError GetMessage(_EsMessageWithObject *message) {
@@ -980,13 +1029,6 @@ EsMessage *EsMessageReceive() {
 			if (message.message.createInstance.data != ES_INVALID_HANDLE) {
 				EsHandleClose(message.message.createInstance.data);
 			}
-		} else if (message.message.type == ES_MSG_INSTANCE_OPEN) {
-			// TODO Support multithreaded file operations.
-			EsAssert(message.message.instanceOpen.file->operationComplete);
-		} else if (message.message.type == ES_MSG_INSTANCE_SAVE) {
-			// TODO Support multithreaded file operations.
-			EsAssert(message.message.instanceSave.file->operationComplete);
-			FileStoreCloseHandle(message.message.instanceSave.file);
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
 			if (api.startupInformation->isDesktop) {
 				// Desktop tracks the number of instances it owns, so it needs to know when it exits.
@@ -1024,48 +1066,6 @@ EsMessage *EsMessageReceive() {
 #endif
 				EsProcessTerminateCurrent();
 			}
-		} else if (message.message.type == ES_MSG_INSTANCE_DESTROY) {
-			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
-
-			if (instance->startupInformation) {
-				EsHeapFree((void *) instance->startupInformation->filePath);
-				EsHeapFree((void *) instance->startupInformation->containingFolder);
-			}
-
-			EsHeapFree(instance->startupInformation);
-			EsHeapFree(instance->documentPath);
-			EsHeapFree(instance->newName);
-
-			for (uintptr_t i = 0; i < instance->commands.Count(); i++) {
-				EsCommand *command = instance->commands[i];
-				EsAssert(command->registered);
-				EsAssert(!ArrayLength(command->elements));
-				Array<EsElement *> elements = { command->elements };
-				elements.Free();
-			}
-
-			instance->commands.Free();
-			if (instance->fileStore) FileStoreCloseHandle(instance->fileStore);
-			EsHeapFree(instance);
-			EsHeapFree(message.message.instanceDestroy.instance);
-		} else if (message.message.type == ES_MSG_INSTANCE_CLOSE) {
-			EsInstance *instance = message.message.instanceClose.instance;
-			InspectorWindow **inspector = &((APIInstance *) instance->_private)->attachedInspector;
-
-			if (*inspector) {
-				EsInstance *instance2 = *inspector;
-				UndoManagerDestroy(instance2->undoManager);
-				EsAssert(instance2->window->instance == instance2);
-				EsElementDestroy(instance2->window);
-				EsInstanceCloseReference(instance2);
-				instance2->window->InternalDestroy();
-				*inspector = nullptr;
-			}
-
-			UndoManagerDestroy(instance->undoManager);
-			EsAssert(instance->window->instance == instance);
-			EsElementDestroy(instance->window);
-			EsInstanceCloseReference(instance);
 		} else if (message.message.type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {
@@ -1132,34 +1132,37 @@ EsMessage *EsMessageReceive() {
 				InstanceClose(instance);
 			}
 		} else if (type == ES_MSG_INSTANCE_SAVE_RESPONSE) {
+			// TODO Support multithreaded file operations.
+
 			EsMessage m = {};
 			m.type = ES_MSG_INSTANCE_SAVE;
 			m.instanceSave.file = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
 
 			if (m.instanceSave.file) {
+				EsInstance *_instance = InstanceFromWindowID(message.message.tabOperation.id);
+				APIInstance *instance = (APIInstance *) _instance->_private;
+
 				m.instanceSave.file->error = message.message.tabOperation.error;
 				m.instanceSave.file->handle = message.message.tabOperation.handle;
 				m.instanceSave.file->type = FILE_STORE_HANDLE;
 				m.instanceSave.file->handles = 1;
-				m.instanceSave.instance = InstanceFromWindowID(message.message.tabOperation.id);
 
-				APIInstance *instance = (APIInstance *) m.instanceSave.instance->_private;
 				m.instanceSave.name = instance->startupInformation->filePath;
 				m.instanceSave.nameBytes = instance->startupInformation->filePathBytes;
 
-				if (m.instanceSave.file->error == ES_SUCCESS) {
-					EsMemoryCopy(&message.message, &m, sizeof(EsMessage));
-					return &message.message;
+				if (m.instanceSave.file->error == ES_SUCCESS && _instance->callback && _instance->callback(_instance, &m)) {
+					// The instance callback will have called EsInstanceSaveComplete.
 				} else {
-					EsInstanceSaveComplete(&m, false);
+					EsInstanceSaveComplete(_instance, m.instanceSave.file, false);
 				}
-
-				EsMemoryCopy(&message.message, &m, sizeof(EsMessage));
 			} else {
 				if (message.message.tabOperation.handle) {
 					EsHandleClose(message.message.tabOperation.handle);
 				}
 			}
+
+			EsAssert(m.instanceSave.file->operationComplete);
+			FileStoreCloseHandle(m.instanceSave.file);
 		} else if (type == ES_MSG_INSTANCE_RENAME_RESPONSE) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 
@@ -1239,11 +1242,13 @@ EsMessage *EsMessageReceive() {
 				InstanceCreateFileStore(instance, message.message.tabOperation.handle);
 
 				if (!message.message.tabOperation.isSource) {
-					InstancePostOpenMessage(_instance, true);
+					InstanceSendOpenMessage(_instance, true);
 				}
 			} else {
 				EsHandleClose(message.message.tabOperation.handle);
 			}
+		} else if (type == ES_MSG_INSTANCE_OPEN_DELAYED) {
+			InstanceSendOpenMessage((EsInstance *) message.message._argument, false);
 		} else if (type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 			if (instance) UIRefreshPrimaryClipboard(instance->window);
@@ -1314,12 +1319,6 @@ EsMessage *EsMessageReceive() {
 					return &message.message;
 				}
 			}
-		} else if (type == ES_MSG_INSTANCE_DESTROY || type == ES_MSG_INSTANCE_CLOSE) {
-			APIInstance *instance = (APIInstance *) message.message.instanceDestroy.instance->_private;
-
-			if (!instance->internalOnly) {
-				return &message.message;
-			}
 		} else {
 			return &message.message;
 		}
@@ -1335,18 +1334,16 @@ void EsInstanceSetModified(EsInstance *instance, bool modified) {
 	MessageDesktop(m, 2, instance->window->handle);
 }
 
-void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorText, ptrdiff_t errorTextBytes) {
-	EsInstance *instance = message->instanceOpen.instance;
-
-	if (!success || message->instanceOpen.file->error != ES_SUCCESS) {
-		if (errorTextBytes) {
+void EsInstanceOpenComplete(EsInstance *instance, EsFileStore *file, bool success, const char *errorText, ptrdiff_t errorTextBytes) {
+	if (!success || file->error != ES_SUCCESS) {
+		if (errorText && errorTextBytes) {
 			EsDialogShow(instance->window, INTERFACE_STRING(FileCannotOpen),
 					errorText, errorTextBytes,
 					ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		} else {
 			const char *errorMessage = interfaceString_FileLoadErrorUnknown;
 
-			switch (message->instanceOpen.file->error) {
+			switch (file->error) {
 				case ES_ERROR_DRIVE_ERROR_FILE_DAMAGED:
 					errorMessage = interfaceString_FileLoadErrorCorrupt;
 					break;
@@ -1362,33 +1359,34 @@ void EsInstanceOpenComplete(EsMessage *message, bool success, const char *errorT
 					errorMessage, -1, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
 		}
 
-		// TODO Close the instance.
+		// TODO Close the instance after the dialog is closed?
 	} else {
+#if 0
 		if (!message->instanceOpen.update) {
 			EsUndoClear(instance->undoManager);
 		}
+#endif
 
 		EsInstanceSetModified(instance, false);
 	}
 
-	EsAssert(!message->instanceOpen.file->operationComplete);
-	message->instanceOpen.file->operationComplete = true;
+	EsAssert(!file->operationComplete);
+	file->operationComplete = true;
 }
 
-void EsInstanceSaveComplete(EsMessage *message, bool success) {
-	if (message->instanceSave.file->error != ES_SUCCESS) {
+void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool success) {
+	if (file->error != ES_SUCCESS) {
 		success = false;
 	}
 
 	if (success) {
-		message->instanceSave.file->error = EsFileControl(message->instanceSave.file->handle, ES_FILE_CONTROL_FLUSH);
+		file->error = EsFileControl(file->handle, ES_FILE_CONTROL_FLUSH);
 
-		if (message->instanceSave.file->error != ES_SUCCESS) {
+		if (file->error != ES_SUCCESS) {
 			success = false;
 		}
 	}
 
-	EsInstance *instance = message->instanceSave.instance;
 	APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 	if (instance) {
@@ -1415,7 +1413,7 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 			const char *errorMessage = interfaceString_FileSaveErrorUnknown;
 			ptrdiff_t errorMessageBytes = -1;
 
-			switch (message->instanceSave.file->error) {
+			switch (file->error) {
 				case ES_ERROR_FILE_DOES_NOT_EXIST: 
 				case ES_ERROR_NODE_DELETED: 
 				case ES_ERROR_PERMISSION_NOT_GRANTED: 
@@ -1459,8 +1457,8 @@ void EsInstanceSaveComplete(EsMessage *message, bool success) {
 		}
 	}
 
-	EsAssert(!message->instanceSave.file->operationComplete);
-	message->instanceSave.file->operationComplete = true;
+	EsAssert(!file->operationComplete);
+	file->operationComplete = true;
 }
 
 uintptr_t EsSystemGetOptimalWorkQueueThreadCount() {
@@ -2156,8 +2154,6 @@ void EsPOSIXInitialise(int *, char ***) {
 			EsInstance *instance = EsInstanceCreate(message, INTERFACE_STRING(POSIXTitle));
 			EsPanel *panel = EsPanelCreate((EsElement *) instance->window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
 			EsTextDisplayCreate(panel, ES_CELL_H_CENTER | ES_CELL_V_FILL | ES_TEXT_DISPLAY_RICH_TEXT, nullptr, INTERFACE_STRING(POSIXUnavailable));
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			EsInstanceOpenComplete(message, true);
 		}
 	}
 }

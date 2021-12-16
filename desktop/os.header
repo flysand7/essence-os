@@ -938,7 +938,9 @@ enum EsMessageType {
 								// It will be removed from the `children` later (but before the next ES_MSG_LAYOUT message is received).
 	ES_MSG_PRE_ADD_CHILD			= 0x200D	// An element has been created with this element as its parent, but is not yet added to the parent.
 	ES_MSG_HIT_TEST				= 0x200E	// For non-rectangular elements: test whether a pixel should be considered inside the element. Set response to ES_HANDLED.
-	ES_MSG_KEY_TYPED			= 0x2011	// Sent to the focused element when a key is pressed. Only if ES_HANDLED is returned the message will not propagate; this allows messageUser to block input processing by returning ES_REJECTED.
+	ES_MSG_KEY_TYPED			= 0x2011	// Sent to the focused element when a key is pressed. 
+								// Only if ES_HANDLED is returned the message will not propagate; 
+								// this allows messageUser to block input processing by returning ES_REJECTED.
 	ES_MSG_SCROLL_X				= 0x2012	// The element has been horizontally scrolled.
 	ES_MSG_SCROLL_Y				= 0x2013	// The element has been vertically scrolled.
 	ES_MSG_STRONG_FOCUS_END			= 0x2014	// Sent once when the user 'clicks off' the element, even if a new element was not necessarily focused.
@@ -963,6 +965,8 @@ enum EsMessageType {
 	ES_MSG_TRANSITION_COMPLETE		= 0x202B	// The transition started with EsElementStartTransition completed.
 	ES_MSG_PAINT_FOREGROUND			= 0x202C	// Paint the element's foreground. Sent after the children are painted.
 								// The width/height parameters of EsPainter may be larger than expected - this includes the 'non-client' area.
+	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x202D	// Send to the focused element when the contents of the primary clipboard is changes.
+								// This message might be delayed if the window containing the element is inactive.
 
 	// State change messages: (causes a style refresh)
 	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
@@ -984,38 +988,10 @@ enum EsMessageType {
 	ES_MSG_LIST_DISPLAY_GET_MARKER		= 0x3004	// Get the string for a marker in an EsListDisplay. See message->getContent.
 	ES_MSG_SLIDER_MOVED			= 0x3006	// The slider has been moved.
 
-	// Desktop messages: 
-	ES_MSG_EMBEDDED_WINDOW_DESTROYED 	= 0x4802
-	ES_MSG_SET_SCREEN_RESOLUTION		= 0x4803
-	ES_MSG_REGISTER_FILE_SYSTEM		= 0x4804
-	ES_MSG_UNREGISTER_FILE_SYSTEM		= 0x4805
-	ES_MSG_DESKTOP	                        = 0x4806
-	ES_MSG_DEVICE_CONNECTED			= 0x4807
-	ES_MSG_DEVICE_DISCONNECTED		= 0x4808
-
-	// Messages sent from Desktop to application instances:
-	ES_MSG_TAB_INSPECT_UI			= 0x4A01
-	ES_MSG_TAB_CLOSE_REQUEST		= 0x4A02
-	ES_MSG_INSTANCE_SAVE_RESPONSE		= 0x4A03	// Sent by Desktop after an application requested to save its document.
-	ES_MSG_INSTANCE_DOCUMENT_RENAMED	= 0x4A04
-	ES_MSG_INSTANCE_DOCUMENT_UPDATED	= 0x4A05
-	ES_MSG_PRIMARY_CLIPBOARD_UPDATED	= 0x4A06
-	ES_MSG_INSTANCE_RENAME_RESPONSE		= 0x4A07
-
-	// Debugger messages:
-	ES_MSG_APPLICATION_CRASH		= 0x4C00
-	ES_MSG_PROCESS_TERMINATED		= 0x4C01
-
 	// Undo item messages:
 	ES_MSG_UNDO_CANCEL			= 0x4D00
 	ES_MSG_UNDO_INVOKE			= 0x4D01
 	ES_MSG_UNDO_TO_STRING			= 0x4D02
-
-	// Misc messages:
-	ES_MSG_EYEDROP_REPORT			= 0x5001
-	ES_MSG_TIMER				= 0x5003
-	ES_MSG_PING				= 0x5004	// Sent by Desktop to check processes are processing messages.
-	ES_MSG_WAKEUP				= 0x5005	// Sent to wakeup the message thread, so that it can process locally posted messages.
 
 	// File Manager messages:
 	ES_MSG_FILE_MANAGER_FILE_MODIFIED	= 0x5100
@@ -1057,12 +1033,22 @@ enum EsMessageType {
 	ES_MSG_REORDER_ITEM_MOVED		= 0x5401
 
 	// Application messages:
-	ES_MSG_APPLICATION_EXIT			= 0x7001
-	ES_MSG_INSTANCE_CREATE			= 0x7002
-	ES_MSG_INSTANCE_OPEN			= 0x7003
-	ES_MSG_INSTANCE_SAVE			= 0x7004
-	ES_MSG_INSTANCE_DESTROY			= 0x7005
-	ES_MSG_INSTANCE_CLOSE			= 0x7006
+	ES_MSG_APPLICATION_EXIT			= 0x6001
+	ES_MSG_INSTANCE_CREATE			= 0x6002
+	ES_MSG_DEVICE_CONNECTED			= 0x6003
+	ES_MSG_DEVICE_DISCONNECTED		= 0x6004
+	ES_MSG_REGISTER_FILE_SYSTEM		= 0x6005
+	ES_MSG_UNREGISTER_FILE_SYSTEM		= 0x6006
+
+	// Instance messages:
+	ES_MSG_INSTANCE_OPEN			= 0x6800
+	ES_MSG_INSTANCE_SAVE			= 0x6801
+	ES_MSG_INSTANCE_DESTROY			= 0x6802
+	ES_MSG_INSTANCE_CLOSE			= 0x6803
+
+	// Messages for internal use by the system:
+	ES_MSG_SYSTEM_START			= 0x7000
+	ES_MSG_SYSTEM_END			= 0x7FFF
 
 	// User messages:
 	ES_MSG_USER_START			= 0x8000
@@ -1182,7 +1168,8 @@ enum EsDeviceControlType {
 	ES_DEVICE_CONTROL_CLOCK_READ            = 0x2001
 }
 
-function_pointer int EsUICallback(struct EsElement *element, struct EsMessage *message);
+function_pointer int EsElementCallback(struct EsElement *element, struct EsMessage *message);
+function_pointer int EsInstanceCallback(ES_INSTANCE_TYPE *instance, struct EsMessage *message);
 
 struct EsBuffer {
 	union { const uint8_t *in; uint8_t *out; };
@@ -1193,7 +1180,7 @@ struct EsBuffer {
 };
 
 struct EsElementPublic {
-	EsUICallback messageUser;
+	EsElementCallback messageUser;
 	EsCString cName; 
 	EsGeneric userData; 
 	char accessKey; // Upper-case.
@@ -1339,6 +1326,9 @@ struct EsInstance {
 	void *_private;
 	EsWindow *window;
 	EsUndoManager *undoManager;
+
+	// Read-write.
+	EsInstanceCallback callback;
 };
 
 struct EsPanelBand {
@@ -1769,24 +1759,14 @@ struct EsMessageEndEdit {
 // Instance messages.
 
 struct EsMessageInstanceOpen {
-	ES_INSTANCE_TYPE *instance;
 	EsFileStore *file;
 	STRING name;
 	bool update;
 };
 
 struct EsMessageInstanceSave {
-	ES_INSTANCE_TYPE *instance;
 	EsFileStore *file;
 	STRING name;
-};
-
-struct EsMessageInstanceDestroy {
-	ES_INSTANCE_TYPE *instance;
-};
-
-struct EsMessageInstanceClose {
-	ES_INSTANCE_TYPE *instance;
 };
 
 // Internal system messages.
@@ -1902,8 +1882,6 @@ struct EsMessage {
 		// Instance messages:
 		EsMessageInstanceOpen instanceOpen;
 		EsMessageInstanceSave instanceSave;
-		EsMessageInstanceDestroy instanceDestroy;
-		EsMessageInstanceClose instanceClose;
 
 		// Internal messages:
 		void *_argument;
@@ -2423,8 +2401,8 @@ function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoM
 function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
 function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings);
 function EsApplicationStartupRequest EsInstanceGetStartupRequest(ES_INSTANCE_TYPE *instance);
-function void EsInstanceOpenComplete(EsMessage *message, bool success, STRING errorText = BLANK_STRING);
-function void EsInstanceSaveComplete(EsMessage *message, bool success);
+function void EsInstanceOpenComplete(ES_INSTANCE_TYPE *instance, EsFileStore *file, bool success, STRING errorText = BLANK_STRING);
+function void EsInstanceSaveComplete(ES_INSTANCE_TYPE *instance, EsFileStore *file, bool success);
 function void EsInstanceSetModified(ES_INSTANCE_TYPE *instance, bool modified);
 
 function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, STRING title, uint32_t iconID);
@@ -2450,7 +2428,7 @@ function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
 function bool EsElementIsHidden(EsElement *element);
-function void EsElementSetCallback(EsElement *element, EsUICallback callback);
+function void EsElementSetCallback(EsElement *element, EsElementCallback callback);
 function void EsElementGetSize(EsElement *element, int *width, int *height);
 function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL); // Mark an element to be repainted. If region is null, then the whole element is repainted.
 function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border); // Minimal repaint for ES_MSG_SCROLL_X/Y.

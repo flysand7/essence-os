@@ -1626,6 +1626,10 @@ uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *imageX, uint32
 	int unused;
 	uint32_t *image = (uint32_t *) stbi_load_from_memory((uint8_t *) file, fileSize, (int *) imageX, (int *) imageY, &unused, imageChannels);
 
+	if (!image) {
+		return nullptr;
+	}
+
 	for (uintptr_t j = 0; j < *imageY; j++) {
 		for (uintptr_t i = 0; i < *imageX; i++) {
 			uint32_t in = image[i + j * *imageX];
@@ -2605,15 +2609,23 @@ void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) {
 		return NULL;
 #ifdef ES_API
 	} else if (buffer->fileStore) {
-		while (writeBytes && !buffer->error) {
-			if (buffer->position == buffer->bytes) {
-				EsBufferFlushToFileStore(buffer);
-			} else {
-				size_t bytesToWrite = writeBytes > buffer->bytes - buffer->position ? buffer->bytes - buffer->position : writeBytes;
-				EsMemoryCopy(buffer->out + buffer->position, source, bytesToWrite);
-				buffer->position += bytesToWrite;
-				writeBytes -= bytesToWrite;
-				source = (const uint8_t *) source + bytesToWrite;
+		if (writeBytes > buffer->bytes) {
+			EsBufferFlushToFileStore(buffer);
+
+			if (!buffer->error) {
+				buffer->error = !EsFileStoreAppend(buffer->fileStore, source, writeBytes);
+			}
+		} else {
+			while (writeBytes && !buffer->error) {
+				if (buffer->position == buffer->bytes) {
+					EsBufferFlushToFileStore(buffer);
+				} else {
+					size_t bytesToWrite = writeBytes > buffer->bytes - buffer->position ? buffer->bytes - buffer->position : writeBytes;
+					EsMemoryCopy(buffer->out + buffer->position, source, bytesToWrite);
+					buffer->position += bytesToWrite;
+					writeBytes -= bytesToWrite;
+					source = (const uint8_t *) source + bytesToWrite;
+				}
 			}
 		}
 

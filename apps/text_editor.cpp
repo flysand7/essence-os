@@ -239,9 +239,52 @@ int TextboxDocumentMessage(EsElement *element, EsMessage *message) {
 	}
 }
 
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_SAVE) {
+		size_t byteCount;
+		char *contents = EsTextboxGetContents(instance->textboxDocument, &byteCount);
+		EsFileStoreWriteAll(message->instanceSave.file, contents, byteCount);
+		EsHeapFree(contents);
+		EsInstanceSaveComplete(instance, message->instanceSave.file, true);
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+		size_t fileSize;
+		char *file = (char *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
+
+		if (!file) {
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false);
+		} else if (!EsUTF8IsValid(file, fileSize)) {
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false);
+		} else {
+			EsTextboxSelectAll(instance->textboxDocument);
+			EsTextboxInsert(instance->textboxDocument, file, fileSize);
+			EsTextboxSetSelection(instance->textboxDocument, 0, 0, 0, 0);
+			EsElementRelayout(instance->textboxDocument);
+
+			if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".c"), true)
+					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".cpp"), true)
+					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".h"), true)) {
+				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
+			} else if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".ini"), true)) {
+				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
+			} else {
+				SetLanguage(instance, 0);
+			}
+
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, true);
+		}
+
+		EsHeapFree(file);
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
 void ProcessApplicationMessage(EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_CREATE) {
 		Instance *instance = EsInstanceCreate(message, INTERFACE_STRING(TextEditorTitle));
+		instance->callback = InstanceCallback;
 		EsInstanceSetClassEditor(instance, &editorSettings);
 
 		EsWindow *window = instance->window;
@@ -357,43 +400,6 @@ void ProcessApplicationMessage(EsMessage *message) {
 		button = EsButtonCreate(buttonGroup, ES_FLAGS_DEFAULT, {}, INTERFACE_STRING(CommonSearchPrevious));
 		button->accessKey = 'P';
 		EsCommandAddButton(&instance->commandFindPrevious, button);
-	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-		Instance *instance = message->instanceOpen.instance;
-
-		size_t fileSize;
-		char *file = (char *) EsFileStoreReadAll(message->instanceOpen.file, &fileSize);
-
-		if (!file) {
-			EsInstanceOpenComplete(message, false);
-		} else if (!EsUTF8IsValid(file, fileSize)) {
-			EsInstanceOpenComplete(message, false);
-		} else {
-			EsTextboxSelectAll(instance->textboxDocument);
-			EsTextboxInsert(instance->textboxDocument, file, fileSize);
-			EsTextboxSetSelection(instance->textboxDocument, 0, 0, 0, 0);
-			EsElementRelayout(instance->textboxDocument);
-
-			if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".c"), true)
-					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".cpp"), true)
-					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".h"), true)) {
-				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
-			} else if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".ini"), true)) {
-				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
-			} else {
-				SetLanguage(instance, 0);
-			}
-
-			EsInstanceOpenComplete(message, true);
-		}
-
-		EsHeapFree(file);
-	} else if (message->type == ES_MSG_INSTANCE_SAVE) {
-		Instance *instance = message->instanceSave.instance;
-		size_t byteCount;
-		char *contents = EsTextboxGetContents(instance->textboxDocument, &byteCount);
-		EsFileStoreWriteAll(message->instanceSave.file, contents, byteCount);
-		EsHeapFree(contents);
-		EsInstanceSaveComplete(message, true);
 	} else if (message->type == ES_MSG_APPLICATION_EXIT) {
 		EsBuffer buffer = {};
 		buffer.canGrow = true;

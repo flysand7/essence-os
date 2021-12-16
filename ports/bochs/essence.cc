@@ -230,6 +230,26 @@ void SetDimensions(int width, int height) {
 	EsElementRepaint(instance->display);
 }
 
+int InstanceCallback(Instance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		// TODO Tell the emulator to stop.
+		// unlink(configurationFile); (Do this on the POSIX thread.)
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+		configurationFileData = (char *) EsFileStoreReadAll(message->instanceOpen.file, &configurationFileBytes);
+
+		if (!configurationFileData) {
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, false);
+		} else {
+			EsEventSet(openEvent);
+			EsInstanceOpenComplete(instance, message->instanceOpen.file, true);
+		}
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
+
 void MessageLoopThread(EsGeneric) {
 	EsPrint("Reached message loop thread...\n");
 	EsMessageMutexAcquire();
@@ -239,24 +259,13 @@ void MessageLoopThread(EsGeneric) {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			instance = EsInstanceCreate(message, "Bochs");
+			instance->callback = InstanceCallback;
 			EsWindowSetTitle(instance->window, "Bochs", -1);
 			EsWindowSetIcon(instance->window, ES_ICON_APPLICATIONS_DEVELOPMENT);
 			instance->display = EsCustomElementCreate(instance->window, ES_CELL_FILL | ES_ELEMENT_FOCUSABLE);
 			instance->display->messageUser = CanvasCallback;
 			EsElementFocus(instance->display);
 			SetDimensions(640, 480);
-		} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-			configurationFileData = (char *) EsFileStoreReadAll(message->instanceOpen.file, &configurationFileBytes);
-
-			if (!configurationFileData) {
-				EsInstanceOpenComplete(message, false);
-			} else {
-				EsEventSet(openEvent);
-				EsInstanceOpenComplete(message, true);
-			}
-		} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-			// TODO Tell the emulator to stop.
-			// unlink(configurationFile); (Do this on the POSIX thread.)
 		}
 	}
 }

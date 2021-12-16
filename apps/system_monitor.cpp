@@ -363,9 +363,18 @@ void TerminateProcess(Instance *instance, EsElement *, EsCommand *) {
 	}
 }
 
+int InstanceCallback(Instance *, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_DESTROY) {
+		processes.Free();
+	}
+
+	return 0;
+}
+
 void ProcessApplicationMessage(EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_CREATE) {
 		Instance *instance = EsInstanceCreate(message, "System Monitor");
+		instance->callback = InstanceCallback;
 
 		EsCommandRegister(&instance->commandTerminateProcess, instance, EsLiteral("Terminate process"), TerminateProcess, 1, "Del", false);
 
@@ -401,8 +410,6 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsSpacerCreate(buttonGroup, ES_CELL_V_FILL, ES_STYLE_TOOLBAR_BUTTON_GROUP_SEPARATOR);
 		AddTab(buttonGroup, DISPLAY_MEMORY, "Memory");
 		EsSpacerCreate(toolbar, ES_CELL_H_FILL);
-	} else if (message->type == ES_MSG_INSTANCE_DESTROY) {
-		processes.Free();
 	}
 }
 

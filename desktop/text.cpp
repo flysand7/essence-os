@@ -2921,7 +2921,7 @@ struct EsTextbox : EsElement {
 
 	bool ensureCaretVisibleQueued;
 
-	EsUICallback overlayCallback;
+	EsElementCallback overlayCallback;
 	EsGeneric overlayData;
 
 	char *activeLine;
@@ -3347,8 +3347,6 @@ void TextboxEnsureCaretVisibleActionCallback(EsElement *element, EsGeneric conte
 	EsTextbox *textbox = (EsTextbox *) element;
 	bool verticallyCenter = context.u;
 	TextboxCaret caret = textbox->carets[1];
-
-	EsPrint("TextboxEnsureCaretVisibleActionCallback ------------\n");
 
 	for (uintptr_t i = 0; i < 3; i++) {
 		// ScrollPane::SetY causes ES_MSG_SCROLL_Y to get sent to the textbox.

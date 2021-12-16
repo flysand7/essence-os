@@ -69,6 +69,9 @@
 
 // Callback to allow the application to process messages.
 void _UIMessageProcess(EsMessage *message);
+
+// Callback for instances.
+int _UIInstanceCallback(ES_INSTANCE_TYPE *instance, EsMessage *message);
 #endif
 
 #ifdef UI_DEBUG
@@ -729,7 +732,7 @@ struct {
 #endif
 
 #ifdef UI_ESSENCE
-	EsInstance *instance;
+	ES_INSTANCE_TYPE *instance;
 
 	void *menuData[256]; // HACK This limits the number of menu items to 128.
 	uintptr_t menuIndex;
@@ -5339,6 +5342,7 @@ void UIInitialise() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			ui.instance = EsInstanceCreate(message, NULL, 0);
+			ui.instance->callback = _UIInstanceCallback;
 			break;
 		}
 	}
