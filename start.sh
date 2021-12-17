@@ -3,8 +3,8 @@
 # Set the current directory to the source root.
 cd "$(dirname "$0")"
 
-# Create the bin and download cache directories.
-mkdir -p bin bin/cache
+# Create the bin directories.
+mkdir -p bin bin/Dependency\ Files bin/Logs bin/cache
 
 # Check that we are running on a sensible platform.
 uname -o | grep Cygwin > /dev/null

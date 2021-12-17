@@ -57,7 +57,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 	echo "Downloading Harfbuzz..."
 
 	if [ ! -f "bin/cache/harfbuzz-2.6.4.tar" ]; then
-		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/cache/harfbuzz-2.6.4.tar.xz 2> bin/harfbuzz_dl.txt
+		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/cache/harfbuzz-2.6.4.tar.xz 2> bin/Logs/harfbuzz_dl.txt
 		xz -d bin/cache/harfbuzz-2.6.4.tar.xz
 	fi
 
@@ -66,7 +66,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 
 	cd bin/harfbuzz
 	./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared \
-		CFLAGS="-g -O3 -DHB_TINY" CXXFLAGS="-g -O3 -DHB_TINY" > ../harfbuzz_configure.txt
+		CFLAGS="-g -O3 -DHB_TINY" CXXFLAGS="-g -O3 -DHB_TINY" > ../Logs/harfbuzz_configure.txt
 	cd ../..
 
 	cp ports/harfbuzz/essence-config.h bin/harfbuzz/config.h

@@ -41,7 +41,7 @@
 #include <shared/common.cpp>
 
 struct EnumString { const char *cName; int value; };
-#include <bin/enum_strings_array.h>
+#include <bin/Generated Code/enum_strings_array.h>
 
 #define DESKTOP_MSG_SET_TITLE                 (1)
 #define DESKTOP_MSG_SET_ICON                  (2)
@@ -264,7 +264,7 @@ struct APIInstance {
 
 #ifndef NO_API_TABLE
 const void *const apiTable[] = {
-#include <bin/api_array.h>
+#include <bin/Generated Code/api_array.h>
 };
 #endif
 

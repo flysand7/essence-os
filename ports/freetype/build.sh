@@ -2,7 +2,7 @@ if [ ! -d "bin/freetype" ]; then
 	echo "Downloading FreeType..."
 
 	if [ ! -f "bin/cache/freetype-2.9.tar" ]; then
-		curl https://mirrors.up.pt/pub/nongnu/freetype/freetype-2.9.tar.gz > bin/cache/freetype-2.9.tar.gz 2> bin/freetype_dl.txt
+		curl https://mirrors.up.pt/pub/nongnu/freetype/freetype-2.9.tar.gz > bin/cache/freetype-2.9.tar.gz 2> bin/Logs/freetype_dl.txt
 		gunzip bin/cache/freetype-2.9.tar.gz
 	fi
 
@@ -21,7 +21,7 @@ if [ "$1" = "x86_64" ]; then
 		rm -f objs/.libs/libfreetype.a
 		./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz \
 			CC=x86_64-essence-gcc CFLAGS="-g -ffreestanding -Wno-unused-function -O3" \
-			LDFLAGS="-nostdlib -lgcc" --host=x86_64-essence > ../freetype_configure.txt 2>&1
+			LDFLAGS="-nostdlib -lgcc" --host=x86_64-essence > ../Logs/freetype_configure.txt 2>&1
 		make ANSIFLAGS="" > /dev/null
 		cp objs/.libs/libfreetype.a libfreetype_x86_64.a
 		cd ../..
@@ -38,7 +38,7 @@ if [ "$1" = "x86_32" ]; then
 		rm -f objs/.libs/libfreetype.a
 		./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz \
 			CC=i686-elf-gcc CFLAGS="-g -ffreestanding -Wno-unused-function -O3 -I$INC" \
-			LDFLAGS="-nostdlib -lgcc" --host=i686-elf > ../freetype_configure.txt 2>&1
+			LDFLAGS="-nostdlib -lgcc" --host=i686-elf > ../Logs/freetype_configure.txt 2>&1
 		sed -i '/define FT_USE_AUTOCONF_SIZEOF_TYPES/d' builds/unix/ftconfig.h
 		make ANSIFLAGS="" > /dev/null
 		cp objs/.libs/libfreetype.a libfreetype_x86_32.a

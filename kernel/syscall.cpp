@@ -1725,7 +1725,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEBUG_COMMAND) {
 }
 
 const SyscallFunction syscallFunctions[ES_SYSCALL_COUNT + 1] {
-#include <bin/syscall_array.h>
+#include <bin/Generated Code/syscall_array.h>
 };
 
 #pragma GCC diagnostic pop

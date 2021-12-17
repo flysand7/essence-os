@@ -568,13 +568,15 @@ void BuildDesktop(Application *application) {
 	char buffer[4096];
 
 	snprintf(buffer, sizeof(buffer), "arch/%s/api.s", target);
-	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/api1.d", "-o", "bin/api1.o", ArgString(commonAssemblyFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/api.cpp", "-o", "bin/api2.o", ArgString(commonCompileFlags), ArgString(desktopProfilingFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "desktop/posix.cpp", "-o", "bin/api3.o", ArgString(commonCompileFlags));
-	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/crti.o", "bin/crtbegin.o", 
-			"bin/api1.o", "bin/api2.o", "bin/api3.o", "bin/crtend.o", "bin/crtn.o", 
+	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/Dependency Files/api1.d", "-o", "bin/Object Files/api1.o", ArgString(commonAssemblyFlags));
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/api2.d", "-c", "desktop/api.cpp", "-o", "bin/Object Files/api2.o", 
+			ArgString(commonCompileFlags), ArgString(desktopProfilingFlags));
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/api3.d", "-c", "desktop/posix.cpp", "-o", "bin/Object Files/api3.o", 
+			ArgString(commonCompileFlags));
+	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/Object Files/crti.o", "bin/Object Files/crtbegin.o", 
+			"bin/Object Files/api1.o", "bin/Object Files/api2.o", "bin/Object Files/api3.o", "bin/Object Files/crtend.o", "bin/Object Files/crtn.o", 
 			ArgString(apiLinkFlags1), ArgString(apiLinkFlags2), ArgString(apiLinkFlags3));
-	ExecuteForApp(application, toolchainStrip, "-o", "bin/Desktop.no_symbols", "--strip-all", "bin/Desktop");
+	ExecuteForApp(application, toolchainStrip, "-o", "bin/Stripped Executables/Desktop", "--strip-all", "bin/Desktop");
 
 	for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
 		if (fontLines[i].key[0] == '.' || 0 == strcmp(fontLines[i].key, "license")) {
@@ -604,7 +606,7 @@ void BuildDesktop(Application *application) {
 	ADD_BUNDLE_INPUT("res/elementary Icons.dat", "Icons.dat", 16);
 	ADD_BUNDLE_INPUT("res/elementary Icons License.txt", "Icons License.txt", 16);
 	ADD_BUNDLE_INPUT("res/Cursors.png", "Cursors.png", 16);
-	ADD_BUNDLE_INPUT("bin/Desktop.no_symbols", "$Executables/x86_64", 0x1000); // TODO Don't hardcode the target.
+	ADD_BUNDLE_INPUT("bin/Stripped Executables/Desktop", "$Executables/x86_64", 0x1000); // TODO Don't hardcode the target.
 
 	MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
 }
@@ -622,7 +624,7 @@ void BuildApplication(Application *application) {
 	size_t objectFilesPosition = 0;
 
 	snprintf(symbolFile, sizeof(symbolFile), "bin/%s", application->name);
-	snprintf(strippedFile, sizeof(strippedFile), "bin/%s.no_symbols", application->name);
+	snprintf(strippedFile, sizeof(strippedFile), "bin/Stripped Executables/%s", application->name);
 	snprintf(linkerScript, sizeof(linkerScript), "%s/linker/userland64.ld", toolchainLinkerScripts); // TODO Don't hardcode the target.
 	snprintf(crti, sizeof(crti), "%s/crti.o", toolchainCRTObjects);
 	snprintf(crtbegin, sizeof(crtbegin), "%s/crtbegin.o", toolchainCRTObjects);
@@ -647,8 +649,9 @@ void BuildApplication(Application *application) {
 			const char *source = application->sources[i];
 			size_t sourceBytes = strlen(source);
 
-			char objectFile[256];
-			snprintf(objectFile, sizeof(objectFile), "bin/%s_%d.o", application->name, (int) i);
+			char objectFile[256], dependencyFile[256];
+			snprintf(objectFile, sizeof(objectFile), "bin/Object Files/%s_%d.o", application->name, (int) i);
+			snprintf(dependencyFile, sizeof(dependencyFile), "bin/Dependency Files/%s_%d.d", application->name, (int) i);
 			objectFilesPosition += sprintf(objectFiles + objectFilesPosition, "\"%s\" ", objectFile);
 
 			bool isC = sourceBytes > 2 && source[sourceBytes - 1] == 'c' && source[sourceBytes - 2] == '.';
@@ -656,7 +659,7 @@ void BuildApplication(Application *application) {
 			const char *languageFlags = isC ? cCompileFlags : cppCompileFlags;
 			const char *compiler = isC ? toolchainCC : toolchainCXX;
 
-			ExecuteForApp(application, compiler, "-MD", "-o", objectFile, "-c", source, 
+			ExecuteForApp(application, compiler, "-MD", "-MF", dependencyFile, "-o", objectFile, "-c", source, 
 					ArgString(languageFlags), ArgString(application->compileFlags), ArgString(cstdlibFlags));
 		}
 
@@ -791,7 +794,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 	for (uintptr_t i = 0; i < arrlenu(application.sources); i++) {
 		DependencyFile dependencyFile = {};
 		dependencyFile.name = application.name;
-		snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/%s_%d.d", application.name, (int) i);
+		snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/Dependency Files/%s_%d.d", application.name, (int) i);
 		arrput(application.dependencyFiles, dependencyFile);
 	}
 
@@ -910,11 +913,12 @@ void OutputSystemConfiguration() {
 }
 
 void BuildModule(Application *application) {
-	char output[4096];
-	snprintf(output, sizeof(output), "bin/%s.ekm", application->name);
+	char output[256], dependencyFile[256];
+	snprintf(output, sizeof(output), "bin/Object Files/%s.ekm", application->name);
+	snprintf(dependencyFile, sizeof(dependencyFile), "bin/Dependency Files/%s.d", application->name);
 
 	assert(arrlenu(application->sources) == 1);
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", application->sources[0], "-o", 
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", dependencyFile, "-c", application->sources[0], "-o", 
 			output, ArgString(cppCompileFlags), ArgString(kernelCompileFlags), ArgString(commonCompileFlags), 
 			application->builtin ? "-DBUILTIN_MODULE" : "-DKERNEL_MODULE");
 
@@ -946,7 +950,7 @@ void ParseKernelConfiguration() {
 	size_t kernelConfigBytes;
 	char *kernelConfig = (char *) LoadFile("kernel/config.ini", &kernelConfigBytes);
 
-	File f = FileOpen("bin/kernel_config.h", 'w');
+	File f = FileOpen("bin/Generated Code/kernel_config.h", 'w');
 
 	EsINIState s = {};
 	s.buffer = (char *) kernelConfig;
@@ -1029,11 +1033,11 @@ void ParseKernelConfiguration() {
 	FilePrintFormat(f, "#endif");
 	FileClose(f);
 
-	f = FileOpen("bin/system_config.d", 'w');
+	f = FileOpen("bin/Dependency Files/system_config.d", 'w');
 	FilePrintFormat(f, ": kernel/config.ini\n");
 	FileClose(f);
-	ParseDependencies("bin/system_config.d", "Kernel Config", false);
-	DeleteFile("bin/system_config.d");
+	ParseDependencies("bin/Dependency Files/system_config.d", "Kernel Config", false);
+	DeleteFile("bin/Dependency Files/system_config.d");
 }
 
 void LinkKernel() {
@@ -1043,17 +1047,17 @@ void LinkKernel() {
 
 	arrput(builtinModules, 0);
 
-	if (Execute(toolchainLD, "-r", "bin/kernel.o", "bin/kernel_arch.o", ArgString(builtinModules), "-o" "bin/kernel_all.o")) {
+	if (Execute(toolchainLD, "-r", "bin/Object Files/kernel.o", "bin/Object Files/kernel_arch.o", ArgString(builtinModules), "-o" "bin/Object Files/kernel_all.o")) {
 		return;
 	}
 	
 	{
 		char *output = NULL;
 
-		if (_Execute(&output, toolchainNM, "bin/kernel_all.o", NULL, NULL)) {
+		if (_Execute(&output, toolchainNM, "bin/Object Files/kernel_all.o", NULL, NULL)) {
 			return;
 		} else {
-			File f = FileOpen("bin/kernel_symbols.h", 'w');
+			File f = FileOpen("bin/Generated Code/kernel_symbols.h", 'w');
 			uintptr_t lineStart = 0, position = 0;
 
 			while (position < arrlenu(output)) {
@@ -1074,38 +1078,38 @@ void LinkKernel() {
 
 			FileClose(f);
 
-			Execute(toolchainCXX, "-c", "kernel/symbols.cpp", "-o", "bin/kernel_symbols.o", 
+			Execute(toolchainCXX, "-c", "kernel/symbols.cpp", "-o", "bin/Object Files/kernel_symbols.o", 
 					ArgString(cppCompileFlags), ArgString(kernelCompileFlags), ArgString(commonCompileFlags));
 		}
 	}
 
-	if (Execute(toolchainCXX, "-o", "bin/Kernel", "bin/kernel_symbols.o", "bin/kernel_all.o", ArgString(kernelLinkFlags))) {
+	if (Execute(toolchainCXX, "-o", "bin/Kernel", "bin/Object Files/kernel_symbols.o", "bin/Object Files/kernel_all.o", ArgString(kernelLinkFlags))) {
 		return;
 	}
 
-	Execute(toolchainStrip, "-o", "bin/Kernel.esx", "--strip-all", "bin/Kernel");
-	CopyFile("bin/Kernel.esx", "root/" SYSTEM_FOLDER_NAME "/Kernel.esx", false);
+	Execute(toolchainStrip, "-o", "bin/Stripped Executables/Kernel", "--strip-all", "bin/Kernel");
+	CopyFile("bin/Stripped Executables/Kernel", "root/" SYSTEM_FOLDER_NAME "/Kernel.esx", false);
 }
 
 void BuildKernel(Application *application) {
 	char buffer[4096];
 	snprintf(buffer, sizeof(buffer), "arch/%s/kernel.s", target);
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/kernel2.d", buffer, "-o", "bin/kernel_arch.o", ArgString(commonAssemblyFlags));
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/kernel2.d", buffer, "-o", "bin/Object Files/kernel_arch.o", ArgString(commonAssemblyFlags));
 	snprintf(buffer, sizeof(buffer), "-DARCH_KERNEL_SOURCE=<arch/%s/kernel.cpp>", target);
-	ExecuteForApp(application, toolchainCXX, "-MD", "-c", "kernel/main.cpp", "-o", "bin/kernel.o", 
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/kernel.d", "-c", "kernel/main.cpp", "-o", "bin/Object Files/kernel.o", 
 			ArgString(kernelCompileFlags), ArgString(cppCompileFlags), ArgString(commonCompileFlags), buffer);
 	if (application->error) __sync_fetch_and_or(&encounteredErrorsInKernelModules, 1);
 }
 
 void BuildBootloader(Application *application) {
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot1.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot1.d", "-fbin", 
 			forEmulator ? "boot/x86/mbr.s" : "boot/x86/mbr-emu.s" , "-obin/mbr");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot2.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot2.d", "-fbin", 
 			"boot/x86/esfs-stage1.s", "-obin/stage1");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot3.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot3.d", "-fbin", 
 			"boot/x86/loader.s", "-obin/stage2", 
 			"-Pboot/x86/esfs-stage2.s", (forEmulator && !bootUseVBE) ? "" : "-D BOOT_USE_VBE");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/boot4.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot4.d", "-fbin", 
 			"boot/x86/uefi_loader.s", "-obin/uefi_loader");
 }
 
@@ -1203,7 +1207,7 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	FileClose(f);
 
 	size_t kernelBytes;
-	void *kernel = LoadFile("bin/Kernel.esx", &kernelBytes);
+	void *kernel = LoadFile("bin/Stripped Executables/Kernel", &kernelBytes);
 
 	if (truncate(driveFile, partitionSize)) {
 		Log("Error: Could not change the file's size to %d bytes.\n", (int) partitionSize);
@@ -1445,7 +1449,7 @@ int main(int argc, char **argv) {
 					if (driverSource && *driverSource) {
 						DependencyFile dependencyFile = {};
 						dependencyFile.name = driverName;
-						snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/%s.d", driverName);
+						snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/Dependency Files/%s.d", driverName);
 
 						Application application = {};
 						arrput(application.sources, driverSource);
@@ -1457,7 +1461,7 @@ int main(int argc, char **argv) {
 
 						if (driverBuiltin) {
 							char append[256];
-							snprintf(append, sizeof(append), " bin/%s.ekm ", driverName);
+							snprintf(append, sizeof(append), " \"bin/Object Files/%s.ekm\" ", driverName);
 							size_t previousLength = arrlenu(builtinModules);
 							arrsetlen(builtinModules, previousLength + strlen(append));
 							memcpy(builtinModules + previousLength, append, strlen(append));
@@ -1502,6 +1506,10 @@ int main(int argc, char **argv) {
 	}
 
 	MakeDirectory("bin");
+	MakeDirectory("bin/Dependency Files");
+	MakeDirectory("bin/Object Files");
+	MakeDirectory("bin/Stripped Executables");
+	MakeDirectory("bin/Generated Code");
 
 	if (systemBuild) {
 		MakeDirectory("root");
@@ -1524,31 +1532,32 @@ int main(int argc, char **argv) {
 			char buffer[4096];
 
 			snprintf(buffer, sizeof(buffer), "arch/%s/crti.s", target);
-			Execute(toolchainNasm, buffer, "-o", "bin/crti.o", ArgString(commonAssemblyFlags));
+			Execute(toolchainNasm, buffer, "-o", "bin/Object Files/crti.o", ArgString(commonAssemblyFlags));
 			snprintf(buffer, sizeof(buffer), "arch/%s/crtn.s", target);
-			Execute(toolchainNasm, buffer, "-o", "bin/crtn.o", ArgString(commonAssemblyFlags));
+			Execute(toolchainNasm, buffer, "-o", "bin/Object Files/crtn.o", ArgString(commonAssemblyFlags));
 
 			snprintf(buffer, sizeof(buffer), "%s/crtbegin.o", toolchainCompilerObjects);
-			CopyFile(buffer, "bin/crtbegin.o", false);
+			CopyFile(buffer, "bin/Object Files/crtbegin.o", false);
 			snprintf(buffer, sizeof(buffer), "%s/crtend.o", toolchainCompilerObjects);
-			CopyFile(buffer, "bin/crtend.o", false);
+			CopyFile(buffer, "bin/Object Files/crtend.o", false);
 
-			Execute(toolchainCC, "-c", "desktop/crt1.c", "-o", "bin/crt1.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
-			Execute(toolchainCC, "-c", "desktop/crtglue.c", "-o" "bin/crtglue.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
-			CopyFile("bin/crti.o", "root/Applications/POSIX/lib/crti.o", false);
-			CopyFile("bin/crtbegin.o", "root/Applications/POSIX/lib/crtbegin.o", false);
-			CopyFile("bin/crtend.o", "root/Applications/POSIX/lib/crtend.o", false);
-			CopyFile("bin/crtn.o", "root/Applications/POSIX/lib/crtn.o", false);
-			CopyFile("bin/crt1.o", "root/Applications/POSIX/lib/crt1.o", false);
-			CopyFile("bin/crtglue.o", "root/Applications/POSIX/lib/crtglue.o", false);
-			CopyFile("bin/crt1.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crt1.o", true); // TODO Don't hardcode the target.
-			CopyFile("bin/crtglue.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crtglue.o", true);
+			Execute(toolchainCC, "-c", "desktop/crt1.c", "-o", "bin/Object Files/crt1.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
+			Execute(toolchainCC, "-c", "desktop/crtglue.c", "-o" "bin/Object Files/crtglue.o", ArgString(cCompileFlags), ArgString(commonCompileFlags));
+			CopyFile("bin/Object Files/crti.o", "root/Applications/POSIX/lib/crti.o", false);
+			CopyFile("bin/Object Files/crtbegin.o", "root/Applications/POSIX/lib/crtbegin.o", false);
+			CopyFile("bin/Object Files/crtend.o", "root/Applications/POSIX/lib/crtend.o", false);
+			CopyFile("bin/Object Files/crtn.o", "root/Applications/POSIX/lib/crtn.o", false);
+			CopyFile("bin/Object Files/crt1.o", "root/Applications/POSIX/lib/crt1.o", false);
+			CopyFile("bin/Object Files/crtglue.o", "root/Applications/POSIX/lib/crtglue.o", false);
+			CopyFile("bin/Object Files/crt1.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crt1.o", true); // TODO Don't hardcode the target.
+			CopyFile("bin/Object Files/crtglue.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crtglue.o", true);
 			CopyFile("util/linker/userland64.ld", "root/Applications/POSIX/lib/linker/userland64.ld", false);
 
 			if (hasNativeToolchain) {
 				snprintf(buffer, sizeof(buffer), "%s/linker/userland64.ld", toolchainLinkerScripts); // TODO Don't hardcode the target.
 				Execute(toolchainCC, "util/build_core.c", "-o", "root/Applications/POSIX/bin/build_core", "-g", 
-						"-nostdlib", "bin/crti.o", "bin/crtbegin.o", "bin/crtend.o", "bin/crtn.o", "-T", buffer);
+						"-nostdlib", "bin/Object Files/crti.o", "bin/Object Files/crtbegin.o", 
+						"bin/Object Files/crtend.o", "bin/Object Files/crtn.o", "-T", buffer);
 			}
 		}
 
@@ -1564,10 +1573,10 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Bootloader";
 			application.buildCallback = BuildBootloader;
-			ADD_DEPENDENCY_FILE(application, "bin/boot1.d", "Boot1");
-			ADD_DEPENDENCY_FILE(application, "bin/boot2.d", "Boot2");
-			ADD_DEPENDENCY_FILE(application, "bin/boot3.d", "Boot3");
-			ADD_DEPENDENCY_FILE(application, "bin/boot4.d", "Boot4");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot1.d", "Boot1");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot2.d", "Boot2");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot3.d", "Boot3");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot4.d", "Boot4");
 			arrput(applications, application);
 		}
 
@@ -1575,9 +1584,9 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Desktop";
 			application.buildCallback = BuildDesktop;
-			ADD_DEPENDENCY_FILE(application, "bin/api1.d", "API1");
-			ADD_DEPENDENCY_FILE(application, "bin/api2.d", "API2");
-			ADD_DEPENDENCY_FILE(application, "bin/api3.d", "API3");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api1.d", "API1");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api2.d", "API2");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api3.d", "API3");
 			arrput(applications, application);
 		}
 
@@ -1591,8 +1600,8 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Kernel";
 			application.buildCallback = BuildKernel;
-			ADD_DEPENDENCY_FILE(application, "bin/kernel.d", "Kernel1");
-			ADD_DEPENDENCY_FILE(application, "bin/kernel2.d", "Kernel2");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/kernel.d", "Kernel1");
+			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/kernel2.d", "Kernel2");
 			arrput(applications, application);
 		}
 

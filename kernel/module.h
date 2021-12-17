@@ -533,7 +533,7 @@ void KDeviceCloseHandle(KDevice *device); // The device creator is responsible f
 void KDeviceRemoved(KDevice *device); // Call when a child device is removed. Must be called only once!
 void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type); // Send a message to Desktop to inform it the device was connected.
 
-#include <bin/kernel_config.h>
+#include <bin/Generated Code/kernel_config.h>
 
 struct KClockDevice : KDevice {
 	EsError (*read)(KClockDevice *device, EsDateComponents *components, uint64_t *linearMs);

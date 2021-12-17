@@ -15,7 +15,7 @@ struct ExportedKernelFunction {
 };
 
 const ExportedKernelFunction exportedKernelFunctions[] = {
-#include <bin/kernel_symbols.h>
+#include <bin/Generated Code/kernel_symbols.h>
 };
 
 static uintptr_t linkOffset;

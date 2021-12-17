@@ -5,10 +5,10 @@ char *buffer;
 int position;
 
 #define DEST_OS "root/Applications/POSIX/include/essence.h"
-#define DEST_API_ARRAY "bin/api_array.h"
-#define DEST_SYSCALL_ARRAY "bin/syscall_array.h"
-#define DEST_ENUM_STRINGS_ARRAY "bin/enum_strings_array.h"
-#define DEST_DEPENDENCIES "bin/api_header.d"
+#define DEST_API_ARRAY "bin/Generated Code/api_array.h"
+#define DEST_SYSCALL_ARRAY "bin/Generated Code/syscall_array.h"
+#define DEST_ENUM_STRINGS_ARRAY "bin/Generated Code/enum_strings_array.h"
+#define DEST_DEPENDENCIES "bin/Dependency Files/api_header.d"
 
 typedef struct Token {
 #define TOKEN_IDENTIFIER (1)

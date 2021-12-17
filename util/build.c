@@ -144,7 +144,7 @@ int CallSystemF(const char *format, ...) {
 void BuildAPIDependencies() {
 	if (CheckDependencies("API Header")) {
 		CallSystem("bin/build_core headers");
-		ParseDependencies("bin/api_header.d", "API Header", false);
+		ParseDependencies("bin/Dependency Files/api_header.d", "API Header", false);
 	}
 
 	CallSystem("ports/musl/build.sh " TARGET_NAME);
@@ -172,7 +172,7 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 			"nasm=%s\n"
 			"convert_svg=bin/render_svg\n"
 			"linker_scripts=util/\n"
-			"crt_objects=bin/\n"
+			"crt_objects=bin/Object Files/\n"
 			"compiler_objects=%s/../lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "\n"
 			"\n[general]\nsystem_build=1\nminimal_rebuild=1\ncolored_output=%d\nthread_count=%d\n"
 			"target=" TARGET_NAME "\nskip_header_generation=1\nverbose=%d\ncommon_compile_flags=",
@@ -361,8 +361,8 @@ void BuildUtilities() {
 
 #define BUILD_UTILITY(x, y, z) \
 	if (CheckDependencies("Utilities." x)) { \
-		if (!CallSystem("gcc -MMD util/" z x ".c -o bin/" x " -g " WARNING_FLAGS " " y)) { \
-			ParseDependencies("bin/" x ".d", "Utilities." x, false); \
+		if (!CallSystem("gcc -MMD -MF \"bin/Dependency Files/" x ".d\" " "util/" z x ".c -o bin/" x " -g " WARNING_FLAGS " " y)) { \
+			ParseDependencies("bin/Dependency Files/" x ".d", "Utilities." x, false); \
 		} \
 	}
 
@@ -373,8 +373,9 @@ void BuildUtilities() {
 		BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
 
 		if (CheckDependencies("Utilities.Designer")) {
-			if (!CallSystem("g++ -MMD -D UI_LINUX -O3 util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
-				ParseDependencies("bin/designer2.d", "Utilities.Designer", false);
+			if (!CallSystem("g++ -MMD -MF \"bin/Dependency Files/designer2.d\" -D UI_LINUX -O3 "
+						"util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
+				ParseDependencies("bin/Dependency Files/designer2.d", "Utilities.Designer", false);
 			}
 		}
 	}
@@ -481,9 +482,9 @@ void Run(int emulator, int log, int debug) {
 			}
 
 			bool withAudio = IsOptionEnabled("Emulator.Audio");
-			const char *audioFlags = withAudio ? "QEMU_AUDIO_DRV=wav QEMU_WAV_PATH=bin/audio.wav " : "";
+			const char *audioFlags = withAudio ? "QEMU_AUDIO_DRV=wav QEMU_WAV_PATH=bin/Logs/audio.wav " : "";
 			const char *audioFlags2 = withAudio ? "-soundhw pcspk,hda" : "";
-			unlink("bin/audio.wav");
+			unlink("bin/Logs/audio.wav");
 
 			const char *secondaryDriveMB = GetOptionString("Emulator.SecondaryDriveMB");
 			char secondaryDriveFlags[256];
@@ -497,8 +498,8 @@ void Run(int emulator, int log, int debug) {
 				secondaryDriveFlags[0] = 0;
 			}
 
-			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/qemu_log.txt 2>&1" 
-				: (log == LOG_NORMAL ? " > bin/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
+			const char *logFlags = log == LOG_VERBOSE ? "-d cpu_reset,int > bin/Logs/qemu_log.txt 2>&1" 
+				: (log == LOG_NORMAL ? " > bin/Logs/qemu_log.txt 2>&1" : " > /dev/null 2>&1");
 
 			int cpuCores = atoi(GetOptionString("Emulator.Cores"));
 
@@ -511,21 +512,21 @@ void Run(int emulator, int log, int debug) {
 			char serialFlags[256];
 
 			if (IsOptionEnabled("Emulator.SerialToFile")) {
-				system("mv bin/qemu_serial7.txt bin/qemu_serial8.txt 2> /dev/null");
-				system("mv bin/qemu_serial6.txt bin/qemu_serial7.txt 2> /dev/null");
-				system("mv bin/qemu_serial5.txt bin/qemu_serial6.txt 2> /dev/null");
-				system("mv bin/qemu_serial4.txt bin/qemu_serial5.txt 2> /dev/null");
-				system("mv bin/qemu_serial3.txt bin/qemu_serial4.txt 2> /dev/null");
-				system("mv bin/qemu_serial2.txt bin/qemu_serial3.txt 2> /dev/null");
-				system("mv bin/qemu_serial1.txt bin/qemu_serial2.txt 2> /dev/null");
-				strcpy(serialFlags, "-serial file:bin/qemu_serial1.txt");
+				system("mv bin/Logs/qemu_serial7.txt bin/Logs/qemu_serial8.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial6.txt bin/Logs/qemu_serial7.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial5.txt bin/Logs/qemu_serial6.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial4.txt bin/Logs/qemu_serial5.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial3.txt bin/Logs/qemu_serial4.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial2.txt bin/Logs/qemu_serial3.txt 2> /dev/null");
+				system("mv bin/Logs/qemu_serial1.txt bin/Logs/qemu_serial2.txt 2> /dev/null");
+				strcpy(serialFlags, "-serial file:bin/Logs/qemu_serial1.txt");
 			} else {
 				serialFlags[0] = 0;
 			}
 
 			if (CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
-					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/net.dat "
+					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/Logs/net.dat "
 					" %s %s %s %s %s %s %s ", 
 					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
@@ -1661,7 +1662,7 @@ int main(int _argc, char **_argv) {
 		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\nCross target is " ColorHighlight TARGET_NAME ColorNormal ".\n");
 	}
 
-	systemLog = fopen("bin/system.log", "w");
+	systemLog = fopen("bin/Logs/system.log", "w");
 
 	{
 		EsINIState s = { (char *) LoadFile("bin/build_config.ini", &s.bytes) };
@@ -1761,6 +1762,7 @@ int main(int _argc, char **_argv) {
 	char *prev = NULL;
 
 	canBuildLuigi = !CallSystem("gcc -o bin/luigi.h.gch util/luigi.h -D UI_IMPLEMENTATION -D UI_LINUX 2> /dev/null");
+	unlink("bin/luigi.h.gch");
 
 	while (true) {
 		char *l = NULL;
