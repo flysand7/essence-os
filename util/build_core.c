@@ -950,7 +950,7 @@ void ParseKernelConfiguration() {
 	size_t kernelConfigBytes;
 	char *kernelConfig = (char *) LoadFile("kernel/config.ini", &kernelConfigBytes);
 
-	File f = FileOpen("bin/Generated Code/kernel_config.h", 'w');
+	File f = FileOpen("bin/generated_code/kernel_config.h", 'w');
 
 	EsINIState s = {};
 	s.buffer = (char *) kernelConfig;
@@ -1057,7 +1057,7 @@ void LinkKernel() {
 		if (_Execute(&output, toolchainNM, "bin/Object Files/kernel_all.o", NULL, NULL)) {
 			return;
 		} else {
-			File f = FileOpen("bin/Generated Code/kernel_symbols.h", 'w');
+			File f = FileOpen("bin/generated_code/kernel_symbols.h", 'w');
 			uintptr_t lineStart = 0, position = 0;
 
 			while (position < arrlenu(output)) {
@@ -1509,7 +1509,7 @@ int main(int argc, char **argv) {
 	MakeDirectory("bin/Dependency Files");
 	MakeDirectory("bin/Object Files");
 	MakeDirectory("bin/Stripped Executables");
-	MakeDirectory("bin/Generated Code");
+	MakeDirectory("bin/generated_code");
 
 	if (systemBuild) {
 		MakeDirectory("root");
