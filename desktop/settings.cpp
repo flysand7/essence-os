@@ -165,7 +165,7 @@ void SettingsLoadDefaults() {
 	SettingsPutValue("general", "show_cursor_shadow", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "scroll_lines_per_notch", EsLiteral("3"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "ui_scale", EsLiteral("100"), nullptr, nullptr, true, false);
-	SettingsPutValue("general", "window_color", EsLiteral("2"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "window_color", EsLiteral("9"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "use_smart_quotes", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "enable_hover_state", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "enable_animations", EsLiteral("1"), nullptr, nullptr, true, false);
