@@ -130,7 +130,11 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 	{
 		BundleHeader header;
 		size_t bytesRead = FSFileReadSync(node, (uint8_t *) &header, 0, sizeof(BundleHeader), 0);
-		if (bytesRead != sizeof(BundleHeader)) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+
+		if (bytesRead != sizeof(BundleHeader)) {
+			KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the bundle header.\n");
+			return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		}
 
 		if (header.signature == BUNDLE_SIGNATURE 
 				&& header.fileCount < 0x100000
@@ -144,10 +148,12 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			}
 
 			if (ArchCheckBundleHeader() || header.mapAddress & (K_PAGE_SIZE - 1)) {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Invalid bundle mapping addresses.\n");
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
 
 			if (header.version != 1) {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Invalid bundle version.\n");
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
 
@@ -156,6 +162,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			if (!MMMapFile(thisProcess->vmm, (FSFile *) node, 
 					0, fileSize, ES_MEMORY_MAP_OBJECT_READ_ONLY, 
 					(uint8_t *) header.mapAddress)) {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not map the bundle file.\n");
 				return ES_ERROR_INSUFFICIENT_RESOURCES;
 			}
 
@@ -175,6 +182,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			}
 
 			if (executableOffset >= fileSize || !found) {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not find the executable section for the current architecture.\n");
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
 
@@ -186,29 +194,66 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 	ElfHeader header;
 	size_t bytesRead = FSFileReadSync(node, (uint8_t *) &header, executableOffset, sizeof(ElfHeader), 0);
-	if (bytesRead != sizeof(ElfHeader)) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+
+	if (bytesRead != sizeof(ElfHeader)) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the ELF header.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
 
 	size_t programHeaderEntrySize = header.programHeaderEntrySize;
 
-	if (header.magicNumber != 0x464C457F) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
-	if (header.bits != 2) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
-	if (header.endianness != 1) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
-	if (header.abi != 0) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
-	if (header.type != 2) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
-	if (header.instructionSet != 0x3E) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	if (header.magicNumber != 0x464C457F) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable magic number.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
+
+	if (header.bits != 2) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable bits.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
+
+	if (header.endianness != 1) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable endianness.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
+
+	if (header.abi != 0) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable ABI.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
+
+	if (header.type != 2) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable type.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
+
+	if (header.instructionSet != 0x3E) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable instruction set.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
 
 	ElfProgramHeader *programHeaders = (ElfProgramHeader *) EsHeapAllocate(programHeaderEntrySize * header.programHeaderEntries, false, K_PAGED);
-	if (!programHeaders) return ES_ERROR_INSUFFICIENT_RESOURCES;
+
+	if (!programHeaders) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not allocate the program headers.\n");
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
 	EsDefer(EsHeapFree(programHeaders, 0, K_PAGED));
 
 	bytesRead = FSFileReadSync(node, (uint8_t *) programHeaders, executableOffset + header.programHeaderTable, programHeaderEntrySize * header.programHeaderEntries, 0);
-	if (bytesRead != programHeaderEntrySize * header.programHeaderEntries) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+
+	if (bytesRead != programHeaderEntrySize * header.programHeaderEntries) {
+		KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the program headers.\n");
+		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+	}
 
 	for (uintptr_t i = 0; i < header.programHeaderEntries; i++) {
 		ElfProgramHeader *header = (ElfProgramHeader *) ((uint8_t *) programHeaders + programHeaderEntrySize * i);
 
 		if (header->type == 1 /* PT_LOAD */) {
 			if (ArchCheckELFHeader()) {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Rejected ELF program header.\n");
 				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
 			}
 
@@ -245,6 +290,8 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 			if (success) {
 				uint8_t *from = (uint8_t *) header->virtualAddress + header->dataInFile;
 				EsMemoryZero(from, (uint8_t *) zeroStart - from);
+			} else {
+				KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not memory map program header %d.\n", i);
 			}
 #endif
 

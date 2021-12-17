@@ -730,6 +730,8 @@ void ProcessLoadExecutable() {
 			}
 
 			CloseHandleToObject(node.node, KERNEL_OBJECT_NODE, fileFlags);
+		} else {
+			KernelLog(LOG_ERROR, "Scheduler", "desktop executable open error", "The Desktop executable could not be opened.\n");
 		}
 	}
 
@@ -737,6 +739,10 @@ void ProcessLoadExecutable() {
 
 	if (thisProcess->type != PROCESS_DESKTOP && loadError == ES_SUCCESS) {
 		loadError = KLoadELF(thisProcess->executableNode, &application);
+
+		if (loadError != ES_SUCCESS) {
+			KernelLog(LOG_ERROR, "Scheduler", "executable load error", "The executable could not be loaded by the ELF loader.\n");
+		}
 	}
 
 	bool success = loadError == ES_SUCCESS;
@@ -747,6 +753,7 @@ void ProcessLoadExecutable() {
 
 		if (!MMMapShared(thisProcess->vmm, mmAPITableRegion, 0, mmAPITableRegion->sizeBytes, ES_FLAGS_DEFAULT, ES_API_BASE)) { 
 			success = false;
+			KernelLog(LOG_ERROR, "Scheduler", "executable load error", "The API table could not be mapped.\n");
 		}
 	}
 
@@ -758,6 +765,7 @@ void ProcessLoadExecutable() {
 
 		if (!startupInformation) {
 			success = false;
+			KernelLog(LOG_ERROR, "Scheduler", "executable load error", "The process startup information could not be allocated.\n");
 		} else {
 			startupInformation->isDesktop = thisProcess->type == PROCESS_DESKTOP;
 			startupInformation->isBundle = application.isBundle;
@@ -787,6 +795,7 @@ void ProcessLoadExecutable() {
 
 		if (!thisProcess->executableMainThread) {
 			success = false;
+			KernelLog(LOG_ERROR, "Scheduler", "executable load error", "The main thread could not be spawned.\n");
 		}
 	}
 
