@@ -1139,10 +1139,12 @@ int64_t EsIntegerParse(const char *text, ptrdiff_t bytes) {
 	if (bytes == -1) bytes = EsCStringLength(text);
 
 	int base = 10;
+	bool seenFirstRecognisedCharacter = false;
 
 	if (bytes > 2 && text[0] == '0' && text[1] == 'x') {
 		text += 2, bytes -= 2;
 		base = 16;
+		seenFirstRecognisedCharacter = true;
 	}
 
 	const char *end = text + bytes;
@@ -1153,19 +1155,21 @@ int64_t EsIntegerParse(const char *text, ptrdiff_t bytes) {
 	while (text < end) {
 		char c = *text;
 
-		if (c == '-') {
+		if (c == '-' && !seenFirstRecognisedCharacter) {
 			negative = true;
-		}
-
-		if (c >= '0' && c <= '9') {
+			seenFirstRecognisedCharacter = true;
+		} else if (c >= '0' && c <= '9') {
 			result *= base;
 			result += c - '0';
+			seenFirstRecognisedCharacter = true;
 		} else if (c >= 'A' && c <= 'F' && base == 16) {
 			result *= base;
 			result += c - 'A' + 10;
+			seenFirstRecognisedCharacter = true;
 		} else if (c >= 'a' && c <= 'f' && base == 16) {
 			result *= base;
 			result += c - 'a' + 10;
+			seenFirstRecognisedCharacter = true;
 		}
 
 		text++;

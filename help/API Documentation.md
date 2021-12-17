@@ -89,7 +89,7 @@ Threads are used to execute code in parallel. Threads can be created and termina
 
 `EsThreadGetID` gets the ID of a thread from its handle. 
 
-`EsThreadTerminate` instructs a thread to terminate. If the thread is executing privileged code at the time of the request, it will complete the prviledged code before terminating. If a thread is waiting on a synchronisation object, such as a mutex or event, it will stop waiting and terminate regardless. **Note**: if a thread owns a mutex or spinlock when it is terminated, it will **not** release the object.
+`EsThreadTerminate` instructs a thread to terminate. If the thread is executing privileged code at the time of the request, it will complete the prviledged code before terminating. If a thread is waiting on a synchronisation object, such as a mutex or event, it will stop waiting and terminate regardless. **Note**: if a thread owns a mutex or spinlock when it is terminated, it will **not** release the object. You should ensure that a thread releases all synchronisation objects still needed by the process before it terminates.
 
 A thread can always use the handle `ES_CURRENT_THREAD` to access itself. This handle should not be closed.
 
@@ -134,6 +134,8 @@ A mutex is a synchronisation primitive. Threads can *acquire* and *release* it. 
 The `EsMutex` structure contains a mutex. It should be initialised to zero. When the mutex is no longer needed, it can be destroyed with `EsMutexDestroy`. A mutex must not be acquired when it is destroyed.
 
 To acquire a mutex, call `EsMutexAcquire` with a pointer to the mutex. To release a mutex, call `EsMutexRelease`.  A thread must not attempt to acquire a mutex it already owns, and it must not attempt to release a mutex it does not own.
+
+When a thread is waiting for a mutex to be released so that it may acquire it, the thread will not consume CPU time. This allows other threads to run instead, or if there are none, then it gives the CPU an opportunity to reduce its power consumption. As a side effect, this means there is some delay after a thread waits for a mutex before it wakes up and continues executing. If this behaviour is undesirable, consider using `EsSpinlock` instead.
 
 ## Example
 
@@ -201,6 +203,29 @@ To explain why, suppose thread A executes the first pattern and thread B execute
 - Thread A attempts to acquire mutex Y. Mutex Y is owned by thread B, so thread A starts waiting for thread B to release it.
 - Thread B attempts to acquire mutex X. Mutex X is owned by thread A, so thread B starts waiting for thread A to release it.
 - Both threads will continue to wait indefinitely for the other to perform an operation.
+
+# Spinlocks
+
+## Definitions
+
+```c
+struct EsSpinlock {
+	volatile uint8_t state;
+}
+
+void EsSpinlockAcquire(EsSpinlock *spinlock); 
+void EsSpinlockRelease(EsSpinlock *spinlock); 
+```
+
+## Description
+
+A spinlock is a synchronisation primitive. Threads can *acquire* and *release* it. Only one thread can have acquired the spinlock at a time. Before another thread can acquire it, the original thread must release it. When a thread tries to acquire an already-acquired spinlock, it will wait until the spinlock is released, and then proceed to acquire it.
+
+The `EsSpinlock` structure contains a spinlock. It should be initialised to zero. There is no need to perform any special destruction of a spinlock.
+
+To acquire a spinlock, call `EsSpinlockAcquire` with a pointer to the spinlock. To release a spinlock, call `EsSpinlockRelease`.  A thread must not attempt to acquire a spinlock it already owns, and it must not attempt to release a spinlock it does not own.
+
+When a thread is waiting for a spinlock to be released so that it may acquire it, the thread will "spin"; that is, it will continue executing, constantly checking whether the spinlock has been released so that it may acquire it. This consumes CPU power, and prevents other threads from running instead. However, this means that as soon as the spinlock becomes available a thread may instantly acquire it and continue with its work. Spinlocks are best used in situations where the code they synchronise is small. If this behaviour is undesirable, consider using `EsMutex` instead.
 
 # INI files
 

@@ -1,0 +1,9 @@
+A look at various methods of automatic layouting for graphical user interfaces. A bit out of date for the current API.
+https://essence.handmade.network/blog/p/3435-automatic_ui_layouts_part_1
+https://essence.handmade.network/blog/p/3436-automatic_ui_layouts_part_2
+
+Details about how the vector renderer generates outlines for arbitrary bezier paths.
+https://essence.handmade.network/blog/p/7388-generating_polygon_outlines
+
+A descent into the madness of how cylinder-head-sector addressing "works" on floppy disks and old hard disks.
+https://essence.handmade.network/blog/p/7924-cylinder-head-sector_addressing

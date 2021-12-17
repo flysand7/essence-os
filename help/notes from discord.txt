@@ -1,0 +1,290 @@
+Here is a collection of various posts about how Essence works, taken from Discord.
+
+Please note that a lot of this information contains internal implementation details which must not be relied on by application developers.
+
+= How to debug Essence running in an emulator =
+
+nakst
+ — 
+07/06/2021
+Basic steps to debug:
+1. Install GDB if you haven't already.
+2. Optional, but recommended: install gf from github.com/nakst/gf .
+3. Open GDB or gf (at the root of the essence source tree)
+4. Load the debug symbol file for your application. It will be located in "bin/<your application name>". e.g. to load the symbols for File Manager, run file "bin/File Manager"
+5. Within the Essence build system, run d. This will compile in debug mode and launch Qemu in a paused state.
+6. In GDB run target remote :1234, or in gf press the shortcut key F4. This will connect to Qemu.
+7. Set any breakpoints now (for some reason any breakpoints set in applications while Qemu is running will be ignored)
+8. In GDB run c, or in gf press the shortcut key F5. This begins execution.
+9. Debug your application as normal using GDB/gf.
+10. If you're using gf, and GDB crashes or its connection with Qemu gets wonky, you can try restarting GDB with the shortcut Ctrl+R. You'll have to press F4 to reconnect.
+
+= About networking card driver interface =
+
+nakst
+ — 
+01/27/2021
+The kernel tells drivers to send a packet with the transmit callback function pointer in NetInterface devices, which has the signature:
+
+bool (*transmit)(NetInterface *self, void *dataVirtual, uintptr_t dataPhysical, size_t dataBytes); 
+
+dataPhysical is 2KB aligned.
+once driver is done with buffer, it calls NetTransmitBufferReturn(dataVirtual); 
+There is no userland API yet, since I only just started working on networking.
+
+= About the Hello World example application =
+
+nakst
+ — 
+03/05/2021
+
+    What is a “window” in this api, just a generic UI container?
+
+A window is the top-level container. Most instances only have one window, the tab they're associated with.
+
+    does EsMessageReceive() yield to the operating system or is it non-blocking?
+
+It's blocking. However there are ongoing animations, then it will either not block, or block with a timeout specified by the animating elements.
+
+    what's the rationale behind waiting for the operating system to tell you to create yourself?
+
+There is not necessarily a one-to-one correspondence between instances and processes. For example, the system may start a process of your application to search-index a file, or to cleanup any cached files on the file system. One process can also have multiple instances, so you may receive multiple ES_MSG_INSTANCE_CREATE messages (although this is configurable on a per-application basis).
+
+    why does EsInstanceCreate need the message to make the Instance, is it just to prevent applications from creating themselves early or is there important information encoded in the EsMessage struct?
+
+Important information is in the message. An application can request an instance of an application to be started with EsApplicationStart; this then has to go via Desktop to create the instance, and then message can be sent to the started application.
+
+    can an app instance have more than 1 window or 0 windows?
+
+Each instance has one tab. But it can create additional helper windows, e.g. the inspector window I demoed in 
+project-showcase.
+
+    what's the lifetime of the returned EsMessage
+
+The message received from EsMessageReceive is valid until the next call to EsMessageReceive. 
+
+= About why resizing windows without visual artefacts is difficult =
+
+nakst
+ — 
+06/17/2021
+Synchronisation issues. The rendering and layout of a window involves multiple processes. You also have to deal with other processes updating their windows and wanting the window manager to display them. You have to deal with slow applications (i.e. there must be timeouts on everything). There is interaction between the kernel and applications, and the kernel is not allowed to block on application processes or you could DOS the system. etc.
+
+= About the build system architecture =
+
+nakst
+ — 
+07/06/2021
+No, it's actually even weirder. ./start.sh builds bin/build; bin/build builds the compiler toolchain and bin/build_core; and bin/build_core actually builds Essence.
+
+= About various aspects of the kernel =
+
+nakst
+ — 
+07/06/2021
+
+    Does the kernel offer anything like kernel modules?
+
+Currently there is support for dynamically loading kernel modules, but they cannot be unloaded until shutdown.
+
+    How does multitasking threads/processes work?
+
+Could you be more specific? The kernel uses fairly standard preemptive multitasking.
+
+    is there any way to give more exclusive access to the OS
+
+Not currently, but I would be happy to add such an API in the future! However, since there is so much less stuff running in the background in Essence, it might not be necessary :P
+
+    Passing data across processes, what are the options?
+
+There's shared memory (EsMemoryShare/EsMemoryOpen), classic Unix-like pipes, event objects for synchronisation, and message passing. 
+
+nakst
+ — 
+07/06/2021
+Each process is made of:
+- a memory space 
+- a handle table
+- a permission bitset
+- and one or more threads 
+Each thread is just a stack + register file. 
+
+= About file permissions =
+
+nakst
+ — 
+09/06/2021
+All the architectural changes are simplifications :)
+For example, there are no file system permissions. Instead, to get access to a file/folder your process has to be given a handle to it. In fact, the kernel has no concepts of mountpoints. Instead when a drive is connected, it gives a single handle of the root directory to the root process, which can then distribute it to its child processes. And the drive is unmounted when all handles to files on it are closed
+
+nakst
+ — 
+09/06/2021
+When started, an application is passed a handle to its local storage folder. It uses this handle to open handles to any files and folders within.
+
+nakst
+ — 
+09/06/2021
+It's exposed through the API by the "mountpoint" |Settings:/
+
+nakst
+ — 
+09/06/2021
+Though what's actually happening is the API selects the correct handle to use to use as the base directory for the open file system call
+
+nakst
+ — 
+09/06/2021
+The system manages installed applications, and as such, what paths each application is allowed to access. When the application is started, it is provided with all the necessary handles it needs, and any temporary ones are given on demand.
+This is all done behind the scenes though; an application doesn't need to worry about the details.
+
+= On setting the wallpaper from the build system =
+
+nakst
+ — 
+09/23/2021
+In your source tree, copy the res/Sample Images into root
+Then append something like General.wallpaper=0:/Sample Images/Waves.jpg into bin/config.ini
+
+= On using libc =
+
+nakst
+ — 
+09/29/2021
+You have 2 options:
+1. Before including essence.h, define ES_CRT_WITHOUT_PREFIX and a bunch of functions from the C standard library will be available (abs acosf asinf atan2 atan2f atanf atoi bsearch calloc cbrt cbrtf ceil ceilf cos cosf exp exp2f fabs fabsf floor floorf fmod fmodf free getenv isalpha isdigit isnanf isspace isupper isxdigit log2 log2f malloc memchr memcmp memcpy memmove memset pow powf qsort rand realloc sin sinf snprintf sprintf sqrt sqrtf strcat strchr strcmp strcpy strdup strerror strlen strncmp strncpy strnlen strstr strtol strtoul tolower vsnprintf)
+2. Alternatively, if you need a full C standard library, you can link with musl by putting with_cstdlib=1 in the [build] section of your application's .ini file. But beware, this isn't fully supported; a few things like threads won't work correctly. 
+
+= On finding executable symbols =
+
+nakst
+ — 
+09/30/2021
+No, debug info should be available. In your bin/ folder there is an executable named after the application which contains symbols, and another with a .nosymbols suffix, which does not contain symbols.
+
+(Author's note: the .nosymbols files are now located in "bin/Stripped Executables")
+
+= On debugging userland application crashes =
+
+Brett
+ — 
+09/30/2021
+Is there a breakpoint I can set to catch the error before essence kills the process or I just have to step until then?
+Brett
+ — 
+09/30/2021
+Found the crash!
+nakst
+ — 
+09/30/2021
+It's a bit messy. First you need to load the kernel symbols with add-symbol-file bin/Kernel. Then you can break in Scheduler::CrashProcess, currently scheduler.cpp:967 and then run set process->crashed=1, and you can step out of the crash handler back into your code.
+
+= On not being able to view global variables =
+
+nakst
+ — 
+09/30/2021
+This can happen if the page containing the variable has not been mapped yet. This probably means it's part of the memory mapped executable. Once your code has accessed the variable once it should be accessible from gdb
+
+= On application and kernel permissions =
+
+nakst
+ — 
+10/09/2021
+There are 2 types of permissions, kernel permissions and application permissions.
+
+Each process has a 64-bit bitmask of kernel permissions. When it creates a process, it chooses a subset of those permission bits to give to the new process. It cannot give permission bits it does not have to the new process. Kernel permissions have the prefix ES_PERMISSION_. They are passed in EsProcessCreationArguments::permissions and stored in Process::permissions.
+
+Each installed application has a 64-bit bitmask of application permissions. These are currently decided when the application is installed. When an application is launched, the application permissions are used to figure out (a) what kernel permissions the process should get (b) what handles the application should be given access to and (c) which services provided by Desktop the application can access. 
+
+For example, APPLICATION_PERMISSION_ALL_FILES means that the application will be given handles to all the mounted file systems, and it is allowed to query information about which documents are open (a service provided by Desktop), and will also be sent notifications when new file systems are connected.
+
+Important note: permission to access devices and file systems are managed through handles, rather than permission bits or user IDs. So, if you want to open a file handle you need to have a handle to an ancestor folder, which you can only get from a more privileged process. It's done this way to reduce the amount of global permission state (like POSIX's read write execute bits on every file); instead a process gets to precisely decide what a process it creates will have access to. 
+
+= What is the object in _EsMessageWithObject =
+
+nakst
+ — 
+10/09/2021
+It's used to store the relevant window for messages sent by the window manager (e.g. mouse or keyboard input), so that the receiving process can forward the message to the window. (The naming is a bit unclear because the internals of messaging has changed a bit over the years)
+
+= On accessing the layout inspector =
+
+nakst
+ — 
+10/09/2021
+Shift+right click on a tab
+
+= On the window transfer press system call =
+
+nakst
+ — 
+10/09/2021
+When you press a mouse button down the window the cursor's over becomes "pressed". Until you release the mouse button, all the mouse movement messages are sent to the pressed window. This is needed for things like e.g. dragging a scrollbar -- even if your cursor leaves the window you still want the scrollbar to keep dragging.
+However, sometimes the thing you are dragging changes window, at which point the press needs to be "transferred" to a different window. This is currently only used for dragging tabs in and out of container windows.
+Important note: this is all just an implementation detail, I might completely change out this works in the future
+
+= On constant buffers =
+
+nakst
+ — 
+10/09/2021
+Yes, it's a form of shared memory. Once created, its contents cannot be modified. But other processes can read it if they have a handle.
+
+= On adding new applications =
+
+nakst
+ — 
+10/15/2021
+The easiest way to cross-compile is using the build system. You make a manifest file, for example:
+
+[general]
+name=<the name of your application>
+[build]
+source=<absolute path to the first source file>
+source=<absolute path to the second source file>
+; etc...
+
+
+(This is for C++.)
+
+Then make the file bin/extra_applications.ini and put in it the absolute path to the manifest file.
+
+nakst
+ — 
+12/06/2021
+Yes, you all the builtin applications are cross compiled this way. You can see sample applications in apps/samples of the source tree. To add them to the list of applications to be built, you can add the path to its ini file to bin/extra_applications.ini (attached mine for example)
+
+apps/samples/list.ini
+apps/samples/hello.ini
+apps/samples/game_loop.ini
+apps/samples/converter.ini
+
+nakst
+ — 
+12/06/2021
+yes, the build system will detect it automatically from the extra_applications.ini file
+
+= On custom compile commands for other programming languages = 
+
+nakst
+ — 
+12/13/2021
+In your application's ini file you need to set a custom compile command, e.g.
+
+[build]
+custom_compile_command=./build_my_application.sh
+
+It must output an ELF binary into the bin folder with the same name as the application (the name field in [general]). 
+
+= On the API table =
+
+nakst
+ — 
+Yesterday at 8:15 AM
+You do not need to link to anything. It is a header only library.
+
+nakst
+ — 
+Yesterday at 8:44 AM
+They are not linked to any libraries. They call into the system api via the api table, which is an array of function pointers at a fixed memory address. The api header wraps these function pointers with macros, as needed.

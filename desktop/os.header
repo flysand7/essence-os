@@ -2134,17 +2134,20 @@ function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size,
 // Standard functions.
 
 function void EsAssertionFailure(EsCString cFile, int line); 
-function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
-function double EsDoubleParse(STRING string, char **endptr); 
+
 function uint8_t EsRandomU8(); 
 function uint64_t EsRandomU64();
-function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.
+
+function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
+
 function_not_in_kernel void EsPanic(EsCString format, ...); 
 function_not_in_kernel void EsPrint(EsCString format, ...);
 function void EsPrintDirect(STRING string); 
 function void EsPrintHelloWorld(); 
+
 function void EsRandomAddEntropy(uint64_t x); 
 function void EsRandomSeed(uint64_t x); 
+
 function EsRectangle EsRectangleAdd(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleAddBorder(EsRectangle rectangle, EsRectangle border);
 function EsRectangle EsRectangleBounding(EsRectangle a, EsRectangle b);
@@ -2159,6 +2162,7 @@ function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
 function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
 function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
 function bool EsRectangleContainsAll(EsRectangle parent, EsRectangle child); // Returns true iff the child rectangle is entirely contained within parent.
+
 function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument); 
 function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument, EsSwapCallback swap); 
 
@@ -2292,6 +2296,9 @@ function bool EsStringStartsWith(STRING string, STRING prefix, bool caseInsensit
 function bool EsStringEndsWith(STRING string, STRING prefix, bool caseInsensitive); 
 function char *EsStringZeroTerminate(STRING string); // Free with EsHeapFree.
 function bool EsUTF8IsValid(const char *input, ptrdiff_t bytes); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
+
+function double EsDoubleParse(STRING string, char **endptr); 
+function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.
 
 // CRT functions.
 
