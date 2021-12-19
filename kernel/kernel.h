@@ -181,10 +181,23 @@ extern "C" {
 // Kernel components.
 // ---------------------------------------------------------------------------------------------------------------
 
-#include <shared/avl_tree.cpp>
+#ifndef IMPLEMENTATION
 #include <shared/bitset.cpp>
-#include <shared/range_set.cpp>
 #include <shared/arena.cpp>
+#include <shared/avl_tree.cpp>
+#include <shared/range_set.cpp>
+#include <shared/ini.h>
+#include <shared/partitions.cpp>
+#include <shared/heap.cpp>
+#include <shared/hash.cpp>
+
+#define ARRAY_IMPLEMENTATION_ONLY
+#include <shared/array.cpp>
+
+#define SHARED_COMMON_WANT_ALL
+#include <shared/strings.cpp>
+#include <shared/common.cpp>
+#endif
 
 #include "objects.cpp"
 #include "memory.cpp"
@@ -201,14 +214,6 @@ extern "C" {
 
 #ifdef ENABLE_POSIX_SUBSYSTEM
 #include "posix.cpp"
-#endif
-
-#ifndef IMPLEMENTATION
-#define ARRAY_IMPLEMENTATION_ONLY
-#include <shared/array.cpp>
-#include <shared/heap.cpp>
-#include <shared/partitions.cpp>
-#include <shared/ini.h>
 #endif
 
 // ---------------------------------------------------------------------------------------------------------------

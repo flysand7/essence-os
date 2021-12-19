@@ -27,7 +27,6 @@
 #define SHARED_COMMON_WANT_ALL
 #define SHARED_MATH_WANT_ALL
 #include <shared/ini.h>
-#include <shared/avl_tree.cpp>
 #include <shared/heap.cpp>
 #include <shared/linked_list.cpp>
 #include <shared/hash.cpp>
@@ -1901,7 +1900,7 @@ const void *EsBundleFind(const EsBundle *bundle, const char *_name, ptrdiff_t na
 
 	const BundleHeader *header = bundle->base;
 	const BundleFile *files = (const BundleFile *) (header + 1);
-	uint64_t name = CalculateCRC64(_name, nameBytes);
+	uint64_t name = CalculateCRC64(_name, nameBytes, 0);
 
 	for (uintptr_t i = 0; i < header->fileCount; i++) {
 		if (files[i].nameCRC64 == name) {

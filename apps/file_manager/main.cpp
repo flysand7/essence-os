@@ -8,8 +8,6 @@
 #include <shared/hash_table.cpp>
 #include <shared/array.cpp>
 #include <shared/arena.cpp>
-#define IMPLEMENTATION
-#include <shared/arena.cpp>
 
 // TODO Possible candidates for moving in the core API:
 // 	- String/paths utils

@@ -624,15 +624,15 @@ EsError InstallGPT(EsBlockDeviceInformation driveInformation, EsMessageDevice dr
 	partitionTable[1].firstLBA = partitionTable[0].lastLBA + 1;
 	partitionTable[1].lastLBA = header->lastUsableLBA;
 
-	header->tableCRC32 = CalculateCRC32(partitionTable, partitionEntryCount * sizeof(GPTEntry));
-	header->headerCRC32 = CalculateCRC32(header, header->headerBytes);
+	header->tableCRC32 = CalculateCRC32(partitionTable, partitionEntryCount * sizeof(GPTEntry), 0);
+	header->headerCRC32 = CalculateCRC32(header, header->headerBytes, 0);
 
 	GPTHeader *backupHeader = (GPTHeader *) EsHeapAllocate(driveInformation.sectorSize, true);
 	EsMemoryCopy(backupHeader, header, driveInformation.sectorSize);
 	backupHeader->headerSelfLBA = header->headerBackupLBA;
 	backupHeader->headerBackupLBA = header->headerSelfLBA;
 	backupHeader->headerCRC32 = 0;
-	backupHeader->headerCRC32 = CalculateCRC32(backupHeader, header->headerBytes);
+	backupHeader->headerCRC32 = CalculateCRC32(backupHeader, header->headerBytes, 0);
 
 	parameters[0] = 0; 
 	parameters[1] = driveInformation.sectorSize;

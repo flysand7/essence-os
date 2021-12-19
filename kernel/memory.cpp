@@ -205,14 +205,6 @@ struct PMM {
 // See MMPhysicalAllocate.
 alignas(K_PAGE_SIZE) uint8_t earlyZeroBuffer[K_PAGE_SIZE];
 
-// Memory spaces.
-// kernelMMSpace - Whence the kernel allocates memory.
-// coreMMSpace - Whence other memory managers allocate memory.
-
-extern MMSpace _kernelMMSpace, _coreMMSpace;
-#define kernelMMSpace (&_kernelMMSpace)
-#define coreMMSpace (&_coreMMSpace)
-
 // Constants.
 
 // MMArchMapPage.

@@ -2,8 +2,6 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-#ifndef IMPLEMENTATION
-
 struct Arena {
 	// Arenas are not thread-safe!
 	// You can use different arenas in different threads, though.
@@ -14,8 +12,6 @@ struct Arena {
 void *ArenaAllocate(Arena *arena, bool zero); // Not thread-safe.
 void ArenaFree(Arena *arena, void *pointer); // Not thread-safe.
 void ArenaInitialise(Arena *arena, size_t blockSize, size_t itemSize);
-
-#else
 
 struct ArenaSlot {
 	uintptr_t indexInBlock;
@@ -120,5 +116,3 @@ void ArenaInitialise(Arena *arena, size_t blockSize, size_t itemSize) {
 	if (arena->slotsPerBlock < 32) arena->slotsPerBlock = 32;
 	arena->blockSize = arena->slotsPerBlock * arena->slotSize;
 }
-
-#endif

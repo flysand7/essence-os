@@ -168,7 +168,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			// Look for the executable in the bundle.
 
-			uint64_t name = CalculateCRC64(EsLiteral("$Executables/" K_ARCH_NAME));
+			uint64_t name = CalculateCRC64(EsLiteral("$Executables/" K_ARCH_NAME), 0);
 			BundleFile *files = (BundleFile *) ((BundleHeader *) header.mapAddress + 1);
 
 			bool found = false;

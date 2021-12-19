@@ -2,9 +2,9 @@
 // Currently used for: EsFS, theme constants, build core configuration hash, make bundle.
 
 #ifdef __cplusplus
-constexpr static uint32_t crc32Table[] = { 
+constexpr uint32_t crc32Table[] = { 
 #else
-static uint32_t crc32Table[] = { 
+uint32_t crc32Table[] = { 
 #endif
 	0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 
 	0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -41,9 +41,9 @@ static uint32_t crc32Table[] = {
 };
 
 #ifdef __cplusplus
-constexpr static uint64_t crc64Table[] = { 
+constexpr uint64_t crc64Table[] = { 
 #else
-static uint64_t crc64Table[] = { 
+uint64_t crc64Table[] = { 
 #endif
 	0x0000000000000000UL, 0x7AD870C830358979UL, 0xF5B0E190606B12F2UL, 0x8F689158505E9B8BUL, 0xC038E5739841B68FUL, 0xBAE095BBA8743FF6UL, 0x358804E3F82AA47DUL, 0x4F50742BC81F2D04UL, 
 	0xAB28ECB46814FE75UL, 0xD1F09C7C5821770CUL, 0x5E980D24087FEC87UL, 0x24407DEC384A65FEUL, 0x6B1009C7F05548FAUL, 0x11C8790FC060C183UL, 0x9EA0E857903E5A08UL, 0xE478989FA00BD371UL, 
@@ -79,11 +79,7 @@ static uint64_t crc64Table[] = {
 	0x66E7A46C27F3AA2CUL, 0x1C3FD4A417C62355UL, 0x935745FC4798B8DEUL, 0xE98F353477AD31A7UL, 0xA6DF411FBFB21CA3UL, 0xDC0731D78F8795DAUL, 0x536FA08FDFD90E51UL, 0x29B7D047EFEC8728UL,
 };
 
-#ifdef __cplusplus
-constexpr static uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carry = 0) {
-#else
-static uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carry) {
-#endif
+uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carry) {
 	const uint8_t *buffer = (const uint8_t *) _buffer;
 	uint32_t x = ~carry;
 	
@@ -94,11 +90,7 @@ static uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carr
 	return ~x;
 }
 
-#ifdef __cplusplus
-constexpr static uint64_t CalculateCRC64(const void *_buffer, size_t length, uint64_t carry = 0) {
-#else
-static uint64_t CalculateCRC64(const void *_buffer, size_t length, uint64_t carry) {
-#endif
+uint64_t CalculateCRC64(const void *_buffer, size_t length, uint64_t carry) {
 	const uint8_t *buffer = (const uint8_t *) _buffer;
 	uint64_t x = ~carry;
 	

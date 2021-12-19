@@ -516,7 +516,7 @@ static void DeviceAttach(KDevice *parent) {
 	volume->spaceUsed = volume->primaryDescriptor.volumeSize.x * volume->primaryDescriptor.logicalBlockSize.x;
 	volume->spaceTotal = volume->spaceUsed;
 
-	uint64_t crc64 = CalculateCRC64(&volume->primaryDescriptor, sizeof(PrimaryDescriptor));
+	uint64_t crc64 = CalculateCRC64(&volume->primaryDescriptor, sizeof(PrimaryDescriptor), 0);
 	EsMemoryCopy(&volume->identifier, &crc64, sizeof(crc64));
 
 	volume->nameBytes = sizeof(volume->primaryDescriptor.volumeIdentifier);

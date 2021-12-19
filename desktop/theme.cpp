@@ -1245,7 +1245,7 @@ const void *GetConstant(const char *cKey, size_t *byteCount, bool *scale) {
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
 	EsBufferRead(&data, sizeof(ThemeStyle) * header->styleCount);
 
-	uint64_t hash = CalculateCRC64(EsLiteral(cKey));
+	uint64_t hash = CalculateCRC64(EsLiteral(cKey), 0);
 
 	for (uintptr_t i = 0; i < header->constantCount; i++) {
 		const ThemeConstant *constant = (const ThemeConstant *) EsBufferRead(&data, sizeof(ThemeConstant));

@@ -9,14 +9,14 @@
 #if defined(SHARED_MATH_WANT_BASIC_UTILITIES) || defined(SHARED_MATH_WANT_ALL)
 
 template <class T>
-T RoundDown(T value, T divisor) {
+inline T RoundDown(T value, T divisor) {
 	value /= divisor;
 	value *= divisor;
 	return value;
 }
 
 template <class T>
-T RoundUp(T value, T divisor) {
+inline T RoundUp(T value, T divisor) {
 	value += divisor - 1;
 	value /= divisor;
 	value *= divisor;

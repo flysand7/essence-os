@@ -2,8 +2,6 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-#ifndef IMPLEMENTATION
-
 struct Bitset {
 	void Initialise(size_t count, bool mapAll = false);
 	void PutAll();
@@ -23,8 +21,6 @@ struct Bitset {
 	bool modCheck;
 #endif
 };
-
-#else
 
 void Bitset::Initialise(size_t count, bool mapAll) {
 	singleCount = (count + 31) & ~31;
@@ -192,5 +188,3 @@ void Bitset::Put(uintptr_t index) {
 		groupUsage[index / BITSET_GROUP_SIZE]++;
 	}
 }
-
-#endif

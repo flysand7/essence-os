@@ -2,8 +2,6 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-#ifndef IMPLEMENTATION
-
 struct Range {
 	uintptr_t from, to;
 };
@@ -20,8 +18,6 @@ struct RangeSet {
 	bool Set(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify);
 	bool Clear(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify);
 };
-
-#else
 
 Range *RangeSet::Find(uintptr_t offset, bool touching) {
 	if (!ranges.Length()) return nullptr;
@@ -350,8 +346,6 @@ bool RangeSet::Clear(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify)
 	Validate();
 	return true;
 }
-
-#endif
 
 #if 0
 int main(int argc, char **argv) {

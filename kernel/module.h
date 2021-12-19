@@ -110,21 +110,17 @@ void KUnregisterMSI(uintptr_t tag);
 // Common data types, algorithms and things.
 // ---------------------------------------------------------------------------------------------------------------
 
+#define SHARED_MATH_WANT_BASIC_UTILITIES
+#include <shared/math.cpp>
+
 #ifndef K_IN_CORE_KERNEL
 #define SHARED_DEFINITIONS_ONLY
 #endif
-
-#define SHARED_MATH_WANT_BASIC_UTILITIES
 #include <shared/unicode.cpp>
-#include <shared/math.cpp>
 #include <shared/linked_list.cpp>
-#include <shared/hash.cpp>
 
-#ifdef K_IN_CORE_KERNEL
-#define SHARED_COMMON_WANT_ALL
-#include <shared/strings.cpp>
-#include <shared/common.cpp>
-#endif
+uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carry);
+uint64_t CalculateCRC64(const void *_buffer, size_t length, uint64_t carry);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Processor IO.
@@ -339,6 +335,15 @@ void KTimerRemove(KTimer *timer); // Timers with callbacks cannot be removed (it
 struct MMSpace;
 MMSpace *MMGetKernelSpace();
 MMSpace *MMGetCurrentProcessSpace();
+
+#ifdef K_IN_CORE_KERNEL
+// Memory spaces.
+// kernelMMSpace - Whence the kernel allocates memory.
+// coreMMSpace - Whence other memory managers allocate memory.
+extern MMSpace _kernelMMSpace, _coreMMSpace;
+#define kernelMMSpace (&_kernelMMSpace)
+#define coreMMSpace (&_coreMMSpace)
+#endif
 
 #define MM_REGION_FIXED              (0x01) // A region where all the physical pages are allocated up-front, and cannot be removed from the working set.
 #define MM_REGION_NOT_CACHEABLE      (0x02) // Do not cache the pages in the region.

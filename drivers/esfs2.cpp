@@ -51,7 +51,7 @@ static bool AccessBlock(Volume *volume, uint64_t index, uint64_t count, void *bu
 static bool ValidateIndexVertex(Superblock *superblock, IndexVertex *vertex) {
 	uint32_t checksum = vertex->checksum;
 	vertex->checksum = 0;
-	uint32_t calculated = CalculateCRC32(vertex, superblock->blockSize);
+	uint32_t calculated = CalculateCRC32(vertex, superblock->blockSize, 0);
 
 	ESFS_CHECK(checksum == calculated, "ValidateIndexVertex - Invalid vertex checksum.");
 	ESFS_CHECK(0 == EsMemoryCompare(vertex->signature, ESFS_INDEX_VERTEX_SIGNATURE, 4), "ValidateIndexVertex - Invalid vertex signature.");
@@ -69,7 +69,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 	Superblock *superblock = &volume->superblock;
 
 	// Get the root vertex.
-	uint64_t nameHash = CalculateCRC64(name, nameLength);
+	uint64_t nameHash = CalculateCRC64(name, nameLength, 0);
 	IndexVertex *vertex = (IndexVertex *) buffer;
 
 	if (!AccessBlock(volume, rootBlock, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
@@ -112,7 +112,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 static bool ValidateDirectoryEntry(Volume *volume, DirectoryEntry *entry) {
 	uint32_t checksum = entry->checksum;
 	entry->checksum = 0;
-	uint32_t calculated = CalculateCRC32(entry, sizeof(DirectoryEntry));
+	uint32_t calculated = CalculateCRC32(entry, sizeof(DirectoryEntry), 0);
 	entry->checksum = calculated;
 
 	ESFS_CHECK_VA(checksum == calculated, "ValidateDirectoryEntry - Invalid checksum (%x, calculated %x).", checksum, calculated);
@@ -346,7 +346,7 @@ static void Sync(KNode *_directory, KNode *node) {
 
 	{
 		file->entry.checksum = 0;
-		file->entry.checksum = CalculateCRC32(&file->entry, sizeof(DirectoryEntry));
+		file->entry.checksum = CalculateCRC32(&file->entry, sizeof(DirectoryEntry), 0);
 	}
 
 	uint8_t *blockBuffer = (uint8_t *) EsHeapAllocate(superblock->blockSize, false, K_FIXED);
@@ -462,14 +462,14 @@ static uint64_t FindLargestExtent(uint8_t *bitmap, Superblock *superblock) {
 static bool ValidateGroupDescriptor(GroupDescriptor *descriptor) {
 	uint32_t checksum = descriptor->checksum;
 	descriptor->checksum = 0;
-	uint32_t calculated = CalculateCRC32(descriptor, sizeof(GroupDescriptor));
+	uint32_t calculated = CalculateCRC32(descriptor, sizeof(GroupDescriptor), 0);
 	ESFS_CHECK(checksum == calculated, "ValidateGroupDescriptor - Invalid checksum.");
 	ESFS_CHECK(0 == EsMemoryCompare(descriptor->signature, ESFS_GROUP_DESCRIPTOR_SIGNATURE, 4), "ValidateGroupDescriptor - Invalid signature.");
 	return true;
 }
 
 static bool ValidateBlockBitmap(GroupDescriptor *descriptor, uint8_t *bitmap, Superblock *superblock) {
-	uint32_t calculated = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize);
+	uint32_t calculated = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize, 0);
 	ESFS_CHECK(calculated == descriptor->bitmapChecksum, "ValidateBlockBitmap - Invalid checksum.");
 
 	uint32_t blocksUsed = 0;
@@ -586,9 +586,9 @@ static bool AllocateExtent(Volume *volume, uint64_t nearby, uint64_t increaseBlo
 
 		target->largestExtent = FindLargestExtent(bitmap, superblock);
 		target->blocksUsed += *extentCount;
-		target->bitmapChecksum = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize);
+		target->bitmapChecksum = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize, 0);
 		target->checksum = 0;
-		target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor));
+		target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor), 0);
 	}
 
 	*extentStart += (target - volume->groupDescriptorTable) * superblock->blocksPerGroup;
@@ -662,10 +662,10 @@ static bool FreeExtent(Volume *volume, uint64_t extentStart, uint64_t extentCoun
 	}
 
 	target->largestExtent = FindLargestExtent(bitmap, superblock);
-	target->bitmapChecksum = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize);
+	target->bitmapChecksum = CalculateCRC32(bitmap, superblock->blocksPerGroupBlockBitmap * superblock->blockSize, 0);
 	target->blocksUsed -= extentCount;
 	target->checksum = 0;
-	target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor));
+	target->checksum = CalculateCRC32(target, sizeof(GroupDescriptor), 0);
 	superblock->blocksUsed -= extentCount;
 	volume->spaceUsed -= extentCount * superblock->blockSize;
 
@@ -984,7 +984,7 @@ static bool IndexModifyKey(Volume *volume, uint64_t newKey, DirectoryEntryRefere
 						&& keys[i].data.offsetIntoBlock + sizeof(DirectoryEntry) <= superblock->blockSize, 
 						"IndexModifyKey - Invalid key entry.");
 				keys[i].data = reference;
-				vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+				vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 				return AccessBlock(volume, block, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE);
 			}
 		}
@@ -1162,8 +1162,8 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 
 		// Write the blocks.
 
-		sibling->checksum = 0; sibling->checksum = CalculateCRC32(sibling, superblock->blockSize);
-		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+		sibling->checksum = 0; sibling->checksum = CalculateCRC32(sibling, superblock->blockSize, 0);
+		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 		ESFS_CHECK(AccessBlock(volume, siblingBlock, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
 		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
 
@@ -1175,7 +1175,7 @@ static bool IndexAddKey(Volume *volume, uint64_t newKey, DirectoryEntryReference
 
 	// Write the block.
 
-	vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+	vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 	ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexAddKey - Could not update index.");
 
 	return true;
@@ -1245,7 +1245,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 		ESFS_VERTEX_KEY(vertex, position)->value = ESFS_VERTEX_KEY(search, 0)->value;
 		ESFS_VERTEX_KEY(vertex, position)->data  = ESFS_VERTEX_KEY(search, 0)->data;
 
-		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 		ESFS_CHECK(AccessBlock(volume, blocks[startDepth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 		EsMemoryCopy(vertex, search, superblock->blockSize);
@@ -1264,7 +1264,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 
 	if (vertex->count >= (vertex->maxCount - 1) / 2) {
 		// EsPrint("Vertex has enough keys, exiting...\n");
-		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+		vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 		ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 		return true;
 	}
@@ -1281,7 +1281,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 			*rootBlock = vertex->keys[0].child;
 		} else {
 			// EsPrint("Vertex is at root, exiting...\n");
-			vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize);
+			vertex->checksum = 0; vertex->checksum = CalculateCRC32(vertex, superblock->blockSize, 0);
 			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 		}
 
@@ -1325,9 +1325,9 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 
 			sibling->count--, vertex->count++;
 
-			vertex->checksum = 0; 	vertex->checksum = 	CalculateCRC32(vertex, 	superblock->blockSize);
-			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
-			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize);
+			vertex->checksum = 0; 	vertex->checksum = 	CalculateCRC32(vertex, 	superblock->blockSize, 0);
+			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize, 0);
+			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize, 0);
 
 			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
@@ -1353,9 +1353,9 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 
 			sibling->count--, vertex->count++;
 
-			vertex->checksum = 0; 	vertex->checksum = 	CalculateCRC32(vertex, 	superblock->blockSize);
-			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
-			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize);
+			vertex->checksum = 0; 	vertex->checksum = 	CalculateCRC32(vertex, 	superblock->blockSize, 0);
+			sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize, 0);
+			parent->checksum = 0; 	parent->checksum = 	CalculateCRC32(parent, 	superblock->blockSize, 0);
 
 			ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent + 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 			ESFS_CHECK(AccessBlock(volume, blocks[depth], 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
@@ -1397,7 +1397,7 @@ static bool IndexRemoveKey(Volume *volume, uint64_t removeKey, uint64_t *rootBlo
 			ESFS_CHECK(FreeExtent(volume, blocks[depth], 1), "IndexRemoveKey - Could not free merged vertex.");
 		}
 
-		sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize);
+		sibling->checksum = 0; 	sibling->checksum = 	CalculateCRC32(sibling, superblock->blockSize, 0);
 		ESFS_CHECK(AccessBlock(volume, ESFS_VERTEX_KEY(parent, positionInParent - 1)->child, 1, sibling, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), "IndexRemoveKey - Could not write index.");
 
 		EsMemoryCopy(vertex, parent, superblock->blockSize);
@@ -1453,7 +1453,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 				((FSNode *) node->driverNode)->reference = file->reference;
 			}
 
-			uint64_t key = CalculateCRC64(filename->filename, filename->length);
+			uint64_t key = CalculateCRC64(filename->filename, filename->length, 0);
 			// EsPrint("\tModify index key for %s\n", filename->length, filename->filename);
 			ESFS_CHECK_TO_ERROR(IndexModifyKey(volume, key, file->reference, directoryAttribute->indexRootBlock, blockBuffers + superblock->blockSize), 
 					"Remove - Could not update index (2).", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
@@ -1475,7 +1475,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 	// EsPrint("\tRemoving %s from index\n", filename->length, filename->filename);
 
 	if (filename) {
-		uint64_t removeKey = CalculateCRC64(filename->filename, filename->length);
+		uint64_t removeKey = CalculateCRC64(filename->filename, filename->length, 0);
 		ESFS_CHECK_TO_ERROR(IndexRemoveKey(volume, removeKey, &directoryAttribute->indexRootBlock), "Remove - Could not update index.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
 	}
 
@@ -1646,7 +1646,7 @@ static bool CreateInternal(const char *name, size_t nameLength, EsNodeType type,
 	}
 
 	entry->checksum = 0;
-	entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry));
+	entry->checksum = CalculateCRC32(entry, sizeof(DirectoryEntry), 0);
 	if (!ValidateDirectoryEntry(volume, entry)) KernelPanic("EsFS::CreateInternal - Created directory entry is invalid.\n");
 
 	// Write the directory entry.
@@ -1658,7 +1658,7 @@ static bool CreateInternal(const char *name, size_t nameLength, EsNodeType type,
 
 	// Add the node into the index. 
 
-	uint64_t newKey = CalculateCRC64(name, nameLength);
+	uint64_t newKey = CalculateCRC64(name, nameLength, 0);
 	ESFS_CHECK(IndexAddKey(volume, newKey, reference, &directoryAttribute->indexRootBlock), "Create - Could not add file to index.");
 
 	directoryAttribute->childNodes++;
@@ -1681,7 +1681,7 @@ static EsError Move(KNode *_oldDirectory, KNode *_file, KNode *_newDirectory, co
 	if (oldDirectory->type != ES_NODE_DIRECTORY || newDirectory->type != ES_NODE_DIRECTORY) KernelPanic("EsFS::Move - Incorrect node types.\n");
 
 	file->entry.checksum = 0;
-	file->entry.checksum = CalculateCRC32(&file->entry, sizeof(DirectoryEntry));
+	file->entry.checksum = CalculateCRC32(&file->entry, sizeof(DirectoryEntry), 0);
 	if (!ValidateDirectoryEntry(volume, &file->entry)) KernelPanic("EsFS::Move - Existing entry is invalid.\n");
 
 	uint8_t *buffers = (uint8_t *) EsHeapAllocate(superblock->blockSize * 2, true, K_FIXED);
@@ -1854,7 +1854,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 
 	uint32_t checksum = volume->superblock.checksum;
 	volume->superblock.checksum = 0;
-	uint32_t calculated = CalculateCRC32(&volume->superblock, sizeof(Superblock));
+	uint32_t calculated = CalculateCRC32(&volume->superblock, sizeof(Superblock), 0);
 	ESFS_CHECK_FATAL(checksum == calculated, "Invalid superblock checksum.");
 
 	ESFS_CHECK_FATAL(0 == EsMemoryCompare(volume->superblock.signature, ESFS_SIGNATURE_STRING, 16), "Invalid superblock signature.");
@@ -1881,7 +1881,7 @@ static bool Mount(Volume *volume, EsFileOffsetDifference *rootDirectoryChildren)
 	if (!volume->readOnly) {
 		superblock->mounted = true;
 		superblock->checksum = 0;
-		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock));
+		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock), 0);
 		ESFS_CHECK_ERROR_READ_ONLY(volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, 
 					K_ACCESS_WRITE, (uint8_t *) superblock, ES_FLAGS_DEFAULT), "Could not mark volume as mounted.");
 	}
@@ -1957,7 +1957,7 @@ static void Unmount(KFileSystem *fileSystem) {
 
 		superblock->mounted = false;
 		superblock->checksum = 0;
-		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock));
+		superblock->checksum = CalculateCRC32(superblock, sizeof(Superblock), 0);
 		volume->Access(ESFS_BOOT_SUPER_BLOCK_SIZE, ESFS_BOOT_SUPER_BLOCK_SIZE, K_ACCESS_WRITE, 
 				(uint8_t *) superblock, ES_FLAGS_DEFAULT);
 	}

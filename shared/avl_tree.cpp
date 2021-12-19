@@ -2,16 +2,8 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-#ifndef IMPLEMENTATION
-
 #ifdef DEBUG_BUILD
 #define TREE_VALIDATE
-#endif
-
-#ifdef KERNEL
-#define AVLPanic KernelPanic
-#else
-#define AVLPanic(...) do { EsPrint(__VA_ARGS__); EsAssert(false); } while (0)
 #endif
 
 enum TreeSearchMode {
@@ -118,19 +110,19 @@ template <class T>
 int TreeValidate(AVLItem<T> *root, bool before, AVLTree<T> *tree, AVLItem<T> *parent = nullptr, int depth = 0) {
 #ifdef TREE_VALIDATE
 	if (!root) return 0;
-	if (root->parent != parent) AVLPanic("TreeValidate - Invalid binary tree 1 (%d).\n", before);
-	if (root->tree != tree) AVLPanic("TreeValidate - Invalid binary tree 4 (%d).\n", before);
+	if (root->parent != parent) EsPanic("TreeValidate - Invalid binary tree 1 (%d).\n", before);
+	if (root->tree != tree) EsPanic("TreeValidate - Invalid binary tree 4 (%d).\n", before);
 
 	AVLItem<T> *left  = root->children[0];
 	AVLItem<T> *right = root->children[1];
 
-	if (left  && TreeCompare(tree, &left->key,  &root->key) > 0) AVLPanic("TreeValidate - Invalid binary tree 2 (%d).\n", before);
-	if (right && TreeCompare(tree, &right->key, &root->key) < 0) AVLPanic("TreeValidate - Invalid binary tree 3 (%d).\n", before);
+	if (left  && TreeCompare(tree, &left->key,  &root->key) > 0) EsPanic("TreeValidate - Invalid binary tree 2 (%d).\n", before);
+	if (right && TreeCompare(tree, &right->key, &root->key) < 0) EsPanic("TreeValidate - Invalid binary tree 3 (%d).\n", before);
 
 	int leftHeight = TreeValidate(left, before, tree, root, depth + 1);
 	int rightHeight = TreeValidate(right, before, tree, root, depth + 1);
 	int height = (leftHeight > rightHeight ? leftHeight : rightHeight) + 1;
-	if (height != root->height) AVLPanic("TreeValidate - Invalid AVL tree 1 (%d).\n", before);
+	if (height != root->height) EsPanic("TreeValidate - Invalid AVL tree 1 (%d).\n", before);
 
 #if 0
 	static int maxSeenDepth = 0;
@@ -203,14 +195,14 @@ enum AVLDuplicateKeyPolicy {
 
 template <class T>
 bool TreeInsert(AVLTree<T> *tree, AVLItem<T> *item, T *thisItem, AVLKey key, AVLDuplicateKeyPolicy duplicateKeyPolicy = AVL_DUPLICATE_KEYS_PANIC) {
-	if (tree->modCheck) AVLPanic("TreeInsert - Concurrent modification\n");
+	if (tree->modCheck) EsPanic("TreeInsert - Concurrent modification\n");
 	tree->modCheck = true; EsDefer({tree->modCheck = false;});
 
 	TreeValidate(tree->root, true, tree);
 
 #ifdef TREE_VALIDATE
 	if (item->tree) {
-		AVLPanic("TreeInsert - Item %x already in tree %x (adding to %x).\n", item, item->tree, tree);
+		EsPanic("TreeInsert - Item %x already in tree %x (adding to %x).\n", item, item->tree, tree);
 	}
 
 	item->tree = tree;
@@ -234,7 +226,7 @@ bool TreeInsert(AVLTree<T> *tree, AVLItem<T> *item, T *thisItem, AVLKey key, AVL
 
 		if (TreeCompare(tree, &item->key, &node->key) == 0) {
 			if (duplicateKeyPolicy == AVL_DUPLICATE_KEYS_PANIC) {
-				AVLPanic("TreeInsertRecursive - Duplicate keys: %x and %x both have key %x.\n", item, node, node->key);
+				EsPanic("TreeInsertRecursive - Duplicate keys: %x and %x both have key %x.\n", item, node, node->key);
 			} else if (duplicateKeyPolicy == AVL_DUPLICATE_KEYS_FAIL) {
 				return false;
 			}
@@ -310,14 +302,14 @@ AVLItem<T> *TreeFindRecursive(AVLTree<T> *tree, AVLItem<T> *root, AVLKey *key, T
 			return TreeFindRecursive(tree, root->children[0], key, mode); 
 		}
 	} else {
-		AVLPanic("TreeFindRecursive - Invalid search mode.\n");
+		EsPanic("TreeFindRecursive - Invalid search mode.\n");
 		return nullptr;
 	}
 }
 
 template <class T>
 AVLItem<T> *TreeFind(AVLTree<T> *tree, AVLKey key, TreeSearchMode mode) {
-	if (tree->modCheck) AVLPanic("TreeFind - Concurrent access\n");
+	if (tree->modCheck) EsPanic("TreeFind - Concurrent access\n");
 
 	TreeValidate(tree->root, true, tree);
 	return TreeFindRecursive(tree, tree->root, &key, mode);
@@ -334,13 +326,13 @@ int TreeGetBalance(AVLItem<T> *item) {
 
 template <class T>
 void TreeRemove(AVLTree<T> *tree, AVLItem<T> *item) {
-	if (tree->modCheck) AVLPanic("TreeRemove - Concurrent modification\n");
+	if (tree->modCheck) EsPanic("TreeRemove - Concurrent modification\n");
 	tree->modCheck = true; EsDefer({tree->modCheck = false;});
 
 	TreeValidate(tree->root, true, tree);
 
 #ifdef TREE_VALIDATE
-	if (item->tree != tree) AVLPanic("TreeRemove - Item %x not in tree %x (in %x).\n", item, tree, item->tree);
+	if (item->tree != tree) EsPanic("TreeRemove - Item %x not in tree %x (in %x).\n", item, tree, item->tree);
 #endif
 
 	AVLItem<T> fakeRoot = {};
@@ -395,11 +387,9 @@ void TreeRemove(AVLTree<T> *tree, AVLItem<T> *item) {
 	tree->root = fakeRoot.children[0];
 
 	if (tree->root) {
-		if (tree->root->parent != &fakeRoot) AVLPanic("TreeRemove - Incorrect root parent.\n");
+		if (tree->root->parent != &fakeRoot) EsPanic("TreeRemove - Incorrect root parent.\n");
 		tree->root->parent = nullptr;
 	}
 
 	TreeValidate(tree->root, false, tree);
 }
-
-#endif
