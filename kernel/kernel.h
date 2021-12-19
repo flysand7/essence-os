@@ -184,6 +184,7 @@ extern "C" {
 #include <shared/avl_tree.cpp>
 #include <shared/bitset.cpp>
 #include <shared/range_set.cpp>
+#include <shared/arena.cpp>
 
 #include "objects.cpp"
 #include "memory.cpp"
@@ -206,7 +207,6 @@ extern "C" {
 #define ARRAY_IMPLEMENTATION_ONLY
 #include <shared/array.cpp>
 #include <shared/heap.cpp>
-#include <shared/arena.cpp>
 #include <shared/partitions.cpp>
 #include <shared/ini.h>
 #endif

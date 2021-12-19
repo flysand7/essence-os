@@ -475,23 +475,6 @@ size_t EsCStringLength(const char *string) {
 	}
 }
 
-size_t EsStringLength(const char *string, uint8_t end) {
-	if (!string) {
-		return 0;
-	}
-
-	size_t size = 0;
-
-	while (true) {
-		if (*string != end) {
-			size++;
-			string++;
-		} else {
-			return size;
-		}
-	}
-}
-
 typedef void (*FormatCallback)(int character, void *data); 
 
 void _FormatInteger(FormatCallback callback, void *callbackData, long value, int pad = 0, bool simple = false) {
@@ -841,24 +824,6 @@ void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments) {
 }
 
 #ifndef KERNEL
-char *EsCStringDuplicate(const char *string) {
-	size_t length = EsCStringLength(string);
-	char *buffer = (char *) EsHeapAllocate(length + 1, false);
-	if (!buffer) return nullptr;
-	EsMemoryCopy(buffer, string, length);
-	buffer[length] = 0;
-	return buffer;
-}
-
-char *EsStringZeroTerminate(const char *string, ptrdiff_t stringBytes) {
-	if (stringBytes == -1) stringBytes = EsCStringLength(string);
-	char *result = (char *) EsHeapAllocate(stringBytes + 1, false);
-	if (!result) return nullptr;
-	result[stringBytes] = 0;
-	EsMemoryCopy(result, string, stringBytes);
-	return result;
-}
-
 char *EsStringAllocateAndFormatV(size_t *bytes, const char *format, va_list arguments1) {
 	size_t needed = 0;
 
@@ -1021,7 +986,7 @@ int EsStringCompare(const char *s1, ptrdiff_t _length1, const char *s2, ptrdiff_
 	return 0;
 }
 
-bool EsStringStartsWith(const char *string, intptr_t _stringBytes, const char *prefix, intptr_t _prefixBytes, bool caseInsensitive) {
+bool StringStartsWith(const char *string, intptr_t _stringBytes, const char *prefix, intptr_t _prefixBytes, bool caseInsensitive) {
 	if (_stringBytes == -1) _stringBytes = EsCStringLength(string);
 	if (_prefixBytes == -1) _prefixBytes = EsCStringLength(prefix);
 	size_t stringBytes = _stringBytes, prefixBytes = _prefixBytes;
@@ -1044,34 +1009,6 @@ bool EsStringStartsWith(const char *string, intptr_t _stringBytes, const char *p
 		prefixBytes--;
 		string++;
 		prefix++;
-	}
-}
-
-bool EsStringEndsWith(const char *string, intptr_t _stringBytes, const char *prefix, intptr_t _prefixBytes, bool caseInsensitive) {
-	if (_stringBytes == -1) _stringBytes = EsCStringLength(string);
-	if (_prefixBytes == -1) _prefixBytes = EsCStringLength(prefix);
-	size_t stringBytes = _stringBytes, prefixBytes = _prefixBytes;
-	string += stringBytes - 1;
-	prefix += prefixBytes - 1;
-
-	while (true) {
-		if (!prefixBytes) return true;
-		if (!stringBytes) return false;
-
-		char c1 = *string;
-		char c2 = *prefix;
-
-		if (caseInsensitive) {
-			if (c1 >= 'a' && c1 <= 'z') c1 = c1 - 'a' + 'A';
-			if (c2 >= 'a' && c2 <= 'z') c2 = c2 - 'a' + 'A';
-		}
-
-		if (c1 != c2) return false;
-
-		stringBytes--;
-		prefixBytes--;
-		string--;
-		prefix--;
 	}
 }
 

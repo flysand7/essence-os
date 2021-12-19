@@ -1438,7 +1438,7 @@ struct EsListView : EsElement {
 				buffer.position = 0;
 				EsMessageSend(this, &m);
 
-				if (EsStringStartsWith((char *) _buffer, buffer.position, searchBuffer, searchBufferBytes, true)) {
+				if (StringStartsWith((char *) _buffer, buffer.position, searchBuffer, searchBufferBytes, true)) {
 					found = true;
 					break;
 				}
@@ -1475,7 +1475,7 @@ struct EsListView : EsElement {
 				m.getContent.group = item->group;
 				buffer.position = 0;
 				EsMessageSend(this, &m);
-				bool shouldShowSearchHighlight = EsStringStartsWith((char *) _buffer, buffer.position, searchBuffer, searchBufferBytes, true);
+				bool shouldShowSearchHighlight = StringStartsWith((char *) _buffer, buffer.position, searchBuffer, searchBufferBytes, true);
 
 				if (shouldShowSearchHighlight || (!shouldShowSearchHighlight && item->showSearchHighlight)) {
 					item->showSearchHighlight = shouldShowSearchHighlight;
@@ -2466,6 +2466,11 @@ void EsListViewRemoveAll(EsListView *view, EsListViewIndex group) {
 
 int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 	EsListView *view = (EsListView *) element->parent->parent;
+
+	if (message->type == ES_MSG_DESTROY) {
+		return 0;
+	}
+
 	ListViewColumn *column = &view->registeredColumns[element->userData.u];
 
 	if (message->type == ES_MSG_PAINT) {
@@ -2492,6 +2497,11 @@ int ListViewColumnHeaderItemMessage(EsElement *element, EsMessage *message) {
 
 int ListViewColumnSplitterMessage(EsElement *element, EsMessage *message) {
 	EsListView *view = (EsListView *) element->parent->parent;
+
+	if (message->type == ES_MSG_DESTROY) {
+		return 0;
+	}
+
 	ListViewColumn *column = &view->registeredColumns[element->userData.u];
 
 	if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {

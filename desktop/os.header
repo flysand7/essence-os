@@ -1408,13 +1408,6 @@ struct EsTextSelection {
 	uint32_t foreground, background;
 };
 
-struct EsArena {
-	// Arenas are not thread-safe!
-	// You can use different arenas in different threads, though.
-	void *firstEmptySlot, *firstBlock;
-	size_t slotsPerBlock, slotSize, blockSize;
-};
-
 struct EsCalculationValue {
 	bool error;
 	double number;
@@ -1976,7 +1969,6 @@ struct EsListViewEnumString {
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
-function_pointer int EsComparisonCallback(const void *left, const void *right, EsGeneric context);
 function_pointer void EsSwapCallback(const void *left, const void *right, EsGeneric context);
 function_pointer int EsCRTComparisonCallback(const void *left, const void *right);
 function_pointer void EsTimerCallback(EsGeneric argument);
@@ -2088,10 +2080,6 @@ function bool EsWorkIsExiting();
 
 // Memory.
 
-function void *EsArenaAllocate(EsArena *arena, bool zero); // Not thread-safe.
-function void EsArenaFree(EsArena *arena, void *pointer); // Not thread-safe.
-function void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSize);
-
 function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes);
 function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes);
 function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
@@ -2135,9 +2123,6 @@ function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size,
 
 function void EsAssertionFailure(EsCString cFile, int line); 
 
-function uint8_t EsRandomU8(); 
-function uint64_t EsRandomU64();
-
 function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
 
 function_not_in_kernel void EsPanic(EsCString format, ...); 
@@ -2145,6 +2130,8 @@ function_not_in_kernel void EsPrint(EsCString format, ...);
 function void EsPrintDirect(STRING string); 
 function void EsPrintHelloWorld(); 
 
+function uint8_t EsRandomU8(); 
+function uint64_t EsRandomU64();
 function void EsRandomAddEntropy(uint64_t x); 
 function void EsRandomSeed(uint64_t x); 
 
@@ -2162,9 +2149,6 @@ function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
 function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
 function bool EsRectangleContains(EsRectangle a, int32_t x, int32_t y);
 function bool EsRectangleContainsAll(EsRectangle parent, EsRectangle child); // Returns true iff the child rectangle is entirely contained within parent.
-
-function void EsSort(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument); 
-function void EsSortWithSwapCallback(void *_base, size_t nmemb, size_t size, EsComparisonCallback compar, EsGeneric argument, EsSwapCallback swap); 
 
 // Graphics.
 
@@ -2280,7 +2264,6 @@ private function uint64_t DateToLinear(const EsDateComponents *date);
 
 // Strings.
 
-function char *EsCStringDuplicate(EsCString string); 
 function size_t EsCStringLength(EsCString string); 
 function char *EsStringAllocateAndFormat(size_t *bytes, EsCString format, ...); // Zero-terminated.
 function char *EsStringAllocateAndFormatV(size_t *bytes, EsCString format, va_list arguments); 
@@ -2291,10 +2274,6 @@ function const char *EsStringFormatTemporary(EsCString format, ...);  // Not thr
 function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments); 
 function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...); // Return false if buffer filled.
 function bool EsStringFormatAppendV(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, va_list arguments); 
-function size_t EsStringLength(const char *string, uint8_t end); 
-function bool EsStringStartsWith(STRING string, STRING prefix, bool caseInsensitive); 
-function bool EsStringEndsWith(STRING string, STRING prefix, bool caseInsensitive); 
-function char *EsStringZeroTerminate(STRING string); // Free with EsHeapFree.
 function bool EsUTF8IsValid(const char *input, ptrdiff_t bytes); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
 
 function double EsDoubleParse(STRING string, char **endptr); 

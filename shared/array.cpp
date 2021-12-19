@@ -27,24 +27,35 @@ template <class T, EsHeap *heap = nullptr>
 struct Array {
 	T *array;
 
-	__attribute__((no_instrument_function)) inline size_t Length() { return array ? ArrayHeader(array)->length : 0; }
-	inline T &First() { return array[0]; }
-	inline T &Last() { return array[Length() - 1]; }
-	inline void Delete(uintptr_t position) { _ArrayDelete(array, position, sizeof(T), 1); }
-	inline void DeleteSwap(uintptr_t position) { _ArrayDeleteSwap(array, position, sizeof(T)); }
-	inline void DeleteMany(uintptr_t position, size_t count) { _ArrayDelete(array, position, sizeof(T), count); }
-	inline T *Add(T item) { return (T *) _ArrayInsert((void **) &array, &item, sizeof(T), -1, 0, heap); }
-	inline T *Add() { return (T *) _ArrayInsert((void **) &array, nullptr, sizeof(T), -1, 0, heap); }
-	inline T *Insert(T item, uintptr_t position) { return (T *) _ArrayInsert((void **) &array, &item, sizeof(T), position, 0, heap); }
-	inline T *AddPointer(const T *item) { return (T *) _ArrayInsert((void **) &(array), item, sizeof(T), -1, 0, heap); }
-	inline T *InsertPointer(const T *item, uintptr_t position) { return (T *) _ArrayInsert((void **) &array, item, sizeof(T), position, 0, heap); }
-	inline T *InsertMany(uintptr_t position, size_t count) { return (T *) _ArrayInsertMany((void **) &array, sizeof(T), position, count, heap); }
-	inline bool SetLength(size_t length) { return _ArraySetLength((void **) &array, length, sizeof(T), 0, heap); }
-	inline void Free() { _ArrayFree((void **) &array, sizeof(T), heap); }
-	inline T Pop() { T t = Last(); Delete(Length() - 1); return t; }
-	inline T &operator[](uintptr_t index) { return array[index]; }
+	T &First() { return array[0]; }
+	T &Last() { return array[Length() - 1]; }
+	void Delete(uintptr_t position) { _ArrayDelete(array, position, sizeof(T), 1); }
+	void DeleteSwap(uintptr_t position) { _ArrayDeleteSwap(array, position, sizeof(T)); }
+	void DeleteMany(uintptr_t position, size_t count) { _ArrayDelete(array, position, sizeof(T), count); }
+	T *Add(T item) { return (T *) _ArrayInsert((void **) &array, &item, sizeof(T), -1, 0, heap); }
+	T *Add() { return (T *) _ArrayInsert((void **) &array, nullptr, sizeof(T), -1, 0, heap); }
+	T *Insert(T item, uintptr_t position) { return (T *) _ArrayInsert((void **) &array, &item, sizeof(T), position, 0, heap); }
+	T *AddPointer(const T *item) { return (T *) _ArrayInsert((void **) &(array), item, sizeof(T), -1, 0, heap); }
+	T *InsertPointer(const T *item, uintptr_t position) { return (T *) _ArrayInsert((void **) &array, item, sizeof(T), position, 0, heap); }
+	T *InsertMany(uintptr_t position, size_t count) { return (T *) _ArrayInsertMany((void **) &array, sizeof(T), position, count, heap); }
+	bool SetLength(size_t length) { return _ArraySetLength((void **) &array, length, sizeof(T), 0, heap); }
+	void Free() { _ArrayFree((void **) &array, sizeof(T), heap); }
+	T Pop() { T t = Last(); Delete(Length() - 1); return t; }
 
-	inline intptr_t Find(T item, bool failIfNotFound) {
+	__attribute__((no_instrument_function)) 
+	size_t Length() { 
+		return array ? ArrayHeader(array)->length : 0; 
+	}
+
+	__attribute__((no_instrument_function)) 
+	T &operator[](uintptr_t index) { 
+#ifdef DEBUG_BUILD
+		EsAssert(index < Length());
+#endif
+		return array[index]; 
+	}
+
+	intptr_t Find(T item, bool failIfNotFound) {
 		for (uintptr_t i = 0; i < Length(); i++) {
 			if (array[i] == item) {
 				return i;
@@ -55,21 +66,21 @@ struct Array {
 		return -1;
 	}
 
-	inline bool FindAndDelete(T item, bool failIfNotFound) {
+	bool FindAndDelete(T item, bool failIfNotFound) {
 		intptr_t index = Find(item, failIfNotFound);
 		if (index == -1) return false;
 		Delete(index);
 		return true;
 	}
 
-	inline bool FindAndDeleteSwap(T item, bool failIfNotFound) { 
+	bool FindAndDeleteSwap(T item, bool failIfNotFound) { 
 		intptr_t index = Find(item, failIfNotFound);
 		if (index == -1) return false;
 		DeleteSwap(index);
 		return true;
 	}
 
-	inline void AddFast(T item) { 
+	void AddFast(T item) { 
 		if (!array) { Add(item); return; }
 		_ArrayHeader *header = ArrayHeader(array);
 		if (header->length == header->allocated) { Add(item); return; }

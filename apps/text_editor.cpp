@@ -239,6 +239,31 @@ int TextboxDocumentMessage(EsElement *element, EsMessage *message) {
 	}
 }
 
+bool StringEndsWith(const char *string, size_t stringBytes, const char *prefix, size_t prefixBytes, bool caseInsensitive) {
+	string += stringBytes - 1;
+	prefix += prefixBytes - 1;
+
+	while (true) {
+		if (!prefixBytes) return true;
+		if (!stringBytes) return false;
+
+		char c1 = *string;
+		char c2 = *prefix;
+
+		if (caseInsensitive) {
+			if (c1 >= 'a' && c1 <= 'z') c1 = c1 - 'a' + 'A';
+			if (c2 >= 'a' && c2 <= 'z') c2 = c2 - 'a' + 'A';
+		}
+
+		if (c1 != c2) return false;
+
+		stringBytes--;
+		prefixBytes--;
+		string--;
+		prefix--;
+	}
+}
+
 int InstanceCallback(Instance *instance, EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_SAVE) {
 		size_t byteCount;
@@ -260,11 +285,11 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 			EsTextboxSetSelection(instance->textboxDocument, 0, 0, 0, 0);
 			EsElementRelayout(instance->textboxDocument);
 
-			if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".c"), true)
-					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".cpp"), true)
-					|| EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".h"), true)) {
+			if (StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".c"), true)
+					|| StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".cpp"), true)
+					|| StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".h"), true)) {
 				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
-			} else if (EsStringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".ini"), true)) {
+			} else if (StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".ini"), true)) {
 				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
 			} else {
 				SetLanguage(instance, 0);

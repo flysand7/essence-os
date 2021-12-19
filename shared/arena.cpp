@@ -2,19 +2,34 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
+#ifndef IMPLEMENTATION
+
+struct Arena {
+	// Arenas are not thread-safe!
+	// You can use different arenas in different threads, though.
+	void *firstEmptySlot, *firstBlock;
+	size_t slotsPerBlock, slotSize, blockSize;
+};
+
+void *ArenaAllocate(Arena *arena, bool zero); // Not thread-safe.
+void ArenaFree(Arena *arena, void *pointer); // Not thread-safe.
+void ArenaInitialise(Arena *arena, size_t blockSize, size_t itemSize);
+
+#else
+
 struct ArenaSlot {
 	uintptr_t indexInBlock;
 	ArenaSlot *nextEmpty, **previousEmpty;
 };
 
 struct ArenaBlock {
-	struct EsArena *arena;
+	struct Arena *arena;
 	size_t usedSlots;
 	uint8_t *data;
 	ArenaBlock *nextBlock;
 };
 
-void EsArenaFree(EsArena *arena, void *pointer) {
+void ArenaFree(Arena *arena, void *pointer) {
 	if (!pointer) return;
 
 	ArenaBlock **blockReference = (ArenaBlock **) &arena->firstBlock;
@@ -60,7 +75,7 @@ void EsArenaFree(EsArena *arena, void *pointer) {
 	}
 }
 
-void *EsArenaAllocate(EsArena *arena, bool zero) {
+void *ArenaAllocate(Arena *arena, bool zero) {
 	if (!arena->firstEmptySlot) {
 #ifdef KERNEL
 		ArenaBlock *block = (ArenaBlock *) EsHeapAllocate(arena->slotsPerBlock * sizeof(ArenaSlot) + sizeof(ArenaBlock), false, K_FIXED);
@@ -98,10 +113,12 @@ void *EsArenaAllocate(EsArena *arena, bool zero) {
 	return pointer;
 }
 
-void EsArenaInitialise(EsArena *arena, size_t blockSize, size_t itemSize) {
+void ArenaInitialise(Arena *arena, size_t blockSize, size_t itemSize) {
 	EsAssert(!arena->slotSize && itemSize);
 	arena->slotSize = itemSize;
 	arena->slotsPerBlock = blockSize / arena->slotSize;
 	if (arena->slotsPerBlock < 32) arena->slotsPerBlock = 32;
 	arena->blockSize = arena->slotsPerBlock * arena->slotSize;
 }
+
+#endif

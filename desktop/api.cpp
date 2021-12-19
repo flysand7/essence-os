@@ -29,7 +29,6 @@
 #include <shared/ini.h>
 #include <shared/avl_tree.cpp>
 #include <shared/heap.cpp>
-#include <shared/arena.cpp>
 #include <shared/linked_list.cpp>
 #include <shared/hash.cpp>
 #include <shared/png_decoder.cpp>

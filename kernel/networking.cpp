@@ -413,7 +413,7 @@ struct Networking {
 	NetTask *echoRequestTask;
 
 	KMutex transmitBufferPoolMutex;
-	EsArena transmitBufferPool;
+	Arena transmitBufferPool;
 };
 
 struct NetDomainNameResolveTask : NetTask {
@@ -499,7 +499,7 @@ void NetPrintPacket(const char *cName, const void *packet, size_t bytes) {
 EsBuffer NetTransmitBufferGet() {
 	KMutexAcquire(&networking.transmitBufferPoolMutex);
 	EsBuffer buffer = {};
-	buffer.out = (uint8_t *) EsArenaAllocate(&networking.transmitBufferPool, false);
+	buffer.out = (uint8_t *) ArenaAllocate(&networking.transmitBufferPool, false);
 	buffer.bytes = networking.transmitBufferPool.slotSize;
 
 	if (!buffer.out) {
@@ -513,7 +513,7 @@ EsBuffer NetTransmitBufferGet() {
 
 void NetTransmitBufferReturn(void *data) {
 	KMutexAcquire(&networking.transmitBufferPoolMutex);
-	EsArenaFree(&networking.transmitBufferPool, data);
+	ArenaFree(&networking.transmitBufferPool, data);
 	KMutexRelease(&networking.transmitBufferPoolMutex);
 }
 
@@ -2155,7 +2155,7 @@ void KRegisterNetInterface(NetInterface *interface) {
 void NetInitialise(KDevice *) {
 	networking.udpTaskBitset.Initialise(MAX_UDP_TASKS);
 	networking.udpTaskBitset.PutAll();
-	EsArenaInitialise(&networking.transmitBufferPool, 1048576, 2048);
+	ArenaInitialise(&networking.transmitBufferPool, 1048576, 2048);
 
 	networking.tcpTaskLRU = networking.tcpTaskMRU = 0xFFFF;
 

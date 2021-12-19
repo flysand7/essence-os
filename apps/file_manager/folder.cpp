@@ -335,7 +335,7 @@ void FolderEntryCloseHandle(Folder *folder, FolderEntry *entry) {
 		}
 
 		EsHeapFree(entry->name);
-		EsArenaFree(&folder->entryArena, entry);
+		ArenaFree(&folder->entryArena, entry);
 	}
 }
 
@@ -387,7 +387,7 @@ FolderEntry *FolderAddEntry(Folder *folder, const char *_name, size_t nameBytes,
 	FolderEntry *entry = (FolderEntry *) HashTableGetLong(&folder->entries, name, nameBytes);
 
 	if (!entry) {
-		entry = (FolderEntry *) EsArenaAllocate(&folder->entryArena, true);
+		entry = (FolderEntry *) ArenaAllocate(&folder->entryArena, true);
 		HashTablePutLong(&folder->entries, name, nameBytes, entry, false);
 
 		static uint64_t nextEntryID = 1;
@@ -566,7 +566,7 @@ void FolderAttachInstance(Instance *instance, String path, bool recurse) {
 	NamespaceFindHandlersForPath(&folder->itemHandler, &folder->containerHandler, path);
 	folder->cEmptyMessage = interfaceString_FileManagerEmptyFolderView;
 	folder->driveRemoved = driveRemoved;
-	EsArenaInitialise(&folder->entryArena, 1048576, sizeof(FolderEntry));
+	ArenaInitialise(&folder->entryArena, 1048576, sizeof(FolderEntry));
 	loadedFolders.Add(folder);
 
 	success:;

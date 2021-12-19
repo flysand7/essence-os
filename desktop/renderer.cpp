@@ -210,6 +210,10 @@ void RastSurfaceFill(RastSurface surface, RastShape shape, RastPaint paint, bool
 		}
 	}
 
+	if (RAST_ARRAY_LENGTH(shape.edges) == 0) {
+		return;
+	}
+
 	RAST_ARRAY(RastEdge) active = { 0 };
 	int edgePosition = 0;
 	
