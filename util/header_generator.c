@@ -491,7 +491,7 @@ void OutputCFunction(Entry *entry) {
 
 	bool inKernel = entry->function.inKernel;
 	if (!inKernel) FilePrintFormat(output, "#ifndef KERNEL\n");
-	FilePrintFormat(output, "#ifdef ES_FORWARD\n#ifndef __cplusplus\nES_EXTERN_FORWARD ");
+	FilePrintFormat(output, "#ifdef ES_FORWARD\n#ifndef __cplusplus\nES_EXTERN_C ");
 
 	// C code in API.
 
@@ -502,7 +502,7 @@ void OutputCFunction(Entry *entry) {
 		if (i == 0) FilePrintFormat(output, "(");
 	}
 
-	FilePrintFormat(output, ");\n#else\nES_EXTERN_FORWARD ");
+	FilePrintFormat(output, ");\n#else\nES_EXTERN_C ");
 
 	// C++ code in API.
 
@@ -515,7 +515,7 @@ void OutputCFunction(Entry *entry) {
 		if (i == 0) FilePrintFormat(output, "(");
 	}
 
-	FilePrintFormat(output, ");\n#endif\n#endif\n#ifndef ES_DIRECT_API\ntypedef ");
+	FilePrintFormat(output, ");\n#endif\n#else\ntypedef ");
 
 	// Code in application.
 

@@ -21,8 +21,8 @@ if [ "$1" = "x86_64" ]; then
 		rm -f objs/.libs/libfreetype.a
 		./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz \
 			CC=x86_64-essence-gcc CFLAGS="-g -ffreestanding -Wno-unused-function -O3" \
-			LDFLAGS="-nostdlib -lgcc" --host=x86_64-essence > ../Logs/freetype_configure.txt 2>&1
-		make ANSIFLAGS="" > /dev/null
+			--host=x86_64-essence > ../Logs/freetype_configure.txt 2>&1
+		make -j`nproc` > /dev/null
 		cp objs/.libs/libfreetype.a libfreetype_x86_64.a
 		cd ../..
 	fi
@@ -40,7 +40,7 @@ if [ "$1" = "x86_32" ]; then
 			CC=i686-elf-gcc CFLAGS="-g -ffreestanding -Wno-unused-function -O3 -I$INC" \
 			LDFLAGS="-nostdlib -lgcc" --host=i686-elf > ../Logs/freetype_configure.txt 2>&1
 		sed -i '/define FT_USE_AUTOCONF_SIZEOF_TYPES/d' builds/unix/ftconfig.h
-		make ANSIFLAGS="" > /dev/null
+		make -j`nproc` > /dev/null
 		cp objs/.libs/libfreetype.a libfreetype_x86_32.a
 		cd ../..
 	fi

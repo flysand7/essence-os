@@ -7259,6 +7259,8 @@ void UIWindowLayoutNow(EsWindow *window, ProcessMessageTiming *timing) {
 }
 
 bool UISetCursor(EsWindow *window) {
+	ThemeInitialise();
+
 	EsCursorStyle cursorStyle = ES_CURSOR_NORMAL;
 	EsElement *element = window->dragged ?: window->pressed ?: window->hovered;
 

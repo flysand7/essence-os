@@ -8,13 +8,11 @@
 // 	- Duplicate tabs.
 
 // TODO Graphical issues:
-// 	- Closing tabs isn't animating.
 // 	- Inactivate windows don't dim outline around tabs.
-// 	- Resizing windows doesn't redraw old shadow sometimes.
 
 // TODO Task bar:
 // 	- Right click menu.
-// 	- Notification area.
+// 	- Notification area?
 
 // TODO Desktop experience:
 // 	- Alt+tab.

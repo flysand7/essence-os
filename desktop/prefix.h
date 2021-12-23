@@ -1,8 +1,8 @@
-// This file is part of the Essence operating system.
-// It is released under the terms of the MIT license -- see LICENSE.md.
-// Written by: nakst.
+/* This file is part of the Essence operating system. */
+/* It is released under the terms of the MIT license -- see LICENSE.md. */
+/* Written by: nakst. */
 
-// ----------------- Includes:
+/* ----------------- Includes: */
 
 #ifndef IncludedEssenceAPIHeader
 #define IncludedEssenceAPIHeader
@@ -15,7 +15,7 @@
 #endif
 #include <stdarg.h>
 
-// --------- Architecture defines:
+/* --------- Architecture defines: */
 
 #if defined(__i386__)
 #define ES_ARCH_X86_32
@@ -27,7 +27,7 @@
 #error Architecture is not supported.
 #endif
 
-// --------- C++/C differences:
+/* --------- C++/C differences: */
 
 #ifdef __cplusplus
 
@@ -35,7 +35,7 @@
 #define ES_CONSTRUCTOR(x) x
 #define ES_NULL nullptr
 
-// Scoped defer: http://www.gingerbill.org/article/defer-in-cpp.html
+/* Scoped defer: http://www.gingerbill.org/article/defer-in-cpp.html */
 template <typename F> struct _EsDefer4 { F f; _EsDefer4(F f) : f(f) {} ~_EsDefer4() { f(); } };
 template <typename F> _EsDefer4<F> _EsDeferFunction(F f) { return _EsDefer4<F>(f); }
 #define EsDEFER_3(x) ES_C_PREPROCESSOR_JOIN(x, __COUNTER__)
@@ -76,7 +76,7 @@ typedef struct EsElementPublic EsElementPublic;
 
 #endif
 
-// --------- Macros:
+/* --------- Macros: */
 
 #ifdef ES_ARCH_X86_64
 #define ES_API_BASE ((void **) 0x1000)
@@ -163,8 +163,8 @@ struct ES_INSTANCE_TYPE;
 #define ES_SAMPLE_FORMAT_BYTES_PER_SAMPLE(x) \
 	((x) == ES_SAMPLE_FORMAT_U8 ? 1 : (x) == ES_SAMPLE_FORMAT_S16LE ? 2 : 4)
 
-#define ES_EXTRACT_BITS(value, end, start) (((value) >> (start)) & ((1 << ((end) - (start) + 1)) - 1))   // Moves the bits to the start.
-#define ES_ISOLATE_BITS(value, end, start) (((value)) & (((1 << ((end) - (start) + 1)) - 1) << (start))) // Keeps the bits in place.
+#define ES_EXTRACT_BITS(value, end, start) (((value) >> (start)) & ((1 << ((end) - (start) + 1)) - 1))   /* Moves the bits to the start. */
+#define ES_ISOLATE_BITS(value, end, start) (((value)) & (((1 << ((end) - (start) + 1)) - 1) << (start))) /* Keeps the bits in place. */
 
 #ifndef KERNEL
 #ifdef ES_API
@@ -191,7 +191,7 @@ ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uint
 #define EsPerformanceTimerPush() double _performanceTimerStart = EsTimeStampMs()
 #define EsPerformanceTimerPop() ((EsTimeStampMs() - _performanceTimerStart) / 1000.0)
 
-// --------- Algorithms:
+/* --------- Algorithms: */
 
 #define ES_MACRO_SORT(_name, _type, _compar, _contextType) void _name(_type *base, size_t nmemb, _contextType context) { \
 	(void) context; \
@@ -264,7 +264,7 @@ ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uint
 		} \
 	} while (0)
 
-// --------- Misc:
+/* --------- Misc: */
 
 typedef uint64_t _EsLongConstant;
 typedef long double EsLongDouble;
@@ -281,7 +281,7 @@ ES_EXTERN_C void _start();
 #define ES_INFINITY __builtin_inff()
 #define ES_PI (3.1415926535897932384626433832795028841971693994)
 
-// --------- Internals:
+/* --------- Internals: */
 
 #if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)
 
@@ -338,7 +338,7 @@ struct GlobalData {
 };
 
 struct SystemStartupDataHeader {
-	// TODO Make mount points and devices equal, somehow?
+	/* TODO Make mount points and devices equal, somehow? */
 	size_t initialMountPointCount;
 	size_t initialDeviceCount;
 	uintptr_t themeCursorData;
@@ -387,33 +387,33 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define ES_THEME_CURSORS_WIDTH (264)
 #define ES_THEME_CURSORS_HEIGHT (128)
 
-// Desktop messages: 
+/* Desktop messages: */
 #define ES_MSG_EMBEDDED_WINDOW_DESTROYED 	((EsMessageType) (ES_MSG_SYSTEM_START + 0x001))
 #define ES_MSG_SET_SCREEN_RESOLUTION		((EsMessageType) (ES_MSG_SYSTEM_START + 0x002))
 #define ES_MSG_DESKTOP	                        ((EsMessageType) (ES_MSG_SYSTEM_START + 0x005))
 
-// Messages sent from Desktop to application instances:
+/* Messages sent from Desktop to application instances: */
 #define ES_MSG_TAB_INSPECT_UI			((EsMessageType) (ES_MSG_SYSTEM_START + 0x101))
 #define ES_MSG_TAB_CLOSE_REQUEST		((EsMessageType) (ES_MSG_SYSTEM_START + 0x102))
-#define ES_MSG_INSTANCE_SAVE_RESPONSE		((EsMessageType) (ES_MSG_SYSTEM_START + 0x103)) // Sent by Desktop after an application requested to save its document.
+#define ES_MSG_INSTANCE_SAVE_RESPONSE		((EsMessageType) (ES_MSG_SYSTEM_START + 0x103)) /* Sent by Desktop after an application requested to save its document. */
 #define ES_MSG_INSTANCE_DOCUMENT_RENAMED	((EsMessageType) (ES_MSG_SYSTEM_START + 0x104))
 #define ES_MSG_INSTANCE_DOCUMENT_UPDATED	((EsMessageType) (ES_MSG_SYSTEM_START + 0x105))
 #define ES_MSG_INSTANCE_RENAME_RESPONSE		((EsMessageType) (ES_MSG_SYSTEM_START + 0x107))
 
-// Debugger messages:
+/* Debugger messages: */
 #define ES_MSG_APPLICATION_CRASH		((EsMessageType) (ES_MSG_SYSTEM_START + 0x201))
 #define ES_MSG_PROCESS_TERMINATED		((EsMessageType) (ES_MSG_SYSTEM_START + 0x202))
 
-// Misc messages:
+/* Misc messages: */
 #define ES_MSG_EYEDROP_REPORT			((EsMessageType) (ES_MSG_SYSTEM_START + 0x301))
 #define ES_MSG_TIMER				((EsMessageType) (ES_MSG_SYSTEM_START + 0x302))
-#define ES_MSG_PING				((EsMessageType) (ES_MSG_SYSTEM_START + 0x303)) // Sent by Desktop to check processes are processing messages.
-#define ES_MSG_WAKEUP				((EsMessageType) (ES_MSG_SYSTEM_START + 0x304)) // Sent to wakeup the message thread, so that it can process locally posted messages.
+#define ES_MSG_PING				((EsMessageType) (ES_MSG_SYSTEM_START + 0x303)) /* Sent by Desktop to check processes are processing messages. */
+#define ES_MSG_WAKEUP				((EsMessageType) (ES_MSG_SYSTEM_START + 0x304)) /* Sent to wakeup the message thread, so that it can process locally posted messages. */
 #define ES_MSG_INSTANCE_OPEN_DELAYED		((EsMessageType) (ES_MSG_SYSTEM_START + 0x305))
 
 #endif
 
-// --------- CRT function macros:
+/* --------- CRT function macros: */
 
 #ifdef ES_CRT_WITHOUT_PREFIX
 #define abs EsCRTabs

@@ -29,10 +29,7 @@
 #define STDC_HEADERS 1
 #define HAVE_FREETYPE 1
 
-#define ES_API
-#define ES_FORWARD(x) x
-#define ES_EXTERN_FORWARD extern "C"
-#define ES_DIRECT_API
+#define ES_FORWARD
 
 #define abs EsCRTabs
 #define assert EsCRTassert

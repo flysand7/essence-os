@@ -32,15 +32,8 @@ extern "C" uint64_t GetKernelVersion() { return KERNEL_VERSION; }
 // API header.
 // ---------------------------------------------------------------------------------------------------------------
 
-#define ES_DIRECT_API
-#define ES_FORWARD(x) x
-#define ES_EXTERN_FORWARD ES_EXTERN_C
+#define ES_FORWARD
 #include <essence.h>
-
-// TODO stb's behaviour with null termination is non-standard.
-extern "C" int EsCRTsprintf(char *buffer, const char *format, ...);
-extern "C" int EsCRTsnprintf(char *buffer, size_t bufferSize, const char *format, ...);
-extern "C" int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format, va_list arguments);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Global defines.

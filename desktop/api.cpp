@@ -3,9 +3,7 @@
 // Written by: nakst.
 
 #define ES_API
-#define ES_FORWARD(x) x
-#define ES_EXTERN_FORWARD extern "C"
-#define ES_DIRECT_API
+#define ES_FORWARD
 #include <essence.h>
 
 #ifdef USE_STB_IMAGE
@@ -1475,10 +1473,10 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 	ThreadLocalStorage threadLocalStorage;
 
 	api.startupInformation = _startupInformation;
-	bool desktop = api.startupInformation->isDesktop;
+	bool isDesktop = api.startupInformation->isDesktop;
 	
 #ifndef NO_API_TABLE
-	if (desktop) {
+	if (isDesktop) {
 		// Initialise the API table.
 
 		EsAssert(sizeof(apiTable) <= 0xF000); // API table is too large.
@@ -1495,12 +1493,11 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		EsMessageMutexAcquire();
 
 		api.global = (GlobalData *) EsMemoryMapObject(api.startupInformation->globalDataRegion, 
-				0, sizeof(GlobalData), desktop ? ES_MEMORY_MAP_OBJECT_READ_WRITE : ES_MEMORY_MAP_OBJECT_READ_ONLY);
+				0, sizeof(GlobalData), isDesktop ? ES_MEMORY_MAP_OBJECT_READ_WRITE : ES_MEMORY_MAP_OBJECT_READ_ONLY);
+		theming.scale = api.global->uiScale; // We'll receive ES_MSG_UI_SCALE_CHANGED when this changes.
 	}
 
-	bool uiProcess = true; // TODO Determine this properly.
-
-	if (desktop) {
+	if (isDesktop) {
 		EsPrint("Reached Desktop process.\n");
 
 #ifdef PROFILE_DESKTOP_FUNCTIONS
@@ -1533,6 +1530,10 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		SettingsLoadDefaults();
 		SettingsUpdateGlobalAndWindowManager();
 		SettingsWindowColorUpdated();
+
+		ThemeInitialise();
+
+		DesktopEntry(); 
 	} else {
 		EsBuffer buffer = {};
 		buffer.bytes = EsConstantBufferGetSize(api.startupInformation->data.systemData);
@@ -1561,15 +1562,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
 		SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
 		EsHeapFree(responseBuffer.out);
-	}
 
-	if (uiProcess) {
-		EsAssert(ThemeInitialise());
-	}
-
-	if (desktop) {
-		DesktopEntry(); 
-	} else {
 		((StartFunction) api.startupInformation->applicationStartAddress)();
 	}
 

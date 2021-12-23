@@ -348,7 +348,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 	CallSystem("bin/build_core standard bin/build.ini");
 
 #ifdef TOOLCHAIN_HAS_CSTDLIB
-	CallSystem(TOOLCHAIN_PREFIX "-gcc -o root/Applications/POSIX/bin/hello ports/gcc/hello.c");
+	CallSystem(TOOLCHAIN_PREFIX "-gcc -o root/Applications/POSIX/bin/hello -std=c89 ports/gcc/hello.c");
 #endif
 
 	forceRebuild = false;

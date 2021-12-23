@@ -31,14 +31,8 @@
 #ifndef FTSTDLIB_H_
 #define FTSTDLIB_H_
 
-#ifndef IncludedEssenceAPIHeader
-#define ES_CRT
-#define ES_API
-#define ES_FORWARD(x) x
-#define ES_DIRECT_API
-#define ES_EXTERN_FORWARD extern
+#define ES_FORWARD
 #include <essence.h>
-#endif
 
 #include <stddef.h>
 
@@ -83,7 +77,7 @@
   /**********************************************************************/
 
 
-// #include <string.h>
+/* #include <string.h> */
 
 #define ft_memchr   EsCRTmemchr
 #define ft_memcmp   EsCRTmemcmp
@@ -107,7 +101,7 @@
   /**********************************************************************/
 
 
-// #include <stdio.h>
+/* #include <stdio.h> */
 
 #define FT_FILE     FILE
 #define ft_fclose   fclose
@@ -125,7 +119,7 @@
   /**********************************************************************/
 
 
-// #include <stdlib.h>
+/* #include <stdlib.h> */
 
 #define ft_qsort  EsCRTqsort
 
@@ -161,7 +155,7 @@
   /**********************************************************************/
 
 
-// #include <setjmp.h>
+/* #include <setjmp.h> */
 
 #define ft_jmp_buf     EsCRTjmp_buf  /* note: this cannot be a typedef since */
                                 /*       jmp_buf is defined as a macro  */

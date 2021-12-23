@@ -101,7 +101,7 @@ FT_BEGIN_HEADER
   /*                       cff:no-stem-darkening=1 \                       */
   /*                       autofitter:warping=1                            */
   /*                                                                       */
-// #define FT_CONFIG_OPTION_ENVIRONMENT_PROPERTIES
+/* #define FT_CONFIG_OPTION_ENVIRONMENT_PROPERTIES */
 
 
   /*************************************************************************/
@@ -174,7 +174,7 @@ FT_BEGIN_HEADER
   /*                                                                       */
   /*   Define this macro if you want to enable this `feature'.             */
   /*                                                                       */
-// #define FT_CONFIG_OPTION_USE_LZW
+/* #define FT_CONFIG_OPTION_USE_LZW */
 
 
   /*************************************************************************/
@@ -189,7 +189,7 @@ FT_BEGIN_HEADER
   /*   Define this macro if you want to enable this `feature'.  See also   */
   /*   the macro FT_CONFIG_OPTION_SYSTEM_ZLIB below.                       */
   /*                                                                       */
-// #define FT_CONFIG_OPTION_USE_ZLIB
+/* #define FT_CONFIG_OPTION_USE_ZLIB */
 
 
   /*************************************************************************/

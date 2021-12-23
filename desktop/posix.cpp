@@ -3,9 +3,7 @@
 // Written by: nakst.
 
 #define ES_API
-#define ES_FORWARD(x) x
-#define ES_EXTERN_FORWARD extern "C"
-#define ES_DIRECT_API
+#define ES_FORWARD
 #include <essence.h>
 
 #ifdef ENABLE_POSIX_SUBSYSTEM

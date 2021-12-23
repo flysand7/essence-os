@@ -354,6 +354,7 @@ struct UIStyleKey {
 };
 
 struct {
+	bool initialised;
 	EsBuffer system;
 	const ThemeHeader *header;
 	EsPaintTarget cursors;
@@ -1240,7 +1241,41 @@ struct UIStyle {
 	inline void GetTextStyle(EsTextStyle *style);
 };
 
+void ThemeInitialise() {
+	if (theming.initialised) return;
+	theming.initialised = true;
+
+	EsBuffer data = {};
+	data.in = (const uint8_t *) EsBundleFind(&bundleDesktop, EsLiteral("Theme.dat"), &data.bytes);
+
+	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
+	EsAssert(header && header->signature == THEME_HEADER_SIGNATURE && header->styleCount && EsBufferRead(&data, sizeof(ThemeStyle)));
+	theming.system.in = (const uint8_t *) data.in;
+	theming.system.bytes = data.bytes;
+	theming.header = header;
+
+	theming.scale = api.global->uiScale;
+
+	if (!theming.cursorData) {
+		size_t cursorsBitmapBytes;
+		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
+		theming.cursorData = EsMemoryCreateShareableRegion(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4);
+		void *destination = EsMemoryMapObject(theming.cursorData, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MEMORY_MAP_OBJECT_READ_WRITE);
+		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
+		EsObjectUnmap(destination);
+	}
+
+	theming.cursors.width = ES_THEME_CURSORS_WIDTH;
+	theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
+	theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
+	theming.cursors.bits = EsMemoryMapObject(theming.cursorData, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
+	theming.cursors.fullAlpha = true;
+	theming.cursors.readOnly = true;
+}
+
 const void *GetConstant(const char *cKey, size_t *byteCount, bool *scale) {
+	ThemeInitialise();
+
 	EsBuffer data = theming.system;
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
 	EsBufferRead(&data, sizeof(ThemeStyle) * header->styleCount);
@@ -1290,41 +1325,6 @@ const char *GetConstantString(const char *cKey) {
 	bool scale;
 	const char *value = (const char *) GetConstant(cKey, &byteCount, &scale);
 	return !value || !byteCount || value[byteCount - 1] ? nullptr : value; 
-}
-
-bool ThemeInitialise() {
-	EsBuffer data = {};
-	data.in = (const uint8_t *) EsBundleFind(&bundleDesktop, EsLiteral("Theme.dat"), &data.bytes);
-
-	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
-
-	if (!header || header->signature != THEME_HEADER_SIGNATURE || !header->styleCount || !EsBufferRead(&data, sizeof(ThemeStyle))) {
-		return false;
-	}
-
-	theming.system.in = (const uint8_t *) data.in;
-	theming.system.bytes = data.bytes;
-	theming.header = header;
-
-	theming.scale = api.global->uiScale;
-
-	if (!theming.cursorData) {
-		size_t cursorsBitmapBytes;
-		const void *cursorsBitmap = EsBundleFind(&bundleDesktop, EsLiteral("Cursors.png"), &cursorsBitmapBytes);
-		theming.cursorData = EsMemoryCreateShareableRegion(ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4);
-		void *destination = EsMemoryMapObject(theming.cursorData, 0, ES_THEME_CURSORS_WIDTH * ES_THEME_CURSORS_HEIGHT * 4, ES_MEMORY_MAP_OBJECT_READ_WRITE);
-		LoadImage(cursorsBitmap, cursorsBitmapBytes, destination, ES_THEME_CURSORS_WIDTH, ES_THEME_CURSORS_HEIGHT, true);
-		EsObjectUnmap(destination);
-	}
-
-	theming.cursors.width = ES_THEME_CURSORS_WIDTH;
-	theming.cursors.height = ES_THEME_CURSORS_HEIGHT;
-	theming.cursors.stride = ES_THEME_CURSORS_WIDTH * 4;
-	theming.cursors.bits = EsMemoryMapObject(theming.cursorData, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
-	theming.cursors.fullAlpha = true;
-	theming.cursors.readOnly = true;
-
-	return true;
 }
 
 void ThemeStyleCopyInlineMetrics(UIStyle *style) {
@@ -1613,6 +1613,8 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 }
 
 UIStyle *ThemeStyleInitialise(UIStyleKey key) {
+	ThemeInitialise();
+
 	// Find the ThemeStyle entry.
 
 	EsStyle *esStyle = (key.part & 1) || (!key.part) ? nullptr : (EsStyle *) (key.part);
