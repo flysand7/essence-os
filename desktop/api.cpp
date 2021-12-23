@@ -22,8 +22,6 @@
 #include <shared/stb_image.h>
 #endif
 
-#include <emmintrin.h>
-
 #define SHARED_COMMON_WANT_ALL
 #define SHARED_MATH_WANT_ALL
 #include <shared/ini.h>
@@ -178,8 +176,6 @@ void FileStoreCloseHandle(EsFileStore *fileStore);
 EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
 void ApplicationProcessTerminated(EsObjectID pid);
 
-#include "syscall.cpp"
-
 struct ProcessMessageTiming {
 	double startLogic, endLogic;
 	double startLayout, endLayout;
@@ -252,6 +248,7 @@ struct APIInstance {
 #define CHARACTER_IMAGE    (3) // 32 bits per pixel, ARGB.
 #define CHARACTER_RECOLOR  (4) // 32 bits per pixel, AXXX.
 
+#include "syscall.cpp"
 #include "renderer.cpp"
 #include "theme.cpp"
 #define TEXT_RENDERER

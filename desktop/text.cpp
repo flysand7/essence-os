@@ -3376,7 +3376,6 @@ void TextboxEnsureCaretVisibleActionCallback(EsElement *element, EsGeneric conte
 			}
 
 			if (textbox->scroll.position[1] != scrollY) {
-				EsPrint("     new scroll %d\n", scrollY);
 				textbox->scroll.SetY(scrollY);
 			} else {
 				break;

@@ -534,6 +534,9 @@ void Run(int emulator, int log, int debug) {
 					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags)) {
 				printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
 			}
+
+			// Watch serial file as it is being written to:
+			// tail -f bin/Logs/qemu_serial1.txt 
 		} break;
 
 		case EMULATOR_BOCHS: {

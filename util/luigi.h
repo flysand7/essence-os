@@ -2480,8 +2480,6 @@ void UICodeFocusLine(UICode *code, int index) {
 }
 
 void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount, bool replace) {
-	UIFont *previousFont = UIFontActivate(code->font);
-
 	if (byteCount == -1) {
 		byteCount = _UIStringLength(content);
 	}
@@ -2504,6 +2502,8 @@ void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount,
 	if (!byteCount) {
 		return;
 	}
+
+	UIFont *previousFont = UIFontActivate(code->font);
 
 	int lineCount = content[byteCount - 1] != '\n';
 
