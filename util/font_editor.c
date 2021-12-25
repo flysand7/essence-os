@@ -1,4 +1,4 @@
-// TODO Required: final file format, line metrics. 
+// TODO Required: final file format, line metrics, horizontally scrolling kerning editor. 
 // TODO Extensions: binary search, shifting glyphs in editor, undo/redo.
 
 #define UI_IMPLEMENTATION
@@ -13,7 +13,7 @@
 
 typedef struct FileHeader {
 	uint16_t glyphCount;
-	uint16_t _unused0;
+	uint8_t headerBytes, glyphHeaderBytes;
 	// Followed by glyphCount copies of FileGlyphHeader, sorted by codepoint.
 } FileHeader;
 
@@ -62,7 +62,9 @@ void Save(void *cp) {
 
 	if (f) {
 		FileHeader header = { 
-			.glyphCount = glyphCount 
+			.glyphCount = glyphCount,
+			.headerBytes = sizeof(FileHeader),
+			.glyphHeaderBytes = sizeof(FileGlyphHeader),
 		};
 
 		fwrite(&header, 1, sizeof(header), f);
@@ -279,7 +281,8 @@ void SetXAdvance(void *cp) {
 	UIElementRepaint(editor, NULL);
 }
 
-int GetAdvance(int leftGlyph, int rightGlyph) {
+int GetAdvance(int leftGlyph, int rightGlyph, bool *hasKerningEntry) {
+	if (hasKerningEntry) *hasKerningEntry = false;
 	int p = glyphsArray[leftGlyph].xAdvance;
 
 	if (rightGlyph != -1) {
@@ -288,12 +291,38 @@ int GetAdvance(int leftGlyph, int rightGlyph) {
 		for (uintptr_t i = 0; i < glyphsArray[leftGlyph].kerningCount; i++) {
 			if (glyphsArray[leftGlyph].kerningArray[i].number == glyphsArray[rightGlyph].number) {
 				p += glyphsArray[leftGlyph].kerningArray[i].xOffset;
+				if (hasKerningEntry) *hasKerningEntry = true;
 				break;
 			}
 		}
 	}
 
 	return p;
+}
+
+void DrawPreviewText(UIPainter *painter, UIElement *element, Glyph *g) {
+	UIDrawBlock(painter, UI_RECT_4(element->clip.r - 100, element->clip.r, element->clip.t, element->clip.t + 50), 0xFFFFFFFF);
+
+	if (previewText->bytes == 0 && g) {
+		DrawGlyph(painter, g, element->clip.r - 100 + 5, element->clip.t + 25);
+		return;
+	}
+
+	int px = 0;
+	int previous = -1;
+
+	for (int i = 0; i < previewText->bytes; i++) {
+		// TODO Binary search.
+
+		for (uintptr_t j = 0; j < glyphCount; j++) {
+			if (glyphsArray[j].number == previewText->string[i]) {
+				if (previous != -1) px += GetAdvance(previous, j, NULL);
+				DrawGlyph(painter, &glyphsArray[j], element->clip.r - 100 + 5 + px, element->clip.t + 25);
+				previous = j;
+				break;
+			}
+		}
+	}
 }
 
 int GlyphEditorMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -325,27 +354,7 @@ int GlyphEditorMessage(UIElement *element, UIMessage message, int di, void *dp) 
 				}
 			}
 
-			UIDrawBlock(painter, UI_RECT_4(element->bounds.r - 100, element->bounds.r, element->bounds.t, element->bounds.t + 50), 0xFFFFFFFF);
-
-			if (previewText->bytes == 0) {
-				DrawGlyph(painter, g, element->bounds.r - 100 + 5, element->bounds.t + 25);
-			} else {
-				int px = 0;
-				int previous = -1;
-
-				for (int i = 0; i < previewText->bytes; i++) {
-					// TODO Binary search.
-
-					for (uintptr_t j = 0; j < glyphCount; j++) {
-						if (glyphsArray[j].number == previewText->string[i]) {
-							if (previous != -1) px += GetAdvance(previous, j);
-							DrawGlyph(painter, &glyphsArray[j], element->bounds.r - 100 + 5 + px, element->bounds.t + 25);
-							previous = j;
-							break;
-						}
-					}
-				}
-			}
+			DrawPreviewText(painter, element, g);
 		}
 	} else if (message == UI_MSG_MIDDLE_UP) {
 		if (selectedGlyph >= 0 && selectedGlyph < (intptr_t) glyphCount) {
@@ -411,24 +420,36 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 
 		int x = element->bounds.l + 20, y = element->bounds.t + 20;
 
+		selectedPairI = -1, selectedPairJ = -1;
+
 		for (uintptr_t i = 0; i < glyphCount; i++) {
 			for (uintptr_t j = 0; j < glyphCount; j++) {
+				bool hasKerningEntry = false;
+
 				DrawGlyph(painter, &glyphsArray[j], x, y);
-				DrawGlyph(painter, &glyphsArray[i], x + GetAdvance(j, i), y);
+				DrawGlyph(painter, &glyphsArray[i], x + GetAdvance(j, i, &hasKerningEntry), y);
+
+				UIRectangle border = UI_RECT_4(x - 5, x + 20, y - 15, y + 5);
+
+				if (hasKerningEntry) {
+					UIDrawBorder(painter, border, 0xFF0099FF, UI_RECT_1(1));
+				}
 
 				if (selectedPairX == (x - 20 - element->bounds.l) / 25 && selectedPairY == (y - 20 - element->bounds.t) / 20) {
-					UIDrawBorder(painter, UI_RECT_4(x - 5, x + 20, y - 15, y + 5), 0xFF000000, UI_RECT_1(1));
+					UIDrawBorder(painter, border, 0xFF000000, UI_RECT_1(1));
 					selectedPairI = i, selectedPairJ = j;
 				}
 
 				x += 25;
-
-				if (x + 25 > element->bounds.r - 20) {
-					x = element->bounds.l + 20;
-					y += 20;
-				}
 			}
+
+			x = element->bounds.l + 20;
+			y += 20;
 		}
+
+		DrawPreviewText(painter, element, NULL);
+	} else if (message == UI_MSG_GET_HEIGHT) {
+		return 20 * glyphCount + 40;
 	} else if (message == UI_MSG_LEFT_DOWN || message == UI_MSG_RIGHT_DOWN) {
 		int delta = message == UI_MSG_LEFT_DOWN ? 1 : -1;
 
@@ -478,6 +499,7 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 int PreviewTextMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_VALUE_CHANGED) {
 		UIElementRepaint(editor, NULL);
+		UIElementRepaint(kerning, NULL);
 	}
 
 	return 0;
@@ -509,7 +531,7 @@ int main(int argc, char **argv) {
 	glyphsTable = UITableCreate(0, 0, "ASCII\tNumber");
 	glyphsTable->e.messageUser = GlyphsTableMessage;
 	editor = UIElementCreate(sizeof(UIElement), 0, 0, GlyphEditorMessage, "Glyph editor");
-	kerning = UIElementCreate(sizeof(UIElement), 0, 0, KerningEditorMessage, "Kerning editor");
+	kerning = UIElementCreate(sizeof(UIElement), &UIPanelCreate(0, UI_PANEL_SCROLL)->e, UI_ELEMENT_H_FILL, KerningEditorMessage, "Kerning editor");
 
 	UIWindowRegisterShortcut(window, (UIShortcut) { .code = UI_KEYCODE_LETTER('S'), .ctrl = true, .invoke = Save });
 

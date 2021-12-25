@@ -368,17 +368,6 @@ void BuildUtilities() {
 
 	BUILD_UTILITY("render_svg", "-lm", "");
 	BUILD_UTILITY("build_core", "-pthread -DPARALLEL_BUILD", "");
-
-	if (canBuildLuigi) {
-		BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
-
-		if (CheckDependencies("Utilities.Designer")) {
-			if (!CallSystem("g++ -MMD -MF \"bin/Dependency Files/designer2.d\" -D UI_LINUX -O3 "
-						"util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
-				ParseDependencies("bin/Dependency Files/designer2.d", "Utilities.Designer", false);
-			}
-		}
-	}
 }
 
 void Build(int optimise, bool compile) {
@@ -1224,8 +1213,11 @@ void DoCommand(const char *l) {
 		CallSystem("cp LICENSE.md root/Installer\\ Data/licenses.txt");
 		CallSystem("mv bin/installer_archive.dat root/Installer\\ Data/archive.dat");
 		CallSystem("mv bin/installer_metadata.dat root/Installer\\ Data/metadata.dat");
+	} else if (0 == strcmp(l, "font-editor")) {
+		BUILD_UTILITY("font_editor", "-lX11 -Wno-unused-parameter", "");
+		CallSystem("bin/font_editor res/Fonts/Bitmap\\ Sans\\ Regular\\ 9.font");
 	} else if (0 == strcmp(l, "config")) {
-		BuildUtilities();
+		BUILD_UTILITY("config_editor", "-lX11 -Wno-unused-parameter", "");
 
 		if (CallSystem("bin/config_editor")) {
 			printf("The config editor could not be opened.\n"
@@ -1235,7 +1227,13 @@ void DoCommand(const char *l) {
 					"But please bare in mind that manually editing the config file is not recommended.\n");
 		}
 	} else if (0 == strcmp(l, "designer2")) {
-		BuildUtilities();
+		if (CheckDependencies("Utilities.Designer")) {
+			if (!CallSystem("g++ -MMD -MF \"bin/Dependency Files/designer2.d\" -D UI_LINUX -O3 "
+						"util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
+				ParseDependencies("bin/Dependency Files/designer2.d", "Utilities.Designer", false);
+			}
+		}
+
 		CallSystem("bin/designer2");
 	} else if (0 == strcmp(l, "replace-many")) {
 		forceRebuild = true;
