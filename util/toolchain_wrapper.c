@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 	// printf("'%s'\n", tool);
 	char **newArgv = (char **) calloc(sizeof(char *), (argc + 4));
 	newArgv[0] = change;
-	newArgv[1] = "/home/runner/work/build-gcc/build-gcc/essence/root/";
+	newArgv[1] = CONFIGURE_SYSROOT;
 	newArgv[2] = sysroot;
 	newArgv[3] = tool;
 	memcpy(newArgv + 4, argv + 1, (argc - 1) * sizeof(char *));

@@ -1591,8 +1591,19 @@ void DoCommand(const char *l) {
 		CallSystem("mv bin/source cross");
 		CallSystem("mkdir -p cross/bin2");
 		CallSystem("gcc -o bin/change_sysroot util/change_sysroot.c -Wall -Wextra");
+		CallSystem("cross/bin2/" TOOLCHAIN_PREFIX "-gcc --verbose > bin/temp.txt");
+		char *configureFlags = (char *) LoadFile("bin/temp.txt", NULL);
+		char *sysrootPath = strstr(configureFlags, "--with-sysroot=");
+		sysrootPath += 15;
+		char *sysrootPathEnd = strchr(sysrootPath, ' ');
+		if (sysrootPathEnd) *sysrootPathEnd = 0;
+		free(configureFlags);
+		CallSystem("rm bin/temp.txt");
+		fprintf("Detected sysroot from gcc as \"%s\".\n", sysrootPath);
 #define MAKE_TOOLCHAIN_WRAPPER(tool) \
-		CallSystem("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool " util/toolchain_wrapper.c -Wall -Wextra -g -DTOOL=" TOOLCHAIN_PREFIX "-" tool)
+		CallSystemF("gcc -o cross/bin2/" TOOLCHAIN_PREFIX "-" tool \
+				" util/toolchain_wrapper.c -Wall -Wextra -g " \
+				" -DCONFIGURE_SYSROOT=\"%s\" -DTOOL=" TOOLCHAIN_PREFIX "-" tool, sysrootPath)
 		MAKE_TOOLCHAIN_WRAPPER("addr2line");
 		MAKE_TOOLCHAIN_WRAPPER("ar");
 		MAKE_TOOLCHAIN_WRAPPER("as");
