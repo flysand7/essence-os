@@ -161,10 +161,7 @@ ptrdiff_t tlsStorageOffset;
 extern "C" void EsUnimplemented();
 extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
 extern "C" uint64_t ProcessorReadTimeStamp();
-void MaybeDestroyElement(EsElement *element);
-const char *GetConstantString(const char *key);
 void UndoManagerDestroy(EsUndoManager *manager);
-int TextGetStringWidth(EsElement *element, const EsTextStyle *style, const char *string, size_t stringBytes);
 struct APIInstance *InstanceSetup(EsInstance *instance);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *path, size_t pathBytes);
@@ -172,7 +169,15 @@ EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
 EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
 void FileStoreCloseHandle(EsFileStore *fileStore);
 EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
-void ApplicationProcessTerminated(EsObjectID pid);
+const char *EnumLookupNameFromValue(const EnumString *array, int value);
+EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false);
+EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false);
+uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr);
+char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
+int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
+MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
+EsWindow *WindowFromWindowID(EsObjectID id);
+extern "C" void _init();
 
 struct ProcessMessageTiming {
 	double startLogic, endLogic;
@@ -248,15 +253,12 @@ struct APIInstance {
 #include "text.cpp"
 #include "gui.cpp"
 #include "inspector.cpp"
+#include "desktop.cpp"
+#include "settings.cpp"
 
-#ifndef NO_API_TABLE
 const void *const apiTable[] = {
 #include <bin/generated_code/api_array.h>
 };
-#endif
-
-extern "C" void _init();
-typedef void (*StartFunction)();
 
 MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
 	MountPoint mountPoint = {};
@@ -325,7 +327,7 @@ EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInfo
 	return EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, flags, (uintptr_t) node);
 }
 
-EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false) {
+EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {
 	if (keyBytes == -1) keyBytes = EsCStringLength(key);
 
 	for (uintptr_t i = 0; i < group->itemCount; i++) {
@@ -356,7 +358,7 @@ EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup
 	return nullptr;
 }
 
-EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false) {
+EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded) {
 	if (sectionBytes == -1) sectionBytes = EsCStringLength(section);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
@@ -384,7 +386,7 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	return nullptr;
 }
 
-char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr) {
+char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
 	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	if (valueBytes) *valueBytes = item->valueBytes;
@@ -395,7 +397,7 @@ char *EsSystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, co
 	return copy;
 }
 
-int64_t EsSystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0) {
+int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
 	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) return defaultValue;
 	return EsIntegerParse(item->value, item->valueBytes); 
@@ -406,7 +408,7 @@ char *EsSystemConfigurationReadString(const char *section, ptrdiff_t sectionByte
 	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) { if (valueBytes) *valueBytes = 0; return nullptr; }
-	return EsSystemConfigurationGroupReadString(group, key, keyBytes, valueBytes);
+	return SystemConfigurationGroupReadString(group, key, keyBytes, valueBytes);
 }
 
 int64_t EsSystemConfigurationReadInteger(const char *section, ptrdiff_t sectionBytes, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
@@ -414,7 +416,7 @@ int64_t EsSystemConfigurationReadInteger(const char *section, ptrdiff_t sectionB
 	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
 	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) return defaultValue;
-	return EsSystemConfigurationGroupReadInteger(group, key, keyBytes, defaultValue);
+	return SystemConfigurationGroupReadInteger(group, key, keyBytes, defaultValue);
 }
 
 void SystemConfigurationUnload() {
@@ -467,7 +469,7 @@ void SystemConfigurationLoad(const char *file, size_t fileBytes) {
 	}
 }
 
-uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr) {
+uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes) {
 	_EsApplicationStartupInformation copy = *information;
 	if (copy.filePathBytes == -1) copy.filePathBytes = EsCStringLength(copy.filePath);
 
@@ -1461,22 +1463,18 @@ void ThreadInitialise(ThreadLocalStorage *local) {
 	EsSyscall(ES_SYSCALL_THREAD_SET_TIMER_ADJUST_ADDRESS, (uintptr_t) &local->timerAdjustTicks, 0, 0, 0);
 }
 
-#include "desktop.cpp"
-
 extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 	ThreadLocalStorage threadLocalStorage;
 
 	api.startupInformation = _startupInformation;
 	bool isDesktop = api.startupInformation->isDesktop;
 	
-#ifndef NO_API_TABLE
 	if (isDesktop) {
 		// Initialise the API table.
 
 		EsAssert(sizeof(apiTable) <= 0xF000); // API table is too large.
 		EsMemoryCopy(ES_API_BASE, apiTable, sizeof(apiTable));
 	}
-#endif
 
 	{
 		// Initialise the API.
@@ -1557,7 +1555,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
 		EsHeapFree(responseBuffer.out);
 
-		((StartFunction) api.startupInformation->applicationStartAddress)();
+		((void (*)()) api.startupInformation->applicationStartAddress)();
 	}
 
 	EsThreadTerminate(ES_CURRENT_THREAD);

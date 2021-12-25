@@ -248,8 +248,7 @@ WindowTab *WindowTabCreate(ContainerWindow *container);
 ContainerWindow *ContainerWindowCreate();
 void ContainerWindowShow(ContainerWindow *, int32_t width, int32_t height);
 void ShutdownModalCreate();
-
-#include "settings.cpp"
+void InstanceSettingsCreate(EsMessage *message);
 
 //////////////////////////////////////////////////////
 // Reorder lists:
@@ -2373,18 +2372,18 @@ void ConfigurationLoadApplications() {
 
 		InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
 
-		application->cName = EsSystemConfigurationGroupReadString(group, EsLiteral("name"));
-		application->cExecutable = EsSystemConfigurationGroupReadString(group, EsLiteral("executable"));
-		application->settingsPath = EsSystemConfigurationGroupReadString(group, EsLiteral("settings_path"), &application->settingsPathBytes);
-		char *icon = EsSystemConfigurationGroupReadString(group, EsLiteral("icon"));
+		application->cName = SystemConfigurationGroupReadString(group, EsLiteral("name"));
+		application->cExecutable = SystemConfigurationGroupReadString(group, EsLiteral("executable"));
+		application->settingsPath = SystemConfigurationGroupReadString(group, EsLiteral("settings_path"), &application->settingsPathBytes);
+		char *icon = SystemConfigurationGroupReadString(group, EsLiteral("icon"));
 		application->iconID = EsIconIDFromString(icon);
 		EsHeapFree(icon);
-		application->useSingleProcess = EsSystemConfigurationGroupReadInteger(group, EsLiteral("use_single_process"), false);
-		application->useSingleInstance = EsSystemConfigurationGroupReadInteger(group, EsLiteral("use_single_instance"), false);
-		application->hidden = EsSystemConfigurationGroupReadInteger(group, EsLiteral("hidden"), false);
+		application->useSingleProcess = SystemConfigurationGroupReadInteger(group, EsLiteral("use_single_process"), false);
+		application->useSingleInstance = SystemConfigurationGroupReadInteger(group, EsLiteral("use_single_instance"), false);
+		application->hidden = SystemConfigurationGroupReadInteger(group, EsLiteral("hidden"), false);
 		application->id = EsIntegerParse(group->section, group->sectionBytes);
 
-#define READ_PERMISSION(x, y) if (EsSystemConfigurationGroupReadInteger(group, EsLiteral(x), 0)) application->permissions |= y
+#define READ_PERMISSION(x, y) if (SystemConfigurationGroupReadInteger(group, EsLiteral(x), 0)) application->permissions |= y
 		READ_PERMISSION("permission_all_files", APPLICATION_PERMISSION_ALL_FILES);
 		READ_PERMISSION("permission_all_devices", APPLICATION_PERMISSION_ALL_DEVICES);
 		READ_PERMISSION("permission_manage_processes", APPLICATION_PERMISSION_MANAGE_PROCESSES);
@@ -2396,13 +2395,13 @@ void ConfigurationLoadApplications() {
 
 		desktop.installedApplications.Add(application);
 
-		if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("is_file_manager"))) {
+		if (SystemConfigurationGroupReadInteger(group, EsLiteral("is_file_manager"))) {
 			desktop.fileManager = application;
-		} else if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("is_installer"))) {
+		} else if (SystemConfigurationGroupReadInteger(group, EsLiteral("is_installer"))) {
 			desktop.installer = application;
 		}
 
-		if (EsSystemConfigurationGroupReadInteger(group, EsLiteral("background_service"))) {
+		if (SystemConfigurationGroupReadInteger(group, EsLiteral("background_service"))) {
 			_EsApplicationStartupInformation startupInformation = {};
 			startupInformation.flags = ES_APPLICATION_STARTUP_BACKGROUND_SERVICE;
 			ApplicationInstanceCreate(application->id, &startupInformation, nullptr, true /* hidden */);
