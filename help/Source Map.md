@@ -1,0 +1,120 @@
+This file contains a list and description of the files and folders in the source tree.
+
+- `apps/` Builtin applications. Each application has an `.ini` file that is automatically detected by the build system.
+	- `samples/` Sample applications, demonstrating a small part of the API.
+		- `hello.c` A hello world GUI application. Read through this first if you want to learn how to write applications for Essence!
+		- `converter.cpp` A simple currency converter. Demonstrates panels, buttons, and textboxes.
+		- `game_loop.cpp` A simple game loop. Demonstrates how to draw directly to the window with a custom UI element, and manually process keyboard input events.
+		- `list.cpp` A sample of the fixed items mode of the list view.
+	- `file_manager/` The file manager application.
+		- `commands.cpp` Implementation of commands like copy and paste.
+		- `folder.cpp` Contains implementations of namespaces, like file system folders and the drives page.
+		- `main.cpp` Main message loop, and settings management.
+		- `string.cpp` String and path utilities.
+		- `type_database.cpp` Management of file types.
+		- `ui.cpp` Creates and manages the user interface. Contains the thumbnail generator.
+- `arch/` Contains target architecture specific files. Each architecture is placed in a separate folder, named after the target name. Note that some architecture specific code is also located in `boot/`. The folder will contain the following files:
+	- `kernel.s` The assembly translation unit that will be linked with the kernel.
+	- `kernel.cpp` The C++ translation unit that will be linked with the kernel. Together with `kernel.s`, this should provide all the functions listed in the architecture specific layer part of the `kernel/kernel.h`.
+	- `api.s` The assembly translation unit that will be linked with the desktop. This must provide a system call interface, as well as a few miscellaneous functions.
+	- `config.ini` Specifies additional compilation flags for the architecture.
+- `bin/` Contains the output of the build system that will *not* be copied onto the drive image.
+	- `Logs/` Contains various logs of the build processes and emulators.
+		- `net.dat` Network packets captured and sent by Qemu.
+		- `audio.wav` Audio captured by Qemu.
+		- `qemu_serial1.txt` Serial output captured by Qemu.
+		- `system.log` A list of commands passed to `system()` by `util/build.c`, including the time each command took.
+	- `cache/` Cached files downloaded from the internet, managed by the `get-source` command in the build system.
+	- `generated_code/` Automatically generated code.
+	- `build.ini` The build configuration file that is passed from `util/build.c` to `util/build_core.c`. Save this if you want to automate a specific build.
+	- `build_config.ini` The configuration file for `util/build.c`. Stores whether the user has read the license, and information about the cross compiler toolchain.
+	- `config.ini` The configuration file modified by `util/config_editor.c` (open by running the `config` command in the build system). The full list of options in the file is stored in the `options` array in `util/build_common.h`.
+	- `dependencies.ini` Saved information about source file dependencies used by the `util/build_core.c` for minimal rebuilds.
+	- `drive` The output drive image, used to boot the emulators.
+	- Additionally, there is an ELF executable file with debug symbols for each of the built applications, the desktop, the kernel and the build utilities.
+- `boot/` Contains boot code for different architectures, before the kernel is reached.
+	- `x86/` Boot code for x86 PC platforms.
+		- `mbr.s` First stage of the MBR boot loader. Placed in the first sector of the drive.
+		- `mbr-emu.s` An alternative version of `mbr.s` for CD-ROMs rather than hard drives.
+		- `esfs-stage1.s` Second stage of the MBR boot loader. Placed in the first sector of the EsFS partition. Loaded by the first stage.
+		- `loader.s` Third stage of the MBR boot loader. Placed in the reserved area of the EsFS partition. Loaded by the second stage.
+		- `esfs-stage2.s` File system specific code for the third stage of the MBR boot loader.
+		- `vbe.s` Contains code to select and set a video mode for the MBR boot loader; part of the third stage.
+		- `uefi.c` First stage of the UEFI boot loader.
+		- `uefi_loader.s` Second stage of the UEFI boot loader.
+- `cross/` Contains the cross compiler toolchain.
+	- `bin2/` When using the pre-built toolchain, wrappers of the executables in `bin/` are stored here. These are needed to replace the system root path that was hard coded into the toolchain when it was configured.
+- `desktop/` TODO
+- `drivers/` Drivers linked into the kernel.
+	- `acpi.cpp` Simple ACPI layer. Parses the MADT for loading other processors.
+	- `acpi_thermal.cpp` ACPI thermal layer. Requires ACPICA.
+	- `acpica.cpp` Integration with ACPICA, which provides greater ACPI functionality.
+	- `ahci.cpp` AHCI/SATA drives.
+	- `bga.cpp` Bochs Graphics Adapter, for setting the video mode on emulators.
+	- `esfs2.cpp` The Essence file system (second version).
+	- `ext2.cpp` Ext2 file system.
+	- `fat.cpp` FAT12/16/32 file systems.
+	- `hda.cpp` HD Audio.
+	- `i8254x.cpp` i8254x networking card.
+	- `ide.cpp` IDE/ATA drives.
+	- `iso9660.cpp` ISO9660 file system for CD-ROMs.
+	- `ntfs.cpp` NTFS file system.
+	- `nvme.cpp` NVMe drives.
+	- `pci.cpp` PCI bus enumeration.
+	- `ps2.cpp` PS/2 keyboard and mouse.
+	- `rtc.cpp` x86 Real Time Clock.
+	- `svga.cpp` (S)VGA graphics drivers.
+	- `usb.cpp` Common USB management for connecting and identifying devices.
+	- `usb_bulk.cpp` USB bulk mass storage drives.
+	- `usb_hid.cpp` USB HID class devices, including keyboards, mice and game controllers.
+	- `xhci.cpp` xHCI USB controller driver.
+- `help/` You are here! Contains documentation about the project.
+- `kernel/` TODO
+- `ports/` Ported application, including dependencies.
+- `res/` Resources, such as fonts and images.
+	- `Fonts/` Fonts. Licenses are contained in this folder.
+	- `Keyboard Layouts/` Keyboard layouts. Contains a license file, and `extract_keymaps.c` which can be used to generate the keyboard layout files here from an X11 system.
+	- `Sample Images/` Sample images. Contains a license file. Copy these into `root/` to access them from the built system.
+	- `Theme Source.dat` The source for the theme file, used by `util/designer2.cpp`. Open with the `designer` command in the build system.
+	- `Theme.dat` The exported theme file that will be used by the UI. Call `bin/designer2 export` to regenerate this from the theme source.
+	- `elementary Icons.dat` The elementaryOS icons pack. The icon pack is a custom format, and is generated by `util/render_svg.c`.
+- `root/` Contains the output of the build system that *will* be copied onto the drive image. You can put any files you want to be copied onto the drive in here.
+- `shared/` Shared code between different parts of the proejct, including data structures.
+	- `esfs2.h` Definitions for the Essence file system, and code for managing it (compiled into `util/build_core.c`).
+	- `ini.h` A tiny INI file parser.
+	- `arena.cpp` A memory allocator for arbitrary allocation and freeing of fixed size memory blocks.
+	- `array.cpp` Dynamically allocated array.
+	- `avl_tree.cpp` AVL lookup tree, including support for searches for the "smallest above or equal" and "largest below or equal".
+	- `bitset.cpp` Efficient large bitsets.
+	- `common.cpp` Various common functions, including management of `EsRectangle`s, rendering, string utilities, memory utilities (like `EsMemoryCopy`), printing and string formatting, pseudo random number generation, standard algorithms like sorting, synchronisation primitives, byte swapping, implementation of the `EsCRT-` functions, `EsBuffer` functions, and time and date calculations.
+	- `fat.cpp` Common definitions for the FAT file system.
+	- `hash.cpp` Implementation of CRC32 and CRC64 hash functions.
+	- `hash_table.cpp` A hash table, including an implementation of the FNV1a hash function.
+	- `heap.cpp` A memory allocator for arbitrary allocation and freeing of non-fixed size memory blocks.
+	- `linked_list.cpp` Two implementations of a doubly-linked list: `LinkedList<T>` and `SimpleList<T>` where the latter requires less memory but provides less features.
+	- `math.cpp` Mathematical functions, including basic utilities, interpolation routines, HSV color conversions, standard trigonometric functions, high precision floating-point calculations, and an expression parser.
+	- `partitions.cpp` Contains routines to manage MBR and GPT partition tables.
+	- `png_decoder.cpp` A decoder of PNG image files.
+	- `range_set.cpp` Efficiently stores a subset of the integers as a list of ranges.
+	- `strings.cpp` All text displayed in the user interface of the built-in applications.
+	- `unicode.cpp` Implementations of various Unicode standards, including UTF-8 decoding and validation, and the line breaking algorithm.
+	- `vga_font.cpp` A fixed-width bitmap font.
+- `util/` Contains utilities for developing and building the project.
+	- `linker/` Contains linker scripts.
+	- `w32/` The experimental W32 backend for the Essence desktop.
+	- `build_common.h` Common definitions shared between `build.c` and `build_core.c`.
+	- `luigi.h` [A single-header cross platform GUI library](https://github.com/nakst/luigi).
+	- `build.c` The main build system prompt, which manages dependencies, the toolchain, build configurations, and launching emulators. It is accessed by the developer by running the `start.sh` script at the root of the source tree. The developer can then issue commands to build and test the operating system and other utilities.
+	- `build_core.c` The heart of the build system, which actually builds the project. It is called by `build.c`, and passed a build configuration file in `bin/build.ini` which contains all possible configuration options. It can run within Essence. It is also able to build single applications, by passing the `.ini` file for that application.
+	- `change_sysroot.c` A utility that uses `ptrace` to replace strings in system calls.
+	- `toolchain_wrapper.c` Wraps the executables in the pre-built toolchain to call into `change_sysroot.c`, to change the system root path they use.
+	- `config_editor.c` A graphical editor for the configuration file, `bin/config.ini`. Uses `luigi.h`.
+	- `font_editor.c` A basic bitmap font editor. Uses `luigi.h`.
+	- `header_generator.c` Generates the API header for different programming languages from `desktop/os.header`. Part of `build_core.c`.
+	- `render_svg.c` Converts SVGs to an internal format for vector graphics, and creates the icon pack found in `res/`. Despite the name this does not actually render the SVGs to bitmaps! That is eventually done in `api/renderer.cpp`.
+	- `designer2.cpp` An editor of theme files for the UI. Uses `luigi.h`.
+	- `uefi.sh` Creates a drive image using the UEFI boot loader.
+	- `uefi_compile.sh` Compiles the UEFI boot loader.
+	- `uefi_to_device.sh` Formats a real device to use the UEFI boot loader.
+	- `api_table.ini` A list of all the functions exposed by the API, and their corresponding ordinals. Managed by `header_generator.c`.
+	- `test.txt` A file containing a few traps that might be mangled by source control or compression utilities. Verified by `start.sh` to ensure that the source is as we'd expect.
