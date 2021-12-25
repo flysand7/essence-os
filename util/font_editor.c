@@ -1,4 +1,3 @@
-// TODO Required: final file format, line metrics, horizontally scrolling kerning editor. 
 // TODO Extensions: binary search, shifting glyphs in editor, undo/redo.
 
 #define UI_IMPLEMENTATION
@@ -14,6 +13,7 @@
 typedef struct FileHeader {
 	uint16_t glyphCount;
 	uint8_t headerBytes, glyphHeaderBytes;
+	uint16_t yAscent, yDescent;
 	// Followed by glyphCount copies of FileGlyphHeader, sorted by codepoint.
 } FileHeader;
 
@@ -49,12 +49,14 @@ UIWindow *window;
 UITabPane *tabPane;
 UIElement *editor;
 UIElement *kerning;
-UITextbox *previewText;
+UITextbox *previewText, *yAscentTextbox, *yDescentTextbox;
+UIScrollBar *kerningHScroll, *kerningVScroll;
 Glyph *glyphsArray;
 size_t glyphCount;
 intptr_t selectedGlyph = -1;
 int selectedPixelX, selectedPixelY;
 int selectedPairX, selectedPairY, selectedPairI, selectedPairJ;
+int yAscent, yDescent;
 char *path;
 
 void Save(void *cp) {
@@ -65,6 +67,8 @@ void Save(void *cp) {
 			.glyphCount = glyphCount,
 			.headerBytes = sizeof(FileHeader),
 			.glyphHeaderBytes = sizeof(FileGlyphHeader),
+			.yAscent = yAscent,
+			.yDescent = yDescent,
 		};
 
 		fwrite(&header, 1, sizeof(header), f);
@@ -122,9 +126,12 @@ void Load() {
 	FILE *f = fopen(path, "rb");
 
 	if (f) {
-		FileHeader header;
-		fread(&header, 1, sizeof(header), f);
+		FileHeader header = { 0 };
+		fread(&header, 1, 4, f);
 		if (ferror(f)) goto end;
+		fseek(f, 0, SEEK_SET);
+		fread(&header, 1, header.headerBytes > sizeof(FileHeader) ? sizeof(FileHeader) : header.headerBytes, f);
+		fseek(f, header.headerBytes, SEEK_SET);
 		glyphCount = header.glyphCount;
 		glyphsArray = (Glyph *) calloc(glyphCount, sizeof(Glyph));
 		if (!glyphsArray) goto end;
@@ -172,6 +179,12 @@ void Load() {
 			free(bits);
 			fseek(f, position, SEEK_SET);
 		}
+
+		char buffer[32];
+		snprintf(buffer, sizeof(buffer), "%d", header.yAscent);
+		UITextboxReplace(yAscentTextbox, buffer, -1, true);
+		snprintf(buffer, sizeof(buffer), "%d", header.yDescent);
+		UITextboxReplace(yDescentTextbox, buffer, -1, true);
 		
 		end:;
 
@@ -207,9 +220,9 @@ int CompareKernings(const void *_a, const void *_b) {
 
 void AddGlyph(void *cp) {
 	char *number = NULL;
-	UIDialogShow(window, 0, "Enter the glyph number:\n%t\n%f%b", &number, "Add");
+	UIDialogShow(window, 0, "Enter the glyph number (base 16):\n%t\n%f%b", &number, "Add");
 	Glyph g = { 0 };
-	g.number = atoi(number);
+	g.number = strtol(number, NULL, 16);
 	free(number);
 	glyphsTable->itemCount = ++glyphCount;
 	glyphsArray = realloc(glyphsArray, sizeof(Glyph) * glyphCount);
@@ -240,9 +253,13 @@ int GlyphsTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 		m->isSelected = selectedGlyph == m->index;
 
 		if (m->column == 0) {
-			return snprintf(m->buffer, m->bufferBytes, "%c", glyphsArray[m->index].number);
+			if (glyphsArray[m->index].number < 256) {
+				return snprintf(m->buffer, m->bufferBytes, "%c", glyphsArray[m->index].number);
+			} else {
+				return 0;
+			}
 		} else if (m->column == 1) {
-			return snprintf(m->buffer, m->bufferBytes, "%d", glyphsArray[m->index].number);
+			return snprintf(m->buffer, m->bufferBytes, "U+%.4X", glyphsArray[m->index].number);
 		}
 	} else if (message == UI_MSG_LEFT_DOWN || message == UI_MSG_MOUSE_DRAG) {
 		int index = UITableHitTest((UITable *) element, element->window->cursorX, element->window->cursorY);
@@ -301,10 +318,13 @@ int GetAdvance(int leftGlyph, int rightGlyph, bool *hasKerningEntry) {
 }
 
 void DrawPreviewText(UIPainter *painter, UIElement *element, Glyph *g) {
-	UIDrawBlock(painter, UI_RECT_4(element->clip.r - 100, element->clip.r, element->clip.t, element->clip.t + 50), 0xFFFFFFFF);
+	UIDrawBlock(painter, UI_RECT_4(element->bounds.r - 100, element->bounds.r, element->bounds.t, element->bounds.t + 50), 0xFFFFFFFF);
+	UIDrawBlock(painter, UI_RECT_4(element->bounds.r - 100, element->bounds.r, element->bounds.t + 25 - yAscent, element->bounds.t + 26 - yAscent), 0xFF88FF88);
+	UIDrawBlock(painter, UI_RECT_4(element->bounds.r - 100, element->bounds.r, element->bounds.t + 25, element->bounds.t + 26), 0xFF88FF88);
+	UIDrawBlock(painter, UI_RECT_4(element->bounds.r - 100, element->bounds.r, element->bounds.t + 25 + yDescent, element->bounds.t + 26 + yDescent), 0xFF88FF88);
 
 	if (previewText->bytes == 0 && g) {
-		DrawGlyph(painter, g, element->clip.r - 100 + 5, element->clip.t + 25);
+		DrawGlyph(painter, g, element->bounds.r - 100 + 5, element->bounds.t + 25);
 		return;
 	}
 
@@ -317,7 +337,7 @@ void DrawPreviewText(UIPainter *painter, UIElement *element, Glyph *g) {
 		for (uintptr_t j = 0; j < glyphCount; j++) {
 			if (glyphsArray[j].number == previewText->string[i]) {
 				if (previous != -1) px += GetAdvance(previous, j, NULL);
-				DrawGlyph(painter, &glyphsArray[j], element->clip.r - 100 + 5 + px, element->clip.t + 25);
+				DrawGlyph(painter, &glyphsArray[j], element->bounds.r - 100 + 5 + px, element->bounds.t + 25);
 				previous = j;
 				break;
 			}
@@ -418,7 +438,7 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 		UIPainter *painter = (UIPainter *) dp;
 		UIDrawBlock(painter, element->bounds, 0xD0D1D4);
 
-		int x = element->bounds.l + 20, y = element->bounds.t + 20;
+		int x = element->bounds.l + 20 - kerningHScroll->position, y = element->bounds.t + 20 - kerningVScroll->position;
 
 		selectedPairI = -1, selectedPairJ = -1;
 
@@ -432,7 +452,7 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 				UIRectangle border = UI_RECT_4(x - 5, x + 20, y - 15, y + 5);
 
 				if (hasKerningEntry) {
-					UIDrawBorder(painter, border, 0xFF0099FF, UI_RECT_1(1));
+					UIDrawBorder(painter, border, 0xFF0099FF, UI_RECT_1(2));
 				}
 
 				if (selectedPairX == (x - 20 - element->bounds.l) / 25 && selectedPairY == (y - 20 - element->bounds.t) / 20) {
@@ -443,13 +463,29 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 				x += 25;
 			}
 
-			x = element->bounds.l + 20;
+			x = element->bounds.l + 20 - kerningHScroll->position;
 			y += 20;
 		}
 
 		DrawPreviewText(painter, element, NULL);
-	} else if (message == UI_MSG_GET_HEIGHT) {
-		return 20 * glyphCount + 40;
+	} else if (message == UI_MSG_LAYOUT) {
+		{
+			kerningHScroll->maximum = 25 * glyphCount + 40;
+			kerningHScroll->page = UI_RECT_WIDTH(element->bounds);
+			UIRectangle scrollBarBounds = element->bounds;
+			scrollBarBounds.r = scrollBarBounds.r - UI_SIZE_SCROLL_BAR * element->window->scale;
+			scrollBarBounds.t = scrollBarBounds.b - UI_SIZE_SCROLL_BAR * element->window->scale;
+			UIElementMove(&kerningHScroll->e, scrollBarBounds, true);
+		}
+
+		{
+			kerningVScroll->maximum = 20 * glyphCount + 40;
+			kerningVScroll->page = UI_RECT_HEIGHT(element->bounds);
+			UIRectangle scrollBarBounds = element->bounds;
+			scrollBarBounds.b = scrollBarBounds.b - UI_SIZE_SCROLL_BAR * element->window->scale;
+			scrollBarBounds.l = scrollBarBounds.r - UI_SIZE_SCROLL_BAR * element->window->scale;
+			UIElementMove(&kerningVScroll->e, scrollBarBounds, true);
+		}
 	} else if (message == UI_MSG_LEFT_DOWN || message == UI_MSG_RIGHT_DOWN) {
 		int delta = message == UI_MSG_LEFT_DOWN ? 1 : -1;
 
@@ -491,6 +527,10 @@ int KerningEditorMessage(UIElement *element, UIMessage message, int di, void *dp
 			selectedPairY = pairY;
 			UIElementRepaint(element, NULL);
 		}
+	} else if (message == UI_MSG_SCROLLED) {
+		UIElementRepaint(element, NULL);
+	} else if (message == UI_MSG_MOUSE_WHEEL) {
+		return UIElementMessage(&kerningVScroll->e, message, di, dp);
 	}
 
 	return 0;
@@ -505,6 +545,17 @@ int PreviewTextMessage(UIElement *element, UIMessage message, int di, void *dp) 
 	return 0;
 }
 
+int NumberTextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	if (message == UI_MSG_VALUE_CHANGED) {
+		UITextbox *textbox = (UITextbox *) element;
+		char buffer[32];
+		snprintf(buffer, sizeof(buffer), "%.*s", (int) textbox->bytes, textbox->string);
+		*(int *) element->cp = atoi(buffer);
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <path to font file>\n", argv[0]);
@@ -514,6 +565,7 @@ int main(int argc, char **argv) {
 	path = argv[1];
 
 	UIInitialise();
+	ui.theme = _uiThemeClassic;
 	window = UIWindowCreate(0, UI_ELEMENT_PARENT_PUSH, "Font Editor", 1024, 768);
 	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND);
 
@@ -527,11 +579,27 @@ int main(int argc, char **argv) {
 		previewText->e.messageUser = PreviewTextMessage;
 	UIParentPop();
 
-	tabPane = UITabPaneCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_V_FILL, "Select glyph\tEdit\tKerning");
+	tabPane = UITabPaneCreate(0, UI_ELEMENT_PARENT_PUSH | UI_ELEMENT_V_FILL, "Glyphs\tEdit\tKerning\tGeneral");
 	glyphsTable = UITableCreate(0, 0, "ASCII\tNumber");
 	glyphsTable->e.messageUser = GlyphsTableMessage;
 	editor = UIElementCreate(sizeof(UIElement), 0, 0, GlyphEditorMessage, "Glyph editor");
-	kerning = UIElementCreate(sizeof(UIElement), &UIPanelCreate(0, UI_PANEL_SCROLL)->e, UI_ELEMENT_H_FILL, KerningEditorMessage, "Kerning editor");
+	kerning = UIElementCreate(sizeof(UIElement), 0, 0, KerningEditorMessage, "Kerning editor");
+	kerningHScroll = UIScrollBarCreate(kerning, UI_SCROLL_BAR_HORIZONTAL);
+	kerningVScroll = UIScrollBarCreate(kerning, 0);
+
+	UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_GRAY | UI_PANEL_MEDIUM_SPACING | UI_PANEL_SCROLL);
+		UIPanelCreate(0, UI_ELEMENT_PARENT_PUSH | UI_PANEL_EXPAND | UI_PANEL_MEDIUM_SPACING);
+			UILabelCreate(0, 0, "Y ascent:", -1);
+			yAscentTextbox = UITextboxCreate(&UIPanelCreate(0, UI_PANEL_HORIZONTAL)->e, 0); 
+			yAscentTextbox->e.cp = &yAscent; 
+			yAscentTextbox->e.messageUser = NumberTextboxMessage;
+			UILabelCreate(0, 0, "Y descent:", -1);
+			yDescentTextbox = UITextboxCreate(&UIPanelCreate(0, UI_PANEL_HORIZONTAL)->e, 0); 
+			yDescentTextbox->e.cp = &yDescent; 
+			yDescentTextbox->e.messageUser = NumberTextboxMessage;
+			UILabelCreate(0, 0, "The sum of the ascent and descent determine the line height.", -1);
+		UIParentPop();
+	UIParentPop();
 
 	UIWindowRegisterShortcut(window, (UIShortcut) { .code = UI_KEYCODE_LETTER('S'), .ctrl = true, .invoke = Save });
 

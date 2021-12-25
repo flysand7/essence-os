@@ -160,7 +160,6 @@ bool verbose;
 bool useColoredOutput;
 bool forEmulator, bootUseVBE, noImportPOSIX;
 bool systemBuild;
-bool convertFonts = true;
 bool hasNativeToolchain;
 EsINIState *fontLines;
 EsINIState *generalOptions;
@@ -891,18 +890,7 @@ void OutputSystemConfiguration() {
 		char buffer[4096];
 
 		if (fontLines[i].key[0] == '.') {
-			if (convertFonts) {
-#ifdef OS_ESSENCE
-				// TODO.
-#else
-				snprintf(buffer, sizeof(buffer), "bin/designer --make-font \"res/Fonts/%s\" \"bin/%.*s.dat\"", 
-						fontLines[i].value, (int) fontLines[i].valueBytes - 4, fontLines[i].value);
-				system(buffer);
-				FilePrintFormat(file, "%s=|Fonts:/%.*s.dat\n", fontLines[i].key, (int) fontLines[i].valueBytes - 4, fontLines[i].value);
-#endif
-			} else {
-				FilePrintFormat(file, "%s=:%s\n", fontLines[i].key, fontLines[i].value);
-			}
+			FilePrintFormat(file, "%s=:%s\n", fontLines[i].key, fontLines[i].value);
 		} else {
 			size_t bytes = EsINIFormat(fontLines + i, buffer, sizeof(buffer));
 			FileWrite(file, bytes, buffer);
@@ -1223,22 +1211,6 @@ void Install(const char *driveFile, uint64_t partitionSize, const char *partitio
 	ImportNode root = {};
 	CreateImportNode("root", &root);
 
-	// TODO Update this.
-#if 0
-	if (convertFonts) {
-		ImportNode *fontsFolder = ImportNodeMakeDirectory(ImportNodeFindChild(&root, SYSTEM_FOLDER_NAME), "Fonts");
-
-		for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
-			if (fontLines[i].key[0] == '.') {
-				char source[4096], destination[4096];
-				snprintf(source, sizeof(source), "bin/%.*s.dat", (int) fontLines[i].valueBytes - 4, fontLines[i].value);
-				snprintf(destination, sizeof(destination), "%.*s.dat", (int) fontLines[i].valueBytes - 4, fontLines[i].value);
-				ImportNodeAddFile(fontsFolder, strdup(destination), strdup(source));
-			}
-		}
-	}
-#endif
-
 	MountVolume();
 	Import(root, superblock.root);
 	UnmountVolume();
@@ -1343,13 +1315,9 @@ int main(int argc, char **argv) {
 					strcat(commonCompileFlags, " -DUSE_STB_IMAGE_WRITE ");
 				} else if (0 == strcmp(s.key, "Dependency.stb_sprintf") && atoi(s.value)) {
 					strcat(commonCompileFlags, " -DUSE_STB_SPRINTF ");
-				} else if (0 == strcmp(s.key, "Dependency.HarfBuzz") && atoi(s.value)) {
-					strcat(apiLinkFlags2, " -lharfbuzz ");
-					strcat(commonCompileFlags, " -DUSE_HARFBUZZ ");
-				} else if (0 == strcmp(s.key, "Dependency.FreeType") && atoi(s.value)) {
-					strcat(apiLinkFlags2, " -lfreetype ");
-					strcat(commonCompileFlags, " -DUSE_FREETYPE ");
-					convertFonts = false;
+				} else if (0 == strcmp(s.key, "Dependency.FreeTypeAndHarfBuzz") && atoi(s.value)) {
+					strcat(apiLinkFlags2, " -lharfbuzz -lfreetype ");
+					strcat(commonCompileFlags, " -DUSE_FREETYPE_AND_HARFBUZZ ");
 				} else if (0 == strcmp(s.key, "Flag._ALWAYS_USE_VBE")) {
 					bootUseVBE = !!atoi(s.value);
 				} else if (0 == strcmp(s.key, "Flag.COM_OUTPUT") && atoi(s.value)) {

@@ -7,10 +7,11 @@
 #define DEFINE_INTERFACE_STRING(name, text) static const char *interfaceString_ ## name = text;
 #define INTERFACE_STRING(name) interfaceString_ ## name, -1
 
-#define ELLIPSIS "…"
-#define HYPHENATION_POINT "‧"
+#define ELLIPSIS "\u2026"
+#define HYPHENATION_POINT "\u2027"
 #define OPEN_SPEECH "\u201C"
 #define CLOSE_SPEECH "\u201D"
+
 #define SYSTEM_BRAND_SHORT "Essence"
 
 // Common.

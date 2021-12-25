@@ -241,19 +241,13 @@ struct APIInstance {
 	EsTextbox *fileMenuNameTextbox; // Also used by the file save dialog.
 };
 
-#define CHARACTER_MONO     (1) // 1 bit per pixel.
-#define CHARACTER_SUBPIXEL (2) // 24 bits per pixel; each byte specifies the alpha of each RGB channel.
-#define CHARACTER_IMAGE    (3) // 32 bits per pixel, ARGB.
-#define CHARACTER_RECOLOR  (4) // 32 bits per pixel, AXXX.
-
 #include "syscall.cpp"
+#include "profiling.cpp"
 #include "renderer.cpp"
 #include "theme.cpp"
-#define TEXT_RENDERER
 #include "text.cpp"
-#undef TEXT_RENDERER
-#include "profiling.cpp"
 #include "gui.cpp"
+#include "inspector.cpp"
 
 #ifndef NO_API_TABLE
 const void *const apiTable[] = {

@@ -248,29 +248,6 @@ typedef struct ThemeHeader {
 	// Followed by array of ThemeStyles and then an array of ThemeConstants.
 } ThemeHeader;
 
-typedef struct BasicFontKerningEntry {
-	uint16_t leftGlyphIndex, rightGlyphIndex;
-	int16_t xAdvance;
-} BasicFontKerningEntry;
-
-typedef struct BasicFontGlyph {
-	uint32_t codepoint;
-	int16_t xAdvance, xOffset, yOffset;
-	uint16_t width, height;
-	uint16_t pointCount;
-	uint32_t offsetToPoints; // Cubic bezier points. Contains 3*pointCount-2 of (x,y) float pairs.
-} BasicFontGlyph;
-
-typedef struct BasicFontHeader {
-#define BASIC_FONT_SIGNATURE (0x83259919)
-	uint32_t signature;
-	int32_t ascender, descender;
-	uint16_t glyphCount;
-	uint16_t kerningEntries;
-	// Followed by array of BasicFontGlyph.
-	// Followed by array of BasicFontKerningEntry.
-} BasicFontHeader;
-
 //////////////////////////////////////////
 
 #define THEME_RECT_WIDTH(_r) ((_r).r - (_r).l)
