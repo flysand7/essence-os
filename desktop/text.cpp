@@ -8,16 +8,15 @@
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
-#define HB_SHAPE(plan, features, featureCount) hb_shape(plan->font.hb, plan->buffer, features, featureCount)
 #define FT_EXPORT(x) extern "C" x
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/ftoutln.h>
 #endif
 
-#define CHARACTER_SUBPIXEL (2) // 24 bits per pixel; each byte specifies the alpha of each RGB channel.
-#define CHARACTER_IMAGE    (3) // 32 bits per pixel, ARGB.
-#define CHARACTER_RECOLOR  (4) // 32 bits per pixel, AXXX.
+#define CHARACTER_SUBPIXEL (1) // 24 bits per pixel; each byte specifies the alpha of each RGB channel.
+#define CHARACTER_IMAGE    (2) // 32 bits per pixel, ARGB.
+#define CHARACTER_RECOLOR  (3) // 32 bits per pixel, AXXX.
 
 #define FREETYPE_UNIT_SCALE (64)
 
@@ -58,6 +57,101 @@ struct FontDatabaseEntry : EsFontInformation {
 	EsFileStore *files[18];
 	char *scripts;
 	size_t scriptsBytes;
+};
+
+enum TextStyleDifference {
+	TEXT_STYLE_NEW_FONT,   // A new font is selected.
+	TEXT_STYLE_NEW_SHAPE,  // Shaping parameters have changed.
+	TEXT_STYLE_NEW_RENDER, // Render-only properties have changed.
+	TEXT_STYLE_IDENTICAL,  // The styles are the same.
+};	
+
+struct TextPiece {
+	// Shaped glyphs, on the same line, and with constant style and script.
+	int32_t ascent, descent, width;
+	const EsTextStyle *style;
+	uintptr_t glyphOffset;
+	size_t glyphCount;
+	uintptr_t start, end;
+	bool isTabPiece;
+};
+
+struct TextLine {
+	int32_t ascent, descent, width;
+	bool hasEllipsis;
+	uintptr_t ellipsisPieceIndex;
+	uintptr_t pieceOffset;
+	size_t pieceCount;
+};
+
+struct TextRun {
+	EsTextStyle style;
+	uint32_t offset;
+	uint32_t script;
+};
+
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+typedef hb_glyph_info_t TextGlyphInfo;
+typedef hb_glyph_position_t TextGlyphPosition;
+typedef hb_segment_properties_t TextSegmentProperties;
+typedef hb_buffer_t TextShapeBuffer;
+typedef hb_feature_t TextFeature;
+typedef hb_script_t TextScript;
+#else
+struct TextGlyphInfo {
+	uint32_t codepoint;
+	uint32_t cluster;
+};
+
+struct TextGlyphPosition {
+	int32_t x_advance;
+	int32_t y_advance;
+	int32_t x_offset;
+	int32_t y_offset;
+};
+
+struct TextSegmentProperties {
+	uint32_t direction;
+	uint32_t script;
+	uint32_t language;
+};
+
+struct TextShapeBuffer {
+	uint8_t _unused0;
+};
+
+struct TextFeature {
+	uint8_t _unused0;
+};
+
+typedef uint32_t TextScript;
+#endif
+
+struct EsTextPlan {
+	TextShapeBuffer *buffer;
+	TextSegmentProperties segmentProperties;
+
+	const char *string; 
+
+	Array<TextRun> textRuns; 
+	uintptr_t textRunPosition;
+
+	const EsTextStyle *currentTextStyle;
+	Font font;
+
+	BreakState breaker;
+
+	Array<TextGlyphInfo> glyphInfos;
+	Array<TextGlyphPosition> glyphPositions;
+
+	Array<TextPiece> pieces;
+	Array<TextLine> lines;
+
+	int32_t totalHeight, totalWidth;
+
+	bool singleUse;
+
+	EsTextPlanProperties properties;
 };
 
 struct {
@@ -129,7 +223,7 @@ GlyphCacheEntry *LookupGlyphCacheEntry(GlyphCacheKey key) {
 	}
 }
 
-// --------------------------------- Font renderer.
+// --------------------------------- Font backend abstraction layer.
 
 bool FontLoad(Font *font, const void *data, size_t dataBytes) {
 #ifdef USE_FREETYPE_AND_HARFBUZZ
@@ -195,14 +289,6 @@ int32_t FontGetEmWidth(Font *font) {
 #endif
 }
 
-int TextGetLineHeight(EsElement *element, const EsTextStyle *textStyle) {
-	EsAssert(element);
-	EsMessageMutexCheck();
-	Font font = FontGet(textStyle->font);
-	FontSetSize(&font, textStyle->size * theming.scale);
-	return (FontGetAscent(&font) - FontGetDescent(&font) + FREETYPE_UNIT_SCALE / 2) / FREETYPE_UNIT_SCALE;
-}
-
 bool FontRenderGlyph(GlyphCacheKey key, GlyphCacheEntry *entry) {
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 	FT_Load_Glyph(key.font.ft, key.glyphIndex, FT_LOAD_DEFAULT);
@@ -261,6 +347,55 @@ bool FontRenderGlyph(GlyphCacheKey key, GlyphCacheEntry *entry) {
 	}
 
 	return false;
+#endif
+}
+
+void FontShapeText(EsTextPlan *plan, const char *string, size_t stringBytes, 
+		uintptr_t sectionOffsetBytes, size_t sectionCountBytes,
+		TextFeature *features, size_t featureCount,
+		uint32_t *glyphCount, TextGlyphInfo **glyphInfos, TextGlyphPosition **glyphPositions) {
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+	hb_buffer_clear_contents(plan->buffer);
+	hb_buffer_set_segment_properties(plan->buffer, &plan->segmentProperties);
+	hb_buffer_add_utf8(plan->buffer, string, stringBytes, sectionOffsetBytes, sectionCountBytes);
+	hb_shape(plan->font.hb, plan->buffer, features, featureCount);
+	*glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, glyphCount);
+	*glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, glyphCount);
+#endif
+}
+
+uint32_t FontGetScriptFromCodepoint(uint32_t codepoint, bool *inheritingScript) {
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+	static hb_unicode_funcs_t *unicodeFunctions = nullptr;
+
+	if (!unicodeFunctions) {
+		// Multiple threads could call this at the same time, but it doesn't matter,
+		// since they should always return the same thing anyway...
+		unicodeFunctions = hb_unicode_funcs_get_default();
+	}
+
+	uint32_t script = hb_unicode_script(unicodeFunctions, codepoint);
+	*inheritingScript = script == HB_SCRIPT_COMMON || script == HB_SCRIPT_INHERITED;
+	return script;
+#endif
+
+	return FALLBACK_SCRIPT;
+}
+
+void FontInitialiseShaping(EsTextPlan *plan) {
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+	plan->buffer = hb_buffer_create();
+	hb_buffer_set_cluster_level(plan->buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+	plan->segmentProperties.direction = (plan->properties.flags & ES_TEXT_PLAN_RTL) ? HB_DIRECTION_RTL : HB_DIRECTION_LTR;
+	plan->segmentProperties.script = (TextScript) FALLBACK_SCRIPT;
+	plan->segmentProperties.language = hb_language_from_string(plan->properties.cLanguage ?: FALLBACK_SCRIPT_LANGUAGE, -1);
+#endif
+}
+
+void FontDestroyShaping(EsTextPlan *plan) {
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+	hb_buffer_destroy(plan->buffer);
+	plan->buffer = nullptr;
 #endif
 }
 
@@ -1239,64 +1374,6 @@ void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, 
 
 // --------------------------------- Text shaping.
 
-enum TextStyleDifference {
-	TEXT_STYLE_NEW_FONT,   // A new font is selected.
-	TEXT_STYLE_NEW_SHAPE,  // Shaping parameters have changed.
-	TEXT_STYLE_NEW_RENDER, // Render-only properties have changed.
-	TEXT_STYLE_IDENTICAL,  // The styles are the same.
-};	
-
-struct TextPiece {
-	// Shaped glyphs, on the same line, and with constant style and script.
-	int32_t ascent, descent, width;
-	const EsTextStyle *style;
-	uintptr_t glyphOffset;
-	size_t glyphCount;
-	uintptr_t start, end;
-	bool isTabPiece;
-};
-
-struct TextLine {
-	int32_t ascent, descent, width;
-	bool hasEllipsis;
-	uintptr_t ellipsisPieceIndex;
-	uintptr_t pieceOffset;
-	size_t pieceCount;
-};
-
-struct TextRun {
-	EsTextStyle style;
-	uint32_t offset;
-	uint32_t script;
-};
-
-struct EsTextPlan {
-	hb_buffer_t *buffer;
-	hb_segment_properties_t segmentProperties;
-
-	const char *string; 
-
-	Array<TextRun> textRuns; 
-	uintptr_t textRunPosition;
-
-	const EsTextStyle *currentTextStyle;
-	Font font;
-
-	BreakState breaker;
-
-	Array<hb_glyph_info_t> glyphInfos;
-	Array<hb_glyph_position_t> glyphPositions;
-
-	Array<TextPiece> pieces;
-	Array<TextLine> lines;
-
-	int32_t totalHeight, totalWidth;
-
-	bool singleUse;
-
-	EsTextPlanProperties properties;
-};
-
 TextStyleDifference CompareTextStyles(const EsTextStyle *style1, const EsTextStyle *style2) {
 	if (!style1) return TEXT_STYLE_NEW_FONT;
 	if (style1->font.family 	!= style2->font.family) 	return TEXT_STYLE_NEW_FONT;
@@ -1333,8 +1410,8 @@ ptrdiff_t TextGetCharacterAtPoint(EsElement *element, const EsTextStyle *textSty
 
 	for (uintptr_t j = 0; j < plan->lines[0].pieceCount; j++) {
 		TextPiece *piece = &plan->pieces[plan->lines[0].pieceOffset + j];
-		hb_glyph_info_t *glyphs = &plan->glyphInfos[piece->glyphOffset];
-		hb_glyph_position_t *glyphPositions = &plan->glyphPositions[piece->glyphOffset];
+		TextGlyphInfo *glyphs = &plan->glyphInfos[piece->glyphOffset];
+		TextGlyphPosition *glyphPositions = &plan->glyphPositions[piece->glyphOffset];
 
 		for (uintptr_t i = 0; i < piece->glyphCount; i++) {
 			int left = useMiddle ? priorMiddle : currentX;
@@ -1506,17 +1583,12 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 
 	// Shape and measure the ellipsis character.
 
-	hb_buffer_clear_contents(plan->buffer);
-	hb_buffer_set_segment_properties(plan->buffer, &plan->segmentProperties);
-	hb_buffer_add_utf8(plan->buffer, (const char *) ellipsisUTF8, sizeof(ellipsisUTF8), 0, sizeof(ellipsisUTF8));
-	HB_SHAPE(plan, nullptr, 0);
-
+	unsigned int glyphCount;
+	TextGlyphInfo *glyphInfos;
+	TextGlyphPosition *glyphPositions;
+	FontShapeText(plan, (const char *) ellipsisUTF8, sizeof(ellipsisUTF8), 0, sizeof(ellipsisUTF8), nullptr, 0, &glyphCount, &glyphInfos, &glyphPositions);
+	
 	int32_t ellipsisWidth = 0;
-
-	unsigned int glyphCount, glyphCount2;
-	hb_glyph_info_t *glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, &glyphCount);
-	hb_glyph_position_t *glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, &glyphCount2);
-	EsAssert(glyphCount == glyphCount2);
 
 	for (uintptr_t i = 0; i < glyphCount; i++) {
 		ellipsisWidth += glyphPositions[i].x_advance;
@@ -1587,7 +1659,6 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 }
 
 void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCount, float sizeScaleFactor) {
-	hb_unicode_funcs_t *unicodeFunctions = hb_unicode_funcs_get_default();
 	uint32_t lastAssignedScript = FALLBACK_SCRIPT;
 
 	for (uintptr_t i = 0; i < runCount; i++) {
@@ -1596,15 +1667,16 @@ void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCoun
 		for (uintptr_t j = offset; j < runs[i + 1].offset;) {
 			uint32_t codepoint = utf8_value(plan->string + j);
 			uint32_t script;
+			bool inheritingScript = false;
 
 			if (codepoint == '\t') {
 				// Tab characters should go in their own section.
 				script = '\t';
 			} else {
-				script = hb_unicode_script(unicodeFunctions, codepoint);
+				script = FontGetScriptFromCodepoint(codepoint, &inheritingScript);
 			}
 
-			if (script == HB_SCRIPT_COMMON || script == HB_SCRIPT_INHERITED) {
+			if (inheritingScript) {
 				// TODO If this is a closing character, restore the last assigned script before the most recent opening character.
 				script = lastAssignedScript == '\t' ? FALLBACK_SCRIPT : lastAssignedScript;
 			}
@@ -1666,10 +1738,10 @@ int32_t TextExpandTabs(EsTextPlan *plan, uintptr_t pieceOffset, int32_t width) {
 			piece->descent = -FontGetDescent(&plan->font);
 
 			for (uintptr_t i = 0; i < piece->end - piece->start; i++) {
-				hb_glyph_info_t info = {};
+				TextGlyphInfo info = {};
 				info.cluster = piece->start + i;
 				info.codepoint = 0xFFFFFFFF;
-				hb_glyph_position_t position = {};
+				TextGlyphPosition position = {};
 				position.x_advance = i ? tabWidth : firstWidth;
 				if (!plan->glyphInfos.Add(info)) break;
 				if (!plan->glyphPositions.Add(position)) break;
@@ -1745,23 +1817,19 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 
 		// Shape the run.
 
-		hb_feature_t features[4] = {};
+		TextFeature features[4] = {};
 		size_t featureCount = 0;
 
+#ifdef USE_FREETYPE_AND_HARFBUZZ
 		if (plan->currentTextStyle->figures == ES_TEXT_FIGURE_OLD) hb_feature_from_string("onum", -1, features + (featureCount++));
 		if (plan->currentTextStyle->figures == ES_TEXT_FIGURE_TABULAR) hb_feature_from_string("tnum", -1, features + (featureCount++));
-		plan->segmentProperties.script = (hb_script_t) run->script;
+#endif
+		plan->segmentProperties.script = (TextScript) run->script;
 
-		hb_buffer_clear_contents(plan->buffer);
-		hb_buffer_set_segment_properties(plan->buffer, &plan->segmentProperties);
-		hb_buffer_add_utf8(plan->buffer, plan->string, plan->breaker.bytes, start, end - start);
-
-		HB_SHAPE(plan, features, featureCount);
-
-		unsigned int glyphCount, glyphCount2;
-		hb_glyph_info_t *glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, &glyphCount);
-		hb_glyph_position_t *glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, &glyphCount2);
-		EsAssert(glyphCount == glyphCount2);
+		unsigned int glyphCount;
+		TextGlyphInfo *glyphInfos;
+		TextGlyphPosition *glyphPositions;
+		FontShapeText(plan, plan->string, plan->breaker.bytes, start, end - start, features, featureCount, &glyphCount, &glyphInfos, &glyphPositions);
 
 		// Create the text piece.
 
@@ -1850,12 +1918,7 @@ EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *propertie
 
 	// Setup the HarfBuzz buffer.
 
-	plan.buffer = hb_buffer_create();
-	hb_buffer_set_cluster_level(plan.buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
-
-	plan.segmentProperties.direction = (properties->flags & ES_TEXT_PLAN_RTL) ? HB_DIRECTION_RTL : HB_DIRECTION_LTR;
-	plan.segmentProperties.script = (hb_script_t) FALLBACK_SCRIPT;
-	plan.segmentProperties.language = hb_language_from_string(properties->cLanguage ?: FALLBACK_SCRIPT_LANGUAGE, -1);
+	FontInitialiseShaping(&plan);
 
 	// Subdivide the runs by character script.
 	// This is also responsible for scaling the text sizes.
@@ -1963,8 +2026,7 @@ EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *propertie
 
 	// Destroy the HarfBuzz buffer.
 
-	hb_buffer_destroy(plan.buffer);
-	plan.buffer = nullptr;
+	FontDestroyShaping(&plan);
 	
 	// Return the plan.
 
@@ -2033,8 +2095,8 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 	cursorX += 0x40000000;
 	int32_t cursorXStart = cursorX;
 
-	hb_glyph_info_t *glyphs = &plan->glyphInfos[piece->glyphOffset];
-	hb_glyph_position_t *glyphPositions = &plan->glyphPositions[piece->glyphOffset];
+	TextGlyphInfo *glyphs = &plan->glyphInfos[piece->glyphOffset];
+	TextGlyphPosition *glyphPositions = &plan->glyphPositions[piece->glyphOffset];
 
 	// Update the font to match the piece.
 

@@ -84,6 +84,14 @@ struct EsTextbox : EsElement {
 #define MOVE_CARET_BACKWARDS (false)
 #define MOVE_CARET_FORWARDS (true)
 
+int TextGetLineHeight(EsElement *element, const EsTextStyle *textStyle) {
+	EsAssert(element);
+	EsMessageMutexCheck();
+	Font font = FontGet(textStyle->font);
+	FontSetSize(&font, textStyle->size * theming.scale);
+	return (FontGetAscent(&font) - FontGetDescent(&font) + FREETYPE_UNIT_SCALE / 2) / FREETYPE_UNIT_SCALE;
+}
+
 void TextboxBufferResize(void **array, uintptr_t *allocated, uintptr_t needed, uintptr_t itemSize) {
 	if (*allocated >= needed) {
 		return;
