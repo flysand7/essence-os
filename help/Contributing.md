@@ -42,7 +42,7 @@ Variable names are usually descriptive, but sometimes shortened names are used f
 
     EsMessage m = {};
     m.type = OS_MESSAGE_MEASURE;
-	EsMessagePost(&m);
+    EsMessagePost(&m);
 
 Operators are padded with spaces on either side.
 
@@ -53,23 +53,8 @@ A space should be placed between a cast and its expression.
     int x = (float) y;
 
 Although the operating system is written in C++, most C++ features are avoided.
-However, the kernel uses a lot of member functions.
+However, the kernel uses a lot of member functions; this is being phased out.
 
-    struct Window {
-        void Update(bool fromUser);
-        void SetCursorStyle(OSCursorStyle style);
-        void NeedWMTimer(int hz);
-        void Destroy();
-        bool Move(OSRectangle &newBounds);
-        void ClearImage();
-
-        Mutex mutex; // Mutex for drawing to the window. Also needed when moving the window.
-        Surface *surface;
-        OSPoint position;
-        size_t width, height;
-        ...
-    }
-    
 Default arguments often provided as functions grow over time.
 
 There is no limit on function size. However, you should avoid regularly exceeding 120 columns.
@@ -111,18 +96,18 @@ The following subroutines may be of interest:
 
 Synchronisation:
 
-    void Mutex::Acquire();
-    void Mutex::Release();
-    void Mutex::AssertLocked();
+    void KMutexAcquire();
+    void KMutexRelease();
+    void KMutexAssertLocked();
 
-    void Spinlock::Acquire(); // Disables interrupts.
-    void Spinlock::Release();
-    void Spinlock::AssertLocked();
+    void KSpinlockAcquire(); // Disables interrupts.
+    void KSpinlockRelease();
+    void KSpinlockAssertLocked();
 
-    bool Event::Set();
-    void Event::Reset();
-    bool Event::Pool();
-    bool Event::Wait(uintptr_t timeoutMs); // Return false on timeout.
+    bool KEventSet();
+    void KEventReset();
+    bool KEventPool();
+    bool KEventWait(uintptr_t timeoutMs); // Return false on timeout.
     // event.autoReset determines whether the event will automatically reset after Poll() or Wait() return.
 
 Linked lists:
@@ -143,13 +128,3 @@ Linked lists:
         LinkedList<T> *list; // The list the item is in.
 	T *thisItem; // A pointer to the item itself.
     }
-
-## Contributors
-
-Put your name here!
-
-- nakst
-- Brett R. Toomey
-- vtlmks
-- Aleksander Birkeland
-

@@ -1,3 +1,5 @@
+# Source map
+
 This file contains a list and description of the files and folders in the source tree.
 
 - `apps/` Builtin applications. Each application has an `.ini` file that is automatically detected by the build system.
