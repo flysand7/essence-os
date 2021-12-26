@@ -1220,6 +1220,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
 	state.flags = (process->allThreadsTerminated ? ES_PROCESS_STATE_ALL_THREADS_TERMINATED : 0)
 		| (process->preventNewThreads ? ES_PROCESS_STATE_TERMINATING : 0)
 		| (process->crashed ? ES_PROCESS_STATE_CRASHED : 0)
+#ifdef PAUSE_ON_USERLAND_CRASH
+		| (process->pausedFromCrash ? ES_PROCESS_STATE_PAUSED_FROM_CRASH : 0)
+#endif
 		| (process->messageQueue.pinged ? ES_PROCESS_STATE_PINGED : 0);
 
 	SYSCALL_WRITE(argument1, &state, sizeof(EsProcessState));
@@ -1781,7 +1784,11 @@ uintptr_t DoSyscall(EsSyscallType index, uintptr_t argument0, uintptr_t argument
 			reason.duringSystemCall = index;
 			KernelLog(LOG_ERROR, "Syscall", "syscall failure", 
 					"Process crashed during system call [%x, %x, %x, %x, %x]\n", index, argument0, argument1, argument2, argument3);
+#ifdef PAUSE_ON_USERLAND_CRASH
+			currentProcess->pausedFromCrash = true;
+#else
 			ProcessCrash(currentProcess, &reason);
+#endif
 		}
 	}
 

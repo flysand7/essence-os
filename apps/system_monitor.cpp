@@ -321,9 +321,7 @@ void UpdateDisplay(Instance *instance, int index) {
 }
 
 int ListViewProcessesCallback(EsElement *element, EsMessage *message) {
-	if (message->type == ES_MSG_LIST_VIEW_IS_SELECTED) {
-		message->selectItem.isSelected = processes[message->selectItem.index].data.pid == selectedPID;
-	} else if (message->type == ES_MSG_LIST_VIEW_SELECT && message->selectItem.isSelected) {
+	if (message->type == ES_MSG_LIST_VIEW_SELECT && message->selectItem.isSelected) {
 		selectedPID = processes[message->selectItem.index].data.pid;
 		EsCommandSetDisabled(&element->instance->commandTerminateProcess, selectedPID < 0 || !FindProcessByPID(processes, selectedPID));
 	} else {
@@ -352,6 +350,8 @@ void TerminateProcess(Instance *instance, EsElement *, EsCommand *) {
 		EsSystemShowShutdownDialog();
 		return;
 	}
+
+	// TODO What should happen if the user tries to terminate the desktop process?
 
 	EsHandle handle = EsProcessOpen(selectedPID); 
 

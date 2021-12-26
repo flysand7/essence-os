@@ -169,8 +169,14 @@ struct ES_INSTANCE_TYPE;
 #ifndef KERNEL
 #ifdef ES_API
 ES_EXTERN_C uintptr_t _APISyscall(uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t unused, uintptr_t argument3, uintptr_t argument4);
+#ifdef PAUSE_ON_USERLAND_CRASH
+ES_EXTERN_C uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t unused, uintptr_t argument3, uintptr_t argument4);
+#define EsSyscall(a, b, c, d, e) APISyscallCheckForCrash((a), (b), (c), 0, (d), (e))
+#define _EsSyscall APISyscallCheckForCrash
+#else
 #define EsSyscall(a, b, c, d, e) _APISyscall((a), (b), (c), 0, (d), (e))
 #define _EsSyscall _APISyscall
+#endif
 #else
 #define EsSyscall(a, b, c, d, e) _EsSyscall((a), (b), (c), 0, (d), (e))
 #endif

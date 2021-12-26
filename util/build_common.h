@@ -295,6 +295,7 @@ Option options[] = {
 	{ "Flag.COM_OUTPUT", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Flag.POST_PANIC_DEBUGGING", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Flag.START_DEBUG_OUTPUT", OPTION_TYPE_BOOL, { .b = false } },
+	{ "Flag.PAUSE_ON_USERLAND_CRASH", OPTION_TYPE_BOOL, { .b = false } },
 	{ "Dependency.ACPICA", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_image", OPTION_TYPE_BOOL, { .b = true } },
 	{ "Dependency.stb_image_write", OPTION_TYPE_BOOL, { .b = true } },

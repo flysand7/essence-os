@@ -260,6 +260,16 @@ const void *const apiTable[] = {
 #include <bin/generated_code/api_array.h>
 };
 
+#ifdef PAUSE_ON_USERLAND_CRASH
+ES_EXTERN_C uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t unused, uintptr_t argument3, uintptr_t argument4) {
+	uintptr_t returnValue = _APISyscall(argument0, argument1, argument2, unused, argument3, argument4);
+	EsProcessState state;
+	_APISyscall(ES_SYSCALL_PROCESS_GET_STATE, ES_CURRENT_PROCESS, (uintptr_t) &state, 0, 0, 0);
+	while (state.flags & ES_PROCESS_STATE_PAUSED_FROM_CRASH);
+	return returnValue;
+}
+#endif
+
 MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
 	MountPoint mountPoint = {};
 	EsAssert(prefixBytes < sizeof(mountPoint.prefix));

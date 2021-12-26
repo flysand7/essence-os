@@ -169,6 +169,11 @@ struct Process {
 	KMutex crashMutex;
 	EsCrashReason crashReason;
 	bool crashed;
+#ifdef PAUSE_ON_USERLAND_CRASH
+	// To allow for better remote debugging if PAUSE_ON_USERLAND_CRASH is defined, 
+	// when a process crashes it will return to where the crash occurred and enter an infinite loop.
+	bool pausedFromCrash;
+#endif
 
 	// Termination:
 	bool allThreadsTerminated;

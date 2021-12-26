@@ -459,6 +459,16 @@ extern "C" void InterruptHandler(InterruptContext *context) {
 					currentThread->process->cExecutableName,
 					context->rip, context->rsp, context->errorCode, context->cr2);
 
+#ifdef PAUSE_ON_USERLAND_CRASH
+			if (context->rip) {
+				currentThread->process->pausedFromCrash = true;
+				// x86_64 for "jmp $".
+				((uint8_t *) context->rip)[0] = 0xEB;
+				((uint8_t *) context->rip)[1] = 0xFE;
+				goto resolved;
+			}
+#endif
+
 			EsPrint("Attempting to make a stack trace...\n");
 
 			{

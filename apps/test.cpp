@@ -167,6 +167,14 @@ void InitialiseInstance(EsInstance *instance) {
 
 	EsPanel *panel = EsPanelCreate(instance->window, ES_CELL_FILL, &stylePanel);
 
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash (memory error)"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsMemoryZero((void *) 0, 1);
+	});
+
+	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Crash (system call error)"), [] (EsInstance *, EsElement *, EsCommand *) { 
+		EsEventSet(1); 
+	});
+
 	EsButtonOnCommand(EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, "Timing"), [] (EsInstance *, EsElement *element, EsCommand *) { 
 		EsDateComponents start, end;
 

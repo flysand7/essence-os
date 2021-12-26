@@ -963,7 +963,13 @@ struct EsListView : EsElement {
 				}
 
 				m.type = ES_MSG_LIST_VIEW_SELECT;
-				fixedItemSelection = m.selectItem.index;
+
+				if (flags & ES_LIST_VIEW_FIXED_ITEMS) {
+					fixedItemSelection = m.selectItem.index;
+					EsAssert((uintptr_t) m.selectItem.index < fixedItems.Length());
+					m.selectItem.index = fixedItemIndices[m.selectItem.index];
+				}
+
 				EsMessageSend(this, &m);
 
 				ignore:;
