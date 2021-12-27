@@ -60,16 +60,168 @@ Note that some commands will force disable the `Flag.DEBUG_BUILD` option. Most n
 
 ## Build core
 
-TODO
+Build core can run in three modes. The mode is passed as the first argument.
+
+- `headers <language> <path-to-output-file>` Generates the API header for `c` (also works for C++), `odin` or `zig`, and saves it to the provided output path.
+- `application <configuration>` Builds a single application, given its configuration file. This will not install the application. See the "Application configuration options" section below.
+- `standard <configuration>` Builds the system, given the configuration file. See the "Standard build configuration options" section below.
+
+### Application configuration options
+
+In the `[build]` section:
+
+- `source` Path to the source file. This can be repeated, if the application has multiple translation units.
+- `compile_flags` Additional flags to be passed to the compiler.
+- `link_flags` Additional flags to be passed to the linker.
+- `with_cstdlib` Set to 1 to link to the C standard library (currently Musl). This requires enabling the POSIX subsystem. Defaults to 0.
+- `require` Optional. Set to the path of a file that must exist for the application to be built. If the file is not found, then the application will not be built.
+- `custom_compile_command` A custom build command for the application. If this is set, then the default calls to the compiler and linker will be skipped. This command will be passed directly to `system()`. It should output an ELF executable to `bin/<application name>`. The application name is taken from the `[general]` section.
+
+In the `[general]` section:
+
+- `name` The name of the application.
+- `disabled` Set to 1, and the application will not be built.
+- `needs_native_toolchain` Set to 1 if the application requires a native toolchain to build. TODO Merge this with `with_cstdlib` from `[build]`?
+- `icon` The name of the icon from `desktop/icons.header` to use for the application. This method of setting the application's icon should only be used for builtin application; third party application can set the icon of their application in the `[embed]` section. See below.
+- `use_single_process` Set to 1 if the application should use a single process, shared between all its instances. Default is 0.
+- `use_single_instance` Set to 1 if the application can only have a single instance open at a time. If the application is already open and the user tries to open it again, then the tab containing the loaded instance will be switched to. Default is 0.
+- `hidden` Set to 1 if the application should not be listed on the "New Tab" screen.
+- `permission_<permission>` Set to 1 to grant the application a specific application permission.
+- `is_file_manager` Set to 1 if the application is the file manager. For system use only!
+- `is_installer` Set to 1 if the application is the installer. For system use only!
+- `background_service` Set to 1 if the application should be loaded at startup as a background service. For system use only!
+
+In the `[embed]` section there is a list of files that should be embedded into the application bundle. These embedded file can be accessed at runtime using the `EsBundleFind` API. The entries in this section are of the form `<embedded name>=<path>`. Embedded name prefixed with `$` are reserved for definition by the system. The ELF executable files are automatically embedded into the application's bundle, with names of the form `$Executables/<target>`. The application's icon should be embedded as PNG images with names of the form `$Icons/<size>`. You must, as a minimum, provide sizes `16` (16x16 pixels) and `32` (32x32 pixels).
+
+Each `[@file_type]` section provides information about a file type.
+
+- `extension` Gives the file name extension for the file type.
+- `name` Gives the readable name of the file type, which will be shown to the user. TODO Translations.
+- `icon` Gives the name of the icon from `desktop/icons.header` to show for files of this type. TODO Bundled icons.
+- `has_thumbnail_generator` Set to 1 if the file type has a thumbnail generator. Only images are supported at the moment. TODO Custom thumbnail generators.
+
+Each `[@handler]` section describes this application's support to manage files of a given file type.
+
+- `extension` The file name extension of the file type.
+- `action` The action that this application support for the file type. Currently only "open" is supported.
+
+### Standard build configuration options
+
+In the `[toolchain]` section:
+
+- `path` Path to the `bin` folder of the toolchain.
+- `tmpdir` A path to use to store temporary files. Passed to the toolchain in the `TMPDIR` environment variable.
+- `ar`, `cc`, `cxx`, `ld`, `nm`, `strip`, `nasm`, `convert_svg` Paths to the toolchain executables.
+- `linker_scripts` Path to the linker scripts. This should be set to the `util/` folder of the source tree.
+- `compiler_objects` The path containing the `crt*.o` files provided by the toolchain.
+- `crt_objects` The path where `crt*.o` files will be output.
+
+In the `[general]` section:
+
+- `system_build` Set to 1 to build the bootloader, Desktop and Kernel.
+- `minimal_rebuild` Set to 1 to enable minimal rebuilds. Dependency information is stored in `bin/dependencies.ini`. Only components where the dependent source files have been modified will be rebuilt. All components are rebuilt if any of the options in this configuration file are modified.
+- `colored_output` Set to 1 to enable ANSI color codes in the output.
+- `thread_count` Set to the number of threads to use for calling the toolchain.
+- `target` Set the name of the target platform, e.g. `x86_64`.
+- `skip_header_generation` Set to 1 if the C/C++ API header does not need to be regenerated.
+- `verbose` Set to 1 to list every toolchain invocation. See `thread_count=1` if you are using this.
+- `common_compile_flags` Additional flags to pass to the C/C++ compiler invocations for all components.
+- `for_emulator` Set to 1 to enable a few features that improve the experience of running the system on an emulator.
+- `optimise` Enable compiler optimisations.
+- `skip_compile` Skip compiling components and only build a drive image from the previously built executables.
+
+In the `[install]` section:
+
+- `file` The output file to put the drive image in.
+- `partition_size` The size of the drive image in megabytes.
+- `partition_label` The label of the partition. This can be set to anything you like, as long as it doesn't exceed `ESFS_MAXIMUM_VOLUME_NAME_LENGTH`.
+
+In the `[options]` section there is a copy of the options in "Configuration options", from `bin/config.ini`. Note that many of these options are not handled by build core, but rather by `util/build.c`. See the "Configuration options" section for more details.
+
+Each `[@application]` section should contain a single key, `manifest`, giving the path to the application configuration options (see the above section).
+
+Each `[@driver]` section should contain:
+
+- `name` The name of the driver. This must be found in `kernel/config.ini`.
+- `source` The source file of the driver. This must be C/C++.
+- `builtin` Set to 1 if the driver should be linked directly into the kernel. Set to 0 if the driver should be built as a loadable module.
+
+`[@font <name>]` sections specify the fonts that are to be bundled in the desktop executable. Each section should contain:
+
+- `category` One of `Sans`, `Serif` or `Mono`. More categories will likely be added in the future.
+- `scripts` The scripts supported by the font. See `hb_script_t` in `bin/harfbuzz/src/hb-common.h` for a list of scripts. Separate each script with a `,`.
+- `license` The license file to bundle. This is a path relative to `res/Fonts/`.
+- `.<digit>` and `.<digit>i` The font file for a weight 1-9, with `i` for italics. More possibilities will likely be added in the future. This is a path relative to `res/Fonts/`.
 
 ## Configuration editor
 
-TODO
+You can start the configuration editor by typing `config` at the build system prompt. Click `Save` to save your changes. Click `Defaults` to load the defaults. Left click an option in the table to toggle it or otherwise modify it. You will be presented with a warning if modifying the option is not recommended. Right click to reset a specific option. The changes are saved to `bin/config.ini`, which will not be uploaded to source control.
+
+See the section "Configuration options" for a description of what each option does.
 
 ## Configuration options
 
+Options starting with `Driver.` are used to enable and disable drivers. The defaults will be configured to work optimally for development work in emulators.
+
+### Emulator options
+
+- `Emulator.AHCI` Use AHCI/SATA for the drive in Qemu.
+- `Emulator.ATA` Use ATA/IDE for the drive in Qemu.
+- `Emulator.NVMe` Use NVMe for the drive in Qemu.
+- `Emulator.CDROMImage` A path to a CD-ROM image that will be passed to Qemu.
+- `Emulator.USBImage` A path to a drive image that will be passed to Qemu to appear as a USB mass storage device.
+- `Emulator.USBHostVendor`, `Emulator.USBHostProduct` The vendor and product of a USB device to pass-through to Qemu. You will probably need to set `Emulator.RunWithSudo` for this to work.
+- `Emulator.RunWithSudo` Run Qemu with `sudo`.
+- `Emulator.Audio` Enable audio output in Qemu, saved to `bin/audio.wav`.
+- `Emulator.MemoryMB` The amount of memory for Qemu. Probably needs to be at least 32 MB.
+- `Emulator.Cores` The number of CPU cores to use in the emulator. Use 1 for a better debugging experience. Note that the build system command "k" automatically uses the maximum number of CPU cores possible.
+- `Emulator.PrimaryDriveMB` The size of the primary drive image.
+- `Emulator.SecondaryDriveMB` The size of a secondary drive image that will be connected to the emulator.
+- `Emulator.VBoxEFI` Use UEFI boot in VBox.
+- `Emulator.QemuEFI` Use Qemu boot in VBox.
+- `Emulator.SerialToFile` Save the serial output from Qemu to `bin/Logs/qemu_serial1.txt`. If disabled, then the output will be available as a separate display in Qemu, but will not be saved after Qemu exits! You can view the serial output saved to a file as it is output using the shell command `tail -f bin/Logs/qemu_serial1.txt`.
+
+### Build core options
+
+- `BuildCore.Verbose` Set to enable `verbose` flag passed to build core. See the `[general]` section of the build core options.
+- `BuildCore.NoImportPOSIX` Do not import the `root/Applications/POSIX` folder onto the drive image. This will allow building much smaller drive images.
+- `BuildCore.RequiredFontsOnly` Only import the minimal number of fonts onto the drive image. This will allow building much smaller drive images.
+
+### Flag options
+
+- `Flag.ENABLE_POSIX_SUBSYSTEM` Enable the POSIX subsystem. Needed to use most ports and the POSIX Launcher.
+- `Flag.DEBUG_BUILD` Set to 1 to define the `DEBUG_BUILD` flag. See the "Levels of optimisation" section above.
+- `Flag.USE_SMP` Enable symmetric multiprocessing. You may wish to disable this for easier debugging.
+- `Flag.PROFILE_DESKTOP_FUNCTIONS` Set to 1 to enable gf profiling integration for the Desktop.
+- `Flag.BGA_RESOLUTION_WIDTH` The default resolution width to use for BGA, the graphics adapter used by Qemu. Must be a multiple of 4.
+- `Flag.BGA_RESOLUTION_HEIGHT` The default resolution height to use for BGA, the graphics adapter used by Qemu. Must be a multiple of 4.
+- `Flag.VGA_TEXT_MODE` Use VGA text mode at startup. Use with `Flag.START_DEBUG_OUTPUT` for early debugging.
+- `Flag.CHECK_FOR_NOT_RESPONDING` Set to enable the Desktop's feature of checking whether the foreground application is responding. Disabling this will reduce the number of thread switches, making debugging slightly easier.
+- `Flag._ALWAYS_USE_VBE` Use VBE mode setting. Needed for real hardware, if using the MBR bootloader.
+- `Flag.COM_OUTPUT` Set to enable serial output. Should be disabled before making a build to run on real hardware.
+- `Flag.POST_PANIC_DEBUGGING` Set to enable the special debugger that runs after a `KernelPanic`. Requires a PS/2 keyboard.
+- `Flag.START_DEBUG_OUTPUT` Log kernel messages to the screen immediately during startup.
+- `Flag.PAUSE_ON_USERLAND_CRASH` Send a userland application into a spin loop when it crashes. This makes it possible to attach a debugger (see `Debugging.md`) and get a stack trace.
+
+### General options
+
+- `General.first_application` The name of application to launch at startup. Useful if you don't want to have to manually open it from the "New Tab" page every time you restart the emulator.
+- `General.wallpaper` The path to the wallpaper file. This is an Essence path; paths beginning with `0:/` will correspond to the files in the `root/` folder of the source tree.
+- `General.window_color` The default window color.
+- `General.installation_state` The installation state. If set to `1`, then the installer will be invoked. `make-installer-root` should have been run before doing this.
+- `General.ui_scale` The default UI scale, as a percentage.
+- `General.keyboard_layout` The default keyboard layout. See `Building.md` for instructions on how to set this.
+
+### Dependency options
+
 TODO
+
+- `Dependency.ACPICA`
+- `Dependency.stb_image`
+- `Dependency.stb_image_write`
+- `Dependency.stb_sprintf`
+- `Dependency.FreeTypeAndHarfBuzz`
 
 ## a2l
 
-TODO
+This utility is used to convert hexadecimal code addresses into line numbers. Start it with `./start.sh a2l <path to symbol file>`. Recall that symbol files are saved to `bin/<application name>`. Paste in any text containing addresses and they will be converted to line numbers, if possible. Usually you will want to do this for the crash information logged in `bin/Logs/qemu_serial1.txt`.
