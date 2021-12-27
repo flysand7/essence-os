@@ -44,7 +44,6 @@ libosmesa = static_library(
   c_args : [c_vis_args],
   cpp_args : cpp_vis_args,
   link_args : [ld_args_gc_sections, osmesa_link_args],
-  vs_module_defs : osmesa_def,
   include_directories : [
     inc_include, inc_src, inc_gallium, inc_gallium_aux, inc_gallium_winsys,
     inc_gallium_drivers,
@@ -59,8 +58,6 @@ libosmesa = static_library(
     driver_swrast, driver_swr,
   ],
   name_prefix : host_machine.system() == 'windows' ? '' : 'lib',  # otherwise mingw will create libosmesa.dll
-  soversion : host_machine.system() == 'windows' ? '' : '8',
-  version : '8.0.0',
   install : true,
 )
 
