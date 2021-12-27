@@ -1353,6 +1353,7 @@ void DoCommand(const char *l) {
 		struct dirent *entry;
 
 		while ((entry = readdir(directory))) {
+			fprintf(stderr, "build-optional-ports: Calling \"ports/%s/port.sh\"...\n", entry->d_name);
 			CallSystemF("ports/%s/port.sh", entry->d_name);
 		}
 

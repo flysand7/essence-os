@@ -1,4 +1,4 @@
-set -e
+set -ex
 
 rm -rf bin/mesa
 bin/build get-source mesa-20.1.8 https://archive.mesa3d.org//mesa-20.1.8.tar.xz
