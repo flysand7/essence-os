@@ -825,6 +825,19 @@ int ListCallback(EsElement *element, EsMessage *message) {
 			if (entry->isFolder) {
 				String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
 				InstanceLoadFolder(instance, path);
+			} else if (StringEquals(entry->GetExtension(), StringFromLiteral("esx"))) {
+				// TODO Temporary.
+				String path = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(entry->GetInternalName()));
+
+				if (StringEquals(path, StringFromLiteral("0:/Essence/Desktop.esx")) || StringEquals(path, StringFromLiteral("0:/Essence/Kernel.esx"))) {
+					EsDialogShow(instance->window, INTERFACE_STRING(FileManagerOpenFileError),
+							INTERFACE_STRING(FileManagerCannotOpenSystemFile),
+							ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
+				} else {
+					EsApplicationRunTemporary(instance, STRING(path));
+				}
+
+				StringDestroy(&path);
 			} else {
 				FileType *fileType = FolderEntryGetType(instance->folder, entry);
 

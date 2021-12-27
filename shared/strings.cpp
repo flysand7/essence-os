@@ -304,6 +304,7 @@ DEFINE_INTERFACE_STRING(FileManagerColumnSize, "Size");
 DEFINE_INTERFACE_STRING(FileManagerOpenFolderTask, "Opening folder" ELLIPSIS);
 DEFINE_INTERFACE_STRING(FileManagerOpenFileError, "The file could not be opened.");
 DEFINE_INTERFACE_STRING(FileManagerNoRegisteredApplicationsForFile, "None of the applications installed on this computer can open this type of file.");
+DEFINE_INTERFACE_STRING(FileManagerCannotOpenSystemFile, "This is a system file which has already been loaded.");
 DEFINE_INTERFACE_STRING(FileManagerFolderNamePrompt, "Folder name:");
 DEFINE_INTERFACE_STRING(FileManagerNewFolderAction, "Create");
 DEFINE_INTERFACE_STRING(FileManagerNewFolderTask, "Creating folder" ELLIPSIS);

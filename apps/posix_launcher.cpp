@@ -18,9 +18,7 @@ EsHandle commandEvent;
 char outputBuffer[262144];
 uintptr_t outputBufferPosition;
 EsMutex mutex;
-volatile bool runningCommand;
 int stdinWritePipe;
-char *command;
 EsTextbox *textboxOutput, *textboxInput;
 
 const EsStyle styleMonospacedTextbox = {
@@ -32,32 +30,6 @@ const EsStyle styleMonospacedTextbox = {
 		.fontFamily = ES_FONT_MONOSPACED,
 	},
 };
-
-char *ParseArgument(char **position) {
-	char *start = *position;
-
-	while (*start == ' ') {
-		start++;
-	}
-
-	if (!(*start)) {
-		return nullptr;
-	}
-
-	char *end = start;
-
-	while ((*end != ' ' || (end != start && end[-1] == '\\')) && *end) {
-		end++;
-	}
-
-	if (*end) {
-		*end = 0;
-		end++;
-	}
-
-	*position = end;
-	return start;
-}
 
 void WriteToOutputTextbox(const char *string, ptrdiff_t stringBytes) {
 	if (stringBytes == -1) {
@@ -94,14 +66,14 @@ void WriteToOutputTextbox(const char *string, ptrdiff_t stringBytes) {
 }
 
 void RunCommandThread() {
-	char *argv[64];
-	int argc = 0;
+	WriteToOutputTextbox("Starting busybox shell...\n", -1);
+
+	char *argv[3] = { (char *) "busybox", (char *) "sh", nullptr };
 	char executable[4096];
 	int status;
 	int standardOutputPipe[2];
 	int standardInputPipe[2];
 	pid_t pid;
-	struct timespec startTime, endTime;
 
 	char *envp[5] = { 
 		(char *) "LANG=en_US.UTF-8", 
@@ -111,51 +83,7 @@ void RunCommandThread() {
 		nullptr 
 	};
 
-	char *commandPosition = command;
-
-	while (argc < 63) {
-		argv[argc] = ParseArgument(&commandPosition);
-		if (!argv[argc]) break;
-		argc++;
-	}
-
-	if (!argc) {
-		goto done;
-	}
-
-	argv[argc] = nullptr;
-
-	if (0 == EsCRTstrcmp(argv[0], "run")) {
-		if (argc != 2) {
-			WriteToOutputTextbox("\nUsage: run <absolute path to esx>\n", -1);
-		} else {
-			EsApplicationRunTemporary(instance, argv[1], EsCStringLength(argv[1]));
-		}
-
-		WriteToOutputTextbox("\n----------------\n", -1);
-		goto done;
-	} else if (0 == EsCRTstrcmp(argv[0], "cd")) {
-		if (argc != 2) {
-			WriteToOutputTextbox("\nUsage: cd <path>\n", -1);
-		} else {
-			chdir(argv[1]);
-
-			WriteToOutputTextbox("\nNew working directory:\n", -1);
-			WriteToOutputTextbox(getcwd(nullptr, 0), -1);
-			WriteToOutputTextbox("\n", -1);
-		}
-
-		WriteToOutputTextbox("\n----------------\n", -1);
-		goto done;
-	}
-
-	if (argv[0][0] == '/') {
-		executable[EsStringFormat(executable, sizeof(executable) - 1, "%z", argv[0])] = 0;
-	} else {
-		executable[EsStringFormat(executable, sizeof(executable) - 1, "/Applications/POSIX/bin/%z", argv[0])] = 0;
-	}
-
-	clock_gettime(CLOCK_MONOTONIC, &startTime);
+	executable[EsStringFormat(executable, sizeof(executable) - 1, "/Applications/POSIX/bin/%z", argv[0])] = 0;
 
 	pipe(standardOutputPipe);
 	pipe(standardInputPipe);
@@ -172,7 +100,7 @@ void RunCommandThread() {
 		WriteToOutputTextbox("\nThe executable failed to load.\n", -1);
 		_exit(-1);
 	} else if (pid == -1) {
-		// TODO Report the error.
+		WriteToOutputTextbox("\nUnable to vfork().\n", -1);
 	}
 
 	close(standardInputPipe[0]);
@@ -201,22 +129,6 @@ void RunCommandThread() {
 	close(standardOutputPipe[0]);
 
 	wait4(-1, &status, 0, NULL);
-
-	clock_gettime(CLOCK_MONOTONIC, &endTime);
-
-	{
-		double startTimeS = startTime.tv_sec + startTime.tv_nsec / 1000000000.0;
-		double endTimeS = endTime.tv_sec + endTime.tv_nsec / 1000000000.0;
-		char buffer[256];
-		size_t bytes = EsStringFormat(buffer, sizeof(buffer), "\nProcess exited with status %d.\nExecution time: %Fs.\n", status >> 8, endTimeS - startTimeS);
-		WriteToOutputTextbox(buffer, bytes);
-		WriteToOutputTextbox("\n----------------\n", -1);
-	}
-
-	done:;
-	EsHeapFree(command);
-	__sync_synchronize();
-	runningCommand = false;
 }
 
 int ProcessTextboxInputMessage(EsElement *, EsMessage *message) {
@@ -225,31 +137,17 @@ int ProcessTextboxInputMessage(EsElement *, EsMessage *message) {
 				&& !message->keyboard.modifiers 
 				&& EsTextboxGetLineLength(textboxInput)) {
 			char *data = EsTextboxGetContents(textboxInput);
+			EsTextboxInsert(textboxOutput, data, -1, false);
+			EsTextboxInsert(textboxOutput, "\n", -1, false);
+			EsMutexAcquire(&mutex);
 
-			if (!runningCommand) {
-				runningCommand = true;
-				command = data;
-
-				EsTextboxInsert(textboxOutput, "\n> ", -1, false);
-				EsTextboxInsert(textboxOutput, command, -1, false);
-				EsTextboxInsert(textboxOutput, "\n", -1, false);
-				EsTextboxEnsureCaretVisible(textboxOutput, false);
-
-				EsEventSet(commandEvent);
-			} else {
-				EsTextboxInsert(textboxOutput, data, -1, false);
-				EsTextboxInsert(textboxOutput, "\n", -1, false);
-				EsMutexAcquire(&mutex);
-
-				if (stdinWritePipe) {
-					write(stdinWritePipe, data, EsCStringLength(data));
-					write(stdinWritePipe, "\n", 1);
-				}
-
-				EsMutexRelease(&mutex);
-				EsHeapFree(data);
+			if (stdinWritePipe) {
+				write(stdinWritePipe, data, EsCStringLength(data));
+				write(stdinWritePipe, "\n", 1);
 			}
 
+			EsMutexRelease(&mutex);
+			EsHeapFree(data);
 			EsTextboxClear(textboxInput, false);
 			return ES_HANDLED;
 		}
@@ -259,6 +157,8 @@ int ProcessTextboxInputMessage(EsElement *, EsMessage *message) {
 }
 
 void MessageLoopThread(EsGeneric) {
+	// Cannot access the C standard library on this thread!
+
 	EsMessageMutexAcquire();
 
 	while (true) {
@@ -276,11 +176,11 @@ void MessageLoopThread(EsGeneric) {
 			EsTextboxEnableSmartQuotes(textboxInput, false);
 			textboxInput->messageUser = ProcessTextboxInputMessage;
 			EsElementFocus(textboxInput);
+			EsEventSet(commandEvent); // Ready to receive output.
 		} else if (message->type == MSG_RECEIVED_OUTPUT) {
 			EsMutexAcquire(&mutex);
 
 			if (outputBufferPosition) {
-				// EsPrint("Inserting %d bytes...\n", outputBufferPosition);
 				EsTextboxMoveCaretRelative(textboxOutput, ES_TEXTBOX_MOVE_CARET_ALL);
 				EsTextboxInsert(textboxOutput, outputBuffer, outputBufferPosition, false);
 				EsTextboxEnsureCaretVisible(textboxOutput, false);
@@ -299,18 +199,8 @@ int main(int argc, char **argv) {
 	commandEvent = EsEventCreate(true);
 	EsMessageMutexRelease();
 	EsThreadCreate(MessageLoopThread, nullptr, 0);
-
-#if 0
-	runningCommand = true;
-	command = (char *) EsHeapAllocate(128, true);
-	EsStringFormat(command, 128, "gcc es/util/build_core.c -g");
-	EsEventSet(commandEvent);
-#endif
-
-	while (true) {
-		EsWaitSingle(commandEvent);
-		RunCommandThread();
-	}
+	EsWaitSingle(commandEvent);
+	RunCommandThread();
 
 	return 0;
 }
