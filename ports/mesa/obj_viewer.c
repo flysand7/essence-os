@@ -298,11 +298,11 @@ bool LoadModel(char *model, size_t modelBytes) {
 	return true;
 }
 
-int InstanceCallback(EsInstance *, EsMessage *message) {
+int InstanceCallback(EsInstance *instance, EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_OPEN) {
 		size_t modelBytes;
 		void *model = EsFileStoreReadAll(message->instanceOpen.file, &modelBytes);
-		EsInstanceOpenComplete(message, LoadModel(model, modelBytes), NULL, 0);
+		EsInstanceOpenComplete(instance, message->instanceOpen.file, LoadModel(model, modelBytes), NULL, 0);
 		EsHeapFree(model, 0, NULL);
 		loadedModel = true;
 		return ES_HANDLED;
@@ -452,7 +452,7 @@ int main(int argc, char **argv) {
 			instance->callback = InstanceCallback;
 			EsWindowSetIcon(instance->window, ES_ICON_MODEL);
 			EsElement *canvas = EsCustomElementCreate(instance->window, ES_CELL_FILL, 0);
-			canvas->messageUser = (EsUICallback) CanvasCallback;
+			canvas->messageUser = (EsElementCallback) CanvasCallback;
 			EsElementStartAnimating(canvas);
 		}
 	}
