@@ -13,7 +13,7 @@ echo "strip = 'x86_64-essence-strip'" >> bin/meson_cross.txt
 echo "[properties]" >> bin/meson_cross.txt
 echo sys_root = \'$(realpath root)\' >> bin/meson_cross.txt
 echo "c_args = ['-D_POSIX_SOURCE']" >> bin/meson_cross.txt
-echo "cpp_args = c_args" >> bin/meson_cross.txt
+echo "cpp_args = ['-D_POSIX_SOURCE']" >> bin/meson_cross.txt
 echo "[host_machine]" >> bin/meson_cross.txt
 echo "system = 'essence'" >> bin/meson_cross.txt
 echo "cpu_family = 'x86_64'" >> bin/meson_cross.txt
