@@ -29,9 +29,7 @@ cp ports/mesa/changes/meson.build bin/mesa/meson.build
 cp ports/mesa/changes/src_gallium_targets_osmesa_meson.build bin/mesa/src/gallium/targets/osmesa/meson.build
 
 cd bin/mesa
-meson ../build-mesa --cross-file ../meson_cross.txt \
-	-Dosmesa=gallium \
-	-Ddefault_library=static
+meson ../build-mesa --cross-file ../meson_cross.txt -Dosmesa=gallium -Ddefault_library=static -Dllvm=false
 ninja -C ../build-mesa
 cd ../..
 
