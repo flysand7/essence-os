@@ -248,7 +248,7 @@ void CreateStyledTextDisplay(Instance *instance, EsStyle *style, uint64_t flags 
 		runs[i].offset = instance->spans[i].offset;
 		EsElementGetTextStyle(display, &runs[i].style);
 		if (instance->spans[i].link) { runs[i].style.decorations |= ES_TEXT_DECORATION_UNDERLINE; runs[i].style.color = COLOR_TEXT_LINK;  }
-		if (instance->spans[i].em) runs[i].style.font.italic = true;
+		if (instance->spans[i].em) runs[i].style.font.flags |= ES_FONT_ITALIC;
 		if (instance->spans[i].strong) runs[i].style.font.weight = 7;
 		if (instance->spans[i].monospaced) runs[i].style.font.family = ES_FONT_MONOSPACED;
 		runs[i].style.decorationsColor = runs[i].style.color;

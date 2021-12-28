@@ -139,7 +139,7 @@ int FontPreviewMessage(EsElement *element, EsMessage *message) {
 		EsElementGetTextStyle(element, &runs[0].style);
 		runs[0].style.font.family = element->userData.u;
 		runs[0].style.font.weight = element->instance->fontVariant % 10;
-		runs[0].style.font.italic = element->instance->fontVariant / 10;
+		if (element->instance->fontVariant / 10 == 1) runs[0].style.font.flags |= ES_FONT_ITALIC;
 		runs[0].style.size = element->instance->fontSize;
 		runs[1].offset = element->instance->previewTextBytes;
 		EsTextPlan *plan = EsTextPlanCreate(element, &properties, bounds, element->instance->previewText, runs, 1);

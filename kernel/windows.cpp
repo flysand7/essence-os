@@ -155,8 +155,6 @@ struct WindowManager {
 
 WindowManager windowManager;
 
-void SendMessageToWindow(Window *window, EsMessage *message);
-
 #else
 
 void HIDeviceUpdateIndicators() {
@@ -272,9 +270,14 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 			window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN || message->type == ES_MSG_KEY_UP) {
-		// TODO Only send certain key messages to the container, like modifiers keys and global shortcuts.
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
-		window->owner->messageQueue.SendMessage(window->apiWindow, message);
+
+		if (message->keyboard.modifiers & (ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_FLAG | ES_MODIFIER_ALT_GR)) {
+			// Additionally send the keyboard input message to the embed parent 
+			// if Ctrl, Alt or Flag were held.
+			// (Otherwise don't, to avoid increasing typing latency.)
+			window->owner->messageQueue.SendMessage(window->apiWindow, message);
+		}
 	} else if (message->type == ES_MSG_MOUSE_EXIT) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 		window->owner->messageQueue.SendMessage(window->apiWindow, message);

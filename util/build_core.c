@@ -578,7 +578,7 @@ void BuildDesktop(Application *application) {
 	ExecuteForApp(application, toolchainStrip, "-o", "bin/Stripped Executables/Desktop", "--strip-all", "bin/Desktop");
 
 	for (uintptr_t i = 0; i < arrlenu(fontLines); i++) {
-		if (fontLines[i].key[0] == '.' || 0 == strcmp(fontLines[i].key, "license")) {
+		if ((fontLines[i].key[0] == '.' || 0 == strcmp(fontLines[i].key, "license")) && fontLines[i].value[0]) {
 			snprintf(buffer, sizeof(buffer), "res/Fonts/%s", fontLines[i].value);
 			ADD_BUNDLE_INPUT(strdup(buffer), fontLines[i].value, 16);
 		}
@@ -811,7 +811,7 @@ void OutputSystemConfiguration() {
 		"temporary=0:/" SYSTEM_FOLDER_NAME "/Temporary\n"
 		"default_settings=0:/" SYSTEM_FOLDER_NAME "/Settings\n"
 		"\n[ui_fonts]\n"
-		"fallback=Inter\n"
+		"fallback=Bitmap Sans\n"
 		"sans=Inter\n"
 		"serif=Inter\n"
 		"mono=Hack\n");

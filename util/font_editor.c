@@ -6,30 +6,11 @@
 
 #include <stdio.h>
 
+#include "../shared/bitmap_font.h"
+
 #define BITS_WIDTH (50)
 #define BITS_HEIGHT (50)
 #define ZOOM (18)
-
-typedef struct FileHeader {
-	uint16_t glyphCount;
-	uint8_t headerBytes, glyphHeaderBytes;
-	uint16_t yAscent, yDescent;
-	// Followed by glyphCount copies of FileGlyphHeader, sorted by codepoint.
-} FileHeader;
-
-typedef struct FileKerningEntry {
-	uint32_t rightCodepoint;
-	int16_t xOffset;
-	uint16_t _unused0;
-} FileKerningEntry;
-
-typedef struct FileGlyphHeader {
-	uint32_t bitsOffset; // Stored one row after another; each row is padded to a multiple of 8 bits.
-	uint32_t codepoint;
-	int16_t xOrigin, yOrigin, xAdvance;
-	uint16_t kerningEntryCount; // Stored after the bits. Not necessarily aligned!
-	uint16_t bitsWidth, bitsHeight;
-} FileGlyphHeader;
 
 typedef struct Kerning {
 	int number, xOffset;
@@ -49,34 +30,36 @@ UIWindow *window;
 UITabPane *tabPane;
 UIElement *editor;
 UIElement *kerning;
-UITextbox *previewText, *yAscentTextbox, *yDescentTextbox;
+UITextbox *previewText, *yAscentTextbox, *yDescentTextbox, *xEmWidthTextbox;
 UIScrollBar *kerningHScroll, *kerningVScroll;
 Glyph *glyphsArray;
 size_t glyphCount;
 intptr_t selectedGlyph = -1;
 int selectedPixelX, selectedPixelY;
 int selectedPairX, selectedPairY, selectedPairI, selectedPairJ;
-int yAscent, yDescent;
+int yAscent, yDescent, xEmWidth;
 char *path;
 
 void Save(void *cp) {
 	FILE *f = fopen(path, "wb");
 
 	if (f) {
-		FileHeader header = { 
+		BitmapFontHeader header = { 
+			.signature = BITMAP_FONT_SIGNATURE,
 			.glyphCount = glyphCount,
-			.headerBytes = sizeof(FileHeader),
-			.glyphHeaderBytes = sizeof(FileGlyphHeader),
+			.headerBytes = sizeof(BitmapFontHeader),
+			.glyphBytes = sizeof(BitmapFontGlyph),
 			.yAscent = yAscent,
 			.yDescent = yDescent,
+			.xEmWidth = xEmWidth,
 		};
 
 		fwrite(&header, 1, sizeof(header), f);
 
-		uint32_t bitsOffset = sizeof(FileHeader) + glyphCount * sizeof(FileGlyphHeader);
+		uint32_t bitsOffset = sizeof(BitmapFontHeader) + glyphCount * sizeof(BitmapFontGlyph);
 
 		for (uintptr_t i = 0; i < glyphCount; i++) {
-			FileGlyphHeader glyphHeader = { 
+			BitmapFontGlyph glyphHeader = { 
 				.bitsOffset = bitsOffset,
 				.codepoint = glyphsArray[i].number,
 				.xOrigin = glyphsArray[i].xOrigin - glyphsArray[i].x0,
@@ -88,7 +71,7 @@ void Save(void *cp) {
 			};
 
 			fwrite(&glyphHeader, 1, sizeof(glyphHeader), f);
-			bitsOffset += ((glyphHeader.bitsWidth + 7) >> 3) * glyphHeader.bitsHeight + sizeof(FileKerningEntry) * glyphHeader.kerningEntryCount;
+			bitsOffset += ((glyphHeader.bitsWidth + 7) >> 3) * glyphHeader.bitsHeight + sizeof(BitmapFontKerningEntry) * glyphHeader.kerningEntryCount;
 		}
 
 		for (uintptr_t i = 0; i < glyphCount; i++) {
@@ -109,10 +92,10 @@ void Save(void *cp) {
 			}
 
 			for (uintptr_t i = 0; i < g->kerningCount; i++) {
-				FileKerningEntry entry = { 0 };
+				BitmapFontKerningEntry entry = { 0 };
 				entry.rightCodepoint = g->kerningArray[i].number;
 				entry.xOffset = g->kerningArray[i].xOffset;
-				fwrite(&entry, 1, sizeof(FileKerningEntry), f);
+				fwrite(&entry, 1, sizeof(BitmapFontKerningEntry), f);
 			}
 		}
 
@@ -126,18 +109,18 @@ void Load() {
 	FILE *f = fopen(path, "rb");
 
 	if (f) {
-		FileHeader header = { 0 };
-		fread(&header, 1, 4, f);
+		BitmapFontHeader header = { 0 };
+		fread(&header, 1, 8, f);
 		if (ferror(f)) goto end;
 		fseek(f, 0, SEEK_SET);
-		fread(&header, 1, header.headerBytes > sizeof(FileHeader) ? sizeof(FileHeader) : header.headerBytes, f);
+		fread(&header, 1, header.headerBytes > sizeof(BitmapFontHeader) ? sizeof(BitmapFontHeader) : header.headerBytes, f);
 		fseek(f, header.headerBytes, SEEK_SET);
 		glyphCount = header.glyphCount;
 		glyphsArray = (Glyph *) calloc(glyphCount, sizeof(Glyph));
 		if (!glyphsArray) goto end;
 
 		for (uintptr_t i = 0; i < glyphCount; i++) {
-			FileGlyphHeader glyphHeader;
+			BitmapFontGlyph glyphHeader;
 			fread(&glyphHeader, 1, sizeof(glyphHeader), f);
 			if (ferror(f)) goto end;
 			if (glyphHeader.bitsWidth >= BITS_WIDTH || glyphHeader.bitsHeight >= BITS_HEIGHT) goto end;
@@ -168,8 +151,8 @@ void Load() {
 			}
 
 			for (uintptr_t i = 0; i < g->kerningCount; i++) {
-				FileKerningEntry entry;
-				fread(&entry, 1, sizeof(FileKerningEntry), f);
+				BitmapFontKerningEntry entry;
+				fread(&entry, 1, sizeof(BitmapFontKerningEntry), f);
 				if (ferror(f)) goto end;
 				g->kerningArray[i].number = entry.rightCodepoint;
 				g->kerningArray[i].xOffset = entry.xOffset;
@@ -185,6 +168,8 @@ void Load() {
 		UITextboxReplace(yAscentTextbox, buffer, -1, true);
 		snprintf(buffer, sizeof(buffer), "%d", header.yDescent);
 		UITextboxReplace(yDescentTextbox, buffer, -1, true);
+		snprintf(buffer, sizeof(buffer), "%d", header.xEmWidth);
+		UITextboxReplace(xEmWidthTextbox, buffer, -1, true);
 		
 		end:;
 
@@ -598,6 +583,11 @@ int main(int argc, char **argv) {
 			yDescentTextbox->e.cp = &yDescent; 
 			yDescentTextbox->e.messageUser = NumberTextboxMessage;
 			UILabelCreate(0, 0, "The sum of the ascent and descent determine the line height.", -1);
+
+			UILabelCreate(0, 0, "X em width:", -1);
+			xEmWidthTextbox = UITextboxCreate(&UIPanelCreate(0, UI_PANEL_HORIZONTAL)->e, 0); 
+			xEmWidthTextbox->e.cp = &xEmWidth; 
+			xEmWidthTextbox->e.messageUser = NumberTextboxMessage;
 		UIParentPop();
 	UIParentPop();
 

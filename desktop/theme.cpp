@@ -1307,7 +1307,7 @@ const char *GetConstantString(const char *cKey) {
 void ThemeStyleCopyInlineMetrics(UIStyle *style) {
 	style->font.family = style->metrics->fontFamily;
 	style->font.weight = style->metrics->fontWeight;
-	style->font.italic = style->metrics->isItalic;
+	style->font.flags = style->metrics->isItalic ? ES_FONT_ITALIC : ES_FLAGS_DEFAULT;
 	style->preferredWidth = style->metrics->preferredWidth;
 	style->preferredHeight = style->metrics->preferredHeight;
 	style->gapMajor = style->metrics->gapMajor;

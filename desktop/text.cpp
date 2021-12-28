@@ -5,6 +5,8 @@
 // TODO If the font size is sufficiently large disable subpixel anti-aliasing.
 // TODO Variable font support.
 
+#include <shared/bitmap_font.h>
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
@@ -24,10 +26,20 @@
 #define FALLBACK_SCRIPT (0x4C61746E) // "Latn"
 
 struct Font {
+#define FONT_TYPE_BITMAP (1)
+#define FONT_TYPE_FREETYPE_AND_HARFBUZZ (2)
+	uintptr_t type;
+
+	union {
+		const void *bitmapData; // All data has been validated to load the font.
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	FT_Face ft;
-	hb_font_t *hb;
+		struct {
+			FT_Face ft;
+			hb_font_t *hb;
+		};
 #endif
+	};
 };
 
 struct GlyphCacheKey {
@@ -182,8 +194,6 @@ struct {
 	size_t bufferPosition, bufferAllocated;
 } iconManagement;
 
-Font FontGet(EsFont key);
-
 // --------------------------------- Glyph cache.
 
 void GlyphCacheFreeEntry() {
@@ -226,141 +236,291 @@ GlyphCacheEntry *LookupGlyphCacheEntry(GlyphCacheKey key) {
 // --------------------------------- Font backend abstraction layer.
 
 bool FontLoad(Font *font, const void *data, size_t dataBytes) {
+	if (dataBytes > sizeof(BitmapFontHeader)) {
+		const BitmapFontHeader *header = (const BitmapFontHeader *) data;
+
+		if (header->signature == BITMAP_FONT_SIGNATURE && (size_t) header->headerBytes >= sizeof(BitmapFontHeader) 
+				&& (size_t) header->headerBytes < 0x80 && (size_t) header->glyphBytes < 0x80 && (size_t) header->glyphCount < 0x8000 
+				&& dataBytes > (size_t) header->headerBytes + (size_t) header->glyphCount * (size_t) header->glyphBytes
+				&& header->glyphCount >= 1 /* index 0 is used as a fallback glyph, which must be present */) {
+			for (uintptr_t i = 0; i < header->glyphCount; i++) {
+				const BitmapFontGlyph *glyph = ((const BitmapFontGlyph *) ((const uint8_t *) data + header->headerBytes + i * header->glyphBytes));
+
+				size_t bytesPerRow = (glyph->bitsWidth + 7) / 8;
+				size_t bitsStorage = (size_t) glyph->bitsHeight * bytesPerRow; 
+				size_t kerningStorage = (size_t) glyph->kerningEntryCount * sizeof(BitmapFontKerningEntry);
+
+				if (glyph->bitsWidth > 0x4000 || glyph->bitsHeight > 0x4000 || glyph->kerningEntryCount > 0x4000
+						|| glyph->bitsOffset >= dataBytes
+						|| bitsStorage > dataBytes - glyph->bitsOffset
+						|| kerningStorage > dataBytes - glyph->bitsOffset - bitsStorage) {
+					return false;
+				}
+			}
+
+			font->bitmapData = data;
+			font->type = FONT_TYPE_BITMAP;
+			return true;
+		}
+	}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 	if (!fontManagement.freetypeLibrary) {
 		FT_Init_FreeType(&fontManagement.freetypeLibrary);
 	}
 
-	if (FT_New_Memory_Face(fontManagement.freetypeLibrary, (uint8_t *) data, dataBytes, 0, &font->ft)) {
-		return false;
-	}
+	if (!FT_New_Memory_Face(fontManagement.freetypeLibrary, (uint8_t *) data, dataBytes, 0, &font->ft)) {
+		font->hb = hb_ft_font_create(font->ft, nullptr);
 
-	font->hb = hb_ft_font_create(font->ft, nullptr);
+		if (font->hb) {
+			font->type = FONT_TYPE_FREETYPE_AND_HARFBUZZ;
+			return true;
+		} else {
+			FT_Done_Face(font->ft);
+		}
+	}
 #endif
 
-	return true;
+	return false;
 }
 
 void FontSetSize(Font *font, uint32_t size) {
-#ifdef USE_FREETYPE_AND_HARFBUZZ
-	FT_Set_Char_Size(font->ft, 0, size * FREETYPE_UNIT_SCALE, 100, 100);
-	hb_ft_font_changed(font->hb);
-#endif
-}
+	if (font->type == FONT_TYPE_BITMAP) {
+		(void) size;
+		// Ignored.
+	}
 
-uint32_t FontCodepointToGlyphIndex(Font *font, uint32_t codepoint) {
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	return FT_Get_Char_Index(font->ft, codepoint);
-#endif
-}
-
-void FontGetGlyphMetrics(Font *font, uint32_t glyphIndex, uint32_t *xAdvance, uint32_t *yAdvance, uint32_t *xOffset, uint32_t *yOffset) {
-#ifdef USE_FREETYPE_AND_HARFBUZZ
-	FT_Load_Glyph(font->ft, glyphIndex, 0);
-	*xAdvance = font->ft->glyph->advance.x;
-	*yAdvance = font->ft->glyph->advance.y;
-	*xOffset = *yOffset = 0;
-#endif
-}
-
-int32_t FontGetKerning(Font *font, uint32_t previous, uint32_t next) {
-#ifdef USE_FREETYPE_AND_HARFBUZZ
-	FT_Vector kerning = {};
-	if (previous) FT_Get_Kerning(font->ft, previous, next, 0, &kerning);
-	return kerning.x;
+	if (font->type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		FT_Set_Char_Size(font->ft, 0, size * FREETYPE_UNIT_SCALE, 100, 100);
+		hb_ft_font_changed(font->hb);
+	}
 #endif
 }
 
 int32_t FontGetAscent(Font *font) {
+	if (font->type == FONT_TYPE_BITMAP) {
+		const BitmapFontHeader *header = (const BitmapFontHeader *) font->bitmapData;
+		return header->yAscent * FREETYPE_UNIT_SCALE;
+	}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	return font->ft->size->metrics.ascender;
+	if (font->type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		return font->ft->size->metrics.ascender;
+	}
 #endif
+
+	return 0;
 }
 
 int32_t FontGetDescent(Font *font) {
+	if (font->type == FONT_TYPE_BITMAP) {
+		const BitmapFontHeader *header = (const BitmapFontHeader *) font->bitmapData;
+		return header->yDescent * -FREETYPE_UNIT_SCALE;
+	}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	return font->ft->size->metrics.descender;
+	if (font->type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		return font->ft->size->metrics.descender;
+	}
 #endif
+
+	return 0;
 }
 
 int32_t FontGetEmWidth(Font *font) {
+	if (font->type == FONT_TYPE_BITMAP) {
+		const BitmapFontHeader *header = (const BitmapFontHeader *) font->bitmapData;
+		return header->xEmWidth * FREETYPE_UNIT_SCALE;
+	}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	return font->ft->size->metrics.x_ppem;
+	if (font->type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		return font->ft->size->metrics.x_ppem;
+	}
 #endif
+
+	return 0;
 }
 
 bool FontRenderGlyph(GlyphCacheKey key, GlyphCacheEntry *entry) {
-#ifdef USE_FREETYPE_AND_HARFBUZZ
-	FT_Load_Glyph(key.font.ft, key.glyphIndex, FT_LOAD_DEFAULT);
-	FT_Outline_Translate(&key.font.ft->glyph->outline, key.fractionalPosition, 0);
+	if (key.font.type == FONT_TYPE_BITMAP) {
+		const BitmapFontHeader *header = (const BitmapFontHeader *) key.font.bitmapData;
+		const BitmapFontGlyph *glyph = ((const BitmapFontGlyph *) ((const uint8_t *) key.font.bitmapData + header->headerBytes + key.glyphIndex * header->glyphBytes));
 
-	int width; 
-	int height; 
-	int xoff; 
-	int yoff; 
-	uint8_t *output;
+		entry->width = glyph->bitsWidth;
+		entry->height = glyph->bitsHeight;
+		entry->xoff = -glyph->xOrigin;
+		entry->yoff = -glyph->yOrigin;
+		entry->dataBytes = sizeof(uint8_t) * 4 * glyph->bitsWidth * glyph->bitsHeight;
+		entry->data = (uint8_t *) EsHeapAllocate(entry->dataBytes, false);
 
-	FT_Render_Glyph(key.font.ft->glyph, FT_RENDER_MODE_LCD);
-
-	FT_Bitmap *bitmap = &key.font.ft->glyph->bitmap;
-	width = bitmap->width / 3;
-	height = bitmap->rows;
-	xoff = key.font.ft->glyph->bitmap_left;
-	yoff = -key.font.ft->glyph->bitmap_top;
-
-	entry->dataBytes = 1 /*stupid hack for whitespace*/ + width * height * 4;
-	output = (uint8_t *) EsHeapAllocate(entry->dataBytes, false);
-
-	if (!output) {
-		return false;
-	}
-
-	for (int y = 0; y < height; y++) {
-		for (int x = 0; x < width; x++) {
-			int32_t r = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 0];
-			int32_t g = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 1];
-			int32_t b = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 2];
-
-			// Reduce how noticible the colour fringes are.
-			// TODO Make this adjustable?
-			int32_t average = (r + g + b) / 3;
-			r -= (r - average) / 3;
-			g -= (g - average) / 3;
-			b -= (b - average) / 3;
-
-			output[(x + y * width) * 4 + 0] = (uint8_t) r;
-			output[(x + y * width) * 4 + 1] = (uint8_t) g;
-			output[(x + y * width) * 4 + 2] = (uint8_t) b;
-			output[(x + y * width) * 4 + 3] = 0xFF;
-
-			// EsPrint("\tPixel %d, %d: red %X, green %X, blue %X\n", x, y, r, g, b);
+		if (!entry->data) {
+			return false;
 		}
-	}
 
-	if (output) {
-		entry->data = output;
-		entry->width = width;
-		entry->height = height;
-		entry->xoff = xoff;
-		entry->yoff = yoff;
+		size_t bytesPerRow = (glyph->bitsWidth + 7) / 8;
+
+		for (uintptr_t i = 0; i < glyph->bitsHeight; i++) {
+			const uint8_t *row = (const uint8_t *) key.font.bitmapData + glyph->bitsOffset + bytesPerRow * i;
+
+			for (uintptr_t j = 0; j < glyph->bitsWidth; j++) {
+				// TODO More efficient storage.
+				uint8_t byte = (row[j / 8] & (1 << (j % 8))) ? 0xFF : 0x00;
+				uint32_t copy = (byte << 24) | (byte << 16) | (byte << 8) | byte;
+				((uint32_t *) entry->data)[i * entry->width + j] = copy;
+			}
+		}
+
 		return true;
 	}
 
-	return false;
+#ifdef USE_FREETYPE_AND_HARFBUZZ
+	if (key.font.type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		FT_Load_Glyph(key.font.ft, key.glyphIndex, FT_LOAD_DEFAULT);
+		FT_Outline_Translate(&key.font.ft->glyph->outline, key.fractionalPosition, 0);
+
+		int width; 
+		int height; 
+		int xoff; 
+		int yoff; 
+		uint8_t *output;
+
+		FT_Render_Glyph(key.font.ft->glyph, FT_RENDER_MODE_LCD);
+
+		FT_Bitmap *bitmap = &key.font.ft->glyph->bitmap;
+		width = bitmap->width / 3;
+		height = bitmap->rows;
+		xoff = key.font.ft->glyph->bitmap_left;
+		yoff = -key.font.ft->glyph->bitmap_top;
+
+		entry->dataBytes = 1 /*stupid hack for whitespace*/ + width * height * 4;
+		output = (uint8_t *) EsHeapAllocate(entry->dataBytes, false);
+
+		if (!output) {
+			return false;
+		}
+
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				int32_t r = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 0];
+				int32_t g = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 1];
+				int32_t b = (int32_t) ((uint8_t *) bitmap->buffer)[x * 3 + y * bitmap->pitch + 2];
+
+				// Reduce how noticible the colour fringes are.
+				// TODO Make this adjustable?
+				int32_t average = (r + g + b) / 3;
+				r -= (r - average) / 3;
+				g -= (g - average) / 3;
+				b -= (b - average) / 3;
+
+				output[(x + y * width) * 4 + 0] = (uint8_t) r;
+				output[(x + y * width) * 4 + 1] = (uint8_t) g;
+				output[(x + y * width) * 4 + 2] = (uint8_t) b;
+				output[(x + y * width) * 4 + 3] = 0xFF;
+
+				// EsPrint("\tPixel %d, %d: red %X, green %X, blue %X\n", x, y, r, g, b);
+			}
+		}
+
+		if (output) {
+			entry->data = output;
+			entry->width = width;
+			entry->height = height;
+			entry->xoff = xoff;
+			entry->yoff = yoff;
+			return true;
+		}
+
+		return false;
+	}
 #endif
+
+	return false;
+}
+
+void FontShapeTextDone(EsTextPlan *plan, uint32_t glyphCount, TextGlyphInfo *_glyphInfos, TextGlyphPosition *_glyphPositions) {
+	if (plan->font.type == FONT_TYPE_BITMAP) {
+		(void) glyphCount;
+		Array<TextGlyphInfo> glyphInfos = { .array = _glyphInfos };
+		Array<TextGlyphPosition> glyphPositions = { .array = _glyphPositions };
+		glyphInfos.Free();
+		glyphPositions.Free();
+	}
 }
 
 void FontShapeText(EsTextPlan *plan, const char *string, size_t stringBytes, 
 		uintptr_t sectionOffsetBytes, size_t sectionCountBytes,
 		TextFeature *features, size_t featureCount,
-		uint32_t *glyphCount, TextGlyphInfo **glyphInfos, TextGlyphPosition **glyphPositions) {
+		uint32_t *glyphCount, TextGlyphInfo **_glyphInfos, TextGlyphPosition **_glyphPositions) {
+	if (plan->font.type == FONT_TYPE_BITMAP) {
+		(void) features;
+		(void) featureCount;
+		(void) stringBytes;
+
+		Array<TextGlyphInfo> glyphInfos = {};
+		Array<TextGlyphPosition> glyphPositions = {};
+
+		Font *font = &plan->font;
+		const BitmapFontHeader *header = (const BitmapFontHeader *) font->bitmapData;
+
+		const char *text = string + sectionOffsetBytes;
+
+		while (text < string + sectionOffsetBytes + sectionCountBytes) {
+			TextGlyphInfo info = {};
+			TextGlyphPosition position = {};
+			info.cluster = text - (string + sectionOffsetBytes);
+			uint32_t codepoint = utf8_value(text, string + sectionOffsetBytes + sectionCountBytes - text, nullptr);
+			if (!codepoint) break;
+			text = utf8_advance(text);
+
+			bool glyphFound = false;
+			uint32_t glyphIndex = 0;
+			ES_MACRO_SEARCH(header->glyphCount, result = codepoint - ((const BitmapFontGlyph *) ((const uint8_t *) 
+							font->bitmapData + header->headerBytes + index * header->glyphBytes))->codepoint;, glyphIndex, glyphFound);
+			info.codepoint = glyphFound ? glyphIndex : 0;
+
+			const BitmapFontGlyph *glyph = ((const BitmapFontGlyph *) ((const uint8_t *) 
+						font->bitmapData + header->headerBytes + info.codepoint * header->glyphBytes));
+			size_t bytesPerRow = (glyph->bitsWidth + 7) / 8;
+			position.x_advance = glyph->xAdvance * FREETYPE_UNIT_SCALE;
+
+			if (glyph->kerningEntryCount && text < string + sectionOffsetBytes + sectionCountBytes) {
+				uint32_t nextCodepoint = utf8_value(text, string + sectionOffsetBytes + sectionCountBytes - text, nullptr);
+
+				for (uintptr_t i = 0; i < glyph->kerningEntryCount; i++) {
+					BitmapFontKerningEntry entry;
+					EsMemoryCopy(&entry, (const uint8_t *) font->bitmapData + glyph->bitsOffset 
+							+ bytesPerRow * glyph->bitsHeight + sizeof(BitmapFontKerningEntry) * i, sizeof(BitmapFontKerningEntry));
+
+					if (entry.rightCodepoint == nextCodepoint) {
+						position.x_advance += entry.xOffset * FREETYPE_UNIT_SCALE;
+						break;
+					}
+				}
+			}
+
+			glyphInfos.Add(info);
+			glyphPositions.Add(position);
+		}
+
+		*glyphCount = glyphInfos.Length();
+		*_glyphInfos = &glyphInfos[0];
+		*_glyphPositions = &glyphPositions[0];
+
+		return;
+	}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-	hb_buffer_clear_contents(plan->buffer);
-	hb_buffer_set_segment_properties(plan->buffer, &plan->segmentProperties);
-	hb_buffer_add_utf8(plan->buffer, string, stringBytes, sectionOffsetBytes, sectionCountBytes);
-	hb_shape(plan->font.hb, plan->buffer, features, featureCount);
-	*glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, glyphCount);
-	*glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, glyphCount);
+	if (plan->font.type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+		hb_buffer_clear_contents(plan->buffer);
+		hb_buffer_set_segment_properties(plan->buffer, &plan->segmentProperties);
+		hb_buffer_add_utf8(plan->buffer, string, stringBytes, sectionOffsetBytes, sectionCountBytes);
+		hb_shape(plan->font.hb, plan->buffer, features, featureCount);
+		*_glyphInfos = hb_buffer_get_glyph_infos(plan->buffer, glyphCount);
+		*_glyphPositions = hb_buffer_get_glyph_positions(plan->buffer, glyphCount);
+		return;
+	}
 #endif
 }
 
@@ -377,9 +537,11 @@ uint32_t FontGetScriptFromCodepoint(uint32_t codepoint, bool *inheritingScript) 
 	uint32_t script = hb_unicode_script(unicodeFunctions, codepoint);
 	*inheritingScript = script == HB_SCRIPT_COMMON || script == HB_SCRIPT_INHERITED;
 	return script;
-#endif
-
+#else
+	(void) codepoint;
+	*inheritingScript = false;
 	return FALLBACK_SCRIPT;
+#endif
 }
 
 void FontInitialiseShaping(EsTextPlan *plan) {
@@ -389,6 +551,8 @@ void FontInitialiseShaping(EsTextPlan *plan) {
 	plan->segmentProperties.direction = (plan->properties.flags & ES_TEXT_PLAN_RTL) ? HB_DIRECTION_RTL : HB_DIRECTION_LTR;
 	plan->segmentProperties.script = (TextScript) FALLBACK_SCRIPT;
 	plan->segmentProperties.language = hb_language_from_string(plan->properties.cLanguage ?: FALLBACK_SCRIPT_LANGUAGE, -1);
+#else
+	(void) plan;
 #endif
 }
 
@@ -396,6 +560,8 @@ void FontDestroyShaping(EsTextPlan *plan) {
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 	hb_buffer_destroy(plan->buffer);
 	plan->buffer = nullptr;
+#else
+	(void) plan;
 #endif
 }
 
@@ -681,7 +847,7 @@ Font FontGet(EsFont key) {
 		if (entry->files[i]) {
 			int weight = (i % 9) + 1;
 			bool italic = i >= 9;
-			int distance = ((italic != key.italic) ? 10 : 0) + AbsoluteInteger(weight - key.weight);
+			int distance = ((italic != ((key.flags & ES_FONT_ITALIC) ? true : false)) ? 10 : 0) + AbsoluteInteger(weight - key.weight);
 
 			if (distance < matchDistance) {
 				matchDistance = distance;
@@ -691,8 +857,9 @@ Font FontGet(EsFont key) {
 	}
 
 	if (!file) {
-		EsPrint("Could not load font (f%d/w%d/i%d).\n", key.family, key.weight, key.italic);
-		return {};
+		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		key.family = fontManagement.fallback;
+		return FontGet(key);
 	}
 
 	// EsPrint("Loading font from '%z' (f%d/w%d/i%d).\n", file, key.family, key.weight, key.italic);
@@ -701,15 +868,17 @@ Font FontGet(EsFont key) {
 	void *data = EsFileStoreMap(file, &size, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 
 	if (!data) {
-		EsPrint("Could not load font (f%d/w%d/i%d).\n", key.family, key.weight, key.italic);
-		return {};
+		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		key.family = fontManagement.fallback;
+		return FontGet(key);
 	}
 
 	Font font = {};
 
 	if (!FontLoad(&font, data, size)) {
-		EsPrint("Could not load font (f%d/w%d/i%d).\n", key.family, key.weight, key.italic);
-		return {};
+		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		key.family = fontManagement.fallback;
+		return FontGet(key);
 	}
 
 	*fontManagement.loaded.Put(&key) = font;
@@ -724,9 +893,16 @@ void FontDatabaseFree() {
 	for (uintptr_t i = 0; i < fontManagement.loaded.Count(); i++) {
 		// TODO Unmap file store data.
 		Font font = fontManagement.loaded[i];
+
+		if (font.type == FONT_TYPE_BITMAP) {
+			// Nothing to be done.
+		}
+
 #ifdef USE_FREETYPE_AND_HARFBUZZ
-		hb_font_destroy(font.hb);
-		FT_Done_Face(font.ft);
+		if (font.type == FONT_TYPE_FREETYPE_AND_HARFBUZZ) {
+			hb_font_destroy(font.hb);
+			FT_Done_Face(font.ft);
+		}
 #endif
 	}
 
@@ -1378,7 +1554,7 @@ TextStyleDifference CompareTextStyles(const EsTextStyle *style1, const EsTextSty
 	if (!style1) return TEXT_STYLE_NEW_FONT;
 	if (style1->font.family 	!= style2->font.family) 	return TEXT_STYLE_NEW_FONT;
 	if (style1->font.weight 	!= style2->font.weight) 	return TEXT_STYLE_NEW_FONT;
-	if (style1->font.italic 	!= style2->font.italic) 	return TEXT_STYLE_NEW_FONT;
+	if (style1->font.flags 		!= style2->font.flags) 		return TEXT_STYLE_NEW_FONT;
 	if (style1->size 		!= style2->size) 		return TEXT_STYLE_NEW_FONT;
 	if (style1->baselineOffset 	!= style2->baselineOffset) 	return TEXT_STYLE_NEW_SHAPE;
 	if (style1->tracking 		!= style2->tracking) 		return TEXT_STYLE_NEW_SHAPE;
@@ -1656,6 +1832,8 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 		line->ellipsisPieceIndex = plan->pieces.Length();
 		plan->pieces.Add(piece);
 	}
+
+	FontShapeTextDone(plan, glyphCount, glyphInfos, glyphPositions);
 }
 
 void TextItemizeByScript(EsTextPlan *plan, const EsTextRun *runs, size_t runCount, float sizeScaleFactor) {
@@ -1865,6 +2043,8 @@ int32_t TextBuildTextPieces(EsTextPlan *plan, uintptr_t sectionStart, uintptr_t 
 		// Go to the next run.
 
 		plan->textRunPosition++;
+
+		FontShapeTextDone(plan, glyphCount, glyphInfos, glyphPositions);
 	}
 
 	plan->textRunPosition--;
@@ -2414,7 +2594,7 @@ void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 					i++; if (i >= inStringBytes || inString[i] == ']') goto parsedFormat;
 					textRun->style.font.weight = inString[i] - '0';
 				} else if (c == 'i' /* italic */) {
-					textRun->style.font.italic = true;
+					textRun->style.font.flags |= ES_FONT_ITALIC;
 				} else if (c == 's' /* size */) {
 					textRun->style.size = 0;
 

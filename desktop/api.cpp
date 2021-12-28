@@ -261,7 +261,8 @@ const void *const apiTable[] = {
 };
 
 #ifdef PAUSE_ON_USERLAND_CRASH
-ES_EXTERN_C uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t unused, uintptr_t argument3, uintptr_t argument4) {
+__attribute__((no_instrument_function))
+uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uintptr_t argument2, uintptr_t unused, uintptr_t argument3, uintptr_t argument4) {
 	uintptr_t returnValue = _APISyscall(argument0, argument1, argument2, unused, argument3, argument4);
 	EsProcessState state;
 	_APISyscall(ES_SYSCALL_PROCESS_GET_STATE, ES_CURRENT_PROCESS, (uintptr_t) &state, 0, 0, 0);
@@ -1486,27 +1487,25 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 		EsMemoryCopy(ES_API_BASE, apiTable, sizeof(apiTable));
 	}
 
-	{
-		// Initialise the API.
+	// Initialise the API.
 
-		_init();
-		EsRandomSeed(ProcessorReadTimeStamp());
-		ThreadInitialise(&threadLocalStorage);
-		EsMessageMutexAcquire();
+	_init();
+	EsRandomSeed(ProcessorReadTimeStamp());
+	ThreadInitialise(&threadLocalStorage);
+	EsMessageMutexAcquire();
 
-		api.global = (GlobalData *) EsMemoryMapObject(api.startupInformation->globalDataRegion, 
-				0, sizeof(GlobalData), isDesktop ? ES_MEMORY_MAP_OBJECT_READ_WRITE : ES_MEMORY_MAP_OBJECT_READ_ONLY);
-		theming.scale = api.global->uiScale; // We'll receive ES_MSG_UI_SCALE_CHANGED when this changes.
-	}
+	api.global = (GlobalData *) EsMemoryMapObject(api.startupInformation->globalDataRegion, 
+			0, sizeof(GlobalData), isDesktop ? ES_MEMORY_MAP_OBJECT_READ_WRITE : ES_MEMORY_MAP_OBJECT_READ_ONLY);
+	theming.scale = api.global->uiScale; // We'll receive ES_MSG_UI_SCALE_CHANGED when this changes.
+
+#ifdef PROFILE_DESKTOP_FUNCTIONS
+	size_t profilingBufferSize = 64 * 1024 * 1024;
+	GfProfilingInitialise((ProfilingEntry *) EsHeapAllocate(profilingBufferSize, true), 
+			profilingBufferSize / sizeof(ProfilingEntry), api.startupInformation->timeStampTicksPerMs);
+#endif
 
 	if (isDesktop) {
 		EsPrint("Reached Desktop process.\n");
-
-#ifdef PROFILE_DESKTOP_FUNCTIONS
-		size_t profilingBufferSize = 64 * 1024 * 1024;
-		GfProfilingInitialise((ProfilingEntry *) EsHeapAllocate(profilingBufferSize, true), 
-				profilingBufferSize / sizeof(ProfilingEntry), api.startupInformation->timeStampTicksPerMs);
-#endif
 
 		// Process messages until we find the boot file system.
 

@@ -777,7 +777,7 @@ static bool ControlTransferWrapper(KUSBDevice *_device, uint8_t flags, uint8_t r
 
 void XHCIController::OnPortEnable(uintptr_t port) {
 	uint32_t speed = (RD_REGISTER_PORTSC(port) >> 10) & 0xF;
-	uint32_t maximumPacketSize = speed == SPEED_LOW ? 8 : speed == SPEED_FULL ? 8 : speed == SPEED_HIGH ? 64 : speed == 4 ? SPEED_SUPER : 0;
+	uint32_t maximumPacketSize = speed == SPEED_LOW ? 8 : speed == SPEED_FULL ? 8 : speed == SPEED_HIGH ? 64 : speed == SPEED_SUPER ? 512 : 0;
 	ports[port].speed = speed;
 	ports[port].controlEndpoint.maximumPacketSize = maximumPacketSize;
 
