@@ -2606,7 +2606,7 @@ void CanvasDrawStyle(Object *object, UIRectangle bounds, UIPainter *painter, int
 		EsTextStyle textStyle = {};
 		textStyle.font.family = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "fontFamily"));
 		textStyle.font.weight = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "fontWeight"));
-		textStyle.font.italic = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isItalic"));
+		textStyle.font.flags = (GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "isItalic"))) ? ES_FONT_ITALIC : ES_FLAGS_DEFAULT;
 		textStyle.size = GraphGetIntegerFromProperty(PropertyFindOrInherit(object, "textSize")) * canvas->zoom;
 		textStyle.color = GraphGetColorFromProperty(PropertyFindOrInherit(object, "textColor"));
 		EsDrawTextSimple((_EsPainter *) &themePainter, ui.instance->window, bounds, "Sample", -1, textStyle, ES_TEXT_H_CENTER | ES_TEXT_V_CENTER); 
