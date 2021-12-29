@@ -153,6 +153,8 @@ void ProcessorOut8Delayed(uint16_t port, uint8_t value) {
 	ProcessorOut8(port, value);
 
 	// Read an unused port to get a short delay.
+	// TODO This might hang some old laptops after ACPI is enabled.
+	// 	See https://lwn.net/Articles/263418/
 	ProcessorIn8(IO_UNUSED_DELAY);
 }
 

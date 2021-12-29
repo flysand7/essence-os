@@ -567,10 +567,10 @@ void BuildDesktop(Application *application) {
 	char buffer[4096];
 
 	snprintf(buffer, sizeof(buffer), "arch/%s/api.s", target);
-	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/Dependency Files/api1.d", "-o", "bin/Object Files/api1.o", ArgString(commonAssemblyFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/api2.d", "-c", "desktop/api.cpp", "-o", "bin/Object Files/api2.o", 
+	ExecuteForApp(application, toolchainNasm, buffer, "-MD", "bin/dependency_files/api1.d", "-o", "bin/Object Files/api1.o", ArgString(commonAssemblyFlags));
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/dependency_files/api2.d", "-c", "desktop/api.cpp", "-o", "bin/Object Files/api2.o", 
 			ArgString(commonCompileFlags), ArgString(desktopProfilingFlags));
-	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/api3.d", "-c", "desktop/posix.cpp", "-o", "bin/Object Files/api3.o", 
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/dependency_files/api3.d", "-c", "desktop/posix.cpp", "-o", "bin/Object Files/api3.o", 
 			ArgString(commonCompileFlags));
 	ExecuteForApp(application, toolchainCC, "-o", "bin/Desktop", "bin/Object Files/crti.o", "bin/Object Files/crtbegin.o", 
 			"bin/Object Files/api1.o", "bin/Object Files/api2.o", "bin/Object Files/api3.o", "bin/Object Files/crtend.o", "bin/Object Files/crtn.o", 
@@ -650,7 +650,7 @@ void BuildApplication(Application *application) {
 
 			char objectFile[256], dependencyFile[256];
 			snprintf(objectFile, sizeof(objectFile), "bin/Object Files/%s_%d.o", application->name, (int) i);
-			snprintf(dependencyFile, sizeof(dependencyFile), "bin/Dependency Files/%s_%d.d", application->name, (int) i);
+			snprintf(dependencyFile, sizeof(dependencyFile), "bin/dependency_files/%s_%d.d", application->name, (int) i);
 			objectFilesPosition += sprintf(objectFiles + objectFilesPosition, "\"%s\" ", objectFile);
 
 			bool isC = sourceBytes > 2 && source[sourceBytes - 1] == 'c' && source[sourceBytes - 2] == '.';
@@ -793,7 +793,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 	for (uintptr_t i = 0; i < arrlenu(application.sources); i++) {
 		DependencyFile dependencyFile = {};
 		dependencyFile.name = application.name;
-		snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/Dependency Files/%s_%d.d", application.name, (int) i);
+		snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/dependency_files/%s_%d.d", application.name, (int) i);
 		arrput(application.dependencyFiles, dependencyFile);
 	}
 
@@ -903,7 +903,7 @@ void OutputSystemConfiguration() {
 void BuildModule(Application *application) {
 	char output[256], dependencyFile[256];
 	snprintf(output, sizeof(output), "bin/Object Files/%s.ekm", application->name);
-	snprintf(dependencyFile, sizeof(dependencyFile), "bin/Dependency Files/%s.d", application->name);
+	snprintf(dependencyFile, sizeof(dependencyFile), "bin/dependency_files/%s.d", application->name);
 
 	assert(arrlenu(application->sources) == 1);
 	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", dependencyFile, "-c", application->sources[0], "-o", 
@@ -1021,11 +1021,11 @@ void ParseKernelConfiguration() {
 	FilePrintFormat(f, "#endif");
 	FileClose(f);
 
-	f = FileOpen("bin/Dependency Files/system_config.d", 'w');
+	f = FileOpen("bin/dependency_files/system_config.d", 'w');
 	FilePrintFormat(f, ": kernel/config.ini\n");
 	FileClose(f);
-	ParseDependencies("bin/Dependency Files/system_config.d", "Kernel Config", false);
-	DeleteFile("bin/Dependency Files/system_config.d");
+	ParseDependencies("bin/dependency_files/system_config.d", "Kernel Config", false);
+	DeleteFile("bin/dependency_files/system_config.d");
 }
 
 void LinkKernel() {
@@ -1082,22 +1082,22 @@ void LinkKernel() {
 void BuildKernel(Application *application) {
 	char buffer[4096];
 	snprintf(buffer, sizeof(buffer), "arch/%s/kernel.s", target);
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/kernel2.d", buffer, "-o", "bin/Object Files/kernel_arch.o", ArgString(commonAssemblyFlags));
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/dependency_files/kernel2.d", buffer, "-o", "bin/Object Files/kernel_arch.o", ArgString(commonAssemblyFlags));
 	snprintf(buffer, sizeof(buffer), "-DARCH_KERNEL_SOURCE=<arch/%s/kernel.cpp>", target);
-	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/Dependency Files/kernel.d", "-c", "kernel/main.cpp", "-o", "bin/Object Files/kernel.o", 
+	ExecuteForApp(application, toolchainCXX, "-MD", "-MF", "bin/dependency_files/kernel.d", "-c", "kernel/main.cpp", "-o", "bin/Object Files/kernel.o", 
 			ArgString(kernelCompileFlags), ArgString(cppCompileFlags), ArgString(commonCompileFlags), buffer);
 	if (application->error) __sync_fetch_and_or(&encounteredErrorsInKernelModules, 1);
 }
 
 void BuildBootloader(Application *application) {
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot1.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/dependency_files/boot1.d", "-fbin", 
 			forEmulator ? "boot/x86/mbr.s" : "boot/x86/mbr-emu.s" , "-obin/mbr");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot2.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/dependency_files/boot2.d", "-fbin", 
 			"boot/x86/esfs-stage1.s", "-obin/stage1");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot3.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/dependency_files/boot3.d", "-fbin", 
 			"boot/x86/loader.s", "-obin/stage2", 
 			"-Pboot/x86/esfs-stage2.s", (forEmulator && !bootUseVBE) ? "" : "-D BOOT_USE_VBE");
-	ExecuteForApp(application, toolchainNasm, "-MD", "bin/Dependency Files/boot4.d", "-fbin", 
+	ExecuteForApp(application, toolchainNasm, "-MD", "bin/dependency_files/boot4.d", "-fbin", 
 			"boot/x86/uefi_loader.s", "-obin/uefi_loader");
 }
 
@@ -1417,7 +1417,7 @@ int main(int argc, char **argv) {
 					if (driverSource && *driverSource) {
 						DependencyFile dependencyFile = {};
 						dependencyFile.name = driverName;
-						snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/Dependency Files/%s.d", driverName);
+						snprintf(dependencyFile.path, sizeof(dependencyFile.path), "bin/dependency_files/%s.d", driverName);
 
 						Application application = {};
 						arrput(application.sources, driverSource);
@@ -1474,7 +1474,7 @@ int main(int argc, char **argv) {
 	}
 
 	MakeDirectory("bin");
-	MakeDirectory("bin/Dependency Files");
+	MakeDirectory("bin/dependency_files");
 	MakeDirectory("bin/Object Files");
 	MakeDirectory("bin/Stripped Executables");
 	MakeDirectory("bin/generated_code");
@@ -1541,10 +1541,10 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Bootloader";
 			application.buildCallback = BuildBootloader;
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot1.d", "Boot1");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot2.d", "Boot2");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot3.d", "Boot3");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/boot4.d", "Boot4");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/boot1.d", "Boot1");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/boot2.d", "Boot2");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/boot3.d", "Boot3");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/boot4.d", "Boot4");
 			arrput(applications, application);
 		}
 
@@ -1552,9 +1552,9 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Desktop";
 			application.buildCallback = BuildDesktop;
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api1.d", "API1");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api2.d", "API2");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/api3.d", "API3");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/api1.d", "API1");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/api2.d", "API2");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/api3.d", "API3");
 			arrput(applications, application);
 		}
 
@@ -1568,8 +1568,8 @@ int main(int argc, char **argv) {
 			Application application = {};
 			application.name = "Kernel";
 			application.buildCallback = BuildKernel;
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/kernel.d", "Kernel1");
-			ADD_DEPENDENCY_FILE(application, "bin/Dependency Files/kernel2.d", "Kernel2");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/kernel.d", "Kernel1");
+			ADD_DEPENDENCY_FILE(application, "bin/dependency_files/kernel2.d", "Kernel2");
 			arrput(applications, application);
 		}
 

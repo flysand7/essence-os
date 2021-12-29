@@ -923,6 +923,7 @@ struct KGraphicsTarget : KDevice {
 	void (*updateScreen)(K_USER_BUFFER const uint8_t *source, uint32_t sourceWidth, uint32_t sourceHeight, uint32_t sourceStride, 
 			uint32_t destinationX, uint32_t destinationY);
 	void (*debugPutBlock)(uintptr_t x, uintptr_t y, bool toggle);
+	int (*debugPutData)(const uint8_t *data, size_t dataBytes); // Return the width used. dataBytes must be a multiple of 16.
 	void (*debugClearScreen)();
 };
 
@@ -938,6 +939,8 @@ void GraphicsUpdateScreen24(K_USER_BUFFER const uint8_t *_source, uint32_t sourc
 		uint32_t destinationX, uint32_t destinationY,
 		uint32_t width, uint32_t height, uint32_t stride, volatile uint8_t *pixel);
 void GraphicsDebugPutBlock32(uintptr_t x, uintptr_t y, bool toggle,
+		unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer);
+int GraphicsDebugPutData32(const uint8_t *data, size_t dataBytes,
 		unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer);
 void GraphicsDebugClearScreen32(unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer);
 

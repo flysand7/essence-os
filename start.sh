@@ -4,7 +4,7 @@
 cd "$(dirname "$0")"
 
 # Create the bin directories.
-mkdir -p bin bin/Dependency\ Files bin/Logs bin/generated_code bin/cache
+mkdir -p bin bin/dependency_files bin/Logs bin/generated_code bin/cache
 
 # Check that we are running on a sensible platform.
 uname -o | grep Cygwin > /dev/null

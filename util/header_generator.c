@@ -8,7 +8,7 @@ int position;
 #define DEST_API_ARRAY "bin/generated_code/api_array.h"
 #define DEST_SYSCALL_ARRAY "bin/generated_code/syscall_array.h"
 #define DEST_ENUM_STRINGS_ARRAY "bin/generated_code/enum_strings_array.h"
-#define DEST_DEPENDENCIES "bin/Dependency Files/api_header.d"
+#define DEST_DEPENDENCIES "bin/dependency_files/api_header.d"
 
 typedef struct Token {
 #define TOKEN_IDENTIFIER (1)

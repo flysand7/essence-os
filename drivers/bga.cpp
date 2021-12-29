@@ -25,6 +25,13 @@ void BGADebugPutBlock(uintptr_t x, uintptr_t y, bool toggle) {
 			((KPCIDevice *) vboxDisplay->parent)->baseAddressesVirtual[0]);
 }
 
+int BGADebugPutData(const uint8_t *data, size_t dataBytes) {
+	return GraphicsDebugPutData32(data, dataBytes, 
+			vboxDisplay->screenWidth, vboxDisplay->screenHeight, 
+			vboxDisplay->screenWidth * 4, 
+			((KPCIDevice *) vboxDisplay->parent)->baseAddressesVirtual[0]);
+}
+
 void BGADebugClearScreen() {
 	GraphicsDebugClearScreen32(vboxDisplay->screenWidth, vboxDisplay->screenHeight, 
 			vboxDisplay->screenWidth * 4, 
@@ -67,6 +74,7 @@ void BGADeviceAttached(KDevice *_parent) {
 	// Setup the graphics target.
 	device->updateScreen = BGAUpdateScreen;
 	device->debugPutBlock = BGADebugPutBlock;
+	device->debugPutData = BGADebugPutData;
 	device->debugClearScreen = BGADebugClearScreen;
 	ProcessorOut16(IO_BGA_INDEX, 1 /* x resolution */);
 	device->screenWidth = ProcessorIn16(IO_BGA_DATA);

@@ -25,6 +25,7 @@ void KernelMain(uintptr_t) {
 	desktopProcess = ProcessSpawn(PROCESS_DESKTOP);			// Spawn the desktop process.
 	DriversInitialise();						// Load the root device.
 	ProcessStart(desktopProcess, EsLiteral(K_DESKTOP_EXECUTABLE));	// Start the desktop process.
+	KernelPanic("Test\n");
 	KEventWait(&shutdownEvent, ES_WAIT_NO_TIMEOUT);			// Wait for a shutdown request.
 	ProcessTerminateAll();						// Terminate all user processes.
 	FSShutdown();							// Flush file cache and unmount filesystems.

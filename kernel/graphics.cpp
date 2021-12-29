@@ -591,6 +591,35 @@ void GraphicsDebugPutBlock32(uintptr_t x, uintptr_t y, bool toggle,
 	linearBuffer[(y + 1) * stride + (x + 1) * 4 + 2] = 0;
 }
 
+int GraphicsDebugPutData32(const uint8_t *data, size_t dataBytes,
+		unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer) {
+	uintptr_t width = (dataBytes + screenHeight * 2 - 1) / (screenHeight * 2);
+	uintptr_t x = screenWidth - width, y = 0;
+
+	for (uintptr_t i = 0; i < dataBytes; i += 2) {
+		linearBuffer[y * stride + x * 4 + 0] = data[i];
+		linearBuffer[y * stride + x * 4 + 1] = data[i + 1];
+		// Leave the red channel unmodified so we can see through to the crashed desktop state.
+		if (++x == screenWidth) x -= width, y++;
+	}
+
+	// Detection pattern.
+	linearBuffer[0                  * stride + (screenWidth - width + 0) * 4 + 2] = 0x12;
+	linearBuffer[0                  * stride + (screenWidth - width + 1) * 4 + 2] = 0x34;
+	linearBuffer[0                  * stride + (screenWidth - width + 2) * 4 + 2] = 0x56;
+	linearBuffer[0                  * stride + (screenWidth - width + 3) * 4 + 2] = 0x78;
+	linearBuffer[0                  * stride + (screenWidth - 1     - 0) * 4 + 2] = 0x12;
+	linearBuffer[0                  * stride + (screenWidth - 1     - 1) * 4 + 2] = 0x34;
+	linearBuffer[0                  * stride + (screenWidth - 1     - 2) * 4 + 2] = 0x56;
+	linearBuffer[0                  * stride + (screenWidth - 1     - 3) * 4 + 2] = 0x78;
+	linearBuffer[(screenHeight - 1) * stride + (screenWidth - 1     - 0) * 4 + 2] = 0x12;
+	linearBuffer[(screenHeight - 1) * stride + (screenWidth - 1     - 1) * 4 + 2] = 0x34;
+	linearBuffer[(screenHeight - 1) * stride + (screenWidth - 1     - 2) * 4 + 2] = 0x56;
+	linearBuffer[(screenHeight - 1) * stride + (screenWidth - 1     - 3) * 4 + 2] = 0x78;
+
+	return width;
+}
+
 void GraphicsDebugClearScreen32(unsigned screenWidth, unsigned screenHeight, unsigned stride, volatile uint8_t *linearBuffer) {
 	for (uintptr_t i = 0; i < screenHeight; i++) {
 		for (uintptr_t j = 0; j < screenWidth * 4; j += 4) {

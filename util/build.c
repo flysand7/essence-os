@@ -149,7 +149,7 @@ int CallSystemF(const char *format, ...) {
 void BuildAPIDependencies() {
 	if (CheckDependencies("API Header")) {
 		CallSystem("bin/build_core headers");
-		ParseDependencies("bin/Dependency Files/api_header.d", "API Header", false);
+		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 
 	CallSystem("ports/musl/build.sh " TARGET_NAME);
@@ -366,8 +366,8 @@ void BuildUtilities() {
 
 #define BUILD_UTILITY(x, y, z) \
 	if (CheckDependencies("Utilities." x)) { \
-		if (!CallSystem("gcc -MMD -MF \"bin/Dependency Files/" x ".d\" " "util/" z x ".c -o bin/" x " -g " WARNING_FLAGS " " y)) { \
-			ParseDependencies("bin/Dependency Files/" x ".d", "Utilities." x, false); \
+		if (!CallSystem("gcc -MMD -MF \"bin/dependency_files/" x ".d\" " "util/" z x ".c -o bin/" x " -g " WARNING_FLAGS " " y)) { \
+			ParseDependencies("bin/dependency_files/" x ".d", "Utilities." x, false); \
 		} \
 	}
 
@@ -1233,9 +1233,9 @@ void DoCommand(const char *l) {
 		}
 	} else if (0 == strcmp(l, "designer2")) {
 		if (CheckDependencies("Utilities.Designer")) {
-			if (!CallSystem("g++ -MMD -MF \"bin/Dependency Files/designer2.d\" -D UI_LINUX -O3 "
+			if (!CallSystem("g++ -MMD -MF \"bin/dependency_files/designer2.d\" -D UI_LINUX -O3 "
 						"util/designer2.cpp -o bin/designer2 -g -lX11 -Wno-unused-parameter " WARNING_FLAGS)) {
-				ParseDependencies("bin/Dependency Files/designer2.d", "Utilities.Designer", false);
+				ParseDependencies("bin/dependency_files/designer2.d", "Utilities.Designer", false);
 			}
 		}
 
