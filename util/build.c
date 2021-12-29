@@ -107,6 +107,7 @@ BuildFont fonts[] = {
 
 	{ "Bitmap Sans", "", "Sans", "Latn", (FontFile []) {
 		{ "4", "Bitmap Sans Regular 9.font" },
+		{ "7", "Bitmap Sans Bold 9.font" },
 		{},
 	} },
 

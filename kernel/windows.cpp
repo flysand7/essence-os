@@ -272,9 +272,13 @@ void SendMessageToWindow(Window *window, EsMessage *message) {
 	} else if (message->type == ES_MSG_KEY_DOWN || message->type == ES_MSG_KEY_UP) {
 		window->embed->owner->messageQueue.SendMessage(window->embed->apiWindow, message);
 
-		if (message->keyboard.modifiers & (ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_FLAG | ES_MODIFIER_ALT_GR)) {
+		if ((message->keyboard.modifiers & (ES_MODIFIER_CTRL | ES_MODIFIER_ALT | ES_MODIFIER_FLAG | ES_MODIFIER_ALT_GR))
+				|| message->keyboard.scancode == ES_SCANCODE_LEFT_CTRL || message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL
+				|| message->keyboard.scancode == ES_SCANCODE_LEFT_SHIFT || message->keyboard.scancode == ES_SCANCODE_RIGHT_SHIFT
+				|| message->keyboard.scancode == ES_SCANCODE_LEFT_ALT || message->keyboard.scancode == ES_SCANCODE_RIGHT_ALT
+				|| message->keyboard.scancode == ES_SCANCODE_LEFT_FLAG || message->keyboard.scancode == ES_SCANCODE_RIGHT_FLAG) {
 			// Additionally send the keyboard input message to the embed parent 
-			// if Ctrl, Alt or Flag were held.
+			// if Ctrl, Alt or Flag were held, or this is a modifier change message.
 			// (Otherwise don't, to avoid increasing typing latency.)
 			window->owner->messageQueue.SendMessage(window->apiWindow, message);
 		}

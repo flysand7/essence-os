@@ -14,6 +14,14 @@ Alternatively, visit the forums (not very active): https://essence.handmade.netw
 
 To support development, you can donate to my Patreon: https://www.patreon.com/nakst.
 
+## Testing
+
+You can download and test the latest nightly build from https://github.com/nakst/build-essence/releases. Download and extract `Essence.tar.xz`. If you are using VirtualBox, import `Essence.ova`. If you are using Qemu, run 
+
+    qemu-kvm -drive file=drive,format=raw -m 2048 -smp 2 || qemu-system-x86_64 -enable-kvm -drive file=drive,format=raw -m 2048 -smp 2
+
+These builds are configured to run on emulators only, to make testing easier. Builds for real hardware are coming soon :)
+
 ## Building
 
 See `help/Building.md` for a description of how to build and test the system.
