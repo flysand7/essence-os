@@ -14,6 +14,10 @@ Alternatively, visit the forums (not very active): https://essence.handmade.netw
 
 To support development, you can donate to my Patreon: https://www.patreon.com/nakst.
 
+## Building
+
+See `help/Building.md` for a description of how to build and test the system.
+
 ## Features
 
 Kernel
@@ -55,7 +59,3 @@ Desktop
 * Software vector renderer with complex animation support.
 * Tabbed windows.
 * Multi-lingual text rendering and layout with FreeType and Harfbuzz.
-
-## Building
-
-See `help/Building.md` for a description of how to build and test the system.
