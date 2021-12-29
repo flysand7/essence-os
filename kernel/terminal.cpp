@@ -97,6 +97,7 @@ void DebugWriteCharacter(uintptr_t character) {
 	if (!graphics.target || !graphics.target->debugPutBlock) return;
 
 	if (debugCurrentRow == debugRows) {
+#if 0
 		debugCurrentRow = 0;
 
 		// uint64_t start = ProcessorReadTimeStamp();
@@ -104,6 +105,9 @@ void DebugWriteCharacter(uintptr_t character) {
 		// while (ProcessorReadTimeStamp() < end);
 
 		graphics.target->debugClearScreen();
+#else
+		return;
+#endif
 	}
 
 	uintptr_t row = debugCurrentRow;
@@ -411,6 +415,11 @@ void KernelPanic(const char *format, ...) {
 	}
 #else
 	EsPrint("End of report.\n");
+
+	if (graphics.target->debugPutData) {
+		// We put the log data on the screen before and after the panic report in case it gets stuck.
+		graphics.target->debugPutData((const uint8_t *) kernelLog, KERNEL_LOG_SIZE);
+	}
 #endif
 
 	ProcessorHalt();
