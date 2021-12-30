@@ -1778,6 +1778,10 @@ struct EsListView : EsElement {
 			groups.Free();
 			activeColumns.Free();
 			registeredColumns.Free();
+
+			if (EsElementIsFocused(this)) {
+				EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_SELECT_ALL), nullptr);
+			}
 		} else if (message->type == ES_MSG_KEY_UP) {
 			if (message->keyboard.scancode == ES_SCANCODE_LEFT_CTRL || message->keyboard.scancode == ES_SCANCODE_RIGHT_CTRL) {
 				SelectPreview();
@@ -1833,6 +1837,7 @@ struct EsListView : EsElement {
 				item->element->MaybeRefreshStyle();
 			}
 
+			// Also done in ES_MSG_DESTROY:
 			EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_SELECT_ALL), nullptr);
 		} else if (message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
 			// Make sure that right clicking will focus the list.

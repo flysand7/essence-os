@@ -1510,6 +1510,14 @@ void TextboxAddSmartContextMenu(EsTextbox *textbox, EsMenu *menu) {
 	}
 }
 
+void TextboxUnregisterCommands(EsTextbox *textbox) {
+	EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL), nullptr);
+	EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_DELETE), nullptr);
+	EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_COPY), nullptr);
+	EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_CUT), nullptr);
+	EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_PASTE), nullptr);
+}
+
 int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 	EsTextbox *textbox = (EsTextbox *) element;
 
@@ -1608,6 +1616,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 
 		TextboxRefreshVisibleLines(textbox);
 	} else if (message->type == ES_MSG_DESTROY) {
+		if (EsElementIsFocused(textbox)) TextboxUnregisterCommands(textbox);
 		textbox->visibleLines.Free();
 		textbox->lines.Free();
 		UndoManagerDestroy(&textbox->localUndo);
@@ -1757,11 +1766,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		EsInstanceSetActiveUndoManager(textbox->instance, textbox->undo);
 		textbox->Repaint(true);
 	} else if (message->type == ES_MSG_FOCUSED_END) {
-		EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL), nullptr);
-		EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_DELETE), nullptr);
-		EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_COPY), nullptr);
-		EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_CUT), nullptr);
-		EsCommandSetCallback(EsCommandByID(textbox->instance, ES_COMMAND_PASTE), nullptr);
+		TextboxUnregisterCommands(textbox);
 		EsInstanceSetActiveUndoManager(textbox->instance, textbox->instance->undoManager);
 		textbox->Repaint(true);
 	} else if (message->type == ES_MSG_STRONG_FOCUS_END) {

@@ -181,6 +181,12 @@ void InstanceRefreshViewType(Instance *instance) {
 	}
 }
 
+void InstanceRemoveItemSelectionCommands(EsInstance *instance) {
+	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_CUT), nullptr);
+	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_COPY), nullptr);
+	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_PASTE), nullptr);
+}
+
 void InstanceUpdateItemSelectionCountCommands(Instance *instance) {
 	EsCommandSetEnabled(&instance->commandRename, instance->selectedItemCount == 1 && instance->folder->itemHandler->renameItem && !instance->folder->readOnly);
 
@@ -724,10 +730,12 @@ int ListCallback(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_FOCUSED_START || message->type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 		InstanceUpdateItemSelectionCountCommands(instance);
 		return 0;
+	} else if (message->type == ES_MSG_DESTROY) {
+		if (EsElementIsFocused(element)) {
+			InstanceRemoveItemSelectionCommands(instance);
+		}
 	} else if (message->type == ES_MSG_FOCUSED_END) {
-		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_CUT), nullptr);
-		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_COPY), nullptr);
-		EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_PASTE), nullptr);
+		InstanceRemoveItemSelectionCommands(instance);
 		return 0;
 	} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT) {
 		int column = message->getContent.columnID, index = message->getContent.index;

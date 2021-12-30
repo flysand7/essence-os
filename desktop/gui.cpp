@@ -3710,8 +3710,8 @@ EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes
 	if (window->focused) {
 		window->inactiveFocus = window->focused;
 		window->inactiveFocus->Repaint(true);
-		UIRemoveFocusFromElement(window->focused);
 		window->focused = nullptr;
+		UIRemoveFocusFromElement(window->focused);
 	}
 
 	EsElement *mainStack = window->children[0];
@@ -6101,10 +6101,6 @@ void EsElement::Destroy(bool manual) {
 		}
 	}
 
-	if (state & UI_STATE_FOCUSED) {
-		UIRemoveFocusFromElement(this);
-	}
-
 	state |= UI_STATE_DESTROYING | UI_STATE_DESTROYING_CHILD | UI_STATE_BLOCK_INTERACTION;
 
 	if (parent) {
@@ -6712,6 +6708,7 @@ void EsElementSetDisabled(EsElement *element, bool disabled) {
 	EsMessageMutexCheck();
 
 	if (element->window->focused == element) {
+		element->window->focused = nullptr;
 		UIRemoveFocusFromElement(element);
 	}
 
@@ -6727,10 +6724,6 @@ void EsElementSetDisabled(EsElement *element, bool disabled) {
 	else element->flags &= ~ES_ELEMENT_DISABLED;
 
 	element->MaybeRefreshStyle();
-
-	if (element->window->focused == element) {
-		element->window->focused = nullptr;
-	}
 }
 
 void EsElementDestroy(EsElement *element) {
@@ -7792,6 +7785,10 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 		window->hovering = true;
 	} else if (message->type == ES_MSG_WINDOW_DEACTIVATED) {
 		if (window->activated) {
+			if (window->pressed) {
+				UIMouseUp(window, nullptr, false);
+			}
+
 			AccessKeyModeExit();
 
 			if (window->windowStyle == ES_WINDOW_MENU) {
@@ -7804,8 +7801,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 			if (window->focused) {
 				window->inactiveFocus = window->focused;
 				window->inactiveFocus->Repaint(true);
-				UIRemoveFocusFromElement(window->focused);
 				window->focused = nullptr;
+				UIRemoveFocusFromElement(window->focused);
 			}
 
 			EsMessageSend(window, message);
@@ -7814,8 +7811,6 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	} else if (message->type == ES_MSG_WINDOW_ACTIVATED) {
 		gui.leftModifiers = message->windowActivated.leftModifiers;
 		gui.rightModifiers = message->windowActivated.rightModifiers;
-
-		UIMouseUp(window, nullptr, false);
 
 		if (!window->activated) {
 			AccessKeyModeExit();

@@ -793,6 +793,10 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 	WindowTabBand *band = (WindowTabBand *) tab->parent;
 
 	if (message->type == ES_MSG_DESTROY) {
+		if (tab->dragging) {
+			EsElementSetDisabled(band->GetChild(0), false);
+		}
+
 		band->container->openTabs.FindAndDelete(tab, false);
 
 		if (tab->notRespondingInstance) {

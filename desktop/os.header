@@ -954,7 +954,7 @@ enum EsMessageType {
 								// this allows messageUser to block input processing by returning ES_REJECTED.
 	ES_MSG_SCROLL_X				= 0x2012	// The element has been horizontally scrolled.
 	ES_MSG_SCROLL_Y				= 0x2013	// The element has been vertically scrolled.
-	ES_MSG_STRONG_FOCUS_END			= 0x2014	// Sent once when the user 'clicks off' the element, even if a new element was not necessarily focused.
+	ES_MSG_STRONG_FOCUS_END			= 0x2014	// Sent once when the user 'clicks off' the element, even if a new element was not necessarily focused. Not sent when destroying the element!
 	ES_MSG_BEFORE_Z_ORDER			= 0x2015	// Sent before a batch of Z_ORDER messages.
 	ES_MSG_AFTER_Z_ORDER			= 0x2016	// Sent after a batch of Z_ORDER messages.
 	ES_MSG_PAINT_CHILDREN			= 0x2017	// Paint the element's children. Useful for animations, with EsPaintTargetTake/Return.
@@ -982,13 +982,13 @@ enum EsMessageType {
 	// State change messages: (causes a style refresh)
 	ES_MSG_STATE_CHANGE_MESSAGE_START	= 0x2080
 	ES_MSG_HOVERED_START			= 0x2081	// Sent when the mouse starts hovering over an element.
-	ES_MSG_HOVERED_END			= 0x2082	// Opposite of ES_MSG_HOVERED_START. Sent before ES_MSG_HOVERED_START is sent to the new hovered element.
+	ES_MSG_HOVERED_END			= 0x2082	// Opposite of ES_MSG_HOVERED_START. Sent before ES_MSG_HOVERED_START is sent to the new hovered element. Not sent when destroying the element!
 	ES_MSG_PRESSED_START			= 0x2083	// Sent when an element is pressed.
-	ES_MSG_PRESSED_END			= 0x2084	// Opposite of ES_MSG_PRESSED_START. 
+	ES_MSG_PRESSED_END			= 0x2084	// Opposite of ES_MSG_PRESSED_START. Not sent when destroying the element!
 	ES_MSG_FOCUSED_START			= 0x2085	// Sent when an element is focused.
-	ES_MSG_FOCUSED_END			= 0x2086	// Opposite of ES_MSG_FOCUSED_START. 
+	ES_MSG_FOCUSED_END			= 0x2086	// Opposite of ES_MSG_FOCUSED_START. Not sent when destroying the element!
 	ES_MSG_FOCUS_WITHIN_START		= 0x2087	// Sent when an element is focused.
-	ES_MSG_FOCUS_WITHIN_END			= 0x2088	// Opposite of ES_MSG_FOCUSED_START. 
+	ES_MSG_FOCUS_WITHIN_END			= 0x2088	// Opposite of ES_MSG_FOCUSED_START. Not sent when destroying the element!
 	ES_MSG_STATE_CHANGE_MESSAGE_END		= 0x20FF
 
 	// Element messages:
