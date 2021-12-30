@@ -318,7 +318,7 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 
 			EsPanel *titleRow = EsPanelCreate(instance->fontPreview, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
 			EsIconDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY, ES_ICON_FONT_X_GENERIC);
-			EsTextDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_HEADING0, message->instanceOpen.name, message->instanceOpen.nameBytes);
+			EsTextDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_HEADING0, message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes);
 			EsSpacerCreate(instance->fontPreview, ES_FLAGS_DEFAULT, 0, 0, 20);
 
 			int sizes[] = { 12, 18, 24, 36, 48, 60, 72, 0 };

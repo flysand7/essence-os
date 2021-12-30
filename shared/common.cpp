@@ -1187,6 +1187,23 @@ double EsDoubleParse(const char *nptr, ptrdiff_t maxBytes, char **endptr) {
 	return value;
 }
 
+void PathGetName(const char *path, ptrdiff_t pathBytes, const char **name, ptrdiff_t *nameBytes) {
+	if (pathBytes == -1) {
+		pathBytes = EsCStringLength(path);
+	}
+
+	*name = path;
+	*nameBytes = pathBytes;
+
+	for (uintptr_t i = pathBytes; i > 0; i--) {
+		if (path[i - 1] == '/') {
+			*name = path + i;
+			*nameBytes = pathBytes - i;
+			break;
+		}
+	}
+}
+
 #endif
 
 /////////////////////////////////

@@ -834,7 +834,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 							INTERFACE_STRING(FileManagerCannotOpenSystemFile),
 							ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
 				} else {
-					EsApplicationRunTemporary(instance, STRING(path));
+					EsApplicationRunTemporary(STRING(path));
 				}
 
 				StringDestroy(&path);
@@ -847,7 +847,8 @@ int ListCallback(EsElement *element, EsMessage *message) {
 					request.id = fileType->openHandler;
 					request.filePath = path.text;
 					request.filePathBytes = path.bytes;
-					request.flags = EsKeyboardIsCtrlHeld() ? ES_APPLICATION_STARTUP_IN_SAME_CONTAINER : ES_FLAGS_DEFAULT;
+					request.flags = EsKeyboardIsCtrlHeld() || message->chooseItem.source == ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK 
+						? ES_APPLICATION_STARTUP_IN_SAME_CONTAINER : ES_FLAGS_DEFAULT;
 					EsApplicationStart(instance, &request);
 					StringDestroy(&path);
 				} else {
@@ -1166,7 +1167,7 @@ void InstanceCreateUI(Instance *instance) {
 	EsApplicationStartupRequest startupRequest = EsInstanceGetStartupRequest(instance);
 	String path;
 
-	if (startupRequest.flags & ES_APPLICATION_STARTUP_MANUAL_PATH) {
+	if (startupRequest.filePathBytes) {
 		uintptr_t directoryEnd = startupRequest.filePathBytes;
 
 		for (uintptr_t i = 0; i < (uintptr_t) startupRequest.filePathBytes; i++) {

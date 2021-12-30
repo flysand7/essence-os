@@ -145,7 +145,7 @@ Token NextToken() {
 
 		position--;
 
-#define COMPARE_KEYWORD(x, y) if (strlen(x) == token.value && 0 == memcmp(x, token.text, token.value)) token.type = y
+#define COMPARE_KEYWORD(x, y) if (strlen(x) == (size_t) token.value && 0 == memcmp(x, token.text, token.value)) token.type = y
 		COMPARE_KEYWORD("define", TOKEN_DEFINE);
 		COMPARE_KEYWORD("enum", TOKEN_ENUM);
 		COMPARE_KEYWORD("struct", TOKEN_STRUCT);
@@ -1005,6 +1005,8 @@ void OutputZigType(Entry *entry) {
 }
 
 void OutputZigVariable(Entry *entry, bool expandStrings, const char *nameSuffix) {
+	(void) expandStrings;
+
 	if (0 == strcmp(entry->name, "error")) {
 		entry->name[3] = ' ';
 		entry->name[4] = ' ';

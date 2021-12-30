@@ -715,10 +715,10 @@ define ES_DRIVE_TYPE_SSD              (2)
 define ES_DRIVE_TYPE_CDROM            (3)
 define ES_DRIVE_TYPE_USB_MASS_STORAGE (4)
 
-define ES_ELEMENT_FOCUS_ENSURE_VISIBLE (1 << 0)
-define ES_ELEMENT_FOCUS_FROM_KEYBOARD  (1 << 1)
+define ES_ELEMENT_FOCUS_ENSURE_VISIBLE             (1 << 0)
+define ES_ELEMENT_FOCUS_FROM_KEYBOARD              (1 << 1)
+define ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT (1 << 2)
 
-define ES_APPLICATION_STARTUP_MANUAL_PATH        (1 << 0)
 define ES_APPLICATION_STARTUP_BACKGROUND_SERVICE (1 << 1)
 define ES_APPLICATION_STARTUP_IN_SAME_CONTAINER  (1 << 2)
 
@@ -771,6 +771,11 @@ private define ES_SCROLL_MANUAL (1 << 2) // The parent is responsible for updati
 
 define ES_SUBSYSTEM_ID_NATIVE (0)
 define ES_SUBSYSTEM_ID_POSIX (1)
+
+define ES_LIST_VIEW_CHOOSE_ITEM_OTHER        (1)
+define ES_LIST_VIEW_CHOOSE_ITEM_ENTER        (2)
+define ES_LIST_VIEW_CHOOSE_ITEM_DOUBLE_CLICK (3)
+define ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK (4)
 
 include desktop/icons.header
 
@@ -1434,13 +1439,13 @@ struct EsCommand {
 
 struct EsApplicationStartupRequest {
 	int64_t id;
-	STRING filePath;
+	STRING filePath; // Only contains the file name if the application does not have permission_all_files or the file is not on a file system.
 	uint32_t flags;
 };
 
 private struct _EsApplicationStartupInformation {
 	int64_t id;
-	STRING filePath;
+	STRING filePath; // See comment in EsApplicationStartupRequest.
 	EsWindow *targetWindow;
 	uint32_t flags;
 	int32_t data;
@@ -1700,6 +1705,7 @@ struct EsMessageSelectItem {
 struct EsMessageChooseItem {
 	EsListViewIndex group;
 	EsListViewIndex index;
+	uint8_t source;
 };
 
 struct EsMessageSearchItem {
@@ -1759,13 +1765,13 @@ struct EsMessageEndEdit {
 
 struct EsMessageInstanceOpen {
 	EsFileStore *file;
-	STRING name;
+	STRING nameOrPath; // See comment in EsApplicationStartupRequest.
 	bool update;
 };
 
 struct EsMessageInstanceSave {
 	EsFileStore *file;
-	STRING name;
+	STRING nameOrPath; // See comment in EsApplicationStartupRequest.
 };
 
 // Internal system messages.
@@ -1990,8 +1996,8 @@ function_pointer void EsWorkCallback(EsGeneric context);
 
 // System.
 
-function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request);
-function void EsApplicationRunTemporary(ES_INSTANCE_TYPE *instance, STRING path);
+function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request); // The instance is optional, used only for ES_APPLICATION_STARTUP_IN_SAME_CONTAINER.
+function void EsApplicationRunTemporary(STRING path);
 function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize); 
 function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
 function EsError EsHandleClose(EsHandle handle); 
@@ -1999,7 +2005,7 @@ function void EsSystemShowShutdownDialog();
 
 function void EsPOSIXInitialise(int *argc, char ***argv); 
 function long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long a6); 
-function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix);
+function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix); // Converts a POSIX path to a native path. Free with EsHeapFree.
 
 private function void EsBatch(EsBatchCall *calls, size_t count); 
 private function uintptr_t _EsSyscall(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e, uintptr_t f); 
@@ -2060,7 +2066,7 @@ function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flag
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
 function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
 function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
-function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath);
+function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
 function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
 
 function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
@@ -2072,6 +2078,7 @@ function EsError EsProcessCreate(const EsProcessCreationArguments *arguments, Es
 function int EsProcessGetExitStatus(EsHandle process); 
 function EsObjectID EsProcessGetID(EsHandle process);
 function void EsProcessGetState(EsHandle process, EsProcessState *state); 
+function void EsProcessGetCreateData(EsProcessCreateData *data); // For the current process.
 function EsHandle EsProcessOpen(EsObjectID pid); 
 function void EsProcessPause(EsHandle process, bool resume); 
 function void EsProcessTerminate(EsHandle process, int status); 
@@ -2498,7 +2505,7 @@ function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
 function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
 function EsCheckState EsButtonGetCheck(EsButton *button);
-function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback, EsCommand *command = ES_NULL); // TODO Public property?
+function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback); // TODO Public property?
 function void EsButtonSetCheckBuddy(EsButton *button, EsElement *checkBuddy); // The buddy element is enabled/disabled when the button is checked/unchecked.
 function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public property?
 
@@ -2524,7 +2531,8 @@ function void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size);
 function void EsTextboxSetFont(EsTextbox *textbox, EsFont font);
 function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
 function void EsTextboxStartEdit(EsTextbox *textbox);
-function void EsTextboxEnableSmartQuotes(EsTextbox *textbox, bool enabled);
+function void EsTextboxEnableSmartReplacement(EsTextbox *textbox, bool enabled); // e.g. smart quotes.
+function void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly); // Prevents the user from modifying the contents of the textbox; EsTextboxInsert will still work. Incompatible with ES_TEXTBOX_EDIT_BASED. Undo events will not be created.
 
 // Sliders.
 

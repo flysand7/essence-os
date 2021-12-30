@@ -280,6 +280,8 @@ void InitialiseInstance(EsInstance *instance) {
 void _start() {
 	_init();
 
+	EsApplicationRunTemporary(EsLiteral("what"));
+
 	while (true) {
 		EsMessage *message = EsMessageReceive();
 

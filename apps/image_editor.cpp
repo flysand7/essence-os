@@ -712,18 +712,18 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 	} else if (message->type == ES_MSG_INSTANCE_SAVE) {
 		// TODO Error handling.
 
-		uintptr_t extensionOffset = message->instanceSave.nameBytes;
+		uintptr_t extensionOffset = message->instanceSave.nameOrPathBytes;
 
 		while (extensionOffset) {
-			if (message->instanceSave.name[extensionOffset - 1] == '.') {
+			if (message->instanceSave.nameOrPath[extensionOffset - 1] == '.') {
 				break;
 			} else {
 				extensionOffset--;
 			}
 		}
 
-		const char *extension = extensionOffset ? message->instanceSave.name + extensionOffset : "png";
-		size_t extensionBytes = extensionOffset ? message->instanceSave.nameBytes - extensionOffset : 3;
+		const char *extension = extensionOffset ? message->instanceSave.nameOrPath + extensionOffset : "png";
+		size_t extensionBytes = extensionOffset ? message->instanceSave.nameOrPathBytes - extensionOffset : 3;
 
 		uint32_t *bits;
 		size_t width, height, stride;

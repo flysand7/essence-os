@@ -1320,7 +1320,7 @@ struct EsListView : EsElement {
 				EsRectangle bounds = element->GetBounds();
 				child->InternalMove(bounds.r - bounds.l, bounds.b - bounds.t, bounds.l, bounds.t);
 			}
-		} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN) {
+		} else if (message->type == ES_MSG_MOUSE_LEFT_DOWN || message->type == ES_MSG_MOUSE_MIDDLE_CLICK) {
 			EsElementFocus(this);
 
 			if (hasFocusedItem) {
@@ -1337,14 +1337,23 @@ struct EsListView : EsElement {
 			focusedItemIndex = item->index;
 			element->customStyleState |= THEME_STATE_FOCUSED_ITEM;
 
-			if (message->mouseDown.clickChainCount == 1 || (~element->customStyleState & THEME_STATE_SELECTED)) {
+			if (message->type == ES_MSG_MOUSE_MIDDLE_CLICK) {
+				Select(item->group, item->index, false, false, false);
+				EsMessage m = { ES_MSG_LIST_VIEW_CHOOSE_ITEM };
+				m.chooseItem.group = item->group;
+				m.chooseItem.index = item->index;
+				m.chooseItem.source = ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK;
+				EsMessageSend(this, &m);
+			} else if (message->mouseDown.clickChainCount == 1 || (~element->customStyleState & THEME_STATE_SELECTED)) {
 				Select(item->group, item->index, EsKeyboardIsShiftHeld(), EsKeyboardIsCtrlHeld(), false);
 			} else if (message->mouseDown.clickChainCount == 2) {
 				EsMessage m = { ES_MSG_LIST_VIEW_CHOOSE_ITEM };
 				m.chooseItem.group = item->group;
 				m.chooseItem.index = item->index;
+				m.chooseItem.source = ES_LIST_VIEW_CHOOSE_ITEM_DOUBLE_CLICK;
 				EsMessageSend(this, &m);
 			}
+		} else if (message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
 		} else if (message->type == ES_MSG_MOUSE_RIGHT_DOWN) {
 			EsMessage m = { ES_MSG_LIST_VIEW_IS_SELECTED };
 			m.selectItem.index = item->index;
@@ -1602,6 +1611,7 @@ struct EsListView : EsElement {
 			EsMessage m = { ES_MSG_LIST_VIEW_CHOOSE_ITEM };
 			m.chooseItem.group = focusedItemGroup;
 			m.chooseItem.index = focusedItemIndex;
+			m.chooseItem.source = ES_LIST_VIEW_CHOOSE_ITEM_ENTER;
 			EsMessageSend(this, &m);
 			return true;
 		} else if (!ctrl && !alt) {

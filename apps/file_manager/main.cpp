@@ -608,8 +608,13 @@ void _start() {
 			EsConstantBufferRead(message->user.context1.u, data); 
 			String oldPath = StringFromLiteralWithSize(paths, bytes[0]);
 			String newPath = StringFromLiteralWithSize(paths + bytes[0], bytes[1]);
-			FolderPathMoved(oldPath, newPath, false);
 			size_t pathSectionCount;
+
+			if (oldPath.bytes) {
+				FolderPathMoved(oldPath, newPath, false);
+			} else {
+				FolderRefreshAllFrom(newPath);
+			}
 
 			pathSectionCount = PathCountSections(oldPath);
 

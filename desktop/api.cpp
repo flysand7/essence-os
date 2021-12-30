@@ -177,6 +177,7 @@ char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, cons
 int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
 MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
 EsWindow *WindowFromWindowID(EsObjectID id);
+void POSIXCleanup();
 extern "C" void _init();
 
 struct ProcessMessageTiming {
@@ -626,14 +627,14 @@ void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) {
 	MessageDesktop(&m, 1, ES_INVALID_HANDLE, outputBuffer);
 }
 
-void EsApplicationRunTemporary(EsInstance *instance, const char *path, ptrdiff_t pathBytes) {
+void EsApplicationRunTemporary(const char *path, ptrdiff_t pathBytes) {
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
 	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
 
 	if (buffer) {
 		buffer[0] = DESKTOP_MSG_RUN_TEMPORARY_APPLICATION;
 		EsMemoryCopy(buffer + 1, path, pathBytes);
-		MessageDesktop(buffer, pathBytes + 1, instance->window->handle);
+		MessageDesktop(buffer, pathBytes + 1);
 		EsHeapFree(buffer);
 	}
 }
@@ -682,8 +683,10 @@ void InstanceClose(EsInstance *instance) {
 
 	if (apiInstance->startupInformation->filePathBytes) {
 		cTitle = interfaceString_FileCloseWithModificationsTitle;
-		contentBytes = EsStringFormat(content, sizeof(content), interfaceString_FileCloseWithModificationsContent, 
-				apiInstance->startupInformation->filePathBytes, apiInstance->startupInformation->filePath);
+		const char *name;
+		ptrdiff_t nameBytes;
+		PathGetName(apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes, &name, &nameBytes);
+		contentBytes = EsStringFormat(content, sizeof(content), interfaceString_FileCloseWithModificationsContent, nameBytes, name);
 	} else {
 		cTitle = interfaceString_FileCloseNewTitle;
 		contentBytes = EsStringFormat(content, sizeof(content), interfaceString_FileCloseNewContent, 
@@ -870,8 +873,12 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 		EsWindowSetTitle(instance->window, nullptr, 0);
 
 		if (apiInstance->startupInformation && apiInstance->startupInformation->readHandle) {
+			const char *name;
+			ptrdiff_t nameBytes;
+			PathGetName(apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes, &name, &nameBytes);
+
 			InstanceCreateFileStore(apiInstance, apiInstance->startupInformation->readHandle);
-			EsWindowSetTitle(instance->window, apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes);
+			EsWindowSetTitle(instance->window, name, nameBytes);
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
 
 			// HACK Delay sending the instance open message so that application has a chance to initialise the instance.
@@ -989,8 +996,8 @@ void InstanceSendOpenMessage(EsInstance *instance, bool update) {
 	APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 	EsMessage m = { .type = ES_MSG_INSTANCE_OPEN };
-	m.instanceOpen.name = apiInstance->startupInformation->filePath;
-	m.instanceOpen.nameBytes = apiInstance->startupInformation->filePathBytes;
+	m.instanceOpen.nameOrPath = apiInstance->startupInformation->filePath;
+	m.instanceOpen.nameOrPathBytes = apiInstance->startupInformation->filePathBytes;
 	m.instanceOpen.file = apiInstance->fileStore;
 	m.instanceOpen.update = update;
 
@@ -1061,6 +1068,9 @@ EsMessage *EsMessageReceive() {
 				EsAssert(!api.workQueue.Length());
 				api.workThreads.Free();
 				api.workQueue.Free();
+#ifdef ENABLE_POSIX_SUBSYSTEM
+				POSIXCleanup();
+#endif
 				MemoryLeakDetectorCheckpoint(&heap);
 				EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
@@ -1147,8 +1157,8 @@ EsMessage *EsMessageReceive() {
 				m.instanceSave.file->type = FILE_STORE_HANDLE;
 				m.instanceSave.file->handles = 1;
 
-				m.instanceSave.name = instance->startupInformation->filePath;
-				m.instanceSave.nameBytes = instance->startupInformation->filePathBytes;
+				m.instanceSave.nameOrPath = instance->startupInformation->filePath;
+				m.instanceSave.nameOrPathBytes = instance->startupInformation->filePathBytes;
 
 				if (m.instanceSave.file->error == ES_SUCCESS && _instance->callback && _instance->callback(_instance, &m)) {
 					// The instance callback will have called EsInstanceSaveComplete.
@@ -1227,7 +1237,10 @@ EsMessage *EsMessageReceive() {
 							instance->startupInformation->containingFolderBytes);
 					instance->startupInformation->filePath = filePath;
 					instance->startupInformation->containingFolder = containingFolder;
-					EsWindowSetTitle(_instance->window, filePath, instance->startupInformation->filePathBytes);
+					const char *name;
+					ptrdiff_t nameBytes;
+					PathGetName(filePath, instance->startupInformation->filePathBytes, &name, &nameBytes);
+					EsWindowSetTitle(_instance->window, name, nameBytes);
 				}
 			}
 
@@ -1395,10 +1408,13 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 		MessageDesktop(buffer, 1, instance->window->handle);
 
 		if (success) {
+			const char *name;
+			ptrdiff_t nameBytes;
+			PathGetName(apiInstance->startupInformation->filePath, apiInstance->startupInformation->filePathBytes, &name, &nameBytes);
+
 			EsInstanceSetModified(instance, false);
 			size_t messageBytes;
-			char *message = EsStringAllocateAndFormat(&messageBytes, "Saved to %s", // TODO Localization.
-					apiInstance->startupInformation->filePathBytes, apiInstance->startupInformation->filePath); 
+			char *message = EsStringAllocateAndFormat(&messageBytes, interfaceString_FileSaveAnnouncement, nameBytes, name); 
 			EsAnnouncementShow(instance->window, ES_FLAGS_DEFAULT, -1, -1, message, messageBytes);
 			EsHeapFree(message);
 			EsCommandSetDisabled(&apiInstance->commandShowInFileManager, false);
@@ -1596,7 +1612,8 @@ void EsCommandAddButton(EsCommand *command, EsButton *button) {
 	button->state |= UI_STATE_COMMAND_BUTTON;
 	EsElementSetEnabled(button, command->enabled);
 	EsButtonSetCheck(button, command->check); // Set the check before setting the callback, so that it doesn't get called.
-	EsButtonOnCommand(button, command->callback, command);
+	EsButtonOnCommand(button, command->callback);
+	button->command = command;
 }
 
 EsCommand *EsCommandRegister(EsCommand *command, EsInstance *_instance, 
@@ -1654,7 +1671,9 @@ void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback) {
 
 		for (uintptr_t i = 0; i < ArrayLength(command->elements); i++) {
 			if (command->elements[i]->state & UI_STATE_COMMAND_BUTTON) {
-				EsButtonOnCommand((EsButton *) command->elements[i], callback, command);
+				EsButton *button = (EsButton *) command->elements[i];
+				EsAssert(button->command == command);
+				button->onCommand = callback;
 			}
 		}
 	}
@@ -2155,6 +2174,9 @@ long EsPOSIXSystemCall(long, long, long, long, long, long, long) {
 char *EsPOSIXConvertPath(const char *, size_t *, bool) {
 	EsAssert(false);
 	return nullptr;
+}
+
+void POSIXCleanup() {
 }
 #else
 EsProcessStartupInformation *ProcessGetStartupInformation() {

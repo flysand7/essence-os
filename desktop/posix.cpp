@@ -49,6 +49,11 @@ struct ChildProcess {
 
 char *workingDirectory;
 Array<ChildProcess> childProcesses;
+Array<void *> _argv;
+
+#ifdef ES_ARCH_X86_64
+Elf64_Phdr *tlsHeader;
+#endif
 
 #ifdef DEBUG_BUILD
 double syscallTimeSpent[1024];
@@ -680,9 +685,11 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 	}
 
 #ifdef DEBUG_BUILD
-	double endTime = EsTimeStampMs();
-	syscallTimeSpent[n] += endTime - startTime;
-	syscallCallCount[n]++;
+	if ((uintptr_t) n < sizeof(syscallTimeSpent) / sizeof(syscallTimeSpent[0])) {
+		double endTime = EsTimeStampMs();
+		syscallTimeSpent[n] += endTime - startTime;
+		syscallCallCount[n]++;
+	}
 #endif
 
 	// EsPrint(":: %z %x %x %x -> %x; %Fms\n", syscallNames[n], a1, a2, a3, returnValue, endTime - startTime);
@@ -709,7 +716,6 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 
 	uintptr_t position = 0;
 	char *start = environmentBuffer;
-	Array<void *> _argv = {};
 	*argc = 0;
 
 	for (int i = 0; i < 2; i++) {
@@ -750,7 +756,7 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 	// Add the auxillary vectors.
 
 #ifdef ES_ARCH_X86_64
-	Elf64_Phdr *tlsHeader = (Elf64_Phdr *) EsHeapAllocate(sizeof(Elf64_Phdr), true);
+	tlsHeader = (Elf64_Phdr *) EsHeapAllocate(sizeof(Elf64_Phdr), true);
 	tlsHeader->p_type = PT_TLS;
 	tlsHeader->p_flags = 4 /* read */;
 	tlsHeader->p_vaddr = startupInformation->tlsImageStart;
@@ -776,6 +782,13 @@ void EsPOSIXInitialise(int *argc, char ***argv) {
 	// Return argv.
 	
 	*argv = (char **) _argv.array;
+}
+
+void POSIXCleanup() {
+	_argv.Free();
+	childProcesses.Free();
+	EsHeapFree(workingDirectory);
+	EsHeapFree(tlsHeader);
 }
 
 #endif

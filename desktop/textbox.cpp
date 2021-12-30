@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Caret blinking.
 // TODO Wrapped lines.
 // TODO Unicode grapheme/word boundaries.
@@ -53,6 +57,8 @@ struct EsTextbox : EsElement {
 
 	int verticalMotionHorizontalDepth;
 	int oldHorizontalScroll;
+	bool inRightClickDrag;
+	bool colorUppercase;
 
 	EsUndoManager *undo;
 	EsUndoManager localUndo;
@@ -67,12 +73,8 @@ struct EsTextbox : EsElement {
 	uint32_t syntaxHighlightingLanguage;
 	uint32_t syntaxHighlightingColors[8];
 
-	bool smartQuotes;
-
-	bool inRightClickDrag;
-
-	// For smart context menus:
-	bool colorUppercase;
+	bool smartReplacement;
+	bool readOnly;
 };
 
 #define MOVE_CARET_SINGLE (2)
@@ -364,7 +366,7 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 
 	command = EsCommandByID(textbox->instance, ES_COMMAND_DELETE);
 	command->data = textbox;
-	EsCommandSetDisabled(command, selectionEmpty);
+	EsCommandSetDisabled(command, selectionEmpty || textbox->readOnly);
 
 	EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
 		EsTextbox *textbox = (EsTextbox *) command->data.p;
@@ -397,7 +399,7 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 
 	command = EsCommandByID(textbox->instance, ES_COMMAND_CUT);
 	command->data = textbox;
-	EsCommandSetDisabled(command, selectionEmpty);
+	EsCommandSetDisabled(command, selectionEmpty || textbox->readOnly);
 
 	EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
 		EsTextbox *textbox = (EsTextbox *) command->data.p;
@@ -422,7 +424,7 @@ void TextboxUpdateCommands(EsTextbox *textbox, bool noClipboard) {
 	if (!noClipboard) {
 		command = EsCommandByID(textbox->instance, ES_COMMAND_PASTE);
 		command->data = textbox;
-		EsCommandSetDisabled(command, !EsClipboardHasText(ES_CLIPBOARD_PRIMARY));
+		EsCommandSetDisabled(command, textbox->readOnly || !EsClipboardHasText(ES_CLIPBOARD_PRIMARY));
 
 		EsCommandSetCallback(command, [] (EsInstance *, EsElement *, EsCommand *command) {
 			EsTextbox *textbox = (EsTextbox *) command->data.p;
@@ -790,14 +792,12 @@ void EsTextboxSelectAll(EsTextbox *textbox) {
 
 void EsTextboxClear(EsTextbox *textbox, bool sendUpdatedMessage) {
 	EsMessageMutexCheck();
-
 	EsTextboxSelectAll(textbox);
 	EsTextboxInsert(textbox, "", 0, sendUpdatedMessage);
 }
 
 size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line) {
 	EsMessageMutexCheck();
-
 	return textbox->lines[line].lengthBytes;
 }
 
@@ -872,7 +872,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			}
 		}
 
-		if (textbox->undo) {
+		if (textbox->undo && !textbox->readOnly) {
 			// Step 3: Allocate space for an undo item.
 
 			undoItemBytes = sizeof(TextboxUndoItemHeader) - deltaBytes + deleteTo.line - deleteFrom.line;
@@ -938,7 +938,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			TextboxLineCountChangeCleanup(textbox, deltaBytes, deleteFrom.line + 1);
 		}
 	} else {
-		if (textbox->undo) {
+		if (textbox->undo && !textbox->readOnly) {
 			undoItemBytes = sizeof(TextboxUndoItemHeader);
 			undoItem = (TextboxUndoItemHeader *) EsHeapAllocate(undoItemBytes, false);
 			EsMemoryZero(undoItem, sizeof(TextboxUndoItemHeader));
@@ -1476,6 +1476,40 @@ void TextboxStyleChanged(EsTextbox *textbox) {
 	EsElementRepaint(textbox);
 }
 
+void TextboxAddSmartContextMenu(EsTextbox *textbox, EsMenu *menu) {
+	if ((~textbox->flags & ES_TEXTBOX_NO_SMART_CONTEXT_MENUS) && textbox->carets[0].line == textbox->carets[1].line) {
+		int32_t selectionFrom = textbox->carets[0].byte, selectionTo = textbox->carets[1].byte;
+
+		if (selectionTo < selectionFrom) {
+			int32_t temporary = selectionFrom;
+			selectionFrom = selectionTo;
+			selectionTo = temporary;
+		}
+
+		if (selectionTo - selectionFrom == 7) {
+			char buffer[7];
+			EsMemoryCopy(buffer, GET_BUFFER(&textbox->lines[textbox->carets[0].line]) + selectionFrom, 7);
+
+			if (buffer[0] == '#' && EsCRTisxdigit(buffer[1]) && EsCRTisxdigit(buffer[2]) && EsCRTisxdigit(buffer[3])
+					&& EsCRTisxdigit(buffer[4]) && EsCRTisxdigit(buffer[5]) && EsCRTisxdigit(buffer[6])) {
+				// It's a color hex-code!
+				// TODO Versions with alpha.
+				EsMenuNextColumn(menu);
+				ColorPickerCreate(menu, { textbox }, EsColorParse(buffer, 7), false);
+
+				textbox->colorUppercase = true;
+
+				for (uintptr_t i = 1; i <= 6; i++) {
+					if (buffer[i] >= 'a' && buffer[i] <= 'f') {
+						textbox->colorUppercase = false;
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
 int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 	EsTextbox *textbox = (EsTextbox *) element;
 
@@ -1638,7 +1672,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			
 			textbox->Repaint(true);
 			verticalMotion = true;
-		} else if (message->keyboard.scancode == ES_SCANCODE_BACKSPACE || message->keyboard.scancode == ES_SCANCODE_DELETE) {
+		} else if ((message->keyboard.scancode == ES_SCANCODE_BACKSPACE || message->keyboard.scancode == ES_SCANCODE_DELETE) && !textbox->readOnly) {
 			if (!textbox->editing) {
 				EsTextboxStartEdit(textbox);
 			}
@@ -1659,7 +1693,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			TextboxEndEdit(textbox, true);
 		} else if (message->keyboard.scancode == ES_SCANCODE_TAB && (~textbox->flags & ES_TEXTBOX_ALLOW_TABS)) {
 			response = 0;
-		} else {
+		} else if (!textbox->readOnly) {
 			if (!textbox->editing) {
 				EsTextboxStartEdit(textbox);
 			}
@@ -1669,7 +1703,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 					true, textbox->flags & ES_TEXTBOX_MULTILINE);
 
 			if (inputString && (message->keyboard.modifiers & ~(ES_MODIFIER_SHIFT | ES_MODIFIER_ALT_GR)) == 0) {
-				if (textbox->smartQuotes && api.global->useSmartQuotes) {
+				if (textbox->smartReplacement && api.global->useSmartQuotes) {
 					DocumentLine *currentLine = &textbox->lines[textbox->carets[0].line];
 					const char *buffer = GET_BUFFER(currentLine);
 					bool left = !textbox->carets[0].byte || buffer[textbox->carets[0].byte - 1] == ' ';
@@ -1701,6 +1735,8 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 			} else {
 				response = 0;
 			}
+		} else {
+			response = 0;
 		}
 
 		if (!verticalMotion) {
@@ -1757,52 +1793,26 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 
 		// TODO User customisation of menus.
 
-		if (textbox->editing) {
-			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonUndo), EsCommandByID(textbox->instance, ES_COMMAND_UNDO));
-			EsMenuAddSeparator(menu);
-		}
-
-		EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardCut), EsCommandByID(textbox->instance, ES_COMMAND_CUT));
-		EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(textbox->instance, ES_COMMAND_COPY));
-		EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardPaste), EsCommandByID(textbox->instance, ES_COMMAND_PASTE));
-
-		if (textbox->editing) {
-			EsMenuAddSeparator(menu);
+		if (textbox->readOnly) {
+			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(textbox->instance, ES_COMMAND_COPY));
 			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonSelectionSelectAll), EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL));
-			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonSelectionDelete), EsCommandByID(textbox->instance, ES_COMMAND_DELETE));
+		} else {
+			if (textbox->editing) {
+				EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonUndo), EsCommandByID(textbox->instance, ES_COMMAND_UNDO));
+				EsMenuAddSeparator(menu);
+			}
 
-			// Add the smart context menu, if necessary.
+			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardCut), EsCommandByID(textbox->instance, ES_COMMAND_CUT));
+			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardCopy), EsCommandByID(textbox->instance, ES_COMMAND_COPY));
+			EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonClipboardPaste), EsCommandByID(textbox->instance, ES_COMMAND_PASTE));
 
-			if ((~textbox->flags & ES_TEXTBOX_NO_SMART_CONTEXT_MENUS) && textbox->carets[0].line == textbox->carets[1].line) {
-				int32_t selectionFrom = textbox->carets[0].byte, selectionTo = textbox->carets[1].byte;
+			if (textbox->editing) {
+				EsMenuAddSeparator(menu);
+				EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonSelectionSelectAll), EsCommandByID(textbox->instance, ES_COMMAND_SELECT_ALL));
+				EsMenuAddCommand(menu, 0, INTERFACE_STRING(CommonSelectionDelete), EsCommandByID(textbox->instance, ES_COMMAND_DELETE));
 
-				if (selectionTo < selectionFrom) {
-					int32_t temporary = selectionFrom;
-					selectionFrom = selectionTo;
-					selectionTo = temporary;
-				}
-
-				if (selectionTo - selectionFrom == 7) {
-					char buffer[7];
-					EsMemoryCopy(buffer, GET_BUFFER(&textbox->lines[textbox->carets[0].line]) + selectionFrom, 7);
-
-					if (buffer[0] == '#' && EsCRTisxdigit(buffer[1]) && EsCRTisxdigit(buffer[2]) && EsCRTisxdigit(buffer[3])
-							&& EsCRTisxdigit(buffer[4]) && EsCRTisxdigit(buffer[5]) && EsCRTisxdigit(buffer[6])) {
-						// It's a color hex-code!
-						// TODO Versions with alpha.
-						EsMenuNextColumn(menu);
-						ColorPickerCreate(menu, { textbox }, EsColorParse(buffer, 7), false);
-
-						textbox->colorUppercase = true;
-
-						for (uintptr_t i = 1; i <= 6; i++) {
-							if (buffer[i] >= 'a' && buffer[i] <= 'f') {
-								textbox->colorUppercase = false;
-								break;
-							}
-						}
-					}
-				}
+				// Add the smart context menu, if necessary.
+				TextboxAddSmartContextMenu(textbox, menu);
 			}
 		}
 
@@ -1890,7 +1900,7 @@ EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *sty
 
 	textbox->style->GetTextStyle(&textbox->textStyle);
 
-	textbox->smartQuotes = true;
+	textbox->smartReplacement = true;
 
 	DocumentLine firstLine = {};
 	firstLine.height = TextGetLineHeight(textbox, &textbox->textStyle);
@@ -2133,8 +2143,14 @@ void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uin
 	textbox->Repaint(true);
 }
 
-void EsTextboxEnableSmartQuotes(EsTextbox *textbox, bool enabled) {
-	textbox->smartQuotes = enabled;
+void EsTextboxEnableSmartReplacement(EsTextbox *textbox, bool enabled) {
+	textbox->smartReplacement = enabled;
+}
+
+void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly) {
+	textbox->readOnly = readOnly;
+	EsAssert(~textbox->flags & ES_TEXTBOX_EDIT_BASED);
+	TextboxUpdateCommands(textbox, false);
 }
 
 #undef GET_BUFFER

@@ -4446,11 +4446,9 @@ void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t widt
 	}
 }
 
-void EsButtonOnCommand(EsButton *button, EsCommandCallback onCommand, EsCommand *command) {
+void EsButtonOnCommand(EsButton *button, EsCommandCallback onCommand) {
 	EsMessageMutexCheck();
-
 	button->onCommand = onCommand;
-	button->command = command;
 }
 
 void EsButtonSetCheckBuddy(EsButton *button, EsElement *checkBuddy) {
@@ -5949,8 +5947,7 @@ void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
 	ptrdiff_t initialNameBytes = 0;
 
 	if (instance->startupInformation && instance->startupInformation->filePathBytes) {
-		initialName = instance->startupInformation->filePath; 
-		initialNameBytes = instance->startupInformation->filePathBytes;
+		PathGetName(instance->startupInformation->filePath, instance->startupInformation->filePathBytes, &initialName, &initialNameBytes);
 	} else {
 		EsInstanceClassEditorSettings *editorSettings = &instance->editorSettings;
 		initialName = editorSettings->newDocumentFileName;
@@ -6007,8 +6004,10 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 			EsTextDisplayCreate(panel3, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL, 
 					editorSettings->newDocumentTitle, editorSettings->newDocumentTitleBytes);
 		} else {
-			EsTextDisplayCreate(panel3, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL, 
-					instance->startupInformation->filePath, instance->startupInformation->filePathBytes);
+			const char *name;
+			ptrdiff_t nameBytes;
+			PathGetName(instance->startupInformation->filePath, instance->startupInformation->filePathBytes, &name, &nameBytes);
+			EsTextDisplayCreate(panel3, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL, name, nameBytes);
 		}
 
 		EsButton *renameButton = EsButtonCreate(panel3, ES_BUTTON_TOOLBAR);
@@ -6484,6 +6483,10 @@ void EsElementFocus(EsElement *element, uint32_t flags) {
 	
 	if (window->focused == element) return;
 
+	// If an element is already focused and the request is only to focus the element if there is no focused element, ignore the request.
+
+	if ((flags & ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT) && window->focused) return;
+
 	// Tell the previously focused element it's no longer focused.
 
 	EsElement *oldFocus = window->focused;
@@ -6707,6 +6710,10 @@ bool EsElementIsHidden(EsElement *element) {
 
 void EsElementSetDisabled(EsElement *element, bool disabled) {
 	EsMessageMutexCheck();
+
+	if (element->window->focused == element) {
+		UIRemoveFocusFromElement(element);
+	}
 
 	for (uintptr_t i = 0; i < element->GetChildCount(); i++) {
 		if (element->GetChild(i)->flags & ES_ELEMENT_NON_CLIENT) continue;
@@ -7807,6 +7814,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	} else if (message->type == ES_MSG_WINDOW_ACTIVATED) {
 		gui.leftModifiers = message->windowActivated.leftModifiers;
 		gui.rightModifiers = message->windowActivated.rightModifiers;
+
+		UIMouseUp(window, nullptr, false);
 
 		if (!window->activated) {
 			AccessKeyModeExit();

@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Extensions: binary search, shifting glyphs in editor, undo/redo.
 
 #define UI_IMPLEMENTATION

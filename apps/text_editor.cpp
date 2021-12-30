@@ -123,7 +123,7 @@ void SetLanguage(Instance *instance, uint32_t newLanguage) {
 
 	instance->syntaxHighlightingLanguage = newLanguage;
 	EsTextboxSetupSyntaxHighlighting(instance->textboxDocument, newLanguage);
-	EsTextboxEnableSmartQuotes(instance->textboxDocument, !newLanguage);
+	EsTextboxEnableSmartReplacement(instance->textboxDocument, !newLanguage);
 }
 
 void FormatPopupCreate(Instance *instance) {
@@ -285,11 +285,11 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 			EsTextboxSetSelection(instance->textboxDocument, 0, 0, 0, 0);
 			EsElementRelayout(instance->textboxDocument);
 
-			if (StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".c"), true)
-					|| StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".cpp"), true)
-					|| StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".h"), true)) {
+			if (StringEndsWith(message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes, EsLiteral(".c"), true)
+					|| StringEndsWith(message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes, EsLiteral(".cpp"), true)
+					|| StringEndsWith(message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes, EsLiteral(".h"), true)) {
 				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C);
-			} else if (StringEndsWith(message->instanceOpen.name, message->instanceOpen.nameBytes, EsLiteral(".ini"), true)) {
+			} else if (StringEndsWith(message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes, EsLiteral(".ini"), true)) {
 				SetLanguage(instance, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
 			} else {
 				SetLanguage(instance, 0);

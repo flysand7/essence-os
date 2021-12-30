@@ -1,5 +1,9 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 // TODO Better configuration over what files are imported to the drive image.
-// TODO Make build_core responsible for generating the header.
+// TODO Resetting after system builds.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -10,6 +14,12 @@
 #define ES_CRT_WITHOUT_PREFIX
 #include <essence.h>
 #include <bits/syscall.h>
+
+#define MSG_BUILD_SUCCESS (ES_MSG_USER_START + 1)
+#define MSG_BUILD_FAILED  (ES_MSG_USER_START + 2)
+#define MSG_LOG           (ES_MSG_USER_START + 3)
+
+bool logSendMessages;
 
 typedef struct File {
 	bool error, ready;
@@ -27,10 +37,24 @@ void Log(const char *format, ...) {
 	va_list arguments;
 	va_start(arguments, format);
 	char buffer[4096];
-	int bytes = EsCRTvsnprintf(buffer, sizeof(buffer), format, arguments); 
-	EsAssert(bytes < sizeof(buffer));
+	size_t bytes = EsCRTvsnprintf(buffer, sizeof(buffer), format, arguments); 
 	va_end(arguments);
-	EsPOSIXSystemCall(SYS_write, (intptr_t) 1, (intptr_t) buffer, (intptr_t) bytes, 0, 0, 0);
+
+	if (bytes >= sizeof(buffer) - 1) {
+		buffer[sizeof(buffer) - 1] = 0;
+		bytes = sizeof(buffer) - 1;
+	}
+
+	if (logSendMessages) {
+		EsMessage m;
+		m.type = MSG_LOG;
+		char *copy = EsHeapAllocate(bytes + 1, false, NULL);
+		EsCRTstrcpy(copy, buffer);
+		m.user.context1.p = copy;
+		EsMessagePost(NULL, &m);
+	} else {
+		EsPOSIXSystemCall(SYS_write, (intptr_t) 1, (intptr_t) buffer, (intptr_t) bytes, 0, 0, 0);
+	}
 }
 
 File FileOpen(const char *path, char mode) {
@@ -59,7 +83,7 @@ void _FilePrintFormat(File *file, const char *format, ...) {
 	va_list arguments;
 	va_start(arguments, format);
 	char buffer[4096];
-	int bytes = EsCRTvsnprintf(buffer, sizeof(buffer), format, arguments); 
+	size_t bytes = EsCRTvsnprintf(buffer, sizeof(buffer), format, arguments); 
 	EsAssert(bytes < sizeof(buffer));
 	va_end(arguments);
 	FileWrite((*file), bytes, buffer);
@@ -81,7 +105,7 @@ void _FilePrintFormat(File *file, const char *format, ...) {
 typedef uint64_t pid_t;
 
 typedef uint64_t time_t;
-time_t time(time_t *timer) { return 0; } // TODO.
+time_t time(time_t *timer) { (void) timer; return 0; } // TODO.
 
 #else
 
@@ -170,6 +194,10 @@ char *builtinModules;
 volatile uint8_t encounteredErrors;
 volatile uint8_t encounteredErrorsInKernelModules;
 
+size_t singleConfigFileBytes;
+void *singleConfigFileData;
+bool singleConfigFileUse;
+
 //////////////////////////////////
 
 #define COLOR_ERROR "\033[0;33m"
@@ -202,6 +230,8 @@ char *executeEnvironment[3] = {
 
 int _Execute(char **output, const char *executable, ...) {
 	char *argv[64];
+	char *copies[64];
+	size_t copyCount = 0;
 	va_list argList;
 	va_start(argList, executable);
 
@@ -219,6 +249,8 @@ int _Execute(char **output, const char *executable, ...) {
 			}
 
 			char *copy = (char *) malloc(strlen(string) + 2);
+			assert(copyCount != 64);
+			copies[copyCount++] = copy;
 			strcpy(copy, string);
 			strcat(copy, " ");
 			uintptr_t start = 0;
@@ -305,6 +337,10 @@ int _Execute(char **output, const char *executable, ...) {
 
 	if (verbose && status) {
 		Log("(status = %d)\n", status);
+	}
+
+	for (uintptr_t i = 0; i < copyCount; i++) {
+		free(copies[i]);
 	}
 
 	if (status) __sync_fetch_and_or(&encounteredErrors, 1);
@@ -450,6 +486,7 @@ bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFil
 	
 	if (output.error) {
 		Log("Error: Could not open output file '%s'.\n", outputFile);
+		__sync_fetch_and_or(&encounteredErrors, 1);
 		return false;
 	}
 
@@ -486,11 +523,13 @@ bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFil
 
 		if (!buffer) {
 			Log("Error: Could not open input file '%s'.\n", inputFiles[i].path);
+			__sync_fetch_and_or(&encounteredErrors, 1);
 			return false;
 		}
 
 		if (size > 0xFFFFFFFF) {
 			Log("Error: Input file '%s' too large (max: 4GB).\n", inputFiles[i].path);
+			__sync_fetch_and_or(&encounteredErrors, 1);
 			return false;
 		}
 
@@ -499,6 +538,7 @@ bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFil
 		FileSeek(output, outputPosition);
 		FileWrite(output, size, buffer);
 		outputPosition += size;
+		free(buffer);
 	}
 
 	FileClose(output);
@@ -527,6 +567,8 @@ typedef struct DependencyFile {
 } DependencyFile;
 
 typedef struct Application {
+	char *manifest;
+
 	const char *name; 
 	EsINIState *properties;
 	int id;
@@ -607,7 +649,9 @@ void BuildDesktop(Application *application) {
 	ADD_BUNDLE_INPUT("res/Cursors.png", "Cursors.png", 16);
 	ADD_BUNDLE_INPUT("bin/Stripped Executables/Desktop", "$Executables/x86_64", 0x1000); // TODO Don't hardcode the target.
 
-	MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
+	if (!application->error) {
+		application->error = !MakeBundle("root/" SYSTEM_FOLDER_NAME "/Desktop.esx", application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
+	}
 }
 
 void BuildApplication(Application *application) {
@@ -699,7 +743,9 @@ void BuildApplication(Application *application) {
 			}
 		}
 
-		MakeBundle(executable, application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
+		if (!application->error) {
+			application->error = !MakeBundle(executable, application->bundleInputFiles, arrlenu(application->bundleInputFiles), 0);
+		}
 	}
 }
 
@@ -722,14 +768,22 @@ void *BuildApplicationThread(void *_unused) {
 
 void ParseApplicationManifest(const char *manifestPath) {
 	EsINIState s = {};
-	char *manifest = (char *) LoadFile(manifestPath, &s.bytes);
-	s.buffer = manifest;
+	char *manifest;
+
+	if (singleConfigFileUse) {
+		manifest = s.buffer = malloc(singleConfigFileBytes);
+		s.bytes = singleConfigFileBytes;
+		memcpy(s.buffer, singleConfigFileData, singleConfigFileBytes);
+	} else {
+		manifest = s.buffer = (char *) LoadFile(manifestPath, &s.bytes);
+	}
 
 	const char *require = "";
 	bool needsNativeToolchain = false;
 	bool disabled = false;
 
 	Application application = {};
+	application.manifest = manifest;
 	application.id = nextID++;
 	application.manifestPath = manifestPath;
 	application.compileFlags = "";
@@ -1226,7 +1280,7 @@ int BuildCore(int argc, char **argv) {
 #else
 int main(int argc, char **argv) {
 #endif
-	if (argc < 2) {
+	if (argc < 2 && !singleConfigFileUse) {
 		Log("Usage: build_core <mode> <options...>\n");
 		return 1;
 	}
@@ -1248,7 +1302,9 @@ int main(int argc, char **argv) {
 	char *driverSource = NULL, *driverName = NULL;
 	bool driverBuiltin = false;
 
-	if (0 == strcmp(argv[1], "standard")) {
+	if (singleConfigFileUse) {
+		arrput(applicationManifests, "$SingleConfigFile");
+	} else if (0 == strcmp(argv[1], "standard")) {
 		if (argc != 3) {
 			Log("Usage: standard <configuration>\n");
 			return 1;
@@ -1520,13 +1576,6 @@ int main(int argc, char **argv) {
 			CopyFile("bin/Object Files/crt1.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crt1.o", true); // TODO Don't hardcode the target.
 			CopyFile("bin/Object Files/crtglue.o", "cross/lib/gcc/x86_64-essence/" GCC_VERSION "/crtglue.o", true);
 			CopyFile("util/linker/userland64.ld", "root/Applications/POSIX/lib/linker/userland64.ld", false);
-
-			if (hasNativeToolchain) {
-				snprintf(buffer, sizeof(buffer), "%s/linker/userland64.ld", toolchainLinkerScripts); // TODO Don't hardcode the target.
-				Execute(toolchainCC, "util/build_core.c", "-o", "root/Applications/POSIX/bin/build_core", "-g", 
-						"-nostdlib", "bin/Object Files/crti.o", "bin/Object Files/crtbegin.o", 
-						"bin/Object Files/crtend.o", "bin/Object Files/crtn.o", "-T", buffer);
-			}
 		}
 
 #define ADD_DEPENDENCY_FILE(application, _path, _name) \
@@ -1696,15 +1745,252 @@ int main(int argc, char **argv) {
 		DependenciesListWrite();
 	}
 
-	return encounteredErrors;
+	for (uintptr_t i = 0; i < arrlenu(applications); i++) {
+		free(applications[i].manifest);
+		arrfree(applications[i].sources);
+		arrfree(applications[i].dependencyFiles);
+		arrfree(applications[i].bundleInputFiles);
+		arrfree(applications[i].fileTypes);
+		arrfree(applications[i].handlers);
+	}
+
+	arrfree(applicationManifests);
+	arrfree(applications);
+	shfree(applicationDependencies);
+
+	uint8_t _encounteredErrors = encounteredErrors;
+	encounteredErrors = false;
+
+#ifdef PARALLEL_BUILD
+	applicationsIndex = 0;
+#endif
+
+	return _encounteredErrors;
 }
 
 #ifdef OS_ESSENCE
+
+#include <shared/strings.cpp>
+
+EsCommand commandBuild;
+EsCommand commandLaunch;
+
+EsButton *buttonBuild;
+EsButton *buttonLaunch;
+
+EsTextbox *textboxLog;
+
+char *workingDirectory;
+size_t workingDirectoryBytes;
+
+bool buildRunning;
+
+const EsStyle stylePanelStack = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.insets = ES_RECT_1(20),
+		.gapMajor = 15,
+	},
+};
+
+const EsStyle stylePanelButtonStack = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_GAP_MAJOR,
+		.gapMajor = 5,
+	},
+};
+
+const EsStyle styleTextboxLog = {
+	.inherit = ES_STYLE_TEXTBOX_BORDERED_MULTILINE,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_PREFERRED_WIDTH,
+		.textSize = 10,
+		.fontFamily = ES_FONT_MONOSPACED,
+		.preferredWidth = 400,
+	},
+};
+
+void ThreadBuild(EsGeneric argument) {
+	(void) argument;
+	logSendMessages = true;
+	int result = BuildCore(0, NULL);
+	EsMessage m;
+	m.type = result ? MSG_BUILD_FAILED : MSG_BUILD_SUCCESS;
+	EsMessagePost(NULL, &m); 
+}
+
+void CommandBuild(EsInstance *instance, EsElement *element, EsCommand *command) {
+	(void) element;
+	EsAssert(command == &commandBuild);
+
+	if (!buildRunning) {
+		EsGeneric argument = { 0 };
+
+		if (ES_SUCCESS == EsThreadCreate(ThreadBuild, NULL, argument)) {
+			buildRunning = true;
+			EsCommandSetEnabled(&commandBuild, false);
+			EsCommandSetEnabled(&commandLaunch, false);
+		} else {
+			EsDialogShow(instance->window, INTERFACE_STRING(BuildCoreCannotCreateBuildThread), NULL, 0, ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON);
+		}
+	}
+}
+
+void CommandLaunch(EsInstance *instance, EsElement *element, EsCommand *command) {
+	(void) instance;
+	(void) element;
+	EsAssert(command == &commandLaunch);
+
+	if (!singleConfigFileData || !workingDirectory) {
+		return;
+	}
+
+	EsINIState s = {};
+	s.buffer = singleConfigFileData;
+	s.bytes = singleConfigFileBytes;
+
+	char *executablePath = NULL;
+	size_t executablePathBytes = 0;
+
+	while (EsINIParse(&s)) {
+		if (s.sectionClassBytes == 0 
+				&& 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general")) 
+				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("name"))) {
+			executablePath = EsStringAllocateAndFormat(&executablePathBytes, "%s/bin/%s.esx", workingDirectoryBytes, workingDirectory, s.valueBytes, s.value);
+		}
+	}
+
+	if (executablePath) {
+		EsApplicationRunTemporary(executablePath, executablePathBytes);
+		EsHeapFree(executablePath, 0, NULL);
+	}
+}
+
+int InstanceCallback(EsInstance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_OPEN) {
+		EsFileStore *fileStore = message->instanceOpen.file;
+		const char *path = message->instanceOpen.nameOrPath;
+		size_t pathBytes = message->instanceOpen.nameOrPathBytes;
+
+		bool pathIsReal = false;
+		for (uintptr_t i = 0; i < pathBytes; i++) if (path[i] == '/') pathIsReal = true;
+
+		// HACK Remove this limitation.
+		bool pathCanBeAccessedByPOSIXSubsystem = pathBytes > 3 && path[0] == '0' && path[1] == ':' && path[2] == '/';
+
+		if (!pathIsReal) {
+			// Not a real file, we cannot build here.
+			EsInstanceOpenComplete(instance, fileStore, false, INTERFACE_STRING(BuildCoreNoFilePath));
+		} else if (!pathCanBeAccessedByPOSIXSubsystem) {
+			EsInstanceOpenComplete(instance, fileStore, false, INTERFACE_STRING(BuildCorePathCannotBeAccessedByPOSIXSubsystem));
+		} else {
+			size_t newFileBytes;
+			void *newFileData = EsFileStoreReadAll(fileStore, &newFileBytes);
+			EsInstanceOpenComplete(instance, fileStore, newFileData != NULL, NULL, 0);
+
+			if (newFileData) {
+				EsHeapFree(singleConfigFileData, 0, NULL);
+				singleConfigFileBytes = newFileBytes;
+				singleConfigFileData = newFileData;
+				singleConfigFileUse = true;
+
+				// Change directory.
+				size_t directoryBytes = pathBytes;
+
+				for (uintptr_t i = 0; i < pathBytes; i++) {
+					if (path[i] == '/') {
+						directoryBytes = i;
+					}
+				}
+
+				char *directory = EsHeapAllocate(directoryBytes + 1, false, NULL);
+				directory[directoryBytes] = 0;
+				EsMemoryCopy(directory, path, directoryBytes);
+				EsPOSIXSystemCall(SYS_chdir, (intptr_t) (directory + 2 /* skip drive prefix */), 0, 0, 0, 0, 0);
+				EsHeapFree(workingDirectory, workingDirectoryBytes ? workingDirectoryBytes + 1 : 0, NULL);
+				workingDirectory = directory;
+				workingDirectoryBytes = directoryBytes;
+
+				if (!buildRunning) {
+					EsCommandSetEnabled(&commandBuild, true);
+					EsCommandSetEnabled(&commandLaunch, true);
+				}
+			}
+		}
+	}
+
+	return ES_HANDLED;
+}
+
+void InstanceCreate(EsMessage *message) {
+	EsInstance *instance = EsInstanceCreate(message, INTERFACE_STRING(BuildCoreTitle)); 
+	instance->callback = InstanceCallback;
+	EsCommandRegister(&commandBuild, instance, INTERFACE_STRING(BuildCoreBuild), CommandBuild, 1, "F5", false);
+	EsCommandRegister(&commandLaunch, instance, INTERFACE_STRING(BuildCoreLaunch), CommandLaunch, 2, "F6", false);
+	EsWindowSetIcon(instance->window, ES_ICON_TEXT_X_MAKEFILE);
+	EsPanel *panelRoot = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
+	EsPanel *panelStack = EsPanelCreate(panelRoot, ES_CELL_FILL | ES_PANEL_HORIZONTAL, &stylePanelStack);
+	EsPanel *panelButtonStack = EsPanelCreate(panelStack, ES_CELL_V_TOP | ES_PANEL_VERTICAL, &stylePanelButtonStack);
+	buttonBuild = EsButtonCreate(panelButtonStack, ES_BUTTON_DEFAULT, ES_NULL, INTERFACE_STRING(BuildCoreBuild));
+	EsCommandAddButton(&commandBuild, buttonBuild);
+	buttonBuild->accessKey = 'B';
+	buttonLaunch = EsButtonCreate(panelButtonStack, ES_FLAGS_DEFAULT, ES_NULL, INTERFACE_STRING(BuildCoreLaunch));
+	EsCommandAddButton(&commandLaunch, buttonLaunch);
+	buttonLaunch->accessKey = 'L';
+	EsSpacerCreate(panelStack, ES_CELL_V_FILL, ES_STYLE_SEPARATOR_VERTICAL, 0, 0);
+	textboxLog = EsTextboxCreate(panelStack, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleTextboxLog);
+	textboxLog->accessKey = 'O';
+	EsTextboxSetReadOnly(textboxLog, true);
+}
+
 void _start() {
+	_init();
+
 	int argc; 
 	char **argv;
-	_init();
 	EsPOSIXInitialise(&argc, &argv);
-	exit(BuildCore(argc, argv));
+
+	EsProcessCreateData createData;
+	EsProcessGetCreateData(&createData);
+
+	if (createData.subsystemID == ES_SUBSYSTEM_ID_POSIX) {
+		exit(BuildCore(argc, argv));
+	}
+
+	while (true) {
+		EsMessage *message = EsMessageReceive();
+
+		if (message->type == ES_MSG_INSTANCE_CREATE) {
+			InstanceCreate(message);
+		} else if (message->type == ES_MSG_APPLICATION_EXIT) {
+			EsHeapFree(singleConfigFileData, 0, NULL);
+			singleConfigFileData = NULL;
+		} else if (message->type == MSG_BUILD_SUCCESS || message->type == MSG_BUILD_FAILED) {
+			buildRunning = false;
+			EsCommandSetEnabled(&commandBuild, true);
+			EsCommandSetEnabled(&commandLaunch, true);
+
+			EsTextboxMoveCaretRelative(textboxLog, ES_TEXTBOX_MOVE_CARET_ALL);
+
+			if (message->type == MSG_BUILD_FAILED) {
+				EsTextboxInsert(textboxLog, INTERFACE_STRING(BuildCoreBuildFailed), false);
+				EsElementFocus(buttonBuild, ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT);
+			} else {
+				EsTextboxInsert(textboxLog, INTERFACE_STRING(BuildCoreBuildSuccess), false);
+				EsElementFocus(buttonLaunch, ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT);
+			}
+
+			EsTextboxEnsureCaretVisible(textboxLog, false);
+			_EsPathAnnouncePathMoved(NULL, 0, workingDirectory, workingDirectoryBytes);
+		} else if (message->type == MSG_LOG) {
+			char *copy = message->user.context1.p;
+			EsTextboxMoveCaretRelative(textboxLog, ES_TEXTBOX_MOVE_CARET_ALL);
+			EsTextboxInsert(textboxLog, copy, -1, false);
+			EsTextboxEnsureCaretVisible(textboxLog, false);
+			EsHeapFree(copy, 0, NULL);
+		}
+	}
 }
+
 #endif

@@ -1586,10 +1586,11 @@ void ApplicationInstanceCleanup(ApplicationInstance *instance) {
 	instance->application = nullptr;
 }
 
-void PathGetNameAndContainingFolder(const char *path, ptrdiff_t pathBytes,
-				const char **name, ptrdiff_t *nameBytes,
-				const char **containingFolder, ptrdiff_t *containingFolderBytes,
-				EsVolumeInformation *volumeInformation /* needs to be allocated outside */) {
+void PathGetNameAndContainingFolder(InstalledApplication *application, 
+		const char *path, ptrdiff_t pathBytes,
+		const char **name, ptrdiff_t *nameBytes, /* the full path is returned if the application has permission_all_files */
+		const char **containingFolder, ptrdiff_t *containingFolderBytes,
+		EsVolumeInformation *volumeInformation /* needs to be allocated outside */) {
 	if (pathBytes == -1) {
 		pathBytes = EsCStringLength(path);
 	}
@@ -1604,8 +1605,11 @@ void PathGetNameAndContainingFolder(const char *path, ptrdiff_t pathBytes,
 		if (path[i - 1] == '/') {
 			if (!containingFolderEnd) {
 				containingFolderEnd = path + i - 1;
-				*name = path + i;
-				*nameBytes = pathBytes - i;
+
+				if (~application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
+					*name = path + i;
+					*nameBytes = pathBytes - i;
+				}
 			} else {
 				*containingFolder = path + i;
 				*containingFolderBytes = containingFolderEnd - *containingFolder;
@@ -1624,11 +1628,11 @@ void PathGetNameAndContainingFolder(const char *path, ptrdiff_t pathBytes,
 	}
 }
 
-void *OpenDocumentGetRenameMessageData(const char *path, size_t pathBytes, size_t *bytes) {
+void *OpenDocumentGetRenameMessageData(InstalledApplication *application, const char *path, size_t pathBytes, size_t *bytes) {
 	EsVolumeInformation volumeInformation;
 	const char *name, *containingFolder;
 	ptrdiff_t nameBytes, containingFolderBytes;
-	PathGetNameAndContainingFolder(path, pathBytes, &name, &nameBytes, &containingFolder, &containingFolderBytes, &volumeInformation);
+	PathGetNameAndContainingFolder(application, path, pathBytes, &name, &nameBytes, &containingFolder, &containingFolderBytes, &volumeInformation);
 	*bytes = sizeof(ptrdiff_t) * 2 + nameBytes + containingFolderBytes;
 	uint8_t *data = (uint8_t *) EsHeapAllocate(*bytes, false);
 	EsMemoryCopy(data, &nameBytes, sizeof(ptrdiff_t));
@@ -1636,6 +1640,24 @@ void *OpenDocumentGetRenameMessageData(const char *path, size_t pathBytes, size_
 	EsMemoryCopy(data + sizeof(ptrdiff_t) * 2, name, nameBytes);
 	EsMemoryCopy(data + sizeof(ptrdiff_t) * 2 + nameBytes, containingFolder, containingFolderBytes);
 	return data;
+}
+
+void ApplicationTemporaryDestroy(InstalledApplication *application) {
+	if (!application->temporary) return;
+
+	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+		if (desktop.installedApplications[i] == application) {
+			desktop.installedApplications.Delete(i);
+			EsHeapFree(application->cName);
+			EsHeapFree(application->cExecutable);
+			EsHeapFree(application->settingsPath);
+			EsHeapFree(application);
+			// TODO Delete the settings folder.
+			return;
+		}
+	}
+
+	EsAssert(false);
 }
 
 bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
@@ -1706,6 +1728,7 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 				ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND, &executableNode);
 
 		if (ES_CHECK_ERROR(error)) {
+			ApplicationTemporaryDestroy(application);
 			_EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
 			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
@@ -1817,6 +1840,7 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 			process->application = application;
 			desktop.allApplicationProcesses.Add(process);
 		} else {
+			ApplicationTemporaryDestroy(application);
 			_EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
 			return ApplicationInstanceStart(APPLICATION_ID_DESKTOP_CRASHED, &s, instance);
@@ -1845,12 +1869,11 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 
 	EsMessage m = { ES_MSG_INSTANCE_CREATE };
 
-	if (~startupInformation->flags & ES_APPLICATION_STARTUP_MANUAL_PATH) {
-		PathGetNameAndContainingFolder(startupInformation->filePath, startupInformation->filePathBytes,
-				&startupInformation->filePath, &startupInformation->filePathBytes,
-				&startupInformation->containingFolder, &startupInformation->containingFolderBytes,
-				&volumeInformation);
-	}
+	PathGetNameAndContainingFolder(application, 
+			startupInformation->filePath, startupInformation->filePathBytes,
+			&startupInformation->filePath, &startupInformation->filePathBytes,
+			&startupInformation->containingFolder, &startupInformation->containingFolderBytes,
+			&volumeInformation);
 
 	// Share handles to the file and the startup information buffer.
 
@@ -1902,24 +1925,6 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartup
 		EsHeapFree(instance);
 		return nullptr;
 	}
-}
-
-void ApplicationTemporaryDestroy(InstalledApplication *application) {
-	if (!application->temporary) return;
-
-	for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-		if (desktop.installedApplications[i] == application) {
-			desktop.installedApplications.Delete(i);
-			EsHeapFree(application->cName);
-			EsHeapFree(application->cExecutable);
-			EsHeapFree(application->settingsPath);
-			EsHeapFree(application);
-			// TODO Delete the settings folder.
-			return;
-		}
-	}
-
-	EsAssert(false);
 }
 
 ApplicationProcess *ApplicationProcessFindByPID(EsObjectID pid, bool removeIfFound = false) {
@@ -2180,7 +2185,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		{
 			// Tell the instance the chosen name and new containing folder for the document.
 			EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
-			void *data = OpenDocumentGetRenameMessageData(name, nameBytes, &m.tabOperation.bytes);
+			void *data = OpenDocumentGetRenameMessageData(instance->application, name, nameBytes, &m.tabOperation.bytes);
 			m.tabOperation.id = instance->embeddedWindowID;
 			m.tabOperation.handle = EsConstantBufferCreate(data, m.tabOperation.bytes, instance->process->handle); 
 			EsMessagePostRemote(instance->process->handle, &m);
@@ -2219,46 +2224,46 @@ void InstanceAnnouncePathMoved(InstalledApplication *fromApplication, const char
 	// TODO Update the location of installed applications and other things in the configuration.
 	// TODO Replace fromApplication with something better.
 
-	EsObjectID documentID = 0;
+	if (oldPathBytes) {
+		EsObjectID documentID = 0;
 
-	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
-		OpenDocument *document = &desktop.openDocuments[i];
+		for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+			OpenDocument *document = &desktop.openDocuments[i];
 
-		if (document->pathBytes >= oldPathBytes
-				&& 0 == EsMemoryCompare(document->path, oldPath, oldPathBytes)
-				&& (oldPathBytes == document->pathBytes || document->path[oldPathBytes] == '/')) {
-			if (document->pathBytes == oldPathBytes) documentID = document->id;
-			char *newDocumentPath = (char *) EsHeapAllocate(document->pathBytes - oldPathBytes + newPathBytes, false);
-			EsMemoryCopy(newDocumentPath, newPath, newPathBytes);
-			EsMemoryCopy(newDocumentPath + newPathBytes, document->path + oldPathBytes, document->pathBytes - oldPathBytes);
-			document->pathBytes += newPathBytes - oldPathBytes;
-			EsHeapFree(document->path);
-			document->path = newDocumentPath;
+			if (document->pathBytes >= oldPathBytes
+					&& 0 == EsMemoryCompare(document->path, oldPath, oldPathBytes)
+					&& (oldPathBytes == document->pathBytes || document->path[oldPathBytes] == '/')) {
+				if (document->pathBytes == oldPathBytes) documentID = document->id;
+				char *newDocumentPath = (char *) EsHeapAllocate(document->pathBytes - oldPathBytes + newPathBytes, false);
+				EsMemoryCopy(newDocumentPath, newPath, newPathBytes);
+				EsMemoryCopy(newDocumentPath + newPathBytes, document->path + oldPathBytes, document->pathBytes - oldPathBytes);
+				document->pathBytes += newPathBytes - oldPathBytes;
+				EsHeapFree(document->path);
+				document->path = newDocumentPath;
+			}
+		}
+
+		if (documentID) {
+			for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+				ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+				if (instance->documentID != documentID) continue;
+				if (instance->application == fromApplication) continue;
+				if (!instance->process) continue;
+
+				size_t messageDataBytes;
+				void *messageData = OpenDocumentGetRenameMessageData(instance->application, newPath, newPathBytes, &messageDataBytes);
+
+				EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
+				m.tabOperation.id = instance->embeddedWindowID;
+				m.tabOperation.handle = EsConstantBufferCreate(messageData, messageDataBytes, instance->process->handle); 
+				m.tabOperation.bytes = messageDataBytes;
+				EsMessagePostRemote(instance->process->handle, &m);
+
+				EsHeapFree(messageData);
+			}
 		}
 	}
-
-	if (!documentID) {
-		return;
-	}
-
-	size_t messageDataBytes;
-	void *messageData = OpenDocumentGetRenameMessageData(newPath, newPathBytes, &messageDataBytes);
-
-	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-		ApplicationInstance *instance = desktop.allApplicationInstances[i];
-
-		if (instance->documentID != documentID) continue;
-		if (instance->application == fromApplication) continue;
-		if (!instance->process) continue;
-
-		EsMessage m = { ES_MSG_INSTANCE_DOCUMENT_RENAMED };
-		m.tabOperation.id = instance->embeddedWindowID;
-		m.tabOperation.handle = EsConstantBufferCreate(messageData, messageDataBytes, instance->process->handle); 
-		m.tabOperation.bytes = messageDataBytes;
-		EsMessagePostRemote(instance->process->handle, &m);
-	}
-
-	EsHeapFree(messageData);
 
 	if (fromApplication != desktop.fileManager && desktop.fileManager && desktop.fileManager->singleProcess) {
 		char *data = (char *) EsHeapAllocate(sizeof(size_t) * 2 + oldPathBytes + newPathBytes, false);
@@ -2905,6 +2910,28 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 				EsBufferWrite(pipe, document->path, document->pathBytes);
 			}
 		}
+	} else if (buffer[0] == DESKTOP_MSG_RUN_TEMPORARY_APPLICATION) {
+		InstalledApplication *requestingApplication = ApplicationFindByPID(message->desktop.processID);
+
+		if (requestingApplication && (requestingApplication->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION)) {
+			InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+			application->temporary = true;
+			application->hidden = true;
+			application->useSingleProcess = true;
+			application->cExecutable = (char *) EsHeapAllocate(message->desktop.bytes, false);
+			EsMemoryCopy(application->cExecutable, buffer + 1, message->desktop.bytes - 1);
+			application->cExecutable[message->desktop.bytes - 1] = 0;
+			static int64_t nextTemporaryID = -1;
+			application->id = nextTemporaryID--;
+			application->cName = (char *) EsHeapAllocate(32, false);
+			for (int i = 1; i < 31; i++) application->cName[i] = (EsRandomU8() % 26) + 'a';
+			application->cName[0] = '_', application->cName[31] = 0;
+			EsHandle handle;
+			EsError error = TemporaryFileCreate(&handle, &application->settingsPath, &application->settingsPathBytes, ES_NODE_DIRECTORY);
+			if (error == ES_SUCCESS) EsHandleClose(handle);
+			desktop.installedApplications.Add(application);
+			ApplicationInstanceCreate(application->id, nullptr, nullptr);
+		}
 	} else if (!instance) {
 		// -------------------------------------------------
 		// | Messages below here require a valid instance. |
@@ -2990,30 +3017,9 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 
 		if (document) {
 			_EsApplicationStartupInformation startupInformation = {};
-			startupInformation.flags = ES_APPLICATION_STARTUP_MANUAL_PATH;
 			startupInformation.filePath = document->path;
 			startupInformation.filePathBytes = document->pathBytes;
 			ApplicationInstanceCreate(desktop.fileManager->id, &startupInformation, instance->tab->container);
-		}
-	} else if (buffer[0] == DESKTOP_MSG_RUN_TEMPORARY_APPLICATION) {
-		if (instance->application && (instance->application->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION)) {
-			InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
-			application->temporary = true;
-			application->hidden = true;
-			application->useSingleProcess = true;
-			application->cExecutable = (char *) EsHeapAllocate(message->desktop.bytes, false);
-			EsMemoryCopy(application->cExecutable, buffer + 1, message->desktop.bytes - 1);
-			application->cExecutable[message->desktop.bytes - 1] = 0;
-			static int64_t nextTemporaryID = -1;
-			application->id = nextTemporaryID--;
-			application->cName = (char *) EsHeapAllocate(32, false);
-			for (int i = 1; i < 31; i++) application->cName[i] = (EsRandomU8() % 26) + 'a';
-			application->cName[0] = '_', application->cName[31] = 0;
-			EsHandle handle;
-			EsError error = TemporaryFileCreate(&handle, &application->settingsPath, &application->settingsPathBytes, ES_NODE_DIRECTORY);
-			if (error == ES_SUCCESS) EsHandleClose(handle);
-			desktop.installedApplications.Add(application);
-			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}
 	} else {
 		EsPrint("DesktopSyscall - Received unhandled message %d.\n", buffer[0]);

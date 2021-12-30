@@ -92,6 +92,7 @@ bool IsStringEqual(const char *string, size_t stringBytes, const char *cLiteral)
 
 bool CheckDependencies(const char *applicationName) {
 #ifdef OS_ESSENCE
+	(void) applicationName;
 	// TODO.
 	return true;
 #else
@@ -128,6 +129,9 @@ bool CheckDependencies(const char *applicationName) {
 
 void ParseDependencies(const char *dependencyFile, const char *applicationName, bool append) {
 #ifdef OS_ESSENCE
+	(void) dependencyFile;
+	(void) applicationName;
+	(void) append;
 	// TODO.
 #else
 	char *dependencies = (char *) LoadFile(dependencyFile, NULL);

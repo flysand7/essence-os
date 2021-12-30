@@ -118,6 +118,10 @@ int EsProcessGetExitStatus(EsHandle process) {
 	return EsSyscall(ES_SYSCALL_PROCESS_GET_STATUS, process, 0, 0, 0);
 }
 
+void EsProcessGetCreateData(EsProcessCreateData *data) {
+	EsMemoryCopy(data, &api.startupInformation->data, sizeof(EsProcessCreateData));
+}
+
 void ThreadInitialise(ThreadLocalStorage *local);
 
 __attribute__((no_instrument_function))

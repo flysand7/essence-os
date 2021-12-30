@@ -288,3 +288,62 @@ nakst
  — 
 Yesterday at 8:44 AM
 They are not linked to any libraries. They call into the system api via the api table, which is an array of function pointers at a fixed memory address. The api header wraps these function pointers with macros, as needed.
+
+= On UI layouting =
+
+nakst
+ — 
+Today at 5:22 PM
+I really need to talk in depth about how layouting in Luigi (and by extension Essence) works, but let me try and describe the basic idea here:
+
+- Each element has an associated callback function, called its message handler. "Sending a message" to an element just means calling into the message handler of that element.
+- Elements are arranged in a layout tree. Deciding the position of each element is the responsibility of its parent. 
+- When an element need its layout updating it is sent a UI_MSG_LAYOUT message. The element must then position all its child elements with UIElementMove. If a child's bounding box changes, then it will be sent a UI_MSG_LAYOUT message. That is, the subtree that needs relayouting is iterated in recursive manner.
+- During the layout of element, it can request sizing information from its children by sending them the UI_MSG_GET_WIDTH and UI_MSG_GET_HEIGHT messages. As an optional argument, the former takes a desired height of the element, and the latter takes a desired width of the element. 
+- On receiving a GET_WIDTH or GET_HEIGHT message, an element may also need to query its children with GET_WIDTH and GET_HEIGHT.
+
+Example:
+Consider a vertical stack X with a child element Y, which is a text display containing word-wrapped text. X is sent a UI_MSG_LAYOUT message. X sends UI_MSG_GET_HEIGHT to Y with the desired width argument as X.width. Y performs its word-wrapping algorithm, and returns the needed vertical space to display its contents at the given width. X calls UIElementMove on Y, giving it a bounding box with width X.width and the height returned by the UI_MSG_GET_HEIGHT call. Y receives a UI_MSG_LAYOUT message (because UIElementMove was called), but it does nothing because it has no children.
+
+ryanfleury
+ — 
+Today at 5:26 PM
+I see, okay. It seems sort of similar to what I do, actually, in some ways. In your case it's retained-mode, so you do message-passing-style "update propagation", whereas the immediate-mode equivalent would just do the full pass every frame. How do "upwards-dependent" sizes work? e.g. a widget that wants its width to be 50% of its parent's? Is that just decided by the parent?
+
+nakst
+ — 
+Today at 5:37 PM
+It depends on what exactly type of layout you're going for, but generally this sort of thing is done by setting the UI_ELEMENT_H_FILL flag on the child element.
+For example,
+
+UIPanel *panel = UIPanelCreate(parent, UI_PANEL_HORIZONTAL);
+UIButtonCreate(panel, UI_ELEMENT_H_FILL, "Button 1", -1);
+UIButtonCreate(panel, UI_ELEMENT_H_FILL, "Button 2", -1);
+
+
+creates a panel using a horizontal stack layout algorithm, with 2 buttons as its children. Because each button has the UI_ELEMENT_H_FILL, they will stretch to each fill 50% of the available width of the parent.
+Another example,
+
+UIPanel *panel = UIPanelCreate(parent, UI_PANEL_HORIZONTAL);
+UIButtonCreate(panel, 0, "Button 1", -1);
+UISpacerCreate(panel, UI_ELEMENT_H_FILL, 0, 0);
+UIButtonCreate(panel, 0, "Button 2", -1);
+
+
+This time the 2 buttons have fixed width (determined by the length of their label) but the spacer element in the middle of the stack takes up 100% of the panel's width not used by the buttons. This has the effect of putting "Button 1" at the left side of the panel and "Button 2" at the right side. 
+
+ryanfleury
+ — 
+Today at 5:39 PM
+I see—what about something like a 70/30 split?
+nakst
+ — 
+Today at 5:43 PM
+You can't in Luigi. (Luckily it doesn't matter because this is not very common in user interfaces.)
+But in Essence you can do it, by setting it as a property on a panel using the TABLE layout algorithm:
+
+EsPanelBand columns[2] = {
+    { .push = 7 }, /* column 1 */
+    { .push = 3 }, /* column 2 */
+};
+EsPanelSetBands(panel, 2 /* number of columns */, 0, &columns);

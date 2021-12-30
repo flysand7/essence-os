@@ -582,6 +582,14 @@ void FolderRefresh(Folder *folder) {
 		return;
 	}
 
+	if (!folder->attachedInstances.Length()) {
+		// The folder does not have any attached instances, so just destroy it.
+		loadedFolders.FindAndDeleteSwap(folder, true);
+		foldersWithNoAttachedInstances.FindAndDeleteSwap(folder, true);
+		FolderDestroy(folder);
+		return;
+	}
+
 	folder->refreshing = true;
 
 	Array<Instance *> instancesToRefresh = {};
@@ -596,4 +604,22 @@ void FolderRefresh(Folder *folder) {
 	}
 
 	instancesToRefresh.Free();
+}
+
+void FolderRefreshAllFrom(String prefix) {
+	Array<Folder *> foldersToRefresh = {};
+
+	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
+		if (!loadedFolders[i]->refreshing
+				&& loadedFolders[i]->itemHandler->type == NAMESPACE_HANDLER_FILE_SYSTEM 
+				&& PathHasPrefix(loadedFolders[i]->path, prefix)) {
+			foldersToRefresh.Add(loadedFolders[i]);
+		}
+	}
+
+	for (uintptr_t i = 0; i < foldersToRefresh.Length(); i++) {
+		FolderRefresh(foldersToRefresh[i]);
+	}
+
+	foldersToRefresh.Free();
 }

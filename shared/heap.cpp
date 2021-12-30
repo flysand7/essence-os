@@ -132,8 +132,9 @@ static void MemoryLeakDetectorAdd(EsHeap *heap, void *address, size_t bytes) {
 		while (rbp && traceDepth < sizeof(entry->stack) / sizeof(entry->stack[0])) {
 			uint64_t value = *(uint64_t *) (rbp + 8);
 			entry->stack[traceDepth++] = value;
-			if (!value) break;
+			if (!value || (value & 0xFFFF000000000000) || (value < 0x100000)) break;
 			rbp = *(uint64_t *) rbp;
+			if ((rbp & 0xFFFF000000000000) || (rbp < 0x100000)) break;
 		}
 
 		break;

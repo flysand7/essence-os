@@ -1,3 +1,7 @@
+// This file is part of the Essence operating system.
+// It is released under the terms of the MIT license -- see LICENSE.md.
+// Written by: nakst.
+
 #define UI_IMPLEMENTATION
 #define ES_CRT_WITHOUT_PREFIX
 #define EsPainter _EsPainter

@@ -191,6 +191,7 @@ DEFINE_INTERFACE_STRING(FileCannotRename, "The file could not be renamed.");
 
 DEFINE_INTERFACE_STRING(FileRenameSuccess, "Renamed");
 
+DEFINE_INTERFACE_STRING(FileSaveAnnouncement, "Saved to %s");
 DEFINE_INTERFACE_STRING(FileSaveErrorFileDeleted, "Another application deleted the file.");
 DEFINE_INTERFACE_STRING(FileSaveErrorCorrupt, "The file has been corrupted, and it cannot be modified.");
 DEFINE_INTERFACE_STRING(FileSaveErrorDrive, "The drive containing the file was unable to modify it.");
@@ -378,6 +379,18 @@ DEFINE_INTERFACE_STRING(InstallerFailedArchiveCRCError, "The installation data h
 DEFINE_INTERFACE_STRING(InstallerFailedGeneric, "The installation could not complete. This likely means that the drive you selected is failing. Try installing on a different drive.");
 DEFINE_INTERFACE_STRING(InstallerFailedResources, "The installation could not complete. Your computer does not have enough memory to install " SYSTEM_BRAND_SHORT);
 DEFINE_INTERFACE_STRING(InstallerNotSupported, "Your computer does not meet the minimum system requirements to install " SYSTEM_BRAND_SHORT ". Remove the installer, and restart your computer.");
+
+// Build Core.
+
+DEFINE_INTERFACE_STRING(BuildCoreTitle, "Build Core");
+DEFINE_INTERFACE_STRING(BuildCoreNoConfigFileLoaded, "No config file is loaded.");
+DEFINE_INTERFACE_STRING(BuildCoreNoFilePath, "The config file is not in a real folder, so it can't be loaded.");
+DEFINE_INTERFACE_STRING(BuildCorePathCannotBeAccessedByPOSIXSubsystem, "The config file is not located on the 0:/ drive, so it can't be accessed by the POSIX subsystem.");
+DEFINE_INTERFACE_STRING(BuildCoreBuild, "Build");
+DEFINE_INTERFACE_STRING(BuildCoreLaunch, "Launch");
+DEFINE_INTERFACE_STRING(BuildCoreCannotCreateBuildThread, "The build thread could not be created.");
+DEFINE_INTERFACE_STRING(BuildCoreBuildFailed, "\n--- The build failed. ---\n");
+DEFINE_INTERFACE_STRING(BuildCoreBuildSuccess, "\n(success)\n");
 
 // TODO System Monitor.
 
