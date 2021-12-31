@@ -546,12 +546,15 @@ void Run(int emulator, int log, int debug) {
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
 					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags, displayFlags);
 
+			bool printStartupErrorMessage = exitCode != 0;
+
 			if (emulatorTimeout) {
 				emulatorDidTimeout = (exitCode >> 8) == 124;
-			} else {
-				if (exitCode) {
-					printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
-				}
+				if (emulatorDidTimeout) printStartupErrorMessage = false;
+			}
+
+			if (printStartupErrorMessage) {
+				printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
 			}
 
 			// Watch serial file as it is being written to:
@@ -1651,6 +1654,7 @@ void DoCommand(const char *l) {
 
 		stopTests:;
 		fprintf(stderr, ColorHighlight "%d/%d tests succeeded." ColorNormal "\n", successCount, successCount + failureCount);
+		if (failureCount && automatedBuild) exit(1);
 	} else if (0 == strcmp(l, "setup-pre-built-toolchain")) {
 		CallSystem("mv bin/source cross");
 		CallSystem("mkdir -p cross/bin2");
