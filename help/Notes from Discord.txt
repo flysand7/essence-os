@@ -347,3 +347,11 @@ EsPanelBand columns[2] = {
     { .push = 3 }, /* column 2 */
 };
 EsPanelSetBands(panel, 2 /* number of columns */, 0, &columns);
+
+= On the use of GS in the kernel = 
+
+nakst
+ — 
+Today at 8:57 AM
+[gs:0] points to the CPULocalStorage, [gs:8] contains the address of the kernel stack (so it can be switched to in a syscall), [gs:16] points to the current thread
+You can't get the thread from the CPULocalStorage in most situations (i.e. with interrupts enabled), because it will change if the thread is rescheduled on a different CPU, and then you'd read the wrong thread 

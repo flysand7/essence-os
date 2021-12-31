@@ -331,7 +331,7 @@ int32_t FontGetDescent(Font *font) {
 int32_t FontGetEmWidth(Font *font) {
 	if (font->type == FONT_TYPE_BITMAP) {
 		const BitmapFontHeader *header = (const BitmapFontHeader *) font->bitmapData;
-		return header->xEmWidth * FREETYPE_UNIT_SCALE;
+		return header->xEmWidth;
 	}
 
 #ifdef USE_FREETYPE_AND_HARFBUZZ
