@@ -2918,16 +2918,27 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		InstalledApplication *requestingApplication = ApplicationFindByPID(message->desktop.processID);
 
 		if (requestingApplication && (requestingApplication->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION)) {
+			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+				if (EsCStringLength(desktop.installedApplications[i]->cExecutable) == message->desktop.bytes - 1
+						&& 0 == EsMemoryCompare(desktop.installedApplications[i]->cExecutable, buffer + 1, message->desktop.bytes - 1)) {
+					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
+					return;
+				}
+			}
+
 			InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+			if (!application) return;
 			application->temporary = true;
 			application->hidden = true;
 			application->useSingleProcess = true;
 			application->cExecutable = (char *) EsHeapAllocate(message->desktop.bytes, false);
+			if (!application->cExecutable) { EsHeapFree(application); return; }
 			EsMemoryCopy(application->cExecutable, buffer + 1, message->desktop.bytes - 1);
 			application->cExecutable[message->desktop.bytes - 1] = 0;
 			static int64_t nextTemporaryID = -1;
 			application->id = nextTemporaryID--;
 			application->cName = (char *) EsHeapAllocate(32, false);
+			if (!application->cName) { EsHeapFree(application->cExecutable); EsHeapFree(application); return; }
 			for (int i = 1; i < 31; i++) application->cName[i] = (EsRandomU8() % 26) + 'a';
 			application->cName[0] = '_', application->cName[31] = 0;
 			EsHandle handle;
@@ -2936,12 +2947,7 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			desktop.installedApplications.Add(application);
 			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}
-	} else if (!instance) {
-		// -------------------------------------------------
-		// | Messages below here require a valid instance. |
-		// -------------------------------------------------
-		EsPrint("DesktopSyscall - Received message %d without an instance.\n", buffer[0]);
-	} else if (buffer[0] == DESKTOP_MSG_SET_TITLE || buffer[0] == DESKTOP_MSG_SET_ICON) {
+	} else if ((buffer[0] == DESKTOP_MSG_SET_TITLE || buffer[0] == DESKTOP_MSG_SET_ICON) && instance) {
 		if (buffer[0] == DESKTOP_MSG_SET_TITLE) {
 			instance->titleBytes = EsStringFormat(instance->title, sizeof(instance->title), "%s", 
 					message->desktop.bytes - 1, buffer + 1);
@@ -2962,11 +2968,11 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 				instance->tab->container->taskBarButton->Repaint(true);
 			}
 		}
-	} else if (buffer[0] == DESKTOP_MSG_SET_MODIFIED && message->desktop.bytes == 2) {
+	} else if (buffer[0] == DESKTOP_MSG_SET_MODIFIED && message->desktop.bytes == 2 && instance) {
 		if (instance->tab) {
 			EsButtonSetCheck(instance->tab->closeButton, buffer[1] ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && message->desktop.bytes == 1 + sizeof(double) && instance->isUserTask) {
+	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && message->desktop.bytes == 1 + sizeof(double) && instance->isUserTask && instance) {
 		double progress;
 		EsMemoryCopy(&progress, buffer + 1, sizeof(double));
 
@@ -2975,9 +2981,9 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			instance->progress = progress;
 			EsElementRepaint(desktop.tasksButton);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE) {
+	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE && instance) {
 		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1, false);
-	} else if (buffer[0] == DESKTOP_MSG_RENAME) {
+	} else if (buffer[0] == DESKTOP_MSG_RENAME && instance) {
 		const char *newName = (const char *) buffer + 1;
 		size_t newNameBytes = message->desktop.bytes - 1;
 		OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
@@ -3013,9 +3019,9 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsHeapFree(oldPath);
 			EsHeapFree(newPath);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_COMPLETE_SAVE) {
+	} else if (buffer[0] == DESKTOP_MSG_COMPLETE_SAVE && instance) {
 		ApplicationInstanceCompleteSave(instance);
-	} else if (buffer[0] == DESKTOP_MSG_SHOW_IN_FILE_MANAGER) {
+	} else if (buffer[0] == DESKTOP_MSG_SHOW_IN_FILE_MANAGER && instance) {
 		// TODO Don't open a new instance if the folder is already open?
 		OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
 
