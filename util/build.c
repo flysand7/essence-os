@@ -1621,6 +1621,7 @@ void DoCommand(const char *l) {
 		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
 	} else if (0 == strcmp(l, "run-tests")) {
 		// TODO Capture (and compress) emulator memory dump if a test causes a KernelPanic or EsPanic.
+		// TODO Using SMP/KVM if available in the optimised test runs.
 
 		int successCount = 0, failureCount = 0;
 		CallSystem("mkdir -p root/Essence/Settings/API\\ Tests");
@@ -1632,7 +1633,7 @@ void DoCommand(const char *l) {
 				fwrite(&index, 1, sizeof(uint32_t), f);
 				fclose(f);
 				emulatorTimeout = 10;
-				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_NONE, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
+				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				emulatorTimeout = 0;
 				if (emulatorDidTimeout) encounteredErrors = false;
