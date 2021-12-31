@@ -127,8 +127,8 @@ This file contains a list and description of the files and folders in the source
 	- `avl_tree.cpp` AVL lookup tree, including support for searches for the "smallest above or equal" and "largest below or equal".
 	- `bitset.cpp` Efficient large bitsets.
 	- `common.cpp` Various common functions, including management of `EsRectangle`s, rendering, string utilities, memory utilities (like `EsMemoryCopy`), printing and string formatting, pseudo random number generation, standard algorithms like sorting, synchronisation primitives, byte swapping, implementation of the `EsCRT-` functions, `EsBuffer` functions, and time and date calculations.
+	- `crc.h` Implementation of CRC32 and CRC64 hash functions.
 	- `fat.cpp` Common definitions for the FAT file system.
-	- `hash.cpp` Implementation of CRC32 and CRC64 hash functions.
 	- `hash_table.cpp` A hash table, including an implementation of the FNV1a hash function.
 	- `heap.cpp` A memory allocator for arbitrary allocation and freeing of non-fixed size memory blocks.
 	- `linked_list.cpp` Two implementations of a doubly-linked list: `LinkedList<T>` and `SimpleList<T>` where the latter requires less memory but provides less features.

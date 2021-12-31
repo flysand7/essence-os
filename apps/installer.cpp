@@ -2,12 +2,13 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
+#define ES_PRIVATE_APIS
 #define INSTALLER
 
 #define ES_CRT_WITHOUT_PREFIX
 #include <essence.h>
 
-#include <shared/hash.cpp>
+#include <shared/crc.h>
 #include <shared/strings.cpp>
 #include <shared/partitions.cpp>
 #include <shared/array.cpp>

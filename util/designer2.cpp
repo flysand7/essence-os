@@ -169,7 +169,7 @@ UIRectangle ScaleRectangle(UIRectangle r, float by) {
 #include "../shared/math.cpp"
 
 #include "../shared/array.cpp"
-#include "../shared/hash.cpp"
+#include "../shared/crc.h"
 #include "../shared/hash_table.cpp"
 #include "../desktop/renderer.cpp"
 #include "../desktop/theme.cpp"

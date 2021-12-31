@@ -598,7 +598,7 @@ void OutputC(Entry *root) {
 		Entry *entry = root->children + i;
 
 		if (entry->isPrivate) {
-			FilePrintFormat(output, "#if defined(ES_API) || defined(KERNEL) || defined(INSTALLER)\n");
+			FilePrintFormat(output, "#if defined(ES_PRIVATE_APIS)\n");
 		}
 
 		if (entry->type == ENTRY_DEFINE) {

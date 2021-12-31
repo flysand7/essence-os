@@ -155,7 +155,7 @@ File FileOpen(const char *path, char mode) {
 
 #define EsFSError() exit(1)
 
-#include "../shared/hash.cpp"
+#include "../shared/crc.h"
 #include "../shared/partitions.cpp"
 #include "build_common.h"
 #include "../shared/esfs2.h"

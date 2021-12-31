@@ -35,8 +35,12 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <spawn.h>
-#include "../shared/hash.cpp"
+#include "../shared/crc.h"
 
+#define API_TESTS_FOR_RUNNER
+#include "../desktop/api_tests.cpp"
+
+#define ColorError "\033[0;33m"
 #define ColorHighlight "\033[0;36m"
 #define ColorNormal "\033[0m"
 
@@ -47,6 +51,8 @@ bool coloredOutput;
 bool encounteredErrors;
 bool interactiveMode;
 bool canBuildLuigi;
+int emulatorTimeout;
+bool emulatorDidTimeout;
 FILE *systemLog;
 char compilerPath[4096];
 int argc;
@@ -421,6 +427,7 @@ void Build(int optimise, bool compile) {
 #define EMULATOR_QEMU (0)
 #define EMULATOR_BOCHS (1)
 #define EMULATOR_VIRTUALBOX (2)
+#define EMULATOR_QEMU_NO_GUI (3)
 #define DEBUG_LATER (0)
 #define DEBUG_START (1)
 #define DEBUG_NONE (2)
@@ -429,7 +436,16 @@ void Run(int emulator, int log, int debug) {
 	LoadOptions();
 
 	switch (emulator) {
+		case EMULATOR_QEMU_NO_GUI: /* fallthrough */
 		case EMULATOR_QEMU: {
+			char timeoutFlags[256];
+
+			if (emulatorTimeout) {
+				snprintf(timeoutFlags, sizeof(timeoutFlags), "timeout %ds ", emulatorTimeout);
+			} else {
+				timeoutFlags[0] = 0;
+			}
+
 			const char *biosFlags = "";
 			const char *drivePrefix = "-drive file=bin/drive";
 
@@ -519,15 +535,23 @@ void Run(int emulator, int log, int debug) {
 				serialFlags[0] = 0;
 			}
 
-			if (CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
+			const char *displayFlags = emulator == EMULATOR_QEMU_NO_GUI ? " -display none " : "";
+
+			int exitCode = CallSystemF("%s %s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
 					" -netdev user,id=u1 -device e1000,netdev=u1 -object filter-dump,id=f1,netdev=u1,file=bin/Logs/net.dat "
-					" %s %s %s %s %s %s %s ", 
-					audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
+					" %s %s %s %s %s %s %s %s ", 
+					timeoutFlags, audioFlags, IsOptionEnabled("Emulator.RunWithSudo") ? "sudo " : "", drivePrefix, driveFlags, cdromFlags, 
 					atoi(GetOptionString("Emulator.MemoryMB")), 
 					debug ? (debug == DEBUG_NONE ? "-enable-kvm" : "-s -S") : "-s", 
-					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags)) {
-				printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
+					cpuCores, audioFlags2, logFlags, usbFlags, usbFlags2, secondaryDriveFlags, biosFlags, serialFlags, displayFlags);
+
+			if (emulatorTimeout) {
+				emulatorDidTimeout = (exitCode >> 8) == 124;
+			} else {
+				if (exitCode) {
+					printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
+				}
 			}
 
 			// Watch serial file as it is being written to:
@@ -1592,6 +1616,41 @@ void DoCommand(const char *l) {
 		getcwd(cwd, sizeof(cwd));
 		strcat(cwd, "/crash-report.tar.gz");
 		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
+	} else if (0 == strcmp(l, "run-tests")) {
+		// TODO Capture (and compress) emulator memory dump if a test causes a KernelPanic or EsPanic.
+
+		int successCount = 0, failureCount = 0;
+		CallSystem("mkdir -p root/Essence/Settings/API\\ Tests");
+
+		for (int optimisations = 0; optimisations <= 1; optimisations++) {
+			for (uint32_t index = 0; index < sizeof(tests) / sizeof(tests[0]); index++) {
+				CallSystem("rm -f bin/Logs/qemu_serial1.txt");
+				FILE *f = fopen("root/Essence/Settings/API Tests/test.dat", "wb");
+				fwrite(&index, 1, sizeof(uint32_t), f);
+				fclose(f);
+				emulatorTimeout = 10;
+				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_NONE, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
+				else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
+				emulatorTimeout = 0;
+				if (emulatorDidTimeout) encounteredErrors = false;
+				if (encounteredErrors) { fprintf(stderr, "Compile errors, stopping tests.\n"); goto stopTests; }
+				char *log = (char *) LoadFile("bin/Logs/qemu_serial1.txt", NULL);
+				if (!log) { fprintf(stderr, "No log file, stopping tests.\n"); goto stopTests; }
+				bool success = strstr(log, "[APITests-Success]\n") && !emulatorDidTimeout;
+				bool failure = strstr(log, "[APITests-Failure]\n");
+				if (emulatorDidTimeout) fprintf(stderr, "'%s' (%d/%d): " ColorError "timeout" ColorNormal ".\n", tests[index].cName, optimisations, index);
+				else if (success) fprintf(stderr, "'%s' (%d/%d): success.\n", tests[index].cName, optimisations, index);
+				else if (failure) fprintf(stderr, "'%s' (%d/%d): " ColorError "failure" ColorNormal ".\n", tests[index].cName, optimisations, index);
+				else fprintf(stderr, "'%s' (%d/%d): " ColorError "no response" ColorNormal ".\n", tests[index].cName, optimisations, index);
+				if (success) successCount++;
+				else failureCount++;
+				free(log);
+				if (!success) CallSystemF("mv bin/Logs/qemu_serial1.txt bin/Logs/test_%d_%d.txt", optimisations, index);
+			}
+		}
+
+		stopTests:;
+		fprintf(stderr, ColorHighlight "%d/%d tests succeeded." ColorNormal "\n", successCount, successCount + failureCount);
 	} else if (0 == strcmp(l, "setup-pre-built-toolchain")) {
 		CallSystem("mv bin/source cross");
 		CallSystem("mkdir -p cross/bin2");

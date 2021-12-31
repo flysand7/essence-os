@@ -23,9 +23,9 @@
 #define SHARED_COMMON_WANT_ALL
 #define SHARED_MATH_WANT_ALL
 #include <shared/ini.h>
+#include <shared/crc.h>
 #include <shared/heap.cpp>
 #include <shared/linked_list.cpp>
-#include <shared/hash.cpp>
 #include <shared/png_decoder.cpp>
 #include <shared/hash_table.cpp>
 #include <shared/array.cpp>
@@ -119,67 +119,6 @@ const EsBundle bundleDesktop = {
 	.bytes = -1,
 };
 
-struct {
-	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
-	EsMutex systemConfigurationMutex;
-
-	Array<MountPoint> mountPoints;
-	Array<EsMessageDevice> connectedDevices;
-	bool foundBootFileSystem;
-	EsProcessStartupInformation *startupInformation;
-	GlobalData *global;
-
-	EsMutex messageMutex;
-	volatile uintptr_t messageMutexThreadID;
-
-	Array<_EsMessageWithObject> postBox;
-	EsMutex postBoxMutex;
-
-	Array<Timer> timers;
-	EsMutex timersMutex;
-	EsHandle timersThread;
-	EsHandle timersEvent;
-
-	EsSpinlock performanceTimerStackLock;
-#define PERFORMANCE_TIMER_STACK_SIZE (100)
-	double performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
-	uintptr_t performanceTimerStackCount;
-
-	EsHandle workAvailable;
-	EsMutex workMutex;
-	Array<Work> workQueue;
-	Array<EsHandle> workThreads;
-	volatile bool workFinish;
-
-	const uint16_t *keyboardLayout;
-	uint16_t keyboardLayoutIdentifier;
-} api;
-
-ptrdiff_t tlsStorageOffset;
-
-// Miscellanous forward declarations.
-extern "C" void EsUnimplemented();
-extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
-extern "C" uint64_t ProcessorReadTimeStamp();
-void UndoManagerDestroy(EsUndoManager *manager);
-struct APIInstance *InstanceSetup(EsInstance *instance);
-EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
-EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *path, size_t pathBytes);
-EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
-EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
-void FileStoreCloseHandle(EsFileStore *fileStore);
-EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
-const char *EnumLookupNameFromValue(const EnumString *array, int value);
-EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false);
-EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false);
-uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr);
-char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
-int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
-MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
-EsWindow *WindowFromWindowID(EsObjectID id);
-void POSIXCleanup();
-extern "C" void _init();
-
 struct ProcessMessageTiming {
 	double startLogic, endLogic;
 	double startLayout, endLayout;
@@ -246,6 +185,67 @@ struct APIInstance {
 	EsPanel *fileMenuNamePanel;
 	EsTextbox *fileMenuNameTextbox; // Also used by the file save dialog.
 };
+
+struct {
+	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
+	EsMutex systemConfigurationMutex;
+
+	Array<MountPoint> mountPoints;
+	Array<EsMessageDevice> connectedDevices;
+	bool foundBootFileSystem;
+	EsProcessStartupInformation *startupInformation;
+	GlobalData *global;
+
+	EsMutex messageMutex;
+	volatile uintptr_t messageMutexThreadID;
+
+	Array<_EsMessageWithObject> postBox;
+	EsMutex postBoxMutex;
+
+	Array<Timer> timers;
+	EsMutex timersMutex;
+	EsHandle timersThread;
+	EsHandle timersEvent;
+
+	EsSpinlock performanceTimerStackLock;
+#define PERFORMANCE_TIMER_STACK_SIZE (100)
+	double performanceTimerStack[PERFORMANCE_TIMER_STACK_SIZE];
+	uintptr_t performanceTimerStackCount;
+
+	EsHandle workAvailable;
+	EsMutex workMutex;
+	Array<Work> workQueue;
+	Array<EsHandle> workThreads;
+	volatile bool workFinish;
+
+	const uint16_t *keyboardLayout;
+	uint16_t keyboardLayoutIdentifier;
+} api;
+
+ptrdiff_t tlsStorageOffset;
+
+// Miscellanous forward declarations.
+extern "C" void EsUnimplemented();
+extern "C" uintptr_t ProcessorTLSRead(uintptr_t offset);
+extern "C" uint64_t ProcessorReadTimeStamp();
+void UndoManagerDestroy(EsUndoManager *manager);
+struct APIInstance *InstanceSetup(EsInstance *instance);
+EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
+EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *path, size_t pathBytes);
+EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes);
+EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
+void FileStoreCloseHandle(EsFileStore *fileStore);
+EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
+const char *EnumLookupNameFromValue(const EnumString *array, int value);
+EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false);
+EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false);
+uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr);
+char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
+int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
+MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
+EsWindow *WindowFromWindowID(EsObjectID id);
+void POSIXCleanup();
+extern "C" void _init();
 
 #include "syscall.cpp"
 #include "profiling.cpp"

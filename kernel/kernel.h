@@ -182,14 +182,14 @@ extern "C" {
 // ---------------------------------------------------------------------------------------------------------------
 
 #ifndef IMPLEMENTATION
+#include <shared/ini.h>
+#include <shared/crc.h>
 #include <shared/bitset.cpp>
 #include <shared/arena.cpp>
 #include <shared/avl_tree.cpp>
 #include <shared/range_set.cpp>
-#include <shared/ini.h>
 #include <shared/partitions.cpp>
 #include <shared/heap.cpp>
-#include <shared/hash.cpp>
 
 #define ARRAY_IMPLEMENTATION_ONLY
 #include <shared/array.cpp>
