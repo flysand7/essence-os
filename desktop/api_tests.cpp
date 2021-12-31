@@ -12,23 +12,82 @@ typedef struct Test { const char *cName; } Test;
 #define TEST(_callback) { .callback = _callback }
 struct Test { bool (*callback)(); };
 
-bool SuccessTest() {
+//////////////////////////////////////////////////////////////
+
+bool BasicFileOperationsDoByteCount(size_t byteCount) {
+	uint8_t *buffer = (uint8_t *) EsHeapAllocate(byteCount, false);
+
+	for (uintptr_t i = 0; i < byteCount; i++) {
+		buffer[i] = EsRandomU8();
+	}
+
+	EsError error = EsFileWriteAll(EsLiteral("|Settings:/temp.dat"), buffer, byteCount); 
+
+	if (error != ES_SUCCESS) {
+		EsPrint("Error %d writing file of size %d.\n", error, byteCount);
+		return false;
+	}
+
+	size_t readSize;
+	uint8_t *read = (uint8_t *) EsFileReadAll(EsLiteral("|Settings:/temp.dat"), &readSize, &error);
+
+	if (error != ES_SUCCESS) {
+		EsPrint("Error %d reading file of size %d.\n", error, byteCount);
+		return false;
+	}
+
+	if (readSize != byteCount) {
+		EsPrint("Read size mismatch: got %d, expected %d.\n", readSize, byteCount);
+		return false;
+	}
+
+	if (EsMemoryCompare(buffer, read, byteCount)) {
+		EsPrint("Read data mismatch.\n");
+		return false;
+	}
+
+	EsHeapFree(buffer);
+	EsHeapFree(read);
+
 	return true;
 }
 
-bool FailureTest() {
-	return false;
-}
+bool BasicFileOperations() {
+	for (uintptr_t i = 0; i < 24; i += 2) {
+		if (!BasicFileOperationsDoByteCount(1 << i)) {
+			return false;
+		}
+	}
 
-bool TimeoutTest() {
-	EsProcessTerminateCurrent();
+	for (uintptr_t i = 18; i > 0; i -= 3) {
+		if (!BasicFileOperationsDoByteCount(1 << i)) {
+			return false;
+		}
+	}
+
+	EsError error = EsPathDelete(EsLiteral("|Settings:/temp.dat"));
+
+	if (error != ES_SUCCESS) {
+		EsPrint("Error %d deleting file.\n", error);
+		return false;
+	}
+
+	EsFileReadAll(EsLiteral("|Settings:/temp.dat"), nullptr, &error);
+
+	if (error != ES_ERROR_FILE_DOES_NOT_EXIST) {
+		EsPrint("Checking file does not exist after deleting, instead got error %d.\n", error);
+		return false;
+	}
+
 	return true;
 }
+
+//////////////////////////////////////////////////////////////
 
 #endif
 
 const Test tests[] = {
-	TEST(TimeoutTest), TEST(SuccessTest), TEST(FailureTest)
+	TEST(BasicFileOperations),
 };
 
 #ifndef API_TESTS_FOR_RUNNER

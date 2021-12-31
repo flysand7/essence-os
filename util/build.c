@@ -1633,7 +1633,7 @@ void DoCommand(const char *l) {
 				FILE *f = fopen("root/Essence/Settings/API Tests/test.dat", "wb");
 				fwrite(&index, 1, sizeof(uint32_t), f);
 				fclose(f);
-				emulatorTimeout = 10;
+				emulatorTimeout = 20;
 				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				emulatorTimeout = 0;
