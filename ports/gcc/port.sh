@@ -196,4 +196,10 @@ make DESTDIR=$SYSROOT install-target-libgcc
 cd ../..
 rm -rf bin/build-gcc
 
+cp bin/gcc-src/COPYING bin/GCC\ License.txt
+cp bin/binutils-src/COPYING bin/Binutils\ License.txt
+cp bin/gmp-src/COPYING bin/GMP\ License.txt
+cp bin/mpc-src/COPYING.LESSER bin/MPC\ License.txt
+cp bin/mpfr-src/COPYING.LESSER bin/MPFR\ License.txt
+
 rm -rf bin/gcc-src bin/binutils-src bin/mpc-src bin/gmp-src bin/mpfr-src

@@ -25,7 +25,7 @@ Their licenses may be found in the following files:
 	- `util/nanosvg.h`
 	- `util/hsluv.h`
 	- `shared/stb_image.h`, `shared/stb_sprintf.h`, `shared/stb_ds.h` and `util/stb_truetype.h`
-	- `res/Fonts/Hack License.txt`, `res/Fonts/Inter License.txt`
+	- `res/Fonts/Hack License.txt`, `res/Fonts/Inter License.txt`, `res/Fonts/Atkinson Hyperlegible License.txt`, `res/Fonts/OpenDyslexic License.txt`
 	- `res/Icons/elementary Icons License.txt`
 	- `res/Sample Images/Licenses.txt`
 	- `res/Keyboard Layouts/License.txt`

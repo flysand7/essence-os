@@ -39,4 +39,5 @@ cp bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a root/Applications/POSIX
 cp -r bin/mesa/include/GL root/Applications/POSIX/include
 cp -r bin/mesa/include/KHR root/Applications/POSIX/include
 
+cp bin/mesa/docs/license.html bin/Mesa\ License.html
 rm -r bin/mesa bin/build-mesa
