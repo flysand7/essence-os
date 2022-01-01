@@ -3116,6 +3116,12 @@ void DesktopSendMessage(EsMessage *message) {
 					+ EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("clock_offset_ms"), 0);
 				EsEventSet(desktop.clockReadyEvent);
 			}
+		} else if (message->device.type == ES_DEVICE_GRAPHICS_TARGET) {
+			if (desktop.setupDesktopUIComplete) {
+				DesktopSetup(); // Refresh desktop UI.
+			} else {
+				// The screen resolution will be correctly queried in DesktopSetup.
+			}
 		}
 	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
 		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
@@ -3136,12 +3142,6 @@ void DesktopSendMessage(EsMessage *message) {
 			}
 
 			EsMessagePostRemote(process->handle, message);
-		}
-	} else if (message->type == ES_MSG_SET_SCREEN_RESOLUTION) {
-		if (desktop.setupDesktopUIComplete) {
-			DesktopSetup(); // Refresh desktop UI.
-		} else {
-			// The screen resolution will be correctly queried in DesktopSetup.
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		ProcessGlobalKeyboardShortcuts(nullptr, message);

@@ -355,3 +355,13 @@ nakst
 Today at 8:57 AM
 [gs:0] points to the CPULocalStorage, [gs:8] contains the address of the kernel stack (so it can be switched to in a syscall), [gs:16] points to the current thread
 You can't get the thread from the CPULocalStorage in most situations (i.e. with interrupts enabled), because it will change if the thread is rescheduled on a different CPU, and then you'd read the wrong thread 
+
+= Format specifiers for EsStringFormat/EsPrint/EsPanic/KernelPanic/KernelLog =
+
+%d formats a long
+%i formats a int
+%x formats a uintptr_t
+%c formats a char
+%z formats a zero-terminated const char *
+%s formats a non-zero-terminated string; pass the length ptrdiff_t first, then the pointer to base of the string const char *
+%F formats a double

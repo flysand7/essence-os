@@ -30,6 +30,7 @@ struct Graphics {
 	Surface frameBuffer;
 	bool debuggerActive;
 	size_t totalSurfaceBytes;
+	KMutex registerFirstGraphicsTargetMutex;
 };
 
 void GraphicsUpdateScreen(K_USER_BUFFER void *bits = nullptr, EsRectangle *bounds = nullptr, uintptr_t stride = 0);
@@ -102,14 +103,17 @@ bool KGraphicsIsTargetRegistered() {
 }
 
 void KRegisterGraphicsTarget(KGraphicsTarget *target) {
-	// TODO Locking.
-	if (graphics.target) return;
+	// TODO Multi-monitor support.
 
-	graphics.target = target;
+	KMutexAcquire(&graphics.registerFirstGraphicsTargetMutex);
+	bool isFirst = graphics.target == nullptr;
+	if (isFirst) graphics.target = target;
+	KMutexRelease(&graphics.registerFirstGraphicsTargetMutex);
+	if (!isFirst) return;
 
+	KDeviceOpenHandle(target);
 	graphics.width = target->screenWidth;
 	graphics.height = target->screenHeight;
-
 	graphics.frameBuffer.Resize(graphics.width, graphics.height);
 
 #ifdef START_DEBUG_OUTPUT
@@ -117,11 +121,7 @@ void KRegisterGraphicsTarget(KGraphicsTarget *target) {
 	EsPrint("Hello\n");
 #else
 	windowManager.Initialise();
-
-	_EsMessageWithObject m;
-	EsMemoryZero(&m, sizeof(m));
-	m.message.type = ES_MSG_SET_SCREEN_RESOLUTION;
-	DesktopSendMessage(&m);
+	KDeviceSendConnectedMessage(target, ES_DEVICE_GRAPHICS_TARGET);
 #endif
 }
 

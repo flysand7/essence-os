@@ -399,7 +399,6 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 
 /* Desktop messages: */
 #define ES_MSG_EMBEDDED_WINDOW_DESTROYED 	((EsMessageType) (ES_MSG_SYSTEM_START + 0x001))
-#define ES_MSG_SET_SCREEN_RESOLUTION		((EsMessageType) (ES_MSG_SYSTEM_START + 0x002))
 #define ES_MSG_DESKTOP	                        ((EsMessageType) (ES_MSG_SYSTEM_START + 0x005))
 
 /* Messages sent from Desktop to application instances: */
