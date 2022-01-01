@@ -14,6 +14,7 @@ if [ $? -ne 1 ]; then
 fi
 
 # Setup for Darwin.
+HOST_FLAGS=""
 uname -a | grep Darwin > /dev/null
 if [ $? -ne 1 ]; then
 	export CC=gcc-11
@@ -24,6 +25,8 @@ if [ $? -ne 1 ]; then
 	alias gcc="gcc-11"
 	alias g++="g++-11"
 	alias sed="gsed"
+	HOST_FLAGS="-DHOST_DARWIN"
+	echo Detected host Darwin.
 fi
 
 # Check that the source code is valid.
@@ -69,6 +72,6 @@ if [ $? -ne 0 ]; then
 fi
 
 # Compile and run Build.
-gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} \
+gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} $HOST_FLAGS \
 		-Wall -Wextra -Wno-format-security -Wno-format-overflow -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation \
 	&& bin/build "$@"
