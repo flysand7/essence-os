@@ -398,7 +398,7 @@ void Build(int optimise, bool compile) {
 	}
 #endif
 
-#ifndef HOST_DARWIN
+#ifndef __APPLE__
 	CallSystem("ctags -R "
 			"--exclude=old/* "
 			"--exclude=root/* "
@@ -642,7 +642,7 @@ void BuildCrossCompiler() {
 		if (CallSystem("which sed > /dev/null 2>&1")) { printf("Error: Missing sed.\n"); missingPackages = true; }
 		if (CallSystem("which awk > /dev/null 2>&1")) { printf("Error: Missing awk.\n"); missingPackages = true; }
 
-#ifdef HOST_DARWIN
+#ifdef __APPLE__
 		if (CallSystem("gcc -L/opt/homebrew/lib -lmpc 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPC.\n"); missingLibraries = true; }
 		if (CallSystem("gcc -L/opt/homebrew/lib -lmpfr 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU MPFR.\n"); missingLibraries = true; }
 		if (CallSystem("gcc -L/opt/homebrew/lib -lgmp 2>&1 | grep -i undefined > /dev/null")) { printf("Error: Missing GNU GMP.\n"); missingLibraries = true; }
@@ -1227,8 +1227,8 @@ void GetSource(const char *parameters, const char *checksum) {
 
 	free(alternateURL);
 
-#ifdef HOST_DARWIN
-#define SHA256SUM "sha256 -a 256"
+#ifdef __APPLE__
+#define SHA256SUM "shasum -a 256"
 #else
 #define SHA256SUM "sha256sum"
 #endif
