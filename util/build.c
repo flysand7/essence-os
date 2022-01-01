@@ -1171,6 +1171,7 @@ void GetSource(const char *parameters, const char *checksum) {
 
 	char name[1024];
 	strcpy(name, "bin/cache/");
+	char *nameWithoutDirectory = name + 10;
 
 	const char *extension = url;
 
@@ -1193,14 +1194,38 @@ void GetSource(const char *parameters, const char *checksum) {
 		exit(1);
 	}
 
+	char *alternateURL = NULL;
+
+	if (checksum) {
+		// If we're verifying the checksum of the file, then it should be okay to try downloading it from a non-official mirror.
+		const char *alternateURLPrefix = "https://github.com/nakst/cdn/raw/main/cache/";
+		alternateURL = (char *) malloc(strlen(alternateURLPrefix) + strlen(nameWithoutDirectory) + 1);
+		strcpy(alternateURL, alternateURLPrefix);
+		strcat(alternateURL, nameWithoutDirectory);
+	}
+
 	FILE *f = fopen(name, "rb");
 
 	if (f) {
+		// The file is cached.
 		fclose(f);
-	} else if (CallSystemF("curl -L %s > %s", url, name)) {
-		CallSystemF("rm %s", name); // Remove partially downloaded file.
-		exit(1);
+	} else {
+		if (alternateURL) {
+			fprintf(stderr, "Attempting to download from '%s' with fallback '%s'...\n", alternateURL, url);
+		} else {
+			fprintf(stderr, "Attempting to download from '%s'...\n", url);
+		}
+		
+		if (!alternateURL || CallSystemF("curl -f -L %s > %s", alternateURL, name)) {
+			if (CallSystemF("curl -L %s > %s", url, name)) {
+				CallSystemF("rm %s", name); // Remove partially downloaded file.
+				fprintf(stderr, "Error: Could not download the file at '%s'. Exiting.\n", url);
+				exit(1);
+			}
+		}
 	}
+
+	free(alternateURL);
 
 #ifdef __APPLE__
 #define SHA256SUM "sha256 -a 256"
@@ -1220,6 +1245,7 @@ void GetSource(const char *parameters, const char *checksum) {
 
 		if (CallSystemF(SHA256SUM " %s | grep %.*s > /dev/null", name, checksumLength, checksum)) {
 			fprintf(stderr, "Checksum mismatch for file '%s' downloaded from '%s'.\n", name, url);
+			CallSystemF("rm %s", name);
 			exit(1);
 		}
 	}

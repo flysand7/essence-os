@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2017-2021 nakst and other contributors (see CONTRIBUTING.md).
+Copyright (c) 2017-2022 nakst and other contributors (see CONTRIBUTING.md).
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
