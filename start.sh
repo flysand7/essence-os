@@ -7,14 +7,14 @@ cd "$(dirname "$0")"
 mkdir -p bin bin/dependency_files bin/Logs bin/generated_code bin/cache
 
 # Check that we are running on a sensible platform.
-uname -o | grep Cygwin > /dev/null
+uname -a | grep Cygwin > /dev/null
 if [ $? -ne 1 ]; then
 	echo Cygwin is not supported. Please install a modern GNU/Linux distro.
 	exit
 fi
 
 # Setup for Darwin.
-uname -o | grep Darwin > /dev/null
+uname -a | grep Darwin > /dev/null
 if [ $? -ne 1 ]; then
 	export CC=gcc-11
 	export CXX=g++-11
