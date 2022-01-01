@@ -3,7 +3,7 @@ set -e
 SYSROOT=`realpath root`
 VERSION=2.6.9
 
-bin/build get-source bochs-$VERSION https://netix.dl.sourceforge.net/project/bochs/bochs/$VERSION/bochs-$VERSION.tar.gz
+bin/build get-source-checked ee5b677fd9b1b9f484b5aeb4614f43df21993088c0c0571187f93acb0866e98c bochs-$VERSION https://netix.dl.sourceforge.net/project/bochs/bochs/$VERSION/bochs-$VERSION.tar.gz
 cd bin/source
 
 cp ../../ports/bochs/config.cc .

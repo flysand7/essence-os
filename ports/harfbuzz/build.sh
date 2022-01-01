@@ -56,13 +56,8 @@ CFLAGS="-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-
 if [ ! -d "bin/harfbuzz" ]; then
 	echo "Downloading Harfbuzz..."
 
-	if [ ! -f "bin/cache/harfbuzz-2.6.4.tar" ]; then
-		curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz > bin/cache/harfbuzz-2.6.4.tar.xz 2> bin/Logs/harfbuzz_dl.txt
-		xz -d bin/cache/harfbuzz-2.6.4.tar.xz
-	fi
-
-	tar -xf bin/cache/harfbuzz-2.6.4.tar
-	mv harfbuzz-2.6.4 bin/harfbuzz
+	bin/build get-source-checked 9413b8d96132d699687ef914ebb8c50440efc87b3f775d25856d7ec347c03c12 harfbuzz-2.6.4 https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz
+	mv bin/source bin/harfbuzz
 
 	cd bin/harfbuzz
 	./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared \

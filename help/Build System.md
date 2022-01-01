@@ -49,6 +49,7 @@ The following commands are available in the interactive prompt:
 - `a2l <symbols file>` Run the a2l utility. See the "a2l" section.
 - `build-port` Build a single port. A list of availble ports are listed.
 - `get-source <folder name> <url>` The file at the URL is downloaded and cached in `bin/cache`. The download is skipped if the file was already cached. It is then extracted and untar'd. The folder of the given name is then moved to `bin/source`.
+- `get-source-checked <sha256> <folder name> <url>` Same as `get-source` except the downloaded file has its SHA-256 checksum compared against the given value.
 - `make-crash-report` Copies various system files and logs into a `.tar.gz` which can be used to report a crash.
 - `setup-pre-built-toolchain` Setup the pre-built toolchain for use by the build system. You can download and prepare it by running `./start.sh get-source prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz` followed by `./start.sh setup-pre-built-toolchain`.
 - `run-tests` Run the API tests. `desktop/api_tests.ini` must be added to `bin/extra_applications.ini`, and `Emulator.SerialToFile` must be enabled.

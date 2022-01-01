@@ -1,13 +1,8 @@
 if [ ! -d "bin/musl" ]; then
 	echo "Downloading Musl..."
 
-	if [ ! -f "bin/cache/musl-1.2.1.tar" ]; then
-		curl https://musl.libc.org/releases/musl-1.2.1.tar.gz > bin/cache/musl-1.2.1.tar.gz
-		gunzip bin/cache/musl-1.2.1.tar.gz
-	fi
-
-	tar -xf bin/cache/musl-1.2.1.tar
-	mv musl-1.2.1 bin/musl
+	bin/build get-source-checked 68af6e18539f646f9c41a3a2bb25be4a5cfa5a8f65f0bb647fd2bbfdf877e84b musl-1.2.1 https://musl.libc.org/releases/musl-1.2.1.tar.gz
+	mv bin/source bin/musl
 
 	cp ports/musl/changes/config.mak                            bin/musl/config.mak
 	cp ports/musl/changes/dist_config.mak                       bin/musl/dist/config.mak

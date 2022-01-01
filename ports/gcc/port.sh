@@ -9,15 +9,15 @@ MPFR_VERSION=4.1.0
 MPC_VERSION=1.2.1
 
 rm -rf bin/gcc-src bin/binutils-src bin/mpc-src bin/gmp-src bin/mpfr-src
-bin/build get-source binutils-$BINUTILS_VERSION ftp://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz
+bin/build get-source-checked e81d9edf373f193af428a0f256674aea62a9d74dfe93f65192d4eae030b0f3b0 binutils-$BINUTILS_VERSION ftp://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz
 mv bin/source bin/binutils-src
-bin/build get-source gcc-$GCC_VERSION ftp://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz
+bin/build get-source-checked 4c4a6fb8a8396059241c2e674b85b351c26a5d678274007f076957afa1cc9ddf gcc-$GCC_VERSION ftp://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz
 mv bin/source bin/gcc-src
-bin/build get-source gmp-$GMP_VERSION ftp://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz
+bin/build get-source-checked fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2 gmp-$GMP_VERSION ftp://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz
 mv bin/source bin/gmp-src
-bin/build get-source mpfr-$MPFR_VERSION ftp://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.xz
+bin/build get-source-checked 0c98a3f1732ff6ca4ea690552079da9c597872d30e96ec28414ee23c95558a7f mpfr-$MPFR_VERSION ftp://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.xz
 mv bin/source bin/mpfr-src
-bin/build get-source mpc-$MPC_VERSION ftp://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.gz
+bin/build get-source-checked 17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459 mpc-$MPC_VERSION ftp://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.gz
 mv bin/source bin/mpc-src
 
 cp ports/gcc/changes/binutils_bfd_config.bfd bin/binutils-src/bfd/config.bfd

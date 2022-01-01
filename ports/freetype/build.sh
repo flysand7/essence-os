@@ -1,13 +1,8 @@
 if [ ! -d "bin/freetype" ]; then
 	echo "Downloading FreeType..."
 
-	if [ ! -f "bin/cache/freetype-2.9.tar" ]; then
-		curl https://mirrors.up.pt/pub/nongnu/freetype/freetype-2.9.tar.gz > bin/cache/freetype-2.9.tar.gz 2> bin/Logs/freetype_dl.txt
-		gunzip bin/cache/freetype-2.9.tar.gz
-	fi
-
-	tar -xf bin/cache/freetype-2.9.tar
-	mv freetype-2.9 bin/freetype
+	bin/build get-source-checked bf380e4d7c4f3b5b1c1a7b2bf3abb967bda5e9ab480d0df656e0e08c5019c5e6 freetype-2.9 https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz
+	mv bin/source bin/freetype
 
 	cp ports/freetype/patch-ftoption.h  bin/freetype/include/freetype/config/ftoption.h
 	cp ports/freetype/patch-ftstdlib.h  bin/freetype/include/freetype/config/ftstdlib.h

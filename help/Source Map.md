@@ -51,6 +51,7 @@ This file contains a list and description of the files and folders in the source
 	- `crt1.c` Implementation of `_start` for executables running under the POSIX subsystem. Calls into the C standard library which will call `main`.
 	- `crtglue.c` Redirection of POSIX system calls into `posix.cpp`.
 	- `api.cpp` The main file of the desktop, including initialisation, work queues, user tasks, instances, undo stack management, command management, mount point management, and message processing.
+	- `api_tests.cpp` Tests for the API. Called by the build system command `run-tests`.
 	- `desktop.cpp` The desktop environment, including container windows, the task bar, the wallpaper, device management, and global initilisation.
 	- `gui.cpp` The user interface. Contains core functionality and various elements. More complicated elements are split off into their own files.
 	- `inspector.cpp` The debug inspector for the user interface.

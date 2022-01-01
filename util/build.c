@@ -1152,6 +1152,82 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 	}
 }
 
+void GetSource(const char *parameters, const char *checksum) {
+	if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
+		exit(1);
+	}
+
+	const char *folder = parameters;
+	const char *url = NULL;
+
+	for (int i = 0; folder[i]; i++) {
+		if (folder[i] == ' ') {
+			url = folder + i + 1;
+			break;
+		}
+	}
+
+	assert(url);
+
+	char name[1024];
+	strcpy(name, "bin/cache/");
+
+	const char *extension = url;
+
+	for (int i = 0; url[i]; i++) {
+		name[i + 10] = isalnum(url[i]) ? url[i] : '_';
+		name[i + 11] = 0;
+		if (url[i] == '.') extension = url + i;
+	}
+
+	char decompressFlag;
+
+	if (0 == strcmp(extension, ".bz2")) {
+		decompressFlag = 'j';
+	} else if (0 == strcmp(extension, ".xz")) {
+		decompressFlag = 'J';
+	} else if (0 == strcmp(extension, ".gz")) {
+		decompressFlag = 'z';
+	} else {
+		fprintf(stderr, "Unknown archive format.\n");
+		exit(1);
+	}
+
+	FILE *f = fopen(name, "rb");
+
+	if (f) {
+		fclose(f);
+	} else if (CallSystemF("curl -L %s > %s", url, name)) {
+		CallSystemF("rm %s", name); // Remove partially downloaded file.
+		exit(1);
+	}
+
+#ifdef __APPLE__
+#define SHA256SUM "sha256 -a 256"
+#else
+#define SHA256SUM "sha256sum"
+#endif
+
+	if (checksum) {
+		int checksumLength = strlen(checksum);
+
+		for (int i = 0; checksum[i]; i++) {
+			if (checksum[i] == ' ') {
+				checksumLength = i;
+				break;
+			}
+		}
+
+		if (CallSystemF(SHA256SUM " %s | grep %.*s > /dev/null", name, checksumLength, checksum)) {
+			fprintf(stderr, "Checksum mismatch for file '%s' downloaded from '%s'.\n", name, url);
+			exit(1);
+		}
+	}
+
+	if (CallSystemF("tar -x%cf %s", decompressFlag, name)) exit(1);
+	if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
+}
+
 void DoCommand(const char *l) {
 	while (l && (*l == ' ' || *l == '\t')) l++;
 
@@ -1549,57 +1625,24 @@ void DoCommand(const char *l) {
 			exit(status);
 		}
 	} else if (0 == memcmp(l, "get-source ", 11)) {
-		if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
-			exit(1);
-		}
+		GetSource(l + 11, NULL);
+	} else if (0 == memcmp(l, "get-source-checked ", 19)) {
+		const char *checksum = l + 19;
+		const char *rest = NULL;
 
-		const char *folder = l + 11;
-		const char *url = NULL;
-
-		for (int i = 0; folder[i]; i++) {
-			if (folder[i] == ' ') {
-				url = folder + i + 1;
+		for (int i = 0; checksum[i]; i++) {
+			if (checksum[i] == ' ') {
+				rest = checksum + i + 1;
 				break;
 			}
 		}
 
-		assert(url);
-
-		char name[1024];
-		strcpy(name, "bin/cache/");
-
-		const char *extension = url;
-
-		for (int i = 0; url[i]; i++) {
-			name[i + 10] = isalnum(url[i]) ? url[i] : '_';
-			name[i + 11] = 0;
-			if (url[i] == '.') extension = url + i;
-		}
-
-		char decompressFlag;
-
-		if (0 == strcmp(extension, ".bz2")) {
-			decompressFlag = 'j';
-		} else if (0 == strcmp(extension, ".xz")) {
-			decompressFlag = 'J';
-		} else if (0 == strcmp(extension, ".gz")) {
-			decompressFlag = 'z';
-		} else {
-			fprintf(stderr, "Unknown archive format.\n");
+		if (!checksum) {
+			fprintf(stderr, "Invalid usage; expected checksum before other arguments.\n");
 			exit(1);
 		}
 
-		FILE *f = fopen(name, "rb");
-
-		if (f) {
-			fclose(f);
-		} else if (CallSystemF("curl -L %s > %s", url, name)) {
-			CallSystemF("rm %s", name); // Remove partially downloaded file.
-			exit(1);
-		}
-
-		if (CallSystemF("tar -x%cf %s", decompressFlag, name)) exit(1);
-		if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
+		GetSource(rest, checksum);
 	} else if (0 == strcmp(l, "make-crash-report")) {
 		system("rm crash-report.tar.gz");
 		system("mkdir crash-report");
