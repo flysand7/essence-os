@@ -883,29 +883,23 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 	SYSCALL_BUFFER(argument1, imageWidth * imageHeight * 4, 1, false);
 
 	KMutexAcquire(&windowManager.mutex);
+
 	Window *window;
+	bool ignore = false;
 
 	if (_window.type == KERNEL_OBJECT_EMBEDDED_WINDOW) {
 		EmbeddedWindow *embeddedWindow = (EmbeddedWindow *) _window.object;
 		window = embeddedWindow->container;
-
-		if (!window || !window->hoveringOverEmbed || embeddedWindow->owner != currentProcess) {
-			KMutexRelease(&windowManager.mutex);
-			SYSCALL_RETURN(ES_SUCCESS, false);
-		}
+		ignore = !window || !window->hoveringOverEmbed || embeddedWindow->owner != currentProcess;
 	} else {
 		window = (Window *) _window.object;
-
-		if (window->hoveringOverEmbed) {
-			KMutexRelease(&windowManager.mutex);
-			SYSCALL_RETURN(ES_SUCCESS, false);
-		}
+		ignore = window->hoveringOverEmbed;
 	}
 
 	bool changedCursor = false;
 	bool different = argument1 != windowManager.cursorID || windowManager.cursorShadow != !!(argument3 & (1 << 30));
 
-	if (!window->closed && different && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
+	if (!ignore && !window->closed && different && !windowManager.eyedropping && (windowManager.hoverWindow == window || !windowManager.hoverWindow)) {
 		windowManager.cursorID = argument1;
 		windowManager.cursorImageOffsetX = (int8_t) ((argument2 >> 0) & 0xFF) - CURSOR_PADDING_L;
 		windowManager.cursorImageOffsetY = (int8_t) ((argument2 >> 8) & 0xFF) - CURSOR_PADDING_T;

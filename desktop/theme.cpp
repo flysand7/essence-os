@@ -12,6 +12,7 @@
 #define THEME_PAINT_CUSTOM          (3)
 #define THEME_PAINT_OVERWRITE       (4)
 #define THEME_PAINT_RADIAL_GRADIENT (5)
+#define THEME_PAINT_BIT_PATTERN     (6)
 
 #define THEME_LAYER_MODE_BACKGROUND (0)
 #define THEME_LAYER_MODE_SHADOW     (1)
@@ -101,6 +102,11 @@ typedef enum ThemeCursor {
 typedef struct ThemePaintSolid {
 	uint32_t color;
 } ThemePaintSolid;
+
+typedef struct ThemePaintBitPattern {
+	uint8_t rows[8]; // 8x8 bit pattern.
+	uint32_t colors[2];
+} ThemePaintBitPattern;
 
 typedef struct ThemeGradientStop {
 	uint32_t color;
@@ -269,6 +275,7 @@ typedef struct ThemePaintData {
 	union {
 		const ThemePaintSolid *solid;
 		const ThemePaintLinearGradient *linearGradient;
+		const ThemePaintBitPattern *bitPattern;
 		const ThemePaintCustom *custom;
 	};
 } ThemePaintData;
@@ -435,6 +442,15 @@ void ThemeFillRectangle(EsPainter *painter, EsRectangle bounds, ThemePaintData p
 			uint32_t *b = bits + x + y * width;
 			do { *b = color; x++, b++; } while (x < bounds.r);
 		}
+	} else if (paint.type == THEME_PAINT_BIT_PATTERN) {
+		for (int y = bounds.t; y < bounds.b; y++) {
+			uint8_t row = paint.bitPattern->rows[y & 7];
+
+			for (int x = bounds.l; x < bounds.r; x++) {
+				uint32_t *b = bits + x + y * width;
+				*b = paint.bitPattern->colors[(row >> (x & 7)) & 1];
+			}
+		}
 	}
 }
 
@@ -486,6 +502,10 @@ void ThemeFillCorner(EsPainter *painter, EsRectangle bounds, int cx, int cy,
 
 			if (mainPaint.type == THEME_PAINT_SOLID || mainPaint.type == THEME_PAINT_OVERWRITE) {
 				mainColor = mainPaint.solid->color;
+			} else if (mainPaint.type == THEME_PAINT_BIT_PATTERN) {
+				uintptr_t tx = ((i >> STYLE_CORNER_OVERSAMPLING) + bounds.l) & 7;
+				uintptr_t ty = ((j >> STYLE_CORNER_OVERSAMPLING) + bounds.t) & 7;
+				mainColor = mainPaint.bitPattern->colors[(mainPaint.bitPattern->rows[ty] >> tx) & 1];
 			} else if (mainPaint.type == THEME_PAINT_LINEAR_GRADIENT) {
 				mainColor = mainGradient->colors[ClampInteger(0, GRADIENT_CACHE_COUNT - 1, 
 					(((j >> STYLE_CORNER_OVERSAMPLING) - mainGradient->oy + bounds.t) * mainGradient->dy 
@@ -742,6 +762,8 @@ void ThemeDrawBox(EsPainter *painter, EsRectangle rect, EsBuffer *data, float sc
 	if (mainPaint.type == 0) {
 	} else if (mainPaint.type == THEME_PAINT_SOLID || mainPaint.type == THEME_PAINT_OVERWRITE) {
 		mainPaint.solid = (const ThemePaintSolid *) EsBufferRead(data, sizeof(ThemePaintSolid));
+	} else if (mainPaint.type == THEME_PAINT_BIT_PATTERN) {
+		mainPaint.bitPattern = (const ThemePaintBitPattern *) EsBufferRead(data, sizeof(ThemePaintBitPattern));
 	} else if (mainPaint.type == THEME_PAINT_LINEAR_GRADIENT) {
 		mainPaint.linearGradient = (const ThemePaintLinearGradient *) EsBufferRead(data, sizeof(ThemePaintLinearGradient));
 		GradientCacheSetup(&mainGradient, mainPaint.linearGradient, width, height, data);

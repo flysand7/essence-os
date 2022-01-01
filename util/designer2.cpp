@@ -245,6 +245,10 @@ struct Canvas : UIElement {
 	bool previewStateActive;
 };
 
+struct PatternEditor : UIElement {
+	uint8_t rows[8];
+};
+
 struct Prototype : UIElement {
 };
 
@@ -272,6 +276,7 @@ enum PropertyType : uint8_t {
 	PROP_INT,
 	PROP_OBJECT,
 	PROP_FLOAT,
+	PROP_U64,
 };
 
 struct Property {
@@ -281,6 +286,7 @@ struct Property {
 
 	union {
 		int32_t integer;
+		uint64_t u64;
 		uint64_t object;
 		float floating;
 	};
@@ -302,6 +308,7 @@ enum ObjectType : uint8_t {
 	OBJ_PAINT_OVERWRITE = 0x60,
 	OBJ_PAINT_LINEAR_GRADIENT,
 	OBJ_PAINT_RADIAL_GRADIENT,
+	OBJ_PAINT_BIT_PATTERN,
 
 	OBJ_LAYER_BOX = 0x80,
 	OBJ_LAYER_METRICS,
@@ -381,6 +388,7 @@ ObjectTypeString cObjectTypeStrings[] = {
 	ADD_STRING(OBJ_VAR_CONTOUR_STYLE),
 	ADD_STRING(OBJ_PAINT_OVERWRITE),
 	ADD_STRING(OBJ_PAINT_LINEAR_GRADIENT),
+	ADD_STRING(OBJ_PAINT_BIT_PATTERN),
 	ADD_STRING(OBJ_PAINT_RADIAL_GRADIENT),
 	ADD_STRING(OBJ_LAYER_BOX),
 	ADD_STRING(OBJ_LAYER_METRICS),
@@ -536,6 +544,11 @@ Property *PropertyFindOrInherit(Object *object, const char *cName, uint8_t type 
 int32_t PropertyFindOrInheritReadInt32(Object *object, const char *cName, int32_t defaultValue = 0) {
 	Property *property = PropertyFindOrInherit(object, cName, PROP_INT);
 	return property ? property->integer : defaultValue;
+}
+
+uint64_t PropertyFindOrInheritReadU64(Object *object, const char *cName, uint64_t defaultValue = 0) {
+	Property *property = PropertyFindOrInherit(object, cName, PROP_U64);
+	return property ? property->u64 : defaultValue;
 }
 
 float PropertyFindOrInheritReadFloat(Object *object, const char *cName, float defaultValue = 0) {
@@ -903,6 +916,7 @@ void TextStyleRemoveDuplicates(void *cp) {
 			if (object->properties[pi].type != other->properties[pj].type)                                                       break;
 			if (object->properties[pi].type == PROP_INT    && object->properties[pi].integer  != other->properties[pj].integer ) break;
 			if (object->properties[pi].type == PROP_COLOR  && object->properties[pi].integer  != other->properties[pj].integer ) break;
+			if (object->properties[pi].type == PROP_U64    && object->properties[pi].u64      != other->properties[pj].u64     ) break;
 			if (object->properties[pi].type == PROP_OBJECT && object->properties[pi].object   != other->properties[pj].object  ) break;
 			if (object->properties[pi].type == PROP_FLOAT  && object->properties[pi].floating != other->properties[pj].floating) break;
 			
@@ -953,6 +967,7 @@ enum InspectorElementType {
 	INSPECTOR_ADD_ARRAY_ITEM,
 	INSPECTOR_SWAP_ARRAY_ITEMS,
 	INSPECTOR_DELETE_ARRAY_ITEM,
+	INSPECTOR_PATTERN_EDITOR,
 };
 
 struct InspectorBindingData {
@@ -1053,6 +1068,12 @@ void InspectorUpdateSingleElement(InspectorBindingData *data) {
 		UI_FREE(button->label);
 		button->label = UIStringCopy(string, (button->labelBytes = -1));
 		UIElementRefresh(&button->e);
+	} else if (data->elementType == INSPECTOR_PATTERN_EDITOR) {
+		PatternEditor *editor = (PatternEditor *) data->element;
+		Property *property = PropertyFind(ObjectFind(data->objectID, false), data->cPropertyName, PROP_U64);
+		if (property) memcpy(editor->rows, &property->u64, sizeof(uint64_t));
+		else memset(editor->rows, 0, sizeof(uint64_t));
+		UIElementRefresh(editor);
 	} else if (data->elementType == INSPECTOR_ADD_ARRAY_ITEM || data->elementType == INSPECTOR_SWAP_ARRAY_ITEMS 
 			|| data->elementType == INSPECTOR_DELETE_ARRAY_ITEM) {
 	} else {
@@ -1301,6 +1322,44 @@ int InspectorBoundMessage(UIElement *element, UIMessage message, int di, void *d
 			textbox->carets[0] = 0;
 			textbox->carets[1] = textbox->bytes;
 		}
+	}
+
+	return 0;
+}
+
+int PatternEditorMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	PatternEditor *editor = (PatternEditor *) element;
+	const int zoom = 20;
+
+	bool leftDraw  = (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 1) || message == UI_MSG_LEFT_DOWN;
+	bool rightDraw = (message == UI_MSG_MOUSE_DRAG && element->window->pressedButton == 3) || message == UI_MSG_RIGHT_DOWN;
+
+	if (message == UI_MSG_GET_WIDTH || message == UI_MSG_GET_HEIGHT) {
+		return 8 * zoom;
+	} else if (message == UI_MSG_PAINT) {
+		for (int32_t y = 0; y < 8; y++) {
+			for (int32_t x = 0; x < 8; x++) {
+				UIRectangle tile = UI_RECT_4(element->bounds.l + zoom * x, element->bounds.l + zoom * (x + 1), 
+						element->bounds.t + zoom * y, element->bounds.t + zoom * (y + 1));
+				UIDrawBorder((UIPainter *) dp, tile, 0xFF000000, UI_RECT_1(1));
+				if ((editor->rows[y] >> x) & 1) UIDrawInvert((UIPainter *) dp, tile);
+			}
+		}
+	} else if (leftDraw || rightDraw) {
+		int32_t x = (element->window->cursorX - element->bounds.l) / zoom;
+		int32_t y = (element->window->cursorY - element->bounds.t) / zoom;
+		if (leftDraw  && x >= 0 && x < 8 && y >= 0 && y < 8) editor->rows[y] |= 1 << x;
+		if (rightDraw && x >= 0 && x < 8 && y >= 0 && y < 8) editor->rows[y] &= ~(1 << x);
+		UIElementRepaint(element, nullptr);
+
+		InspectorBindingData *data = (InspectorBindingData *) element->cp;
+		Step step = {};
+		step.type = STEP_MODIFY_PROPERTY;
+		step.objectID = data->objectID;
+		strcpy(step.property.cName, data->cPropertyName);
+		step.property.type = PROP_U64;
+		memcpy(&step.property.u64, editor->rows, sizeof(uint64_t));
+		DocumentApplyStep(step);
 	}
 
 	return 0;
@@ -1586,7 +1645,8 @@ void InspectorPopulate() {
 
 			bool inheritWithAnimation = object->type == OBJ_VAR_TEXT_STYLE
 				|| object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH
-				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
+				|| object->type == OBJ_PAINT_OVERWRITE || object->type == OBJ_PAINT_BIT_PATTERN 
+				|| object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT
 				|| object->type == OBJ_VAR_CONTOUR_STYLE;
 			bool inheritWithoutAnimation = object->type == OBJ_STYLE || object->type == OBJ_LAYER_METRICS;
 
@@ -1882,6 +1942,14 @@ void InspectorPopulate() {
 			InspectorBind(&UIButtonCreate(0, 0, "Add layer", -1)->e, object->id, "layers_count", INSPECTOR_ADD_ARRAY_ITEM);
 		} else if (object->type == OBJ_PAINT_OVERWRITE) {
 			InspectorAddLink(object, "Color:", "color");
+		} else if (object->type == OBJ_PAINT_BIT_PATTERN) {
+			InspectorBind(UIElementCreate(sizeof(PatternEditor), 0, 0, PatternEditorMessage, "Pattern editor"), object->id, "pattern", INSPECTOR_PATTERN_EDITOR);
+			UILabelCreate(0, 0, "Color off:", -1);
+			InspectorBind(&UIColorPickerCreate(&UIPanelCreate(0, 0)->e, UI_COLOR_PICKER_HAS_OPACITY)->e, object->id, "color0", INSPECTOR_COLOR_PICKER);
+			InspectorBind(&UITextboxCreate(0, 0)->e, object->id, "color0", INSPECTOR_COLOR_TEXTBOX);
+			UILabelCreate(0, 0, "Color on:", -1);
+			InspectorBind(&UIColorPickerCreate(&UIPanelCreate(0, 0)->e, UI_COLOR_PICKER_HAS_OPACITY)->e, object->id, "color1", INSPECTOR_COLOR_PICKER);
+			InspectorBind(&UITextboxCreate(0, 0)->e, object->id, "color1", INSPECTOR_COLOR_TEXTBOX);
 		} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
 			if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
 				InspectorAddFloat(object, "Transform X:", "transformX");
@@ -2074,6 +2142,8 @@ uint32_t GraphGetColorFromProperty(Property *property) {
 		return 0;
 	} else if (property->type == PROP_OBJECT) {
 		return GraphGetColor(ObjectFind(property->object, true));
+	} else if (property->type == PROP_COLOR) {
+		return (uint32_t) property->integer;
 	} else {
 		return 0;
 	}
@@ -2286,6 +2356,17 @@ int8_t ExportPaint(Object *parentObject, const char *cPropertyNameInParent, Expo
 	} else if (object->type == OBJ_PAINT_OVERWRITE) {
 		ExportPaint(object, "color", data, depth + 1);
 		return THEME_PAINT_OVERWRITE;
+	} else if (object->type == OBJ_PAINT_BIT_PATTERN) {
+		if (data) {
+			ThemePaintBitPattern bitPattern = {};
+			ExportColor(data, bitPattern, colors[0], object, "color0");
+			ExportColor(data, bitPattern, colors[1], object, "color1");
+			uint64_t pattern = PropertyFindOrInheritReadU64(object, "pattern");
+			memcpy(bitPattern.rows, &pattern, sizeof(uint64_t));
+			ExportWrite(data, &bitPattern, sizeof(bitPattern));
+		}
+
+		return THEME_PAINT_BIT_PATTERN;
 	} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT) {
 		if (data) {
 			ThemePaintLinearGradient paint = {};
@@ -2763,7 +2844,7 @@ int CanvasMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			} else if (object->type == OBJ_LAYER_BOX || object->type == OBJ_LAYER_GROUP 
 					|| object->type == OBJ_LAYER_TEXT || object->type == OBJ_LAYER_PATH) {
 				CanvasDrawLayer(object, bounds, painter);
-			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT) {
+			} else if (object->type == OBJ_PAINT_LINEAR_GRADIENT || object->type == OBJ_PAINT_RADIAL_GRADIENT || object->type == OBJ_PAINT_BIT_PATTERN) {
 				CanvasDrawColorSwatch(object, bounds, painter);
 			} else if (object->type == OBJ_VAR_COLOR || object->type == OBJ_MOD_COLOR) {
 				CanvasDrawColorSwatch(object, bounds, painter);
@@ -3155,6 +3236,9 @@ void ObjectAddCommandInternal(void *cp) {
 			object.properties.Free();
 			return;
 		}
+	} else if (object.type == OBJ_PAINT_BIT_PATTERN) {
+		p = { .type = PROP_COLOR, .integer = (int32_t) 0xFFFFFFFF }; strcpy(p.cName, "color0"); object.properties.Add(p);
+		p = { .type = PROP_COLOR, .integer = (int32_t) 0xFF000000 }; strcpy(p.cName, "color1"); object.properties.Add(p);
 	}
 
 	ObjectAddInternal(object);
@@ -3195,6 +3279,7 @@ void ObjectAddCommand(void *cp) {
 	UIMenuAddItem(menu, 0, "Contour style", -1, invoke, (void *) (uintptr_t) OBJ_VAR_CONTOUR_STYLE);
 	UIMenuAddItem(menu, 0, "Metrics", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_METRICS);
 	UIMenuAddItem(menu, 0, "Overwrite paint", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_OVERWRITE);
+	UIMenuAddItem(menu, 0, "Bit pattern paint", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_BIT_PATTERN);
 	UIMenuAddItem(menu, 0, "Linear gradient", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_LINEAR_GRADIENT);
 	UIMenuAddItem(menu, 0, "Radial gradient", -1, invoke, (void *) (uintptr_t) OBJ_PAINT_RADIAL_GRADIENT);
 	UIMenuAddItem(menu, 0, "Box layer", -1, invoke, (void *) (uintptr_t) OBJ_LAYER_BOX);
@@ -3631,6 +3716,7 @@ void ExportJSON() {
 			if (property->type == PROP_COLOR) fprintf(f, "\"#%.8X\"", (uint32_t) property->integer);
 			if (property->type == PROP_INT) fprintf(f, "%d", property->integer);
 			if (property->type == PROP_OBJECT) fprintf(f, "\"@%ld\"", property->object);
+			if (property->type == PROP_U64) fprintf(f, "\"%ld\"", property->object);
 			if (property->type == PROP_FLOAT) fprintf(f, "%f", property->floating);
 			fprintf(f, "%s\n", i < object->properties.Length() - 1 ? "," : "");
 		}
