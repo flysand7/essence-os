@@ -2183,3 +2183,20 @@ EsProcessStartupInformation *ProcessGetStartupInformation() {
 	return api.startupInformation;
 }
 #endif
+
+#ifndef USE_STB_SPRINTF
+int EsCRTvsnprintf(char *, size_t, const char *, va_list) {
+	EsUnimplemented();
+	return 0;
+}
+
+int EsCRTsnprintf(char *, size_t, const char *, ...) {
+	EsUnimplemented();
+	return 0;
+}
+
+int EsCRTsprintf(char *, const char *, ...) {
+	EsUnimplemented();
+	return 0;
+}
+#endif

@@ -72,7 +72,7 @@ BuildFont fonts[] = {
 		{ "2i", "Inter Extra Light Italic.otf" },
 		{ "3", "Inter Light.otf" },
 		{ "3i", "Inter Light Italic.otf" },
-		{ "4", "Inter Regular.otf", .required = true },
+		{ "4", "Inter Regular.otf" },
 		{ "4i", "Inter Regular Italic.otf" },
 		{ "5", "Inter Medium.otf" },
 		{ "5i", "Inter Medium Italic.otf" },
@@ -88,7 +88,7 @@ BuildFont fonts[] = {
 	} },
 
 	{ "Hack", "Hack License.md", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
-		{ "4", "Hack Regular.ttf", .required = true },
+		{ "4", "Hack Regular.ttf" },
 		{ "4i", "Hack Regular Italic.ttf" },
 		{ "7", "Hack Bold.ttf" },
 		{ "7i", "Hack Bold Italic.ttf" },
@@ -112,8 +112,8 @@ BuildFont fonts[] = {
 	} },
 
 	{ "Bitmap Sans", "", "Sans", "Latn", (FontFile []) {
-		{ "4", "Bitmap Sans Regular 9.font" },
-		{ "7", "Bitmap Sans Bold 9.font" },
+		{ "4", "Bitmap Sans Regular 9.font", .required = true },
+		{ "7", "Bitmap Sans Bold 9.font", .required = true },
 		{},
 	} },
 

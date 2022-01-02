@@ -216,13 +216,15 @@ Options starting with `Driver.` are used to enable and disable drivers. The defa
 
 ### Dependency options
 
-TODO
+You can disable optional dependencies using these options.
 
-- `Dependency.ACPICA`
-- `Dependency.stb_image`
-- `Dependency.stb_image_write`
-- `Dependency.stb_sprintf`
-- `Dependency.FreeTypeAndHarfBuzz`
+- `Dependency.ACPICA` ACPICA is a kernel driver that provides power management through ACPI. Without it, the system will not be able to turn off the computer or provide thermal management.
+- `Dependency.stb_image` stb\_image provides loading images of various formats. Without it, the system will only be able to load PNG images.
+- `Dependency.stb_image_write` stb\_image\_write provides writing images of various formats. Without it, the system will not be able to save images. Note that the `Image Editor` application includes this library regardless of this setting.
+- `Dependency.stb_sprintf` stb\_sprintf provides the printf-like API calls. Without it, these calls will be redirected to `EsUnimplemented`. Other optional dependencies may require this to be enabled.
+- `Dependency.FreeTypeAndHarfBuzz` FreeType and HarfBuzz provide support for TrueType font rendering. Without it, the system will only be able to load bitmap fonts.
+
+Additionally, there is the MD4C library which is included by the `Markdown Viewer` application.
 
 ## a2l
 
