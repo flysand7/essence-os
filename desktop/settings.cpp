@@ -46,12 +46,13 @@ const EsStyle styleAllSettingsGroupContainer = {
 	},
 };
 
-const EsStyle styleSettingsGroupContainer2 = {
-	.inherit = ES_STYLE_BUTTON_GROUP_CONTAINER,
+const EsStyle styleSettingsGroupContainer = {
+};
 
+const EsStyle styleSettingsGroupContainer2 = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH | ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
-		.insets = ES_RECT_1(15),
+		.insets = ES_RECT_1(30),
 		.preferredWidth = 400,
 		.gapMajor = 15,
 	},
@@ -284,11 +285,11 @@ void SettingsAddTitle(EsElement *container, SettingsPage *page) {
 	EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY, page->iconID);
 	EsSpacerCreate(row, ES_FLAGS_DEFAULT, 0, 10, 0);
 	EsTextDisplayCreate(row, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING2, page->string, page->stringBytes);
-	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
+	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 }
 
 void SettingsPageUnimplemented(EsElement *element, SettingsPage *page) {
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
 	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
@@ -404,8 +405,8 @@ void SettingsAddNumberBox(EsElement *table, const char *string, ptrdiff_t string
 	control->dragSpeed = dragSpeed;
 	control->discreteStep = discreteStep;
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, string, stringBytes); 
-	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, string, stringBytes); 
+	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	EsTextboxUseNumberOverlay(textbox, false);
 	textbox->userData = control;
 	textbox->accessKey = accessKey;
@@ -529,7 +530,7 @@ EsListView *SettingsAddChoiceList(EsElement *table, const char *string, ptrdiff_
 	control->cConfigurationKey = cConfigurationKey;
 
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_V_TOP, 0, string, stringBytes);
-	EsListView *list = EsListViewCreate(table, ES_CELL_H_EXPAND | ES_CELL_H_PUSH | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
+	EsListView *list = EsListViewCreate(table, ES_CELL_H_FILL | ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 	list->accessKey = accessKey;
 	list->userData = control;
 	list->messageUser = SettingsChoiceListMessage;
@@ -555,8 +556,8 @@ int SettingsDoubleClickTestMessage(EsElement *element, EsMessage *message) {
 void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
 	EsPanel *table;
@@ -568,14 +569,12 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseUseAcceleration), 'C', "general", "use_cursor_acceleration");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSlowOnAlt), 'O', "general", "use_cursor_alt_slow");
 
-	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
+	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 
 	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseCursorTrails), 'T', "general", "cursor_trails", 0, 7, 8, 
 			INTERFACE_STRING(DesktopSettingsMouseCursorTrailsNone), INTERFACE_STRING(DesktopSettingsMouseCursorTrailsMany));
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
-	EsPanelSetBands(table, 2);
-
+	table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch), 'S', "general", "scroll_lines_per_notch", 
 			1, 100, nullptr, 0, 0.04, 1);
 
@@ -584,11 +583,9 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', "general", "show_cursor_shadow");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', "general", "locate_cursor_on_ctrl");
 
-	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
+	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
-	EsPanelSetBands(table, 2);
-
+	table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseDoubleClickSpeed), 'D', "general", "click_chain_timeout_ms", 
 			100, 1500, INTERFACE_STRING(CommonUnitMilliseconds), 1.0, 1);
 
@@ -601,8 +598,8 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
 	EsPanel *table;
@@ -634,29 +631,29 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsKeyboardUseSmartQuotes), 'Q', "general", "use_smart_quotes");
 
-	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_BUTTON_GROUP_SEPARATOR);
+	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
+	table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatDelay)); // TODO.
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'D';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "400 ms");
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsKeyboardKeyRepeatRate)); // TODO.
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'R';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "40 ms");
 
-	EsTextDisplayCreate(table, ES_CELL_H_RIGHT | ES_CELL_H_PUSH, 0, INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate)); // TODO.
-	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
+	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsKeyboardCaretBlinkRate)); // TODO.
+	textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_TEXTBOX_EDIT_BASED, ES_STYLE_TEXTBOX_BORDERED_SINGLE_MEDIUM);
 	textbox->accessKey = 'B';
 	EsTextboxUseNumberOverlay(textbox, false);
 	EsTextboxInsert(textbox, "500 ms");
@@ -672,15 +669,15 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsIconDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, ES_ICON_DIALOG_WARNING);
 	EsTextDisplayCreate(warningRow, ES_FLAGS_DEFAULT, 0, "Work in progress" ELLIPSIS);
 
-	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
 	EsPanelSetBands(table, 2);
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsDisplayUIScale), 'S', "general", "ui_scale", 
 			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
@@ -747,8 +744,8 @@ void SettingsColorButtonCommand(EsInstance *, EsElement *element, EsCommand *) {
 void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	// TODO Fonts, theme file, etc.
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
 	SettingsAddTitle(container, page);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
@@ -759,7 +756,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	EsPanelSetBands(table, 2);
 	EsTextDisplayCreate(table, ES_CELL_H_RIGHT, 0, INTERFACE_STRING(DesktopSettingsThemeWallpaper)); 
 
-	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_CELL_H_PUSH | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE);
+	EsTextbox *textbox = EsTextboxCreate(table, ES_CELL_H_LEFT | ES_TEXTBOX_EDIT_BASED | ES_ELEMENT_FREE_USER_DATA, ES_STYLE_TEXTBOX_BORDERED_SINGLE);
 	size_t currentWallpaperBytes;
 	char *currentWallpaper = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("wallpaper"), &currentWallpaperBytes);
 	EsTextboxInsert(textbox, currentWallpaper, currentWallpaperBytes);

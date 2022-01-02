@@ -181,7 +181,7 @@ DEFINE_INTERFACE_STRING(DesktopSettingsDisplayUIScale, "Interface scale:");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeWindowColor, "Window color:");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeEnableHoverState, "Highlight the item the cursor is over");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeEnableAnimations, "Animate the user interface");
-DEFINE_INTERFACE_STRING(DesktopSettingsThemeWallpaper, "Wallpaper");
+DEFINE_INTERFACE_STRING(DesktopSettingsThemeWallpaper, "Wallpaper:");
 
 // File operations.
 

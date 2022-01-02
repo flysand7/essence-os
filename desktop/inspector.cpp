@@ -233,7 +233,8 @@ void InspectorNotifyElementEvent(EsElement *element, const char *cCategory, cons
 	if (cCategory) EsBufferFormat(&buffer, "%z: ", cCategory);
 	EsBufferFormatV(&buffer, cFormat, arguments); 
 	va_end(arguments);
-	EsListViewFixedItemInsert(inspector->listEvents, _buffer, buffer.position);
+	EsListViewIndex index = EsListViewFixedItemInsert(inspector->listEvents);
+	EsListViewFixedItemSetString(inspector->listEvents, index, 0, _buffer, buffer.position);
 	EsListViewScrollToEnd(inspector->listEvents);
 }
 

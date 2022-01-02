@@ -1600,6 +1600,7 @@ struct EsMessageWindowResized {
 
 struct EsMessageMeasure {
 	int width, height;
+	bool internalMeasurement; // Used by scroll panes; ignore.
 };
 
 struct EsMessageHitTest {

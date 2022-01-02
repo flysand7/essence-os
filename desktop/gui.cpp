@@ -2293,7 +2293,7 @@ void LayoutStackSecondary(EsPanel *panel, EsMessage *message) {
 
 	if (panel->state & UI_STATE_INSPECTING) {
 		InspectorNotifyElementEvent(panel, "layout", "Measuring stack on secondary axis with %d children, insets %R; provided primary size is %d.\n", 
-				panel, childCount, insets, primary);
+				childCount, insets, primary);
 	}
 
 	if (primary) {
@@ -2338,6 +2338,13 @@ void LayoutStackPrimary(EsPanel *panel, EsMessage *message) {
 
 	int hBase = message->type == ES_MSG_GET_HEIGHT ? message->measure.width : Width(bounds);
 	int vBase = message->type == ES_MSG_GET_WIDTH ? message->measure.height : Height(bounds);
+
+	if (message->type == ES_MSG_LAYOUT) {
+		// If we scroll on a given axis, assume it extends to infinity during layout.
+		// During measurement, ScrollPane::ReceivedMessage does this for us.
+		if (panel->scroll.mode[0]) hBase = 0;
+		if (panel->scroll.mode[1]) vBase = 0;
+	}
 
 	int hSpace = hBase ? (hBase - insets.l - insets.r) : 0;
 	int vSpace = vBase ? (vBase - insets.t - insets.b) : 0;
@@ -2424,11 +2431,10 @@ int EsElement::GetWidth(int height) {
 	else if (style->preferredHeight && style->preferredHeight < height && (~flags & (ES_CELL_V_EXPAND))) height = style->preferredHeight;
 	else if (style->metrics->minimumHeight && style->metrics->minimumHeight > height) height = style->metrics->minimumHeight;
 	else if (style->metrics->maximumHeight && style->metrics->maximumHeight < height) height = style->metrics->maximumHeight;
-	if (height) height -= internalOffsetTop + internalOffsetBottom;
 	EsMessage m = { ES_MSG_GET_WIDTH };
 	m.measure.height = height;
 	EsMessageSend(this, &m);
-	int width = m.measure.width + internalOffsetLeft + internalOffsetRight;
+	int width = m.measure.width;
 	if (style->metrics->minimumWidth && style->metrics->minimumWidth > width) width = style->metrics->minimumWidth;
 	if (style->metrics->maximumWidth && style->metrics->maximumWidth < width) width = style->metrics->maximumWidth;
 	return width;
@@ -2441,11 +2447,10 @@ int EsElement::GetHeight(int width) {
 	else if (style->preferredWidth && style->preferredWidth < width && (~flags & (ES_CELL_H_EXPAND))) width = style->preferredWidth;
 	else if (style->metrics->minimumWidth && style->metrics->minimumWidth > width) width = style->metrics->minimumWidth;
 	else if (style->metrics->maximumWidth && style->metrics->maximumWidth < width) width = style->metrics->maximumWidth;
-	if (width) width -= internalOffsetLeft + internalOffsetRight;
 	EsMessage m = { ES_MSG_GET_HEIGHT };
 	m.measure.width = width;
 	EsMessageSend(this, &m);
-	int height = m.measure.height + internalOffsetTop + internalOffsetBottom;
+	int height = m.measure.height;
 	if (style->metrics->minimumHeight && style->metrics->minimumHeight > height) height = style->metrics->minimumHeight;
 	if (style->metrics->maximumHeight && style->metrics->maximumHeight < height) height = style->metrics->maximumHeight;
 	return height;
@@ -2889,25 +2894,61 @@ int ScrollPane::ReceivedMessage(EsMessage *message) {
 			if (deltaY && (flags & ES_SCROLL_Y_DRAG)) SetY(position[1] + deltaY, true);
 			message->animate.complete = false;
 		}
-	} else if (message->type == ES_MSG_GET_HEIGHT) {
-		if (message->measure.width && (mode[0] == ES_SCROLL_MODE_AUTO) && (mode[1] != ES_SCROLL_MODE_AUTO)) {
-			// To accurately measure the height of the element for this width,
-			// we need to determine whether the horizontal scrollbar will be present.
-			// TODO This assumes that the element will be send a LAYOUT message after measurements are complete,
-			// 	in order for the scrollbars to be updated. But I think this will always happen..?
-			EsMessage m = {};
-			m.type = ES_MSG_GET_WIDTH;
-			EsMessageSend(parent, &m);
-			parent->internalOffsetBottom = (m.measure.width + fixedViewport[0] > message->measure.width) ? bar[0]->style->preferredHeight : 0;
+	} else if (message->type == ES_MSG_GET_HEIGHT && !message->measure.internalMeasurement) {
+		int width = message->measure.width;
+
+		// If there is a prescribed internal width, we would need to subtract the width of the vertical scroll bar.
+		// But we are measuring the external height here, so if this height value gets used then 
+		// the vertical scroll bar can only show if it is in the fixed mode.
+		if (width && mode[1] == ES_SCROLL_MODE_FIXED) {
+			width -= bar[1]->style->preferredWidth;
 		}
-	} else if (message->type == ES_MSG_GET_WIDTH) {
-		if (message->measure.width && (mode[1] == ES_SCROLL_MODE_AUTO) && (mode[0] != ES_SCROLL_MODE_AUTO)) {
-			// As above.
-			EsMessage m = {};
-			m.type = ES_MSG_GET_HEIGHT;
-			EsMessageSend(parent, &m);
-			parent->internalOffsetRight = (m.measure.height + fixedViewport[1] > message->measure.height) ? bar[1]->style->preferredWidth : 0;
+
+		// Get the internal measurement on this axis.
+		EsMessage m = {};
+		m.type = ES_MSG_GET_HEIGHT;
+		m.measure.width = mode[0] ? 0 : width; // If the opposite axis is being scrolled, then ignore a prescribed measurement -- that will be an external measurement.
+		m.measure.internalMeasurement = true;
+		EsMessageSend(parent, &m); // Send it to ourself for internal measurement.
+		message->measure.height = m.measure.height; 
+
+		bool horizontalScrollBarWillShow = false;
+
+		if (mode[0] == ES_SCROLL_MODE_FIXED) {
+			horizontalScrollBarWillShow = true;
+		} else if (mode[0] == ES_SCROLL_MODE_AUTO) {
+			if (!width) {
+				// If there is no prescribed external width, 
+				// then we have no way to determine whether the scroll bar will be shown in this case.
+			} else {
+				EsMessage m = {};
+				m.type = ES_MSG_GET_WIDTH;
+				EsMessageSend(parent, &m);
+				horizontalScrollBarWillShow = m.measure.width + fixedViewport[0] > width;
+			}
 		}
+
+		// Add the height of the horizontal scroll bar, if it will be shown, to calculate the external height.
+		if (horizontalScrollBarWillShow) message->measure.height += bar[0]->style->preferredHeight;
+
+		return ES_HANDLED;
+	} else if (message->type == ES_MSG_GET_WIDTH && !message->measure.internalMeasurement) {
+		// Algorithm copied from above, in the GET_HEIGHT case.
+		int height = message->measure.height;
+		if (height && mode[0] == ES_SCROLL_MODE_FIXED) height -= bar[0]->style->preferredHeight;
+		EsMessage m = { .type = ES_MSG_GET_WIDTH, .measure = { .height = mode[1] ? 0 : height, .internalMeasurement = true } };
+		EsMessageSend(parent, &m);
+		message->measure.width = m.measure.width; 
+		bool verticalScrollBarWillShow = mode[1] == ES_SCROLL_MODE_FIXED;
+
+		if (mode[1] == ES_SCROLL_MODE_AUTO && height) {
+			EsMessage m = { .type = ES_MSG_GET_HEIGHT };
+			EsMessageSend(parent, &m);
+			verticalScrollBarWillShow = m.measure.height + fixedViewport[1] > height;
+		}
+
+		if (verticalScrollBarWillShow) message->measure.width += bar[1]->style->preferredWidth;
+		return ES_HANDLED;
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
 		SetPosition(0, position[0] + 60 * message->scrollWheel.dx / ES_SCROLL_WHEEL_NOTCH, true);
 		SetPosition(1, position[1] - 60 * message->scrollWheel.dy / ES_SCROLL_WHEEL_NOTCH, true);
@@ -2944,6 +2985,7 @@ bool ScrollPane::RefreshLimit(int axis, int64_t *contentSize) {
 
 		EsMessage m = {};
 		m.type = axis ? ES_MSG_GET_HEIGHT : ES_MSG_GET_WIDTH;
+		m.measure.internalMeasurement = true;
 		if (axis) m.measure.width = bounds.r;
 		else m.measure.height = bounds.b;
 		EsMessageSend(parent, &m);
@@ -3365,7 +3407,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 			}
 
 			if (childCount < 100) {
-				return 0;
+				return 0; // Don't bother if there are only a small number of child elements.
 			}
 
 			message->beforeZOrder.nonClient = childCount;
@@ -6358,7 +6400,7 @@ EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int of
 
 	EsMessage zOrder = { ES_MSG_BEFORE_Z_ORDER };
 	zOrder.beforeZOrder.nonClient = zOrder.beforeZOrder.end = element->children.Length();
-	zOrder.beforeZOrder.clip = Translate(ES_RECT_4(0, element->width, 0, element->height), offsetX, offsetY);
+	zOrder.beforeZOrder.clip = Translate(ES_RECT_4(0, element->width, 0, element->height), -offsetX, -offsetY);
 	EsMessageSend(element, &zOrder);
 
 	EsElement *result = nullptr;
