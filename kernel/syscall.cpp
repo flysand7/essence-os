@@ -911,6 +911,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_WINDOW_SET_CURSOR) {
 		if (windowManager.cursorSurface.Resize(width, height)
 				&& windowManager.cursorSwap.Resize(width, height)
 				&& windowManager.cursorTemporary.Resize(width, height)) {
+			EsMemoryZero(windowManager.cursorSurface.bits, windowManager.cursorSurface.width * windowManager.cursorSurface.height * 4);
 			windowManager.cursorSurface.SetBits((K_USER_BUFFER const void *) argument1, argument3 & 0xFFFFFF, 
 					ES_RECT_4PD(CURSOR_PADDING_L, CURSOR_PADDING_T, imageWidth, imageHeight));
 

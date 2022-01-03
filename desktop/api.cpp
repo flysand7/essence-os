@@ -174,6 +174,7 @@ struct APIInstance {
 	EsFileStore *fileStore;
 
 	bool closeAfterSaveCompletes;
+	bool closing;
 
 	union {
 		EsInstanceClassEditorSettings editorSettings;
@@ -952,6 +953,14 @@ void EsInstanceCloseReference(EsInstance *_instance) {
 
 void EsInstanceClose(EsInstance *instance) {
 	EsMessageMutexCheck();
+
+	APIInstance *apiInstance = (APIInstance *) instance->_private;
+
+	if (apiInstance->closing) {
+		return;
+	}
+
+	apiInstance->closing = true;
 
 	if (instance->callback) {
 		EsMessage m = {};

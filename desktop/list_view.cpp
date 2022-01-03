@@ -460,18 +460,16 @@ struct EsListView : EsElement {
 				addHeader = 1;
 			}
 
-			intptr_t band = -position / (fixedSize + gapBetweenItems);
+			EsListViewIndex band = -position / (fixedSize + gapBetweenItems);
 			if (band < 0) band = 0;
 			position += band * (fixedSize + gapBetweenItems);
 
-			if (flags & ES_LIST_VIEW_TILED) {
-				band *= GetItemsPerBand();
-			}
+			EsListViewIndex itemsPerBand = (flags & ES_LIST_VIEW_TILED) ? GetItemsPerBand() : 1;
+			index.iterateIndex.index = band * itemsPerBand + addHeader;
 
-			index.iterateIndex.index = band + addHeader;
-
-			if (index.iterateIndex.index >= (intptr_t) group->itemCount) {
+			if (index.iterateIndex.index >= group->itemCount) {
 				index.iterateIndex.index = group->itemCount - 1;
+				position += (index.iterateIndex.index / itemsPerBand - band) * (fixedSize + gapBetweenItems);
 			}
 
 			*_position = position;
@@ -560,24 +558,6 @@ struct EsListView : EsElement {
 	}
 
 	void _Populate() {
-#if 0
-		EsPrint("--- Before Populate() ---\n");
-		EsPrint("Scroll: %i\n", (int) (scroll.position[1] - style->insets.t));
-
-		for (uintptr_t i = 0; i < visibleItems.Length(); i++) {
-			EsMessage m = { ES_MSG_LIST_VIEW_GET_CONTENT };
-			uint8_t _buffer[512];
-			EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
-			m.getContent.buffer = &buffer;
-			m.getContent.index = visibleItems[i].index;
-			m.getContent.group = visibleItems[i].group;
-			EsMessageSend(this, &m);
-			EsPrint("%d: %d '%s' at %i\n", i, visibleItems[i].index, buffer.position, _buffer, visibleItems[i].element->offsetY - GetListBounds().t);
-		}
-
-		EsPrint("------\n");
-#endif
-
 		// TODO Keep one item before and after the viewport, so tab traversal on custom elements works.
 		// TODO Always keep an item if it has FOCUS_WITHIN.
 		// 	- But maybe we shouldn't allow focusable elements in a list view.
@@ -2117,6 +2097,24 @@ void ListViewPopulateActionCallback(EsElement *element, EsGeneric) {
 	view->populateQueued = false;
 	view->_Populate();
 	EsAssert(!view->populateQueued);
+
+#if 0
+	if (element->flags & ES_ELEMENT_DEBUG) {
+		EsPrint("Populate complete for list %x with scroll %i:\n", view, view->scroll.position[1]);
+
+		for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
+			EsMessage m = { ES_MSG_LIST_VIEW_GET_CONTENT };
+			uint8_t _buffer[512];
+			EsBuffer buffer = { .out = _buffer, .bytes = sizeof(_buffer) };
+			m.getContent.buffer = &buffer;
+			m.getContent.index = view->visibleItems[i].index;
+			m.getContent.group = view->visibleItems[i].group;
+			EsMessageSend(view, &m);
+			EsPrint("\t%d: %d '%s' at %i\n", i, view->visibleItems[i].index, buffer.position, _buffer, 
+					view->visibleItems[i].element->offsetY - view->GetListBounds().t);
+		}
+	}
+#endif
 }
 
 void ListViewEnsureVisibleActionCallback(EsElement *element, EsGeneric) {
