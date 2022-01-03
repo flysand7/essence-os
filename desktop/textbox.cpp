@@ -1791,7 +1791,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 		} else {
 			return 0;
 		}
-	} else if (message->type == ES_MSG_MOUSE_RIGHT_UP) {
+	} else if (message->type == ES_MSG_MOUSE_RIGHT_CLICK) {
 		textbox->inRightClickDrag = false;
 		EsMenu *menu = EsMenuCreate(textbox, ES_MENU_AT_CURSOR);
 		if (!menu) return ES_HANDLED;
@@ -1978,7 +1978,7 @@ void EsTextboxUseNumberOverlay(EsTextbox *textbox, bool defaultBehaviour) {
 				EsMessageSend(textbox, &m);
 			}
 		} else if (message->type == ES_MSG_GET_CURSOR) {
-			if (gui.draggingStarted) {
+			if (EsMouseIsLeftHeld()) {
 				message->cursorStyle = ES_CURSOR_BLANK;
 			} else if (~textbox->flags & ES_ELEMENT_DISABLED) {
 				message->cursorStyle = ES_CURSOR_RESIZE_VERTICAL;

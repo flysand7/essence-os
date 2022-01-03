@@ -7814,8 +7814,8 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 
 		for (uintptr_t i = 0; i < window->sizeAlternatives.Length(); i++) {
 			SizeAlternative *alternative = &window->sizeAlternatives[i];
-			bool belowThreshold = window->width < alternative->widthThreshold * theming.scale 
-				|| window->height < alternative->heightThreshold * theming.scale;
+			bool belowThreshold = window->windowWidth < alternative->widthThreshold * theming.scale 
+				|| window->windowHeight < alternative->heightThreshold * theming.scale;
 			EsElementSetHidden(alternative->small, !belowThreshold);
 			EsElementSetHidden(alternative->big, belowThreshold);
 		}
