@@ -863,11 +863,13 @@ float EsCRTpowf(float x, float y) {
 }
 
 double EsCRTcbrt(double x) {
-	return EsCRTpow(x, 1.0 / 3.0);
+	if (x >= 0.0) return EsCRTpow(x, 1.0f / 3.0);
+	else return -EsCRTpow(-x, 1.0f / 3.0);
 }
 
 float EsCRTcbrtf(float x) {
-	return EsCRTpowf(x, 1.0f / 3.0f);
+	if (x >= 0.0f) return EsCRTpowf(x, 1.0f / 3.0f);
+	else return -EsCRTpowf(-x, 1.0f / 3.0f);
 }
 
 double EsCRTexp(double x) {
@@ -879,11 +881,13 @@ float EsCRTexpf(float x) {
 }
 
 double EsCRTfmod(double x, double y) {
-	return x - y * EsCRTfloor(x / y);
+	double n = x / y;
+	return x - y * (n > 0.0 ? EsCRTfloor(n) : EsCRTceil(n));
 }
 
 float EsCRTfmodf(float x, float y) {
-	return x - y * EsCRTfloorf(x / y);
+	float n = x / y;
+	return x - y * (n > 0.0f ? EsCRTfloorf(n) : EsCRTceilf(n));
 }
 
 bool EsCRTisnanf(float x) {

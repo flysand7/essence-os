@@ -2313,6 +2313,8 @@ function float EsCRTceilf(float x);
 function double EsCRTcos(double x); 
 function float EsCRTcosf(float x); 
 function double EsCRTexp(double x);
+function float EsCRTexpf(float x);
+function double EsCRTexp2(double x);
 function float EsCRTexp2f(float x);
 function double EsCRTfabs(double x); 
 function float EsCRTfabsf(float x); 

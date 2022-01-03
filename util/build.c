@@ -1701,6 +1701,8 @@ void DoCommand(const char *l) {
 				CallSystem("rm -f bin/Logs/qemu_serial1.txt");
 				FILE *f = fopen("root/Essence/Settings/API Tests/test.dat", "wb");
 				fwrite(&index, 1, sizeof(uint32_t), f);
+				uint32_t mode = 1;
+				fwrite(&mode, 1, sizeof(uint32_t), f);
 				fclose(f);
 				emulatorTimeout = 20;
 				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);

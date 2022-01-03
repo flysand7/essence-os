@@ -1799,6 +1799,7 @@ void *EsCRTmemmove(void *dest, const void *src, size_t n) {
 	}
 }
 
+#ifndef KERNEL
 char *EsCRTstrdup(const char *string) {
 	if (!string) return nullptr;
 	size_t length = EsCRTstrlen(string) + 1;
@@ -1807,6 +1808,7 @@ char *EsCRTstrdup(const char *string) {
 	EsCRTmemcpy(memory, string, length);
 	return memory;
 }
+#endif
 
 size_t EsCRTstrlen(const char *s) {
 	size_t n = 0;
@@ -1835,7 +1837,9 @@ void *EsCRTmalloc(size_t size) {
 }
 
 void *EsCRTcalloc(size_t num, size_t size) {
-	void *x = EsHeapAllocate(num * size, true);
+	size_t c;
+	if (__builtin_mul_overflow(num, size, &c)) return nullptr;
+	void *x = EsHeapAllocate(c, true);
 	if (x) __sync_fetch_and_add(&mallocCount, 1);
 	return x;
 }
@@ -1850,27 +1854,6 @@ void *EsCRTrealloc(void *ptr, size_t size) {
 	if (!ptr) return EsCRTmalloc(size);
 	else if (!size) return EsCRTfree(ptr), nullptr;
 	else return EsHeapReallocate(ptr, size, false);
-}
-#else
-void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *heap);
-void EsHeapFree(void *address, size_t expectedSize, EsHeap *heap);
-void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *heap);
-
-void *EsCRTmalloc(size_t size) {
-	void *x = EsHeapAllocate(size, false, K_FIXED);
-	return x;
-}
-
-void *EsCRTcalloc(size_t num, size_t size) {
-	return EsHeapAllocate(num * size, true, K_FIXED);
-}
-
-void EsCRTfree(void *ptr) {
-	EsHeapFree(ptr, 0, K_FIXED);
-}
-
-void *EsCRTrealloc(void *ptr, size_t size) {
-	return EsHeapReallocate(ptr, size, false, K_FIXED);
 }
 #endif
 

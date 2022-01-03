@@ -444,6 +444,8 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define cos EsCRTcos
 #define cosf EsCRTcosf
 #define exp EsCRTexp
+#define expf EsCRTexpf
+#define exp2 EsCRTexp2
 #define exp2f EsCRTexp2f
 #define fabs EsCRTfabs
 #define fabsf EsCRTfabsf
