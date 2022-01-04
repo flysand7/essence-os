@@ -1704,7 +1704,7 @@ void DoCommand(const char *l) {
 				uint32_t mode = 1;
 				fwrite(&mode, 1, sizeof(uint32_t), f);
 				fclose(f);
-				emulatorTimeout = 20;
+				emulatorTimeout = tests[index].timeoutSeconds;
 				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
 				emulatorTimeout = 0;

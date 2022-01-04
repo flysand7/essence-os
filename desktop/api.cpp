@@ -1350,10 +1350,12 @@ EsMessage *EsMessageReceive() {
 void EsInstanceSetModified(EsInstance *instance, bool modified) {
 	EsCommandSetEnabled(EsCommandByID(instance, ES_COMMAND_SAVE), modified);
 
-	uint8_t m[2];
-	m[0] = DESKTOP_MSG_SET_MODIFIED;
-	m[1] = modified;
-	MessageDesktop(m, 2, instance->window->handle);
+	if (instance->window) {
+		uint8_t m[2];
+		m[0] = DESKTOP_MSG_SET_MODIFIED;
+		m[1] = modified;
+		MessageDesktop(m, 2, instance->window->handle);
+	}
 }
 
 void EsInstanceOpenComplete(EsInstance *instance, EsFileStore *file, bool success, const char *errorText, ptrdiff_t errorTextBytes) {

@@ -2283,7 +2283,7 @@ function char *EsStringAllocateAndFormat(size_t *bytes, EsCString format, ...); 
 function char *EsStringAllocateAndFormatV(size_t *bytes, EsCString format, va_list arguments); 
 function int EsStringCompare(STRING s1, STRING s2); 
 function int EsStringCompareRaw(STRING s1, STRING s2); 
-function ptrdiff_t EsStringFormat(char *buffer, size_t bufferLength, EsCString format, ...); 
+function ptrdiff_t EsStringFormat(char *buffer, size_t bufferLength, EsCString format, ...); // Not zero-terminated.
 function const char *EsStringFormatTemporary(EsCString format, ...);  // Not thread safe. The result is valid until the next call. Zero-terminated.
 function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments); 
 function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...); // Return false if buffer filled.

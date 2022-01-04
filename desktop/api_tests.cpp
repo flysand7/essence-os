@@ -1,15 +1,16 @@
 #ifdef API_TESTS_FOR_RUNNER
 
-#define TEST(_callback) { .cName = #_callback }
-typedef struct Test { const char *cName; } Test;
+#define TEST(_callback, _timeoutSeconds) { .cName = #_callback, .timeoutSeconds = _timeoutSeconds }
+typedef struct Test { const char *cName; int timeoutSeconds; } Test;
 
 #else
 
 #define ES_PRIVATE_APIS
 #include <essence.h>
 #include <shared/crc.h>
+#include <shared/array.cpp>
 
-#define TEST(_callback) { .callback = _callback }
+#define TEST(_callback, _timeoutSeconds) { .callback = _callback }
 struct Test { bool (*callback)(); };
 
 #define CHECK(x) do { if ((x)) { checkIndex++; } else { EsPrint("Failed check %d: " #x, checkIndex); return false; } } while (0)
@@ -280,6 +281,7 @@ bool CRTStringFunctions() {
 //////////////////////////////////////////////////////////////
 
 bool CRTOtherFunctions() {
+	// TODO setjmp, longjmp.
 	// Note that malloc, free and realloc are assumed to be working if EsHeapAllocate, EsHeapFree and EsHeapReallocate are.
 
 	int checkIndex = 0;
@@ -378,13 +380,393 @@ bool CRTOtherFunctions() {
 
 //////////////////////////////////////////////////////////////
 
+bool PerformanceTimerDrift() {
+	int checkIndex = 0;
+
+	EsDateComponents start, end;
+
+	EsDateNowUTC(&start);
+	EsPerformanceTimerPush();
+
+	for (uintptr_t i = 0; i < 50000000; i++) {
+		EsCStringLength("Test"); 
+	}
+
+	double performanceTime = EsPerformanceTimerPop();
+	EsDateNowUTC(&end);
+	double mainTime = (DateToLinear(&end) - DateToLinear(&start)) / 1000.0;
+
+	EsPrint("Performance timer: %F s.\n", performanceTime);
+	EsPrint("Main timer: %F s.\n", mainTime);
+
+	CHECK(EsCRTfabs(performanceTime - mainTime) / mainTime < 0.1); // Less than a 10% drift.
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
+EsTextbox *textbox;
+
+Array<char> master;
+Array<Array<char>> undo;
+
+void OffsetToLineAndByte(uintptr_t offset, int32_t *_line, int32_t *_byte) {
+	int32_t line = 0, byte = 0;
+
+	for (uintptr_t i = 0; i < offset; i++) {
+		if (master[i] == '\n') {
+			line++;
+			byte = 0;
+		} else {
+			byte++;
+		}
+	}
+
+	*_line = line;
+	*_byte = byte;
+}
+
+bool Compare() {
+	size_t bytes;
+	char *contents = EsTextboxGetContents(textbox, &bytes);
+	// EsPrint("\tContents: '%e'\n\tMaster:   '%e'\n", bytes, contents, arrlenu(master), master);
+	if (bytes != master.Length()) return false;
+	if (EsMemoryCompare(&master[0], contents, bytes)) return false;
+	EsHeapFree(contents);
+	return true;
+}
+
+void FakeUndoItem(const void *, EsUndoManager *manager, EsMessage *message) {
+	if (message->type == ES_MSG_UNDO_INVOKE) {
+		EsUndoPush(manager, FakeUndoItem, nullptr, 0); 
+	}
+}
+
+void AddUndoItem() {
+	Array<char> copy = {};
+	copy.SetLength(master.Length());
+	if (copy.Length()) EsMemoryCopy(&copy[0], &master[0], copy.Length());
+	undo.Add(copy);
+}
+
+void Complete() {
+	EsUndoPush(textbox->instance->undoManager, FakeUndoItem, nullptr, 0); 
+	EsUndoEndGroup(textbox->instance->undoManager);
+}
+
+bool Insert(uintptr_t offset, const char *string, size_t stringBytes) {
+	if (!stringBytes) return true;
+	AddUndoItem();
+	// EsPrint("Insert '%e' at %d.\n", stringBytes, string, offset);
+	int32_t line, byte;
+	OffsetToLineAndByte(offset, &line, &byte);
+	EsTextboxSetSelection(textbox, line, byte, line, byte);
+	EsTextboxInsert(textbox, string, stringBytes);
+	master.InsertMany(offset, stringBytes);
+	EsMemoryCopy(&master[offset], string, stringBytes);
+	if (!Compare()) return false;
+	Complete();
+	return true;
+}
+
+bool Delete(uintptr_t from, uintptr_t to) {
+	if (from == to) return true;
+	AddUndoItem();
+	// EsPrint("Delete from %d to %d.\n", from, to);
+	int32_t fromLine, fromByte, toLine, toByte;
+	OffsetToLineAndByte(from, &fromLine, &fromByte);
+	OffsetToLineAndByte(to, &toLine, &toByte);
+	EsTextboxSetSelection(textbox, fromLine, fromByte, toLine, toByte);
+	EsTextboxInsert(textbox, 0, 0);
+	if (to > from) master.DeleteMany(from, to - from);
+	else master.DeleteMany(to, from - to);
+	if (!Compare()) return false;
+	Complete();
+	return true;
+}
+
+bool TextboxEditOperations() {
+	int checkIndex = 0;
+	textbox = EsTextboxCreate(EsWindowCreate(_EsInstanceCreate(sizeof(EsInstance), nullptr), ES_WINDOW_PLAIN), ES_TEXTBOX_ALLOW_TABS | ES_TEXTBOX_MULTILINE);
+	EsRandomSeed(10); 
+	EsTextboxSetUndoManager(textbox, textbox->instance->undoManager);
+
+	char *initialText = (char *) EsHeapAllocate(100000, false);
+	for (uintptr_t i = 0; i < 100000; i++) initialText[i] = EsRandomU8() < 0x40 ? '\n' : ((EsRandomU8() % 26) + 'a');
+	CHECK(Insert(0, initialText, 100000));
+	EsHeapFree(initialText);
+
+	for (uintptr_t i = 0; i < 10000; i++) {
+		uint8_t action = EsRandomU8();
+
+		if (action < 0x70) {
+			size_t stringBytes = EsRandomU8() & 0x1F;
+			char string[0x20];
+
+			for (uintptr_t i = 0; i < stringBytes; i++) {
+				string[i] = EsRandomU8() < 0x40 ? '\n' : ((EsRandomU8() % 26) + 'a');
+			}
+
+			CHECK(Insert(EsRandomU64() % (master.Length() + 1), string, stringBytes));
+		} else if (action < 0xE0) {
+			if (master.Length()) {
+				CHECK(Delete(EsRandomU64() % master.Length(), EsRandomU64() % master.Length()));
+			}
+		} else {
+			if (!EsUndoIsEmpty(textbox->instance->undoManager, false)) {
+				// EsPrint("Undo.\n");
+				EsUndoInvokeGroup(textbox->instance->undoManager, false);
+				master.Free();
+				master = undo.Last();
+				undo.Pop();
+				CHECK(Compare());
+			}
+		}
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
+struct {
+	int a, b;
+} testStruct = {
+	.a = 1, .b = 2,
+};
+
+const int testVariable = 3;
+
+bool DirectoryEnumerateChildrenRecursive(const char *path, size_t pathBytes) {
+	EsDirectoryChild *buffer;
+	ptrdiff_t count = EsDirectoryEnumerateChildren(path, pathBytes, &buffer);
+
+	if (count < 0) {
+		EsPrint("Error %i enumerating at path \"%s\".\n", (EsError) count, pathBytes, path);
+		return false;
+	}
+
+	for (intptr_t i = 0; i < count; i++) {
+		char *childPath = (char *) EsHeapAllocate(pathBytes + 1 + buffer[i].nameBytes, false);
+		size_t childPathBytes = EsStringFormat(childPath, ES_STRING_FORMAT_ENOUGH_SPACE, "%s/%s", pathBytes, path, buffer[i].nameBytes, buffer[i].name);
+
+		if (buffer[i].type == ES_NODE_FILE) {
+			size_t dataBytes;
+			EsError error;
+			void *data = EsFileReadAll(childPath, childPathBytes, &dataBytes, &error);
+
+			if (error != ES_SUCCESS) {
+				EsPrint("Error %i reading path \"%s\".\n", (EsError) count, childPathBytes, childPath);
+				return false;
+			}
+
+			if (dataBytes != (size_t) buffer[i].fileSize) {
+				EsPrint("File size mismatch reading path \"%s\" (got %d from EsFileReadAll, got %d from EsDirectoryEnumerateChildren).\n", 
+						childPathBytes, childPath, dataBytes, buffer[i].fileSize);
+				return false;
+			}
+
+			EsHeapFree(data);
+		} else if (buffer[i].type == ES_NODE_DIRECTORY) {
+			if (!DirectoryEnumerateChildrenRecursive(childPath, childPathBytes)) {
+				return false;
+			}
+		}
+	}
+
+	EsHeapFree(buffer);
+	return true;
+}
+
+bool OldTests2018() {
+	int checkIndex = 0;
+
+	CHECK(testStruct.a == 1);
+	CHECK(testStruct.b == 2);
+	CHECK(testVariable == 3);
+	testStruct.a += 3;
+	CHECK(testStruct.a == 4);
+	CHECK(testStruct.b == 2);
+	CHECK(testVariable == 3);
+
+	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("0:")));
+
+	for (int count = 16; count < 100; count += 30) {
+		EsHandle handles[100];
+
+		for (int i = 0; i < count; i++) {
+			char buffer[256];
+			size_t length = EsStringFormat(buffer, 256, "0:/TestFolder/%d", i);
+			EsFileInformation node = EsFileOpen(buffer, length, ES_NODE_CREATE_DIRECTORIES | ES_NODE_FAIL_IF_FOUND | ES_FILE_WRITE);
+			CHECK(node.error == ES_SUCCESS);
+			handles[i] = node.handle;
+		}
+
+		for (int i = 0; i < count; i++) {
+			CHECK(ES_SUCCESS == EsFileDelete(handles[i]));
+		}
+
+		for (int i = 0; i < count; i++) {
+			EsHandleClose(handles[i]);
+		}
+	}
+
+	{
+		EsFileWriteAll(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("hello"));
+		EsFileWriteAll(EsLiteral("0:/b.txt"), EsLiteral("world"));
+		CHECK(EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("0:/a.txt")));
+		CHECK(ES_SUCCESS == EsPathMove(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
+		CHECK(EsPathExists(EsLiteral("0:/a.txt")));
+		CHECK(ES_ERROR_FILE_DOES_NOT_EXIST == EsPathMove(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("0:/a.txt"), EsLiteral("0:/b.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("0:/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_VOLUME_MISMATCH == EsPathMove(EsLiteral("0:/"), EsLiteral("0:/TestFolder/TargetWithinSource"), ES_FLAGS_DEFAULT));
+		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
+		CHECK(EsPathExists(EsLiteral("0:/a.txt")));
+	}
+
+	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("0:")));
+
+	{
+		void *a = EsCRTmalloc(0x100000);
+		CHECK(a);
+		void *b = EsCRTrealloc(a, 0x1000);
+		CHECK(b);
+		void *c = EsCRTrealloc(b, 0x100000);
+		CHECK(c);
+		EsCRTfree(c);
+	}
+
+	{
+		char b[] = "abcdef";
+		CHECK(EsCRTstrlen(b) == 6);
+		CHECK(EsCRTstrnlen(b, 3) == 3);
+		CHECK(EsCRTstrnlen(b, 10) == 6);
+	}
+
+	{
+		CHECK(EsCRTstrtol("\n\f\n -0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaAAAAAAAaaaaaa", nullptr, 0) == LONG_MIN);
+		char *x = (char *) "+03", *y;
+		CHECK(EsCRTstrtol(x, &y, 4) == 3 && y == x + 3);
+	}
+
+	{
+		EsFileInformation node = EsFileOpen(EsLiteral("0:/ResizeFileTest.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
+		CHECK(node.error == ES_SUCCESS);
+
+		// TODO Failing large file resizes.
+#if 0
+		EsFileResize(node.handle, (uint64_t) 0xFFFFFFFFFFFF);
+#endif
+
+		uint8_t buffer[512];
+
+		for (uintptr_t i = 1; i < 128; i++) {
+			for (uintptr_t j = 0; j < 512; j++) {
+				buffer[j] = i;
+			}
+
+			// OSPrint("Resizing file to %d\n", i * 512);
+			EsFileResize(node.handle, i * 512);
+			// OSPrint("Write to %d\n", (i - 1) * 512);
+			EsFileWriteSync(node.handle, (i - 1) * 512, 512, buffer);
+		}
+
+		for (uintptr_t i = 1; i < 128; i++) {
+			// OSPrint("Read from %d\n", (i - 1) * 512);
+			EsFileReadSync(node.handle, (i - 1) * 512, 512, buffer);
+
+			for (uintptr_t j = 0; j < 512; j++) {
+				CHECK(buffer[j] == i);
+			}
+		}
+
+		for (uintptr_t i = 126; i > 0; i--) {
+			// OSPrint("Resizing file to %d\n", i * 512);
+			EsFileResize(node.handle, i * 512);
+		}
+
+		for (uintptr_t i = 1; i < 2; i++) {
+			// OSPrint("Read from %d\n", (i - 1) * 512);
+			EsFileReadSync(node.handle, (i - 1) * 512, 512, buffer);
+
+			for (uintptr_t j = 0; j < 512; j++) {
+				CHECK(buffer[j] == i);
+			}
+		}
+
+		EsHandleClose(node.handle);
+	}
+
+	{
+		EsFileInformation node = EsFileOpen(EsLiteral("0:/MapFile.txt"), ES_FILE_WRITE_SHARED);
+		CHECK(node.error == ES_SUCCESS);
+		EsFileResize(node.handle, 1048576);
+		uint32_t *buffer = (uint32_t *) EsHeapAllocate(1048576, false);
+		for (int i = 0; i < 262144; i++) buffer[i] = i;
+		EsFileWriteSync(node.handle, 0, 1048576, buffer);
+		EsFileReadSync(node.handle, 0, 1048576, buffer);
+		for (uintptr_t i = 0; i < 262144; i++) CHECK(buffer[i] == i);
+		EsFileInformation node2 = EsFileOpen(EsLiteral("0:/MapFile.txt"), ES_FILE_READ_SHARED);
+		CHECK(node.error == ES_SUCCESS);
+		uint32_t *pointer = (uint32_t *) EsMemoryMapObject(node2.handle, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
+		CHECK(pointer);
+		uint32_t *pointer2 = (uint32_t *) EsMemoryMapObject(node2.handle, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
+		CHECK(pointer2);
+		for (uintptr_t i = 4096; i < 262144; i++) CHECK(pointer[i] == buffer[i]);
+		for (int i = 0; i < 262144; i++) buffer[i] = i + 100;
+		EsFileWriteSync(node.handle, 0, 1048576, buffer);
+		EsFileReadSync(node.handle, 0, 1048576, buffer);
+		for (uintptr_t i = 0; i < 262144; i++) CHECK(buffer[i] == i + 100);
+		for (uintptr_t i = 4096; i < 262144; i++) CHECK(pointer[i] == buffer[i]);
+		for (uintptr_t i = 4096; i < 262144; i++) CHECK(pointer2[i] == buffer[i]);
+		EsMemoryUnreserve(pointer);
+		EsHandleClose(node.handle);
+		EsHandleClose(node2.handle);
+		EsMemoryUnreserve(pointer2);
+	}
+
+	{
+		const char *path = "0:/OS/new_dir/test2.txt";
+		EsFileInformation node = EsFileOpen(path, EsCStringLength(path), ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+		CHECK(node.error == ES_SUCCESS);
+		CHECK(ES_SUCCESS == EsFileResize(node.handle, 8));
+		char buffer[8];
+		buffer[0] = 'a';
+		buffer[1] = 'b';
+		EsFileWriteSync(node.handle, 0, 1, buffer);
+		buffer[0] = 'b';
+		buffer[1] = 'c';
+		size_t bytesRead = EsFileReadSync(node.handle, 0, 8, buffer);
+		CHECK(bytesRead == 8);
+		CHECK(buffer[0] == 'a' && buffer[1] == 0 && buffer[2] == 0);
+		CHECK(EsFileGetSize(node.handle) == 8);
+		EsHandleClose(node.handle);
+	}
+	
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
-	TEST(BasicFileOperations),
-	TEST(CRTMathFunctions),
-	TEST(CRTStringFunctions),
-	TEST(CRTOtherFunctions),
+	TEST(BasicFileOperations, 30),
+	TEST(CRTMathFunctions, 30),
+	TEST(CRTStringFunctions, 30),
+	TEST(CRTOtherFunctions, 30),
+	TEST(PerformanceTimerDrift, 30),
+	TEST(TextboxEditOperations, 120),
+	TEST(OldTests2018, 30),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
