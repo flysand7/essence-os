@@ -10,7 +10,9 @@
 #ifdef USE_FREETYPE_AND_HARFBUZZ
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
+#ifndef FT_EXPORT
 #define FT_EXPORT(x) extern "C" x
+#endif
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/ftoutln.h>

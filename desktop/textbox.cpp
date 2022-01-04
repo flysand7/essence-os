@@ -1189,6 +1189,7 @@ char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {
 	bool includeNewline = textbox->flags & ES_TEXTBOX_MULTILINE;
 	size_t bytes = textbox->dataBytes + (includeNewline ? textbox->lines.Length() : 0);
 	char *buffer = (char *) EsHeapAllocate(bytes + 1, false);
+	if (!buffer) return nullptr;
 	buffer[bytes] = 0;
 
 	uintptr_t position = 0;

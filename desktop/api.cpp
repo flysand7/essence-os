@@ -114,7 +114,7 @@ const EsBundle bundleDefault = {
 	.bytes = -1,
 };
 
-const EsBundle bundleDesktop = {
+EsBundle bundleDesktop = {
 	.base = (const BundleHeader *) BUNDLE_FILE_DESKTOP_MAP_ADDRESS,
 	.bytes = -1,
 };
