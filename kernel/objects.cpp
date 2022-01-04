@@ -722,12 +722,6 @@ bool MessageQueue::SendMessage(_EsMessageWithObject *_message) {
 
 	KEventSet(&notEmpty, true);
 
-	// TODO Temporary.
-	static int largest = 0;
-	int size = messages.Length();
-	if (size > largest) largest = size;
-	if (size > 40) KernelPanic("what\n");
-
 	return true;
 }
 

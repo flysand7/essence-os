@@ -828,6 +828,10 @@ void TextboxUndoItemCallback(const void *item, EsUndoManager *manager, EsMessage
 void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringBytes, bool sendUpdatedMessage) {
 	EsMessageMutexCheck();
 
+	if (string >= textbox->activeLine && string < textbox->activeLine + textbox->activeLineAllocated) {
+		EsAssert(false);
+	}
+
 	// EsPerformanceTimerPush();
 	// double measureLineTime = 0;
 
@@ -1739,7 +1743,13 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 						}
 					}
 
-					EsTextboxInsert(textbox, buffer, i);
+					char *copy = (char *) EsHeapAllocate(i, false);
+
+					if (copy) {
+						EsMemoryCopy(copy, buffer, i);
+						EsTextboxInsert(textbox, copy, i);
+						EsHeapFree(copy);
+					}
 				}
 			} else {
 				response = 0;
