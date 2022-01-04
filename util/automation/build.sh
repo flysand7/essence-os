@@ -92,7 +92,7 @@ cp essence/bin/MPC\ License.txt Essence/Licenses/MPC.txt
 # Compress the result.
 mv ova/Essence.ova Essence/
 mv essence/bin/drive Essence/
-echo $COMMIT > Essence/
+echo $COMMIT > Essence/commit.txt
 tar -cJf Essence.tar.xz Essence/
 echo $COMMIT > essence/bin/commit.txt
 rm -rf essence/cross essence/.git essence/bin/cache essence/bin/freetype essence/bin/harfbuzz essence/bin/musl essence/root/Applications/POSIX/lib
