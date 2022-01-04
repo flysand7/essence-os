@@ -1300,6 +1300,8 @@ void DoCommand(const char *l) {
 		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "kno")) {
 		BuildAndRun(OPTIMISE_ON, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_NORMAL);
+	} else if (0 == strcmp(l, "kd")) {
+		BuildAndRun(OPTIMISE_OFF, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_NORMAL);
 	} else if (0 == strcmp(l, "klv")) {
 		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
 	} else if (0 == strcmp(l, "tlv")) {

@@ -268,7 +268,8 @@ uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uint
 	uintptr_t returnValue = _APISyscall(argument0, argument1, argument2, unused, argument3, argument4);
 	EsProcessState state;
 	_APISyscall(ES_SYSCALL_PROCESS_GET_STATE, ES_CURRENT_PROCESS, (uintptr_t) &state, 0, 0, 0);
-	while (state.flags & ES_PROCESS_STATE_PAUSED_FROM_CRASH);
+	volatile int x = 1;
+	if (state.flags & ES_PROCESS_STATE_PAUSED_FROM_CRASH) while (x);
 	return returnValue;
 }
 #endif
@@ -1604,6 +1605,10 @@ void EsPanic(const char *cFormat, ...) {
 	size_t bytes = EsStringFormatV(buffer, sizeof(buffer), cFormat, arguments); 
 	va_end(arguments);
 	EsPrintDirect(buffer, bytes);
+#ifdef PAUSE_ON_USERLAND_CRASH
+	volatile int x = 1;
+	while (x);
+#endif
 	EsSyscall(ES_SYSCALL_PROCESS_CRASH, 0, 0, 0, 0);
 }
 

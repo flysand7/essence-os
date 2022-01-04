@@ -263,6 +263,9 @@ void TextboxSetActiveLine(EsTextbox *textbox, int lineIndex) {
 		return;
 	}
 
+	EsAssert(lineIndex >= -1 && lineIndex < (int) textbox->lines.Length());
+	EsPrint("TextboxSetActiveLine %i\n", lineIndex);
+
 	if (lineIndex == -1) {
 		int32_t lineBytesDelta = textbox->activeLineBytes - textbox->activeLineOldBytes;
 
@@ -277,6 +280,7 @@ void TextboxSetActiveLine(EsTextbox *textbox, int lineIndex) {
 				lineBytesDelta,
 				false);
 		textbox->dataBytes += lineBytesDelta;
+		EsAssert(textbox->dataBytes >= 0);
 
 		// Step 3: Copy the active line back into the data buffer.
 
@@ -828,9 +832,23 @@ void TextboxUndoItemCallback(const void *item, EsUndoManager *manager, EsMessage
 void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringBytes, bool sendUpdatedMessage) {
 	EsMessageMutexCheck();
 
+	EsPrint("EsTextboxInsert \"%s\" at %d:%d->%d:%d.\n", 
+			stringBytes, string, textbox->carets[0].line, textbox->carets[0].byte, textbox->carets[1].line, textbox->carets[1].byte);
+
+#if 0
+	for (uintptr_t i = 0; i < textbox->lines.Length(); i++) {
+		EsPrint("line %d %d '%s'\n", i, textbox->lines[i].lengthBytes, textbox->lines[i].lengthBytes, GET_BUFFER(&textbox->lines[i]));
+	}
+#endif
+
 	if (string >= textbox->activeLine && string < textbox->activeLine + textbox->activeLineAllocated) {
 		EsAssert(false);
 	}
+
+	EsAssert(textbox->carets[0].line >= 0 && textbox->carets[0].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[0].byte >= 0 && textbox->carets[0].byte <= textbox->lines[textbox->carets[0].line].lengthBytes);
+	EsAssert(textbox->carets[1].line >= 0 && textbox->carets[1].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 
 	// EsPerformanceTimerPush();
 	// double measureLineTime = 0;
@@ -901,6 +919,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			EsMemoryMove(textbox->activeLine + deleteTo.byte, textbox->activeLine + line->lengthBytes, deltaBytes, false);
 			textbox->activeLineBytes += deltaBytes;
 			line->lengthBytes += deltaBytes;
+			EsAssert(line->lengthBytes >= 0);
 
 			// Step 6: Update the longest line.
 
@@ -928,12 +947,14 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 			EsMemoryMove(textbox->data + deleteTo.byte + textbox->lines[deleteTo.line].offset, textbox->data + textbox->dataBytes, deltaBytes, false);
 			textbox->dataBytes += deltaBytes;
+			EsAssert(textbox->dataBytes >= 0);
 
 			// Step 6: Merged the joined lines.
 
 			DocumentLine *firstLine = &textbox->lines[deleteFrom.line];
 			firstLine->lengthBytes = textbox->lines[deleteTo.line].lengthBytes - deleteTo.byte + deleteFrom.byte;
 			firstLine->lengthWidth = TextGetStringWidth(textbox, &textbox->textStyle, textbox->data + firstLine->offset, firstLine->lengthBytes);
+			EsAssert(firstLine->lengthBytes >= 0);
 
 			// Step 7: Remove the deleted lines and update the textbox.
 
@@ -1011,6 +1032,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			EsAssert(added == bytesToInsert); // Added incorrect number of bytes in EsTextboxInsert.
 
 			line->lengthBytes += bytesToInsert;
+			EsAssert(line->lengthBytes >= 0);
 
 			// Step 3: Update the carets, line width, and repaint it.
 
@@ -1032,11 +1054,13 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			TextboxBufferResize((void **) &textbox->data, &textbox->dataAllocated, textbox->dataBytes + bytesToInsert, 1);
 			EsMemoryMove(textbox->data + byteOffset, textbox->data + textbox->dataBytes, bytesToInsert, false);
 			textbox->dataBytes += bytesToInsert;
+			EsAssert(textbox->dataBytes >= 0);
 
 			// Step 3: Truncate the insertion line.
 
 			int32_t truncation = line->lengthBytes - insertionPoint.byte;
 			line->lengthBytes = insertionPoint.byte;
+			EsAssert(line->lengthBytes >= 0);
 
 			// Step 4: Add the new lines.
 
@@ -1069,6 +1093,8 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 				if (i == newlines) {
 					line->lengthBytes += truncation;
 				}
+
+				EsAssert(line->lengthBytes >= 0);
 
 				// Step 4c: Update the line's width.
 

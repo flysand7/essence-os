@@ -1287,7 +1287,7 @@ void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace
 	uint8_t *end = (uint8_t *) _end;
 
 	if (end < start) {
-		EsPrint("MemoryMove end < start: %x %x %x %d\n", start, end, amount, zeroEmptySpace);
+		EsPanic("MemoryMove end < start: %x %x %x %d\n", start, end, amount, zeroEmptySpace);
 		return;
 	}
 
