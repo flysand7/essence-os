@@ -499,6 +499,8 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 
 		pthread_mutex_unlock(&windowsMutex);
 		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_PROCESS_CRASH) {
+		assert(false);
 	} else {
 		fprintf(stderr, "Unimplemented system call '%s' (%ld).\n", EnumLookupNameFromValue(enumStrings_EsSyscallType, index), index);
 		exit(1);

@@ -50,6 +50,7 @@ struct EsTextbox : EsElement {
 
 	TextboxCaret carets[2]; // carets[1] is the actual caret; carets[0] is the selection anchor.
 	TextboxCaret wordSelectionAnchor, wordSelectionAnchor2;
+	bool wordSelectionAnchorValid;
 
 	Array<DocumentLine> lines;
 	Array<TextboxVisibleLine> visibleLines;
@@ -759,6 +760,11 @@ void EsTextboxMoveCaret(EsTextbox *textbox, int32_t line, int32_t byte) {
 	textbox->carets[1].byte = byte;
 	textbox->Repaint(true);
 	TextboxUpdateCommands(textbox, true);
+
+	EsAssert(textbox->carets[0].line >= 0 && textbox->carets[0].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[0].byte >= 0 && textbox->carets[0].byte <= textbox->lines[textbox->carets[0].line].lengthBytes);
+	EsAssert(textbox->carets[1].line >= 0 && textbox->carets[1].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 }
 
 void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte) {
@@ -783,6 +789,11 @@ void EsTextboxSetSelection(EsTextbox *textbox, int32_t fromLine, int32_t fromByt
 	textbox->Repaint(true);
 	TextboxUpdateCommands(textbox, true);
 	EsTextboxEnsureCaretVisible(textbox);
+
+	EsAssert(textbox->carets[0].line >= 0 && textbox->carets[0].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[0].byte >= 0 && textbox->carets[0].byte <= textbox->lines[textbox->carets[0].line].lengthBytes);
+	EsAssert(textbox->carets[1].line >= 0 && textbox->carets[1].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 }
 
 void EsTextboxSelectAll(EsTextbox *textbox) {
@@ -860,8 +871,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 	TextboxUndoItemHeader *undoItem = nullptr;
 	size_t undoItemBytes = 0;
 
-	textbox->wordSelectionAnchor  = textbox->carets[0];
-	textbox->wordSelectionAnchor2 = textbox->carets[1];
+	textbox->wordSelectionAnchorValid = false;
 
 	textbox->verticalMotionHorizontalDepth = -1;
 
@@ -1179,6 +1189,11 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 
 	textbox->scroll.Refresh();
 	TextboxUpdateCommands(textbox, true);
+
+	EsAssert(textbox->carets[0].line >= 0 && textbox->carets[0].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[0].byte >= 0 && textbox->carets[0].byte <= textbox->lines[textbox->carets[0].line].lengthBytes);
+	EsAssert(textbox->carets[1].line >= 0 && textbox->carets[1].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 }
 
 char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {
@@ -1381,6 +1396,7 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 				ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
 						GET_BUFFER(line), line->lengthBytes, 
 						&pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
+				EsAssert(result >= -1 && result <= line->lengthBytes);
 				textbox->carets[1].byte = result == -1 ? line->lengthBytes : result;
 			}
 
@@ -1397,13 +1413,15 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 				TextboxMoveCaret(textbox, textbox->carets + 1, MOVE_CARET_FORWARDS,  MOVE_CARET_WORD, true);
 				textbox->wordSelectionAnchor  = textbox->carets[0];
 				textbox->wordSelectionAnchor2 = textbox->carets[1];
+				textbox->wordSelectionAnchorValid = true;
 			} else if (clickChainCount == 3) {
 				TextboxMoveCaret(textbox, textbox->carets + 0, MOVE_CARET_BACKWARDS, MOVE_CARET_LINE, true);
 				TextboxMoveCaret(textbox, textbox->carets + 1, MOVE_CARET_FORWARDS,  MOVE_CARET_LINE, true);
 				textbox->wordSelectionAnchor  = textbox->carets[0];
 				textbox->wordSelectionAnchor2 = textbox->carets[1];
+				textbox->wordSelectionAnchorValid = true;
 			}
-		} else {
+		} else if (textbox->wordSelectionAnchorValid) {
 			if (clickChainCount == 2) {
 				if (TextboxCompareCarets(textbox->carets + 1, textbox->carets + 0) < 0) {
 					TextboxMoveCaret(textbox, textbox->carets + 1, MOVE_CARET_BACKWARDS, MOVE_CARET_WORD);
@@ -1423,6 +1441,11 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 			}
 		}
 	}
+
+	EsAssert(textbox->carets[0].line >= 0 && textbox->carets[0].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[0].byte >= 0 && textbox->carets[0].byte <= textbox->lines[textbox->carets[0].line].lengthBytes);
+	EsAssert(textbox->carets[1].line >= 0 && textbox->carets[1].line < (int32_t) textbox->lines.Length()
+			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 
 	TextboxUpdateCommands(textbox, true);
 	return textbox->carets[0].line != startLine0 || textbox->carets[1].line != startLine1;
