@@ -12,6 +12,19 @@ typedef struct Test { const char *cName; } Test;
 #define TEST(_callback) { .callback = _callback }
 struct Test { bool (*callback)(); };
 
+#define CHECK(x) do { if ((x)) { checkIndex++; } else { EsPrint("Failed check %d: " #x, checkIndex); return false; } } while (0)
+
+//////////////////////////////////////////////////////////////
+
+bool AreFloatsRoughlyEqual(float a, float b) { return a - b < 0.0001f && a - b > -0.0001f; }
+bool AreDoublesRoughlyEqual(double a, double b) { return a - b < 0.00000000001 && a - b > -0.00000000001; }
+bool AreFloatsRoughlyEqual2(float a, float b) { return a - b < 0.01f && a - b > -0.01f; }
+
+int CompareU8(const void *_a, const void *_b) {
+	uint8_t a = *(const uint8_t *) _a, b = *(const uint8_t *) _b;
+	return a < b ? -1 : a > b;
+}
+
 //////////////////////////////////////////////////////////////
 
 bool BasicFileOperationsDoByteCount(size_t byteCount) {
@@ -53,30 +66,28 @@ bool BasicFileOperationsDoByteCount(size_t byteCount) {
 }
 
 bool BasicFileOperations() {
+	int checkIndex = 0;
+
 	for (uintptr_t i = 0; i < 24; i += 2) {
-		if (!BasicFileOperationsDoByteCount(1 << i)) {
-			return false;
-		}
+		CHECK(BasicFileOperationsDoByteCount(1 << i));
 	}
 
 	for (uintptr_t i = 18; i > 0; i -= 3) {
-		if (!BasicFileOperationsDoByteCount(1 << i)) {
-			return false;
-		}
+		CHECK(BasicFileOperationsDoByteCount(1 << i));
 	}
 
 	EsError error = EsPathDelete(EsLiteral("|Settings:/temp.dat"));
 
 	if (error != ES_SUCCESS) {
 		EsPrint("Error %d deleting file.\n", error);
-		return false;
+		CHECK(false);
 	}
 
 	EsFileReadAll(EsLiteral("|Settings:/temp.dat"), nullptr, &error);
 
 	if (error != ES_ERROR_FILE_DOES_NOT_EXIST) {
 		EsPrint("Checking file does not exist after deleting, instead got error %d.\n", error);
-		return false;
+		CHECK(false);
 	}
 
 	return true;
@@ -84,126 +95,124 @@ bool BasicFileOperations() {
 
 //////////////////////////////////////////////////////////////
 
-bool AreFloatsRoughlyEqual(float a, float b) { return a - b < 0.0001f && a - b > -0.0001f; }
-bool AreDoublesRoughlyEqual(double a, double b) { return a - b < 0.00000000001 && a - b > -0.00000000001; }
-bool AreFloatsRoughlyEqual2(float a, float b) { return a - b < 0.01f && a - b > -0.01f; }
-
 bool CRTMathFunctions() {
-	for (int i = 0; i <= 5; i++) if (EsCRTabs(i) != i) return false;
-	for (int i = -5; i <= 0; i++) if (EsCRTabs(i) != -i) return false;
+	int checkIndex = 0;
 
-	for (float i = -1.0f; i <= 1.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTcosf(EsCRTacosf(i)))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTcosf(i), EsCRTcosf(-i))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTcosf(i), EsCRTcosf(i + 2 * ES_PI))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTcos(i), EsCRTcos(-i))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTcos(i), EsCRTcos(i + 2 * ES_PI))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreFloatsRoughlyEqual(EsCRTcos(i), EsCRTcosf(i))) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTacosf(-1.0f), ES_PI)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTacosf(0.0f), ES_PI / 2.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTacosf(1.0f), 0.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTcosf(0.0f), 1.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTcosf(ES_PI / 2.0f), 0.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTcosf(ES_PI), -1.0f)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTcos(0.0), 1.0)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTcos(ES_PI / 2.0), 0.0)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTcos(ES_PI), -1.0)) return false;
+	for (int i = 0; i <= 5; i++) CHECK(EsCRTabs(i) == i);
+	for (int i = -5; i <= 0; i++) CHECK(EsCRTabs(i) == -i);
 
-	for (float i = -1.0f; i <= 1.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTsinf(EsCRTasinf(i)))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTsinf(i), -EsCRTsinf(-i))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTsinf(i), EsCRTsinf(i + 2 * ES_PI))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTsin(i), -EsCRTsin(-i))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTsin(i), EsCRTsin(i + 2 * ES_PI))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreFloatsRoughlyEqual(EsCRTsin(i), EsCRTsinf(i))) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTasinf(-1.0f), ES_PI / -2.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTasinf(0.0f), 0.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTasinf(1.0f), ES_PI / 2.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTsinf(0.0f), 0.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTsinf(ES_PI / 2.0f), 1.0f)) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTsinf(ES_PI), 0.0f)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTsin(0.0), 0.0)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTsin(ES_PI / 2.0), 1.0)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTsin(ES_PI), 0.0)) return false;
+	for (float i = -1.0f; i <= 1.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTcosf(EsCRTacosf(i))));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTcosf(i), EsCRTcosf(-i)));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTcosf(i), EsCRTcosf(i + 2 * ES_PI)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTcos(i), EsCRTcos(-i)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTcos(i), EsCRTcos(i + 2 * ES_PI)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreFloatsRoughlyEqual(EsCRTcos(i), EsCRTcosf(i)));
+	CHECK(AreFloatsRoughlyEqual(EsCRTacosf(-1.0f), ES_PI));
+	CHECK(AreFloatsRoughlyEqual(EsCRTacosf(0.0f), ES_PI / 2.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTacosf(1.0f), 0.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTcosf(0.0f), 1.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTcosf(ES_PI / 2.0f), 0.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTcosf(ES_PI), -1.0f));
+	CHECK(AreDoublesRoughlyEqual(EsCRTcos(0.0), 1.0));
+	CHECK(AreDoublesRoughlyEqual(EsCRTcos(ES_PI / 2.0), 0.0));
+	CHECK(AreDoublesRoughlyEqual(EsCRTcos(ES_PI), -1.0));
 
-	for (float i = 0.0f; i <= 5.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTsqrtf(i) * EsCRTsqrtf(i), i)) return false;
-	for (float i = -5.0f; i <= 5.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTcbrtf(i) * EsCRTcbrtf(i) * EsCRTcbrtf(i), i)) return false;
-	for (double i = 0.0; i <= 5.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTsqrt(i) * EsCRTsqrt(i), i)) return false;
-	for (double i = -5.0; i <= 5.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTcbrt(i) * EsCRTcbrt(i) * EsCRTcbrt(i), i)) return false;
+	for (float i = -1.0f; i <= 1.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTsinf(EsCRTasinf(i))));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTsinf(i), -EsCRTsinf(-i)));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTsinf(i), EsCRTsinf(i + 2 * ES_PI)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTsin(i), -EsCRTsin(-i)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTsin(i), EsCRTsin(i + 2 * ES_PI)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreFloatsRoughlyEqual(EsCRTsin(i), EsCRTsinf(i)));
+	CHECK(AreFloatsRoughlyEqual(EsCRTasinf(-1.0f), ES_PI / -2.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTasinf(0.0f), 0.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTasinf(1.0f), ES_PI / 2.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTsinf(0.0f), 0.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTsinf(ES_PI / 2.0f), 1.0f));
+	CHECK(AreFloatsRoughlyEqual(EsCRTsinf(ES_PI), 0.0f));
+	CHECK(AreDoublesRoughlyEqual(EsCRTsin(0.0), 0.0));
+	CHECK(AreDoublesRoughlyEqual(EsCRTsin(ES_PI / 2.0), 1.0));
+	CHECK(AreDoublesRoughlyEqual(EsCRTsin(ES_PI), 0.0));
 
-	for (float i = -5.0f; i <= 0.0f; i += 0.01f) if (-i != EsCRTfabsf(i)) return false;
-	for (float i = 0.0f; i <= 5.0f; i += 0.01f) if (i != EsCRTfabsf(i)) return false;
-	for (double i = -5.0; i <= 0.0; i += 0.01) if (-i != EsCRTfabs(i)) return false;
-	for (double i = 0.0; i <= 5.0; i += 0.01) if (i != EsCRTfabs(i)) return false;
+	for (float i = 0.0f; i <= 5.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTsqrtf(i) * EsCRTsqrtf(i), i));
+	for (float i = -5.0f; i <= 5.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTcbrtf(i) * EsCRTcbrtf(i) * EsCRTcbrtf(i), i));
+	for (double i = 0.0; i <= 5.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTsqrt(i) * EsCRTsqrt(i), i));
+	for (double i = -5.0; i <= 5.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTcbrt(i) * EsCRTcbrt(i) * EsCRTcbrt(i), i));
+
+	for (float i = -5.0f; i <= 0.0f; i += 0.01f) CHECK(-i == EsCRTfabsf(i));
+	for (float i = 0.0f; i <= 5.0f; i += 0.01f) CHECK(i == EsCRTfabsf(i));
+	for (double i = -5.0; i <= 0.0; i += 0.01) CHECK(-i == EsCRTfabs(i));
+	for (double i = 0.0; i <= 5.0; i += 0.01) CHECK(i == EsCRTfabs(i));
 
 	// This tests avoid angles near the y axis with atan2, because y/x blows up there. TODO Is this acceptable behaviour?
-	for (float i = -ES_PI / 4.0f; i < ES_PI / 4.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i)))) return false;
-	for (float i = -ES_PI / 4.0f; i < ES_PI / 4.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i)))) return false;
-	for (float i = -ES_PI * 7.0f / 8.0f; i < -ES_PI * 5.0f / 8.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i)))) return false;
-	for (float i = ES_PI * 5.0f / 8.0f; i < ES_PI * 7.0f / 8.0f; i += 0.01f) if (!AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i)))) return false;
-	for (float i = -2.25f * ES_PI; i < -1.75f * ES_PI; i += 0.01f) if (!AreFloatsRoughlyEqual(i + 2 * ES_PI, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i)))) return false;
-	for (float i = 1.75f * ES_PI; i < 2.25f * ES_PI; i += 0.01f) if (!AreFloatsRoughlyEqual(i - 2 * ES_PI, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i)))) return false;
-	for (float i = -2.25f * ES_PI; i < -1.75f * ES_PI; i += 0.01f) if (!AreFloatsRoughlyEqual(i + 2 * ES_PI, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i)))) return false;
-	for (float i = 1.75f * ES_PI; i < 2.25f * ES_PI; i += 0.01f) if (!AreFloatsRoughlyEqual(i - 2 * ES_PI, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i)))) return false;
-	for (double i = -ES_PI / 4.0; i < ES_PI / 4.0; i += 0.01) if (!AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i)))) return false;
-	for (double i = -ES_PI * 7.0 / 8.0; i < -ES_PI * 5.0 / 8.0; i += 0.01) if (!AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i)))) return false;
-	for (double i = ES_PI * 5.0 / 8.0; i < ES_PI * 7.0 / 8.0; i += 0.01) if (!AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i)))) return false;
-	for (double i = -2.25 * ES_PI; i < -1.75 * ES_PI; i += 0.01) if (!AreDoublesRoughlyEqual(i + 2 * ES_PI, EsCRTatan2(EsCRTsin(i), EsCRTcos(i)))) return false;
-	for (double i = 1.75 * ES_PI; i < 2.25 * ES_PI; i += 0.01) if (!AreDoublesRoughlyEqual(i - 2 * ES_PI, EsCRTatan2(EsCRTsin(i), EsCRTcos(i)))) return false;
+	for (float i = -ES_PI / 4.0f; i < ES_PI / 4.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i))));
+	for (float i = -ES_PI / 4.0f; i < ES_PI / 4.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i))));
+	for (float i = -ES_PI * 7.0f / 8.0f; i < -ES_PI * 5.0f / 8.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i))));
+	for (float i = ES_PI * 5.0f / 8.0f; i < ES_PI * 7.0f / 8.0f; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i))));
+	for (float i = -2.25f * ES_PI; i < -1.75f * ES_PI; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i + 2 * ES_PI, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i))));
+	for (float i = 1.75f * ES_PI; i < 2.25f * ES_PI; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i - 2 * ES_PI, EsCRTatan2f(EsCRTsinf(i), EsCRTcosf(i))));
+	for (float i = -2.25f * ES_PI; i < -1.75f * ES_PI; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i + 2 * ES_PI, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i))));
+	for (float i = 1.75f * ES_PI; i < 2.25f * ES_PI; i += 0.01f) CHECK(AreFloatsRoughlyEqual(i - 2 * ES_PI, EsCRTatanf(EsCRTsinf(i) / EsCRTcosf(i))));
+	for (double i = -ES_PI / 4.0; i < ES_PI / 4.0; i += 0.01) CHECK(AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i))));
+	for (double i = -ES_PI * 7.0 / 8.0; i < -ES_PI * 5.0 / 8.0; i += 0.01) CHECK(AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i))));
+	for (double i = ES_PI * 5.0 / 8.0; i < ES_PI * 7.0 / 8.0; i += 0.01) CHECK(AreDoublesRoughlyEqual(i, EsCRTatan2(EsCRTsin(i), EsCRTcos(i))));
+	for (double i = -2.25 * ES_PI; i < -1.75 * ES_PI; i += 0.01) CHECK(AreDoublesRoughlyEqual(i + 2 * ES_PI, EsCRTatan2(EsCRTsin(i), EsCRTcos(i))));
+	for (double i = 1.75 * ES_PI; i < 2.25 * ES_PI; i += 0.01) CHECK(AreDoublesRoughlyEqual(i - 2 * ES_PI, EsCRTatan2(EsCRTsin(i), EsCRTcos(i))));
 
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i - 0.000001f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i + 0.000001f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i - 0.1f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i + 0.1f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i - 0.5f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i + 0.5f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i - 0.9f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i + 0.9f) != i) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTceilf(i - 0.1f) != EsCRTceilf(i - 0.9f)) return false;
-	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) if (EsCRTfloorf(i + 0.1f) != EsCRTfloorf(i + 0.9f)) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i - 0.00000000001) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i + 0.00000000001) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i - 0.1) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i + 0.1) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i - 0.5) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i + 0.5) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i - 0.9) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i + 0.9) != i) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTceil(i - 0.1) != EsCRTceil(i - 0.9)) return false;
-	for (double i = -1000.0; i <= 1000.0; i += 1.0) if (EsCRTfloor(i + 0.1) != EsCRTfloor(i + 0.9)) return false;
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i - 0.000001f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i + 0.000001f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i - 0.1f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i + 0.1f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i - 0.5f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i + 0.5f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i - 0.9f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i + 0.9f) == i);
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTceilf(i - 0.1f) == EsCRTceilf(i - 0.9f));
+	for (float i = -1000.0f; i <= 1000.0f; i += 1.0f) CHECK(EsCRTfloorf(i + 0.1f) == EsCRTfloorf(i + 0.9f));
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i - 0.00000000001) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i + 0.00000000001) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i - 0.1) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i + 0.1) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i - 0.5) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i + 0.5) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i - 0.9) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i + 0.9) == i);
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTceil(i - 0.1) == EsCRTceil(i - 0.9));
+	for (double i = -1000.0; i <= 1000.0; i += 1.0) CHECK(EsCRTfloor(i + 0.1) == EsCRTfloor(i + 0.9));
 
-	for (float x = -10.0f; x <= 10.0f; x += 0.1f) for (float y = -10.0f; y <= 10.0f; y += 0.1f) if (!AreFloatsRoughlyEqual(x - (int64_t) (x / y) * y, EsCRTfmodf(x, y))) return false;
-	for (double x = -10.0; x <= 10.0; x += 0.1) for (double y = -10.0; y <= 10.0; y += 0.1) if (!AreDoublesRoughlyEqual(x - (int64_t) (x / y) * y, EsCRTfmod(x, y))) return false;
+	for (float x = -10.0f; x <= 10.0f; x += 0.1f) for (float y = -10.0f; y <= 10.0f; y += 0.1f) CHECK(AreFloatsRoughlyEqual(x - (int64_t) (x / y) * y, EsCRTfmodf(x, y)));
+	for (double x = -10.0; x <= 10.0; x += 0.1) for (double y = -10.0; y <= 10.0; y += 0.1) CHECK(AreDoublesRoughlyEqual(x - (int64_t) (x / y) * y, EsCRTfmod(x, y)));
 
-	if (!EsCRTisnanf(0.0f / 0.0f)) return false;
-	if (EsCRTisnanf(0.0f / 1.0f)) return false;
-	if (EsCRTisnanf(1.0f / 0.0f)) return false;
-	if (EsCRTisnanf(-1.0f / 0.0f)) return false;
+	CHECK(EsCRTisnanf(0.0f / 0.0f));
+	CHECK(!EsCRTisnanf(0.0f / 1.0f));
+	CHECK(!EsCRTisnanf(1.0f / 0.0f));
+	CHECK(!EsCRTisnanf(-1.0f / 0.0f));
 
 	// TODO The precision of powf is really bad!! Get it to the point where it can use AreFloatsRoughlyEqual.
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTsqrtf(i), EsCRTpowf(i, 1.0f / 2.0f))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTcbrtf(i), EsCRTpowf(i, 1.0f / 3.0f))) return false;
-	for (float i = 0.0f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual2(i * i, EsCRTpowf(i, 2.0f))) return false;
-	for (float i = 0.1f; i <= 10.0f; i += 0.1f) if (!AreFloatsRoughlyEqual2(1.0f / (i * i), EsCRTpowf(i, -2.0f))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTsqrt(i), EsCRTpow(i, 1.0 / 2.0))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTcbrt(i), EsCRTpow(i, 1.0 / 3.0))) return false;
-	for (double i = 0.0; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(i * i, EsCRTpow(i, 2.0))) return false;
-	for (double i = 0.1; i <= 10.0; i += 0.1) if (!AreDoublesRoughlyEqual(1.0 / (i * i), EsCRTpow(i, -2.0))) return false;
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTsqrtf(i), EsCRTpowf(i, 1.0f / 2.0f)));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTcbrtf(i), EsCRTpowf(i, 1.0f / 3.0f)));
+	for (float i = 0.0f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual2(i * i, EsCRTpowf(i, 2.0f)));
+	for (float i = 0.1f; i <= 10.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual2(1.0f / (i * i), EsCRTpowf(i, -2.0f)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTsqrt(i), EsCRTpow(i, 1.0 / 2.0)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTcbrt(i), EsCRTpow(i, 1.0 / 3.0)));
+	for (double i = 0.0; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(i * i, EsCRTpow(i, 2.0)));
+	for (double i = 0.1; i <= 10.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(1.0 / (i * i), EsCRTpow(i, -2.0)));
 
-	if (!AreFloatsRoughlyEqual(EsCRTexpf(1.0f), 2.718281828459f)) return false;
-	for (float i = -10.0f; i <= 4.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTexpf(i), EsCRTpowf(2.718281828459f, i))) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTexp(1.0), 2.718281828459)) return false;
-	for (double i = -10.0; i <= 4.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTexp(i), EsCRTpow(2.718281828459, i))) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTexp2f(1.0f), 2.0f)) return false;
-	for (float i = -10.0f; i <= 4.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTexp2f(i), EsCRTpowf(2.0f, i))) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTexp2(1.0), 2.0)) return false;
-	for (double i = -10.0; i <= 4.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTexp2(i), EsCRTpow(2.0, i))) return false;
-	if (!AreFloatsRoughlyEqual(EsCRTlog2f(2.0f), 1.0f)) return false;
-	for (float i = -10.0f; i <= 4.0f; i += 0.1f) if (!AreFloatsRoughlyEqual(EsCRTlog2f(EsCRTexp2f(i)), i)) return false;
-	if (!AreDoublesRoughlyEqual(EsCRTlog2(2.0), 1.0)) return false;
-	for (double i = -10.0; i <= 4.0; i += 0.1) if (!AreDoublesRoughlyEqual(EsCRTlog2(EsCRTexp2(i)), i)) return false;
+	CHECK(AreFloatsRoughlyEqual(EsCRTexpf(1.0f), 2.718281828459f));
+	for (float i = -10.0f; i <= 4.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTexpf(i), EsCRTpowf(2.718281828459f, i)));
+	CHECK(AreDoublesRoughlyEqual(EsCRTexp(1.0), 2.718281828459));
+	for (double i = -10.0; i <= 4.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTexp(i), EsCRTpow(2.718281828459, i)));
+	CHECK(AreFloatsRoughlyEqual(EsCRTexp2f(1.0f), 2.0f));
+	for (float i = -10.0f; i <= 4.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTexp2f(i), EsCRTpowf(2.0f, i)));
+	CHECK(AreDoublesRoughlyEqual(EsCRTexp2(1.0), 2.0));
+	for (double i = -10.0; i <= 4.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTexp2(i), EsCRTpow(2.0, i)));
+	CHECK(AreFloatsRoughlyEqual(EsCRTlog2f(2.0f), 1.0f));
+	for (float i = -10.0f; i <= 4.0f; i += 0.1f) CHECK(AreFloatsRoughlyEqual(EsCRTlog2f(EsCRTexp2f(i)), i));
+	CHECK(AreDoublesRoughlyEqual(EsCRTlog2(2.0), 1.0));
+	for (double i = -10.0; i <= 4.0; i += 0.1) CHECK(AreDoublesRoughlyEqual(EsCRTlog2(EsCRTexp2(i)), i));
 
 	return true;
 }
@@ -213,54 +222,56 @@ bool CRTMathFunctions() {
 bool CRTStringFunctions() {
 	// TODO strncmp, strncpy, strnlen, atod, atoi, atof, strtod, strtof, strtol, strtoul.
 
-	for (int i = 0; i < 256; i++) if (EsCRTisalpha(i) != ((i >= 'a' && i <= 'z') || (i >= 'A' && i <= 'Z'))) return false;
-	for (int i = 0; i < 256; i++) if (EsCRTisdigit(i) != (i >= '0' && i <= '9')) return false;
-	for (int i = 0; i < 256; i++) if (EsCRTisupper(i) != (i >= 'A' && i <= 'Z')) return false;
-	for (int i = 0; i < 256; i++) if (EsCRTisxdigit(i) != ((i >= '0' && i <= '9') || (i >= 'A' && i <= 'F') || (i >= 'a' && i <= 'f'))) return false;
-	for (int i = 0; i <= 256; i++)  if ((EsCRTtolower(i) != i) != (i >= 'A' && i <= 'Z')) return false;
+	int checkIndex = 0;
 
-	if (0 <= EsCRTstrcmp("a", "ab")) return false;
-	if (0 >= EsCRTstrcmp("ab", "a")) return false;
-	if (0 <= EsCRTstrcmp("ab", "ac")) return false;
-	if (0 <= EsCRTstrcmp("ac", "bc")) return false;
-	if (0 <= EsCRTstrcmp("", "a")) return false;
-	if (0 >= EsCRTstrcmp("a", "")) return false;
-	if (0 >= EsCRTstrcmp("a", "A")) return false;
-	if (EsCRTstrcmp("", "")) return false;
-	if (EsCRTstrcmp("a", "a")) return false;
-	if (EsCRTstrcmp("ab", "ab")) return false;
+	for (int i = 0; i < 256; i++) CHECK(EsCRTisalpha(i) == ((i >= 'a' && i <= 'z') || (i >= 'A' && i <= 'Z')));
+	for (int i = 0; i < 256; i++) CHECK(EsCRTisdigit(i) == (i >= '0' && i <= '9'));
+	for (int i = 0; i < 256; i++) CHECK(EsCRTisupper(i) == (i >= 'A' && i <= 'Z'));
+	for (int i = 0; i < 256; i++) CHECK(EsCRTisxdigit(i) == ((i >= '0' && i <= '9') || (i >= 'A' && i <= 'F') || (i >= 'a' && i <= 'f')));
+	for (int i = 0; i <= 256; i++)  CHECK((EsCRTtolower(i) != i) == (i >= 'A' && i <= 'Z'));
+
+	CHECK(0 > EsCRTstrcmp("a", "ab"));
+	CHECK(0 < EsCRTstrcmp("ab", "a"));
+	CHECK(0 > EsCRTstrcmp("ab", "ac"));
+	CHECK(0 > EsCRTstrcmp("ac", "bc"));
+	CHECK(0 > EsCRTstrcmp("", "a"));
+	CHECK(0 < EsCRTstrcmp("a", ""));
+	CHECK(0 < EsCRTstrcmp("a", "A"));
+	CHECK(0 == EsCRTstrcmp("", ""));
+	CHECK(0 == EsCRTstrcmp("a", "a"));
+	CHECK(0 == EsCRTstrcmp("ab", "ab"));
 
 	char x[10];
 	EsCRTstrcpy(x, "hello");
-	if (EsCRTstrcmp(x, "hello")) return false;
+	CHECK(0 == EsCRTstrcmp(x, "hello"));
 	EsCRTstrcat(x, "!");
-	if (EsCRTstrcmp(x, "hello!")) return false;
+	CHECK(0 == EsCRTstrcmp(x, "hello!"));
 
-	if (EsCRTstrchr(x, '.')) return false;
-	if (x + 0 != EsCRTstrchr(x, 'h')) return false;
-	if (x + 1 != EsCRTstrchr(x, 'e')) return false;
-	if (x + 2 != EsCRTstrchr(x, 'l')) return false;
-	if (x + 4 != EsCRTstrchr(x, 'o')) return false;
-	if (x + 6 != EsCRTstrchr(x, 0)) return false;
-	if (EsCRTstrstr(x, ".")) return false;
-	if (EsCRTstrstr(x, "le")) return false;
-	if (EsCRTstrstr(x, "oo")) return false;
-	if (EsCRTstrstr(x, "ah")) return false;
-	if (EsCRTstrstr(x, "lle")) return false;
-	if (x + 0 != EsCRTstrstr(x, "")) return false;
-	if (x + 0 != EsCRTstrstr(x, "h")) return false;
-	if (x + 0 != EsCRTstrstr(x, "he")) return false;
-	if (x + 0 != EsCRTstrstr(x, "hello")) return false;
-	if (x + 0 != EsCRTstrstr(x, "hello!")) return false;
-	if (x + 1 != EsCRTstrstr(x, "ell")) return false;
-	if (x + 1 != EsCRTstrstr(x, "ello!")) return false;
-	if (x + 3 != EsCRTstrstr(x, "lo")) return false;
+	CHECK(!EsCRTstrchr(x, '.'));
+	CHECK(x + 0 == EsCRTstrchr(x, 'h'));
+	CHECK(x + 1 == EsCRTstrchr(x, 'e'));
+	CHECK(x + 2 == EsCRTstrchr(x, 'l'));
+	CHECK(x + 4 == EsCRTstrchr(x, 'o'));
+	CHECK(x + 6 == EsCRTstrchr(x, 0));
+	CHECK(!EsCRTstrstr(x, "."));
+	CHECK(!EsCRTstrstr(x, "le"));
+	CHECK(!EsCRTstrstr(x, "oo"));
+	CHECK(!EsCRTstrstr(x, "ah"));
+	CHECK(!EsCRTstrstr(x, "lle"));
+	CHECK(x + 0 == EsCRTstrstr(x, ""));
+	CHECK(x + 0 == EsCRTstrstr(x, "h"));
+	CHECK(x + 0 == EsCRTstrstr(x, "he"));
+	CHECK(x + 0 == EsCRTstrstr(x, "hello"));
+	CHECK(x + 0 == EsCRTstrstr(x, "hello!"));
+	CHECK(x + 1 == EsCRTstrstr(x, "ell"));
+	CHECK(x + 1 == EsCRTstrstr(x, "ello!"));
+	CHECK(x + 3 == EsCRTstrstr(x, "lo"));
 
-	if (0 != EsCRTstrlen("")) return false;
-	if (6 != EsCRTstrlen(x)) return false;
+	CHECK(0 == EsCRTstrlen(""));
+	CHECK(6 == EsCRTstrlen(x));
 
 	char *copy = EsCRTstrdup(x);
-	if (EsCRTstrcmp(copy, x)) return false;
+	CHECK(0 == EsCRTstrcmp(copy, x));
 	EsCRTfree(copy);
 
 	return true;
@@ -268,65 +279,62 @@ bool CRTStringFunctions() {
 
 //////////////////////////////////////////////////////////////
 
-int CompareU8(const void *_a, const void *_b) {
-	uint8_t a = *(const uint8_t *) _a, b = *(const uint8_t *) _b;
-	return a < b ? -1 : a > b;
-}
-
 bool CRTOtherFunctions() {
 	// Note that malloc, free and realloc are assumed to be working if EsHeapAllocate, EsHeapFree and EsHeapReallocate are.
+
+	int checkIndex = 0;
 
 	uint8_t x[4] = { 1, 2, 3, 4 };
 	uint8_t y[4] = { 1, 3, 3, 4 };
 	uint8_t z[4] = { 6, 7, 8, 9 };
 
-	if (0 <= EsCRTmemcmp(x, y, 4)) return false;
-	if (0 <= EsCRTmemcmp(x, y, 3)) return false;
-	if (0 <= EsCRTmemcmp(x, y, 2)) return false;
-	if (0 >= EsCRTmemcmp(y, x, 4)) return false;
-	if (0 >= EsCRTmemcmp(y, x, 3)) return false;
-	if (0 >= EsCRTmemcmp(y, x, 2)) return false;
-	if (EsCRTmemcmp(x, y, 1)) return false;
-	if (EsCRTmemcmp(x, y, 0)) return false;
-	if (EsCRTmemcmp(y, x, 1)) return false;
-	if (EsCRTmemcmp(y, x, 0)) return false;
+	CHECK(0 > EsCRTmemcmp(x, y, 4));
+	CHECK(0 > EsCRTmemcmp(x, y, 3));
+	CHECK(0 > EsCRTmemcmp(x, y, 2));
+	CHECK(0 < EsCRTmemcmp(y, x, 4));
+	CHECK(0 < EsCRTmemcmp(y, x, 3));
+	CHECK(0 < EsCRTmemcmp(y, x, 2));
+	CHECK(0 == EsCRTmemcmp(x, y, 1));
+	CHECK(0 == EsCRTmemcmp(x, y, 0));
+	CHECK(0 == EsCRTmemcmp(y, x, 1));
+	CHECK(0 == EsCRTmemcmp(y, x, 0));
 
-	for (int i = 0; i < 4; i++) if (x + i != EsCRTmemchr(x, i + 1, 4)) return false;
-	for (int i = 4; i < 8; i++) if (EsCRTmemchr(x, i + 1, 4)) return false;
+	for (int i = 0; i < 4; i++) CHECK(x + i == EsCRTmemchr(x, i + 1, 4));
+	for (int i = 4; i < 8; i++) CHECK(!EsCRTmemchr(x, i + 1, 4));
 
 	y[3] = 5;
 	EsCRTmemcpy(x, y, 2);
-	if (x[0] != 1 || x[1] != 3 || x[2] != 3 || x[3] != 4) return false;
-	if (y[0] != 1 || y[1] != 3 || y[2] != 3 || y[3] != 5) return false;
+	CHECK(x[0] == 1 && x[1] == 3 && x[2] == 3 && x[3] == 4);
+	CHECK(y[0] == 1 && y[1] == 3 && y[2] == 3 && y[3] == 5);
 	EsCRTmemcpy(x, y, 4);
-	if (x[0] != 1 || x[1] != 3 || x[2] != 3 || x[3] != 5) return false;
-	if (y[0] != 1 || y[1] != 3 || y[2] != 3 || y[3] != 5) return false;
+	CHECK(x[0] == 1 && x[1] == 3 && x[2] == 3 && x[3] == 5);
+	CHECK(y[0] == 1 && y[1] == 3 && y[2] == 3 && y[3] == 5);
 	EsCRTmemset(x, 0xCC, 4);
-	for (int i = 0; i < 4; i++) if (x[i] != 0xCC) return false;
-	if (y[0] != 1 || y[1] != 3 || y[2] != 3 || y[3] != 5) return false;
+	for (int i = 0; i < 4; i++) CHECK(x[i] == 0xCC);
+	CHECK(y[0] == 1 && y[1] == 3 && y[2] == 3 && y[3] == 5);
 	EsCRTmemset(y, 0x00, 4);
-	for (int i = 0; i < 4; i++) if (y[i] != 0x00) return false;
-	for (int i = 0; i < 4; i++) if (x[i] != 0xCC) return false;
-	if (z[0] != 6 || z[1] != 7 || z[2] != 8 || z[3] != 9) return false;
+	for (int i = 0; i < 4; i++) CHECK(y[i] == 0x00);
+	for (int i = 0; i < 4; i++) CHECK(x[i] == 0xCC);
+	CHECK(z[0] == 6 && z[1] == 7 && z[2] == 8 && z[3] == 9);
 
 	y[0] = 0, y[1] = 1, y[2] = 2, y[3] = 3;
 	EsCRTmemmove(y + 1, y + 2, 2);
-	if (y[0] != 0 || y[1] != 2 || y[2] != 3 || y[3] != 3) return false;
+	CHECK(y[0] == 0 && y[1] == 2 && y[2] == 3 && y[3] == 3);
 	y[0] = 0, y[1] = 1, y[2] = 2, y[3] = 3;
 	EsCRTmemmove(y + 2, y + 1, 2);
-	if (y[0] != 0 || y[1] != 1 || y[2] != 1 || y[3] != 2) return false;
+	CHECK(y[0] == 0 && y[1] == 1 && y[2] == 1 && y[3] == 2);
 
 	for (int i = 0; i < 100000; i++) {
 		uint8_t *p = (uint8_t *) EsCRTcalloc(i, 1);
 		uint8_t *q = (uint8_t *) EsCRTmalloc(i);
-		if (i == 0) { if (p || q) return false; else continue; }
-		if (p == q) return false;
-		if (!p || !q) return false;
-		for (int j = 0; j < i; j++) if (p[j]) return false;
+		if (i == 0) { CHECK(!p && !q); continue; }
+		CHECK(p != q);
+		CHECK(p && q);
+		for (int j = 0; j < i; j++) CHECK(!p[j]);
 		EsCRTfree(p);
 		EsCRTfree(q);
-		if (i >= 1000) i += 100;
-		if (i >= 10000) i += 1000;
+		if (i > 1000) i += 100;
+		if (i > 10000) i += 1000;
 	}
 
 	uint8_t *array = (uint8_t *) EsCRTmalloc(10000);
@@ -337,26 +345,32 @@ bool CRTOtherFunctions() {
 	for (int i = 1; i < 10000; i++) { array[i] = (EsRandomU8() & ~1) ?: 2; count[array[i]]++; }
 	EsCRTqsort(array, 10000, 1, CompareU8);
 	int p = 0;
-	for (uintptr_t i = 0; i < 256; i++) for (uintptr_t j = 0; j < count[i]; j++, p++) if (array[p] != i) return false;
-	if (p != 10000) return false;
+	for (uintptr_t i = 0; i < 256; i++) for (uintptr_t j = 0; j < count[i]; j++, p++) CHECK(array[p] == i);
+	CHECK(p == 10000);
 	uint8_t n = 100;
 	uint8_t *q = (uint8_t *) EsCRTbsearch(&n, array, 10000, 1, CompareU8);
-	if (!q || q[0] != 100) return false;
+	CHECK(q && q[0] == 100);
 	n = 0;
-	if (EsCRTbsearch(&n, array, 10000, 1, CompareU8)) return false;
+	CHECK(!EsCRTbsearch(&n, array, 10000, 1, CompareU8));
 	n = 255;
-	if (EsCRTbsearch(&n, array, 10000, 1, CompareU8)) return false;
-	for (n = 1; n < 255; n += 2) if (EsCRTbsearch(&n, array, 10000, 1, CompareU8)) return false;
+	CHECK(!EsCRTbsearch(&n, array, 10000, 1, CompareU8));
+
+	for (n = 0; n < 255; n++) {
+		q = (uint8_t *) EsCRTbsearch(&n, array, 10000, 1, CompareU8);
+		if (count[n]) CHECK(q && *q == n);
+		else CHECK(!q);
+	}
+
 	EsCRTfree(array);
 	EsCRTfree(count);
 
 #ifdef ES_BITS_32
-	if (EsCRTcalloc(0x7FFFFFFF, 0x7FFFFFFF)) return false;
-	if (EsCRTcalloc(0xFFFFFFFF, 0xFFFFFFFF)) return false;
+	CHECK(!EsCRTcalloc(0x7FFFFFFF, 0x7FFFFFFF));
+	CHECK(!EsCRTcalloc(0xFFFFFFFF, 0xFFFFFFFF));
 #endif
 #ifdef ES_BITS_64
-	if (EsCRTcalloc(0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF)) return false;
-	if (EsCRTcalloc(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF)) return false;
+	CHECK(!EsCRTcalloc(0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF));
+	CHECK(!EsCRTcalloc(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF));
 #endif
 
 	return true;

@@ -800,7 +800,7 @@ void *WindowManager::CreateWindow(Process *process, void *apiWindow, EsWindowSty
 
 	// Insert the window into the window array.
 
-	uintptr_t insertionPoint = GetActivationZIndex();
+	uintptr_t insertionPoint = style == ES_WINDOW_TIP ? windows.Length() : GetActivationZIndex();
 
 	if (!windows.Insert(window, insertionPoint)) {
 		EsHeapFree(window->surface.bits, 0, K_PAGED);
