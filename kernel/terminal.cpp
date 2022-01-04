@@ -214,7 +214,13 @@ void KernelPanic(const char *format, ...) {
 
 	StartDebugOutput();
 
-	EsPrint("\n--- System Error ---\n* If you are using an emulator, please capture a screenshot of the entire window and report the error. *\n>> ");
+	EsPrint("\n--- System Error ---\n");
+	EsPrint("\n========================================================================================================\n");
+	EsPrint("| If you are using an emulator, please capture a screenshot of the entire window and report the error. |\n");
+	EsPrint("| If you are using Qemu, press Ctrl+Alt+2, then type \"cpu %d\", then \"dump-guest-memory -p mem.dat\".     |\n", 
+			GetLocalStorage() ? (GetLocalStorage()->archCPU ? GetLocalStorage()->archCPU->apicID : 0) : 0);
+	EsPrint("========================================================================================================\n");
+	EsPrint("\n>> ");
 
 	va_list arguments;
 	va_start(arguments, format);
