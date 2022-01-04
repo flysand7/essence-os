@@ -12,4 +12,5 @@ echo `git log | head -n 1 | cut -b 8-14` > bin/commit.txt
 ./start.sh get-source prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz
 ./start.sh setup-pre-built-toolchain
 ./start.sh run-tests
+util/x11/build.sh apps/samples/hello.c
 rm -rf cross .git bin/cache bin/freetype bin/harfbuzz bin/musl root/Applications/POSIX/lib bin/drive

@@ -143,6 +143,8 @@ This file contains a list and description of the files and folders in the source
 - `util/` Contains utilities for developing and building the project.
 	- `linker/` Contains linker scripts.
 	- `w32/` The experimental W32 backend for the Essence desktop.
+	- `x11/` The experimental X11 backend for the Essence desktop.
+	- `automation/` Scripts for automating builds.
 	- `build_common.h` Common definitions shared between `build.c` and `build_core.c`.
 	- `luigi.h` [A single-header cross platform GUI library](https://github.com/nakst/luigi).
 	- `build.c` The main build system prompt, which manages dependencies, the toolchain, build configurations, and launching emulators. It is accessed by the developer by running the `start.sh` script at the root of the source tree. The developer can then issue commands to build and test the operating system and other utilities.
