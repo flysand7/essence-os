@@ -265,7 +265,7 @@ void TextboxSetActiveLine(EsTextbox *textbox, int lineIndex) {
 	}
 
 	EsAssert(lineIndex >= -1 && lineIndex < (int) textbox->lines.Length());
-	EsPrint("TextboxSetActiveLine %i\n", lineIndex);
+	// EsPrint("TextboxSetActiveLine %i\n", lineIndex);
 
 	if (lineIndex == -1) {
 		int32_t lineBytesDelta = textbox->activeLineBytes - textbox->activeLineOldBytes;
@@ -843,8 +843,8 @@ void TextboxUndoItemCallback(const void *item, EsUndoManager *manager, EsMessage
 void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringBytes, bool sendUpdatedMessage) {
 	EsMessageMutexCheck();
 
-	EsPrint("EsTextboxInsert \"%s\" at %d:%d->%d:%d.\n", 
-			stringBytes, string, textbox->carets[0].line, textbox->carets[0].byte, textbox->carets[1].line, textbox->carets[1].byte);
+	// EsPrint("EsTextboxInsert \"%s\" at %d:%d->%d:%d.\n", 
+	// 		stringBytes, string, textbox->carets[0].line, textbox->carets[0].byte, textbox->carets[1].line, textbox->carets[1].byte);
 
 #if 0
 	for (uintptr_t i = 0; i < textbox->lines.Length(); i++) {

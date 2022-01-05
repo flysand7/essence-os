@@ -9,6 +9,10 @@ typedef struct Test { const char *cName; int timeoutSeconds; } Test;
 #include <essence.h>
 #include <shared/crc.h>
 #include <shared/array.cpp>
+#include <shared/arena.cpp>
+#include <shared/range_set.cpp>
+#undef EsUTF8IsValid
+#include <shared/unicode.cpp>
 
 #define TEST(_callback, _timeoutSeconds) { .callback = _callback }
 struct Test { bool (*callback)(); };
@@ -757,6 +761,272 @@ bool OldTests2018() {
 
 //////////////////////////////////////////////////////////////
 
+bool HeapReallocate() {
+	void *a = EsHeapReallocate(nullptr, 128, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 256, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 128, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 65536, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 128, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 128, true);
+	EsHeapValidate();
+	void *b = EsHeapReallocate(nullptr, 64, true);
+	EsHeapValidate();
+	void *c = EsHeapReallocate(nullptr, 64, true);
+	EsHeapValidate();
+	EsHeapReallocate(b, 0, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 128 + 88, true);
+	EsHeapValidate();
+	a = EsHeapReallocate(a, 128, true);
+	EsHeapValidate();
+	EsHeapReallocate(a, 0, true);
+	EsHeapValidate();
+	EsHeapReallocate(c, 0, true);
+	EsHeapValidate();
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
+bool ArenaRandomAllocations() {
+	int checkIndex = 0;
+	Arena arena = {};
+	ArenaInitialise(&arena, 3, sizeof(int));
+	Array<void *> allocations = {};
+	EsRandomSeed(20);
+
+	for (uintptr_t i = 0; i < 500000; i++) {
+		if ((EsRandomU8() & 1) || !allocations.Length()) {
+			void *allocation = ArenaAllocate(&arena, false);
+			for (uintptr_t i = 0; i < allocations.Length(); i++) CHECK(allocations[i] != allocation);
+			allocations.Add(allocation);
+		} else {
+			int index = EsRandomU64() % allocations.Length();
+			ArenaFree(&arena, allocations[index]);
+			allocations.DeleteSwap(index);
+		}
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
+bool rangeSetCheck[1000];
+RangeSet rangeSet = {};
+
+bool RangeSetModify(bool set, int x, int y) {
+	for (int i = x; i < y; i++) {
+		rangeSetCheck[i] = set;
+	}
+
+	if (set) {
+		if (!rangeSet.Set(x, y, nullptr, true)) {
+			return false;
+		}
+	} else {
+		if (!rangeSet.Clear(x, y, nullptr, true)) {
+			return false;
+		}
+	}
+
+	for (uintptr_t i = 0; i < sizeof(rangeSetCheck); i++) {
+		if (rangeSetCheck[i]) {
+			if (!rangeSet.Find(i, false)) {
+				return false;
+			}
+		} else {
+			if (rangeSet.Find(i, false)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool RangeSetTests() {
+	int checkIndex = 0;
+
+	CHECK(RangeSetModify(true, 2, 3));
+	CHECK(RangeSetModify(true, 4, 5));
+	CHECK(RangeSetModify(true, 0, 1));
+	CHECK(RangeSetModify(true, 1, 2));
+	CHECK(RangeSetModify(true, 3, 4));
+	CHECK(RangeSetModify(true, 10, 15));
+	CHECK(RangeSetModify(true, 4, 10));
+	CHECK(RangeSetModify(true, 20, 30));
+	CHECK(RangeSetModify(true, 15, 21));
+	CHECK(RangeSetModify(true, 50, 55));
+	CHECK(RangeSetModify(true, 60, 65));
+	CHECK(RangeSetModify(true, 40, 70));
+	CHECK(RangeSetModify(true, 0, 100));
+
+	CHECK(RangeSetModify(false, 50, 60));
+	CHECK(RangeSetModify(false, 55, 56));
+	CHECK(RangeSetModify(false, 50, 55));
+	CHECK(RangeSetModify(false, 55, 60));
+	CHECK(RangeSetModify(false, 50, 60));
+	CHECK(RangeSetModify(false, 49, 60));
+	CHECK(RangeSetModify(false, 49, 61));
+
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(false, 48, 62));
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(false, 48, 62));
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(true, 52, 53));
+	CHECK(RangeSetModify(false, 48, 62));
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(true, 52, 53));
+	CHECK(RangeSetModify(false, 47, 62));
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(true, 52, 53));
+	CHECK(RangeSetModify(false, 47, 63));
+	CHECK(RangeSetModify(true, 50, 51));
+	CHECK(RangeSetModify(true, 52, 53));
+	CHECK(RangeSetModify(false, 46, 64));
+
+	EsRandomSeed(20);
+
+	for (uintptr_t i = 0; i < 100000; i++) {
+		int a = EsRandomU64() % 1000, b = EsRandomU64() % 1000;
+		if (b <= a) continue;
+		CHECK(RangeSetModify(EsRandomU8() & 1, a, b));
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
+bool UTF8Tests() {
+	int checkIndex = 0;
+
+	// Strings taken from https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt under CC BY 4.0.
+
+	const char *goodStrings[] = {
+		"\xCE\xBA\xE1\xBD\xB9\xCF\x83\xCE\xBC\xCE\xB5",
+		"\x01",
+		"\xC2\x80",
+		"\xE0\xA0\x80",
+		"\xF0\x90\x80\x80",
+		"\x7F",
+		"\xDF\xBF",
+		"\xEF\xBF\xBF", 
+		"\xF7\xBF\xBF\xBF", 
+		"\xED\x9F\xBF", 
+		"\xEE\x80\x80", 
+		"\xEF\xBF\xBD", 
+		"\xF4\x8F\xBF\xBF", 
+		"\xF4\x90\x80\x80",
+
+		// Overlong sequences for non-ASCII characters are allowed.
+		"\xE0\x9F\xBF",
+		"\xF0\x8F\xBF\xBF",
+
+		// Surrogate characters are allowed (for compatability with things like NTFS).
+		"\xED\xA0\x80",
+		"\xED\xAD\xBF",
+		"\xED\xAE\x80",
+		"\xED\xAF\xBF",
+		"\xED\xB0\x80",
+		"\xED\xBE\x80",
+		"\xED\xBF\xBF",
+		"\xED\xA0\x80\xED\xB0\x80",
+		"\xED\xA0\x80\xED\xBF\xBF",
+		"\xED\xAD\xBF\xED\xB0\x80",
+		"\xED\xAD\xBF\xED\xBF\xBF",
+		"\xED\xAE\x80\xED\xB0\x80",
+		"\xED\xAE\x80\xED\xBF\xBF",
+		"\xED\xAF\xBF\xED\xB0\x80",
+		"\xED\xAF\xBF\xED\xBF\xBF",
+	};
+
+	const char *badStrings[] = {
+		// We don't support 5 and 6 byte characters, as they shouldn't appear in Unicode text.
+		"\xF8\x88\x80\x80\x80",
+		"\xFC\x84\x80\x80\x80\x80",
+		"\xFB\xBF\xBF\xBF\xBF", 
+		"\xFD\xBF\xBF\xBF\xBF\xBF",
+
+		"\x80",
+		"\xBF",
+		"\x80\xBF",
+		"\x80\xBF\x80",
+		"\x80\xBF\x80\xBF",
+		"\x80\xBF\x80\xBF\x80",
+		"\x80\xBF\x80\xBF\x80\xBF\x80",
+		"\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8A\x8B\x8C\x8D\x8E\x8F\x90\x91\x92\x93\x94\x95\x96"
+			"\x97\x98\x99\x9A\x9B\x9C\x9D\x9E\x9F\xA0\xA1\xA2\xA3\xA4\xA5\xA6\xA7\xA8\xA9\xAA\xAB"
+			"\xAC\xAD\xAE\xAF\xB0\xB1\xB2\xB3\xB4\xB5\xB6\xB7\xB8\xB9\xBA\xBB\xBC\xBD\xBE\xBF",
+		"\xC0\x20\xC1\x20\xC2\x20\xC3\x20\xC4\x20\xC5\x20\xC6\x20\xC7\x20\xC8\x20\xC9\x20\xCA\x20\xCB"
+			"\x20\xCC\x20\xCD\x20\xCE\x20\xCF\x20\xD0\x20\xD1\x20\xD2\x20\xD3\x20\xD4\x20\xD5\x20"
+			"\xD6\x20\xD7\x20\xD8\x20\xD9\x20\xDA\x20\xDB\x20\xDC\x20\xDD\x20\xDE\x20\xDF\x20",
+		"\xE0\x20\xE1\x20\xE2\x20\xE3\x20\xE4\x20\xE5\x20\xE6\x20\xE7\x20\xE8\x20\xE9\x20\xEA\x20\xEB"
+			"\x20\xEC\x20\xED\x20\xEE\x20\xEF\x20",
+		"\xF0\x20\xF1\x20\xF2\x20\xF3\x20\xF4\x20\xF5\x20\xF6\x20\xF7\x20",
+		"\xF8\x20\xF9\x20\xFA\x20\xFB\x20",
+		"\xFC\x20\xFD\x20",
+		"\xC0",
+		"\xE0\x80",
+		"\xF0\x80\x80",
+		"\xF8\x80\x80\x80",
+		"\xFC\x80\x80\x80\x80",
+		"\xDF",
+		"\xEF\xBF",
+		"\xF7\xBF\xBF",
+		"\xFB\xBF\xBF\xBF",
+		"\xFD\xBF\xBF\xBF\xBF",
+		"\xC0\xE0\x80\xF0\x80\x80\xF8\x80\x80\x80\xFC\x80\x80\x80\x80\xDF\xEF\xBF\xF7\xBF\xBF\xFB\xBF"
+			"\xBF\xBF\xFD\xBF\xBF\xBF\xBF",
+		"\xFE",
+		"\xFF",
+		"\xFE\xFE\xFF\xFF",
+		"\xC0\xAF",
+		"\xE0\x80\xAF",
+		"\xF0\x80\x80\xAF",
+		"\xF8\x80\x80\x80\xAF",
+		"\xFC\x80\x80\x80\x80\xAF",
+		"\xC1\xBF",
+		"\xC0\x80",
+		"\xE0\x80\x80",
+		"\xF0\x80\x80\x80",
+		"\xF8\x80\x80\x80\x80",
+		"\xFC\x80\x80\x80\x80\x80",
+	};
+
+	for (uintptr_t i = 0; i < sizeof(goodStrings) / sizeof(goodStrings[0]); i++) {
+		CHECK(EsUTF8IsValid(goodStrings[i], -1));
+
+		const char *position = goodStrings[i];
+		
+		while (*position) {
+			CHECK(utf8_value(position));
+			position = utf8_advance(position);
+			CHECK(position);
+		}
+
+		while (position != goodStrings[i]) {
+			position = utf8_retreat(position);
+			CHECK(position);
+		}
+	}
+
+	for (uintptr_t i = 0; i < sizeof(badStrings) / sizeof(badStrings[0]); i++) {
+		CHECK(!EsUTF8IsValid(badStrings[i], -1));
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -767,6 +1037,10 @@ const Test tests[] = {
 	TEST(PerformanceTimerDrift, 30),
 	TEST(TextboxEditOperations, 120),
 	TEST(OldTests2018, 30),
+	TEST(HeapReallocate, 30),
+	TEST(ArenaRandomAllocations, 30),
+	TEST(RangeSetTests, 30),
+	TEST(UTF8Tests, 30),
 };
 
 #ifndef API_TESTS_FOR_RUNNER

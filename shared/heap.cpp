@@ -514,23 +514,6 @@ void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewS
 #endif
 	EsHeap &heap = *(EsHeap *) _heap;
 
-	/*
-		Test with:
-			void *a = EsHeapReallocate(nullptr, 128, true);
-			a = EsHeapReallocate(a, 256, true);
-			a = EsHeapReallocate(a, 128, true);
-			a = EsHeapReallocate(a, 65536, true);
-			a = EsHeapReallocate(a, 128, true);
-			a = EsHeapReallocate(a, 128, true);
-			void *b = EsHeapReallocate(nullptr, 64, true);
-			void *c = EsHeapReallocate(nullptr, 64, true);
-			EsHeapReallocate(b, 0, true);
-			a = EsHeapReallocate(a, 128 + 88, true);
-			a = EsHeapReallocate(a, 128, true);
-			EsHeapReallocate(a, 0, true);
-			EsHeapReallocate(c, 0, true);
-	*/
-
 	if (!oldAddress) {
 		return EsHeapAllocate(newAllocationSize, zeroNewSpace, _heap);
 	} else if (!newAllocationSize) {

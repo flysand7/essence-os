@@ -7,7 +7,11 @@ struct Range {
 };
 
 struct RangeSet {
+#ifdef KERNEL
 	Array<Range, K_CORE> ranges;
+#else
+	Array<Range> ranges;
+#endif
 	uintptr_t contiguous;
 
 	Range *Find(uintptr_t offset, bool touching);
@@ -58,30 +62,22 @@ void RangeSet::Validate() {
 		Range *range = &ranges[i];
 		
 		if (previousTo && range->from <= previousTo) {
-			KernelPanic("RangeSet::Validate - Range %d in set %x is not placed after the prior range.\n", i, this);
+			EsPanic("RangeSet::Validate - Range %d in set %x is not placed after the prior range.\n", i, this);
 		}
 
 		if (range->from >= range->to) {
-			KernelPanic("RangeSet::Validate - Range %d in set %x is invalid.\n", i, this);
+			EsPanic("RangeSet::Validate - Range %d in set %x is invalid.\n", i, this);
 		}
 		
 		previousTo = range->to;
 	}
 #endif
-
-#if 0
-	for (uintptr_t i = 0; i < sizeof(check); i++) {
-		if (check[i]) {
-			assert(Find(set, i, false));
-		} else {
-			assert(!Find(set, i, false));
-		}
-	}
-#endif
 }
 
 bool RangeSet::Normalize() {
+#if 0
 	KernelLog(LOG_INFO, "RangeSet", "normalize", "Normalizing range set %x...\n", this);
+#endif
 
 	if (contiguous) {
 		uintptr_t oldContiguous = contiguous;
@@ -96,14 +92,8 @@ bool RangeSet::Normalize() {
 }
 
 bool RangeSet::Set(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify) {
-#if 0
-	for (uintptr_t i = from; i < to; i++) {
-		check[i] = true;
-	}
-#endif
-	
 	if (to <= from) {
-		KernelPanic("RangeSet::Set - Invalid range %x to %x.\n", from, to);
+		EsPanic("RangeSet::Set - Invalid range %x to %x.\n", from, to);
 	}
 
 	// Can we store this as a single contiguous range?
@@ -200,14 +190,8 @@ bool RangeSet::Set(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify) {
 }
 
 bool RangeSet::Clear(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify) {
-#if 0
-	for (uintptr_t i = from; i < to; i++) {
-		check[i] = false;
-	}
-#endif
-
 	if (to <= from) {
-		KernelPanic("RangeSet::Clear - Invalid range %x to %x.\n", from, to);
+		EsPanic("RangeSet::Clear - Invalid range %x to %x.\n", from, to);
 	}
 
 	if (!ranges.Length()) {
@@ -346,57 +330,3 @@ bool RangeSet::Clear(uintptr_t from, uintptr_t to, intptr_t *delta, bool modify)
 	Validate();
 	return true;
 }
-
-#if 0
-int main(int argc, char **argv) {
-	RangeSet set = {};
-	
-	Set(&set, 2, 3);
-	Set(&set, 4, 5);
-	Set(&set, 0, 1);
-	Set(&set, 1, 2);
-	Set(&set, 3, 4);
-	Set(&set, 10, 15);
-	Set(&set, 4, 10);
-	Set(&set, 20, 30);
-	Set(&set, 15, 21);
-	Set(&set, 50, 55);
-	Set(&set, 60, 65);
-	Set(&set, 40, 70);
-	Set(&set, 0, 100);
-	
-	Clear(&set, 50, 60);
-	Clear(&set, 55, 56);
-	Clear(&set, 50, 55);
-	Clear(&set, 55, 60);
-	Clear(&set, 50, 60);
-	Clear(&set, 49, 60);
-	Clear(&set, 49, 61);
-	
-	Set(&set, 50, 51);
-	Clear(&set, 48, 62);
-	Set(&set, 50, 51);
-	Clear(&set, 48, 62);
-	Set(&set, 50, 51);
-	Set(&set, 52, 53);
-	Clear(&set, 48, 62);
-	Set(&set, 50, 51);
-	Set(&set, 52, 53);
-	Clear(&set, 47, 62);
-	Set(&set, 50, 51);
-	Set(&set, 52, 53);
-	Clear(&set, 47, 63);
-	Set(&set, 50, 51);
-	Set(&set, 52, 53);
-	Clear(&set, 46, 64);
-	
-	srand(time(NULL));
-	
-	while (true) {
-		int a = rand() % 1000, b = rand() % 1000;
-		if (b <= a) continue;
-		if (rand() & 1) Set(&set, a, b);
-		else Clear(&set, a, b);
-	}
-}
-#endif
