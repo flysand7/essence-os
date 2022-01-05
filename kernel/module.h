@@ -60,6 +60,7 @@ extern EsHeap heapFixed;
 
 void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *kernelHeap);
 void EsHeapFree(void *address, size_t expectedSize, EsHeap *kernelHeap);
+void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *_heap);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Debug output.
@@ -108,9 +109,11 @@ void KUnregisterMSI(uintptr_t tag);
 
 #ifndef K_IN_CORE_KERNEL
 #define SHARED_DEFINITIONS_ONLY
+#define ARRAY_DEFINITIONS_ONLY
 #endif
 #include <shared/unicode.cpp>
 #include <shared/linked_list.cpp>
+#include <shared/array.cpp>
 
 uint32_t CalculateCRC32(const void *_buffer, size_t length, uint32_t carry);
 uint64_t CalculateCRC64(const void *_buffer, size_t length, uint64_t carry);
@@ -386,10 +389,6 @@ void *MMMapShared(MMSpace *space, MMSharedRegion *sharedRegion, uintptr_t offset
 // Check that the range of physical memory is unusable.
 // Panics on failure.
 void MMCheckUnusable(uintptr_t physicalStart, size_t bytes);
-
-#define ARRAY_DEFINITIONS_ONLY
-#include <shared/array.cpp>
-#undef ARRAY_DEFINITIONS_ONLY
 
 typedef SimpleList MMObjectCacheItem;
 

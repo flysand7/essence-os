@@ -2,6 +2,7 @@
 #undef ES_FORWARD
 #define Font _Font
 #define _start _StartDesktop
+#undef ARRAY_DEFINITIONS_ONLY
 #include <desktop/api.cpp>
 #undef _start
 #undef Font

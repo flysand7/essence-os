@@ -191,9 +191,6 @@ extern "C" {
 #include <shared/partitions.cpp>
 #include <shared/heap.cpp>
 
-#define ARRAY_IMPLEMENTATION_ONLY
-#include <shared/array.cpp>
-
 #define SHARED_COMMON_WANT_ALL
 #include <shared/strings.cpp>
 #include <shared/common.cpp>

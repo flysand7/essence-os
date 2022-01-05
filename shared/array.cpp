@@ -2,8 +2,6 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
-#ifndef ARRAY_IMPLEMENTATION_ONLY
-
 struct _ArrayHeader {
 	size_t length, allocated;
 };
@@ -87,8 +85,6 @@ struct Array {
 		array[header->length++] = item;
 	}
 };
-
-#endif
 
 #ifndef ARRAY_DEFINITIONS_ONLY
 

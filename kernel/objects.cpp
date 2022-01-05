@@ -22,7 +22,7 @@ struct ConstantBuffer {
 struct Pipe {
 #define PIPE_READER (1)
 #define PIPE_WRITER (2)
-#define PIPE_BUFFER_SIZE (K_PAGE_SIZE)
+#define PIPE_BUFFER_SIZE (256)
 #define PIPE_CLOSED (0)
 
 	volatile char buffer[PIPE_BUFFER_SIZE];
