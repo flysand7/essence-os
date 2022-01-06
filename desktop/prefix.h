@@ -351,7 +351,7 @@ struct SystemStartupDataHeader {
 	/* TODO Make mount points and devices equal, somehow? */
 	size_t initialMountPointCount;
 	size_t initialDeviceCount;
-	EsHandle themeCursorData;
+	uintptr_t themeCursorData;
 };
 
 #ifdef KERNEL
