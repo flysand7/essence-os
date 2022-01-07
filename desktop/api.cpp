@@ -191,6 +191,8 @@ struct {
 	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
 	EsMutex systemConfigurationMutex;
 
+	EsHandle desktopRequestPipe, desktopResponsePipe;
+
 	Array<MountPoint> mountPoints;
 	Array<EsMessageDevice> connectedDevices;
 	bool foundBootFileSystem;
@@ -1049,7 +1051,7 @@ EsMessage *EsMessageReceive() {
 		} else if (message.message.type == ES_MSG_APPLICATION_EXIT) {
 			if (api.startupInformation->isDesktop) {
 				// Desktop tracks the number of instances it owns, so it needs to know when it exits.
-				ApplicationProcessTerminated(EsProcessGetID(ES_CURRENT_PROCESS));
+				ApplicationProcessTerminated(DesktopGetApplicationProcessForDesktop());
 			} else {
 				api.workFinish = true;
 				if (api.workAvailable) EsEventSet(api.workAvailable);
@@ -1573,6 +1575,8 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		const SystemStartupDataHeader *header = (const SystemStartupDataHeader *) EsBufferRead(&buffer, sizeof(SystemStartupDataHeader));
 		theming.cursorData = header->themeCursorData;
+		api.desktopRequestPipe = header->desktopRequestPipe;
+		api.desktopResponsePipe = header->desktopResponsePipe;
 
 		for (uintptr_t i = 0; i < header->initialMountPointCount; i++) {
 			const EsMountPoint *mountPoint = (const EsMountPoint *) EsBufferRead(&buffer, sizeof(EsMountPoint));

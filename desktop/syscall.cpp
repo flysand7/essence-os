@@ -749,36 +749,36 @@ size_t EsGameControllerStatePoll(EsGameControllerState *buffer) {
 	return EsSyscall(ES_SYSCALL_GAME_CONTROLLER_STATE_POLL, (uintptr_t) buffer, 0, 0, 0);
 }
 
-void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe);
+bool DesktopSyscall(EsObjectID windowID, struct ApplicationProcess *process, uint8_t *buffer, size_t bytes, EsBuffer *pipe);
+struct ApplicationProcess *DesktopGetApplicationProcessForDesktop();
 
 void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow = ES_INVALID_HANDLE, EsBuffer *responseBuffer = nullptr) {
+	static EsMutex messageDesktopMutex = {};
+
+	EsObjectID embeddedWindowID = embeddedWindow ? EsSyscall(ES_SYSCALL_WINDOW_GET_ID, embeddedWindow, 0, 0, 0) : 0;
+
+	EsMutexAcquire(&messageDesktopMutex);
+
 	if (api.startupInformation->isDesktop) {
-		EsMessage m = {};
-		m.type = ES_MSG_DESKTOP;
-		m.desktop.windowID = embeddedWindow ? EsSyscall(ES_SYSCALL_WINDOW_GET_ID, embeddedWindow, 0, 0, 0) : 0;
-		m.desktop.processID = EsProcessGetID(ES_CURRENT_PROCESS);
-		m.desktop.bytes = messageBytes;
-		DesktopSyscall(&m, (uint8_t *) message, responseBuffer);
+		struct ApplicationProcess *process = DesktopGetApplicationProcessForDesktop();
+		bool noFatalErrors = DesktopSyscall(embeddedWindowID, process, (uint8_t *) message, messageBytes, responseBuffer);
+		EsAssert(noFatalErrors);
 	} else {
-		EsHandle pipeRead = ES_INVALID_HANDLE, pipeWrite = ES_INVALID_HANDLE;
+		if (messageBytes <= DESKTOP_MESSAGE_SIZE_LIMIT) {
+			uint32_t length = messageBytes;
+			EsPipeWrite(api.desktopRequestPipe, &length, sizeof(length));
+			EsPipeWrite(api.desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID));
+			EsPipeWrite(api.desktopRequestPipe, message, messageBytes);
+			EsPipeRead(api.desktopResponsePipe, &length, sizeof(length));
+			EsAssert((length != 0) == (responseBuffer != 0));
 
-		if (responseBuffer) {
-			EsPipeCreate(&pipeRead, &pipeWrite);
-		}
-
-		EsSyscall(ES_SYSCALL_MESSAGE_DESKTOP, (uintptr_t) message, messageBytes, embeddedWindow, pipeWrite);
-
-		if (responseBuffer) {
-			char buffer[4096];
-			EsHandleClose(pipeWrite);
-
-			while (true) {
-				size_t bytesRead = EsPipeRead(pipeRead, buffer, sizeof(buffer));
+			while (length) {
+				char buffer[4096];
+				size_t bytesRead = EsPipeRead(api.desktopResponsePipe, buffer, sizeof(buffer) > length ? length : sizeof(buffer));
 				if (!bytesRead) break;
 				EsBufferWrite(responseBuffer, buffer, bytesRead);
+				length -= bytesRead;
 			}
-
-			EsHandleClose(pipeRead);
 		}
 	}
 
@@ -786,6 +786,8 @@ void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow 
 		responseBuffer->bytes = responseBuffer->position;
 		responseBuffer->position = 0;
 	}
+
+	EsMutexRelease(&messageDesktopMutex);
 }
 
 struct ClipboardInformation {

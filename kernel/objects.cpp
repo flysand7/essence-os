@@ -607,14 +607,14 @@ size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 			// EsPrint("\tunread: %d; wp: %d\n", unreadData, writePosition);
 			// EsPrint("\t%d, %d, %d, %d, %d\n", spaceAvailable, spaceAvailableRight, toWrite, toWriteRight, toWriteLeft);
 
-			EsMemoryCopy((uint8_t *) buffer + writePosition, _buffer, toWriteRight);
-			EsMemoryCopy((uint8_t *) buffer, (uint8_t *) _buffer + toWriteRight, toWriteLeft);
+			if (_buffer) EsMemoryCopy((uint8_t *) buffer + writePosition, _buffer, toWriteRight);
+			if (_buffer) EsMemoryCopy((uint8_t *) buffer, (uint8_t *) _buffer + toWriteRight, toWriteLeft);
 
 			writePosition += toWrite;
 			writePosition %= PIPE_BUFFER_SIZE;
 			unreadData += toWrite;
 			bytes -= toWrite;
-			_buffer = (uint8_t *) _buffer + toWrite;
+			if (_buffer) _buffer = (uint8_t *) _buffer + toWrite;
 			amount += toWrite;
 
 			KEventSet(&canRead, true);
@@ -640,14 +640,14 @@ size_t Pipe::Access(void *_buffer, size_t bytes, bool write, bool user) {
 			// EsPrint("\tunread: %d; rp: %d\n", unreadData, readPosition);
 			// EsPrint("\t%d, %d, %d, %d, %d\n", dataAvailable, spaceAvailableRight, toRead, toReadRight, toReadLeft);
 
-			EsMemoryCopy(_buffer, (uint8_t *) buffer + readPosition, toReadRight);
-			EsMemoryCopy((uint8_t *) _buffer + toReadRight, (uint8_t *) buffer, toReadLeft);
+			if (_buffer) EsMemoryCopy(_buffer, (uint8_t *) buffer + readPosition, toReadRight);
+			if (_buffer) EsMemoryCopy((uint8_t *) _buffer + toReadRight, (uint8_t *) buffer, toReadLeft);
 
 			readPosition += toRead;
 			readPosition %= PIPE_BUFFER_SIZE;
 			unreadData -= toRead;
 			bytes -= toRead;
-			_buffer = (uint8_t *) _buffer + toRead;
+			if (_buffer) _buffer = (uint8_t *) _buffer + toRead;
 			amount += toRead;
 
 			KEventSet(&canWrite, true);

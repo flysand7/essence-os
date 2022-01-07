@@ -138,6 +138,7 @@ struct BlankTabInstance : EsInstance {
 struct ApplicationProcess {
 	EsObjectID id;
 	EsHandle handle;
+	EsHandle desktopRequestPipe, desktopResponsePipe;
 	InstalledApplication *application;
 	size_t instanceCount;
 };
@@ -1664,6 +1665,127 @@ void ApplicationTemporaryDestroy(InstalledApplication *application) {
 	EsAssert(false);
 }
 
+void ApplicationProcessTerminated(ApplicationProcess *process) {
+	EsMessageMutexCheck();
+
+	desktop.allApplicationProcesses.FindAndDeleteSwap(process, true /* assert found */);
+
+	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+		ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+		if (instance->process == process) {
+			EmbeddedWindowDestroyed(instance->embeddedWindowID);
+			i--; // EmbeddedWindowDestroyed removes it from the array.
+		}
+	}
+
+	InstalledApplication *application = process->application;
+
+	if (application) {
+		if (application->singleProcess == process) {
+			application->singleProcess = nullptr;
+		}
+
+		application->singleInstance = nullptr;
+		ApplicationTemporaryDestroy(application);
+	}
+
+	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+		OpenDocument *document = &desktop.openDocuments[i];
+
+		if (document->currentWriter == process->id) {
+			document->currentWriter = 0;
+		}
+	}
+
+	if (!desktop.allApplicationProcesses.Length() && desktop.inShutdown) {
+		EsEventSet(desktop.shutdownReadyEvent);
+	}
+
+	EsAssert(!process->instanceCount);
+	EsHandleClose(process->handle);
+
+	if (process->desktopRequestPipe) {
+		EsHandleClose(process->desktopRequestPipe);
+		EsHandleClose(process->desktopResponsePipe);
+	} else {
+		// This must be a Desktop-owned instance.
+	}
+
+	EsHeapFree(process);
+}
+
+void DesktopRequestThread(EsGeneric argument) {
+	ApplicationProcess *process = (ApplicationProcess *) argument.p;
+
+	uint32_t length;
+	size_t bytes;
+	EsObjectID embeddedWindowID;
+
+	while (true) {
+		bytes = EsPipeRead(process->desktopRequestPipe, &length, sizeof(length));
+		if (bytes != sizeof(length)) break; // Process has terminated or closed the pipe.
+		bytes = EsPipeRead(process->desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID));
+		if (bytes != sizeof(embeddedWindowID)) break; // Process has terminated or closed the pipe.
+
+		if (length < 1 || length > DESKTOP_MESSAGE_SIZE_LIMIT) {
+			// Discard the message.
+			// TODO Crash the process.
+			EsPipeRead(process->desktopRequestPipe, nullptr, length); 
+			continue;
+		}
+
+		void *buffer = EsHeapAllocate(length, false);
+		bytes = EsPipeRead(process->desktopRequestPipe, buffer, length);
+		if (bytes != length) break; // Process has terminated or closed the pipe.
+
+		if (!buffer) {
+			// The buffer could not be allocated, and the data read from the pipe was discarded.
+			continue;
+		}
+
+		EsBuffer response = { .canGrow = true };
+
+		EsMessageMutexAcquire();
+
+		if (!DesktopSyscall(embeddedWindowID, process, (uint8_t *) buffer, length, &response)) {
+			// TODO Crash the process.
+			EsPrint("Process %d running application '%z' had a fatal error (this usually means a permission check failed) with desktop request #%d.\n", 
+					process->id, process->application->cName, *(uint8_t *) buffer);
+		}
+
+		EsMessageMutexRelease();
+
+		if (!response.error) {
+			length = response.position;
+			EsPipeWrite(process->desktopResponsePipe, &length, sizeof(length));
+			EsPipeWrite(process->desktopResponsePipe, response.out, response.position);
+		} else {
+			length = 0;
+			EsPipeWrite(process->desktopResponsePipe, &length, sizeof(length));
+		}
+
+		EsHeapFree(response.out);
+		EsHeapFree(buffer);
+	}
+
+	EsMessageMutexAcquire();
+	ApplicationProcessTerminated(process);
+	EsMessageMutexRelease();
+}
+
+ApplicationProcess *DesktopGetApplicationProcessForDesktop() {
+	EsObjectID desktopProcessID = EsProcessGetID(ES_CURRENT_PROCESS);
+
+	for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
+		if (desktop.allApplicationProcesses[i]->id == desktopProcessID) {
+			return desktop.allApplicationProcesses[i];
+		}
+	}
+
+	return nullptr;
+}
+
 bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInformation *startupInformation, ApplicationInstance *instance) {
 	if (desktop.inShutdown) {
 		return false;
@@ -1708,19 +1830,12 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 	ApplicationProcess *process = application->singleProcess;
 
 	if (application->createInstance) {
-		EsObjectID desktopProcessID = EsProcessGetID(ES_CURRENT_PROCESS);
-
-		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
-			if (desktop.allApplicationProcesses[i]->id == desktopProcessID) {
-				process = desktop.allApplicationProcesses[i];
-				break;
-			}
-		}
+		process = DesktopGetApplicationProcessForDesktop();
 
 		if (!process) {
 			process = (ApplicationProcess *) EsHeapAllocate(sizeof(ApplicationProcess), true);
 			process->handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, ES_CURRENT_PROCESS, ES_CURRENT_PROCESS, 0, 0);
-			process->id = desktopProcessID;
+			process->id = EsProcessGetID(ES_CURRENT_PROCESS);
 			desktop.allApplicationProcesses.Add(process);
 		}
 	} else if (!process) {
@@ -1810,10 +1925,16 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 			}
 		}
 
+		EsHandle desktopRequestReadEnd, desktopRequestWriteEnd, desktopResponseReadEnd, desktopResponseWriteEnd;
+		EsPipeCreate(&desktopRequestReadEnd, &desktopRequestWriteEnd);
+		EsPipeCreate(&desktopResponseReadEnd, &desktopResponseWriteEnd);
+
 		EsBuffer buffer = { .canGrow = true };
 		header.initialMountPointCount = initialMountPoints.Length();
 		header.initialDeviceCount = initialDevices.Length();
 		header.themeCursorData = theming.cursorData;
+		header.desktopRequestPipe = desktopRequestWriteEnd;
+		header.desktopResponsePipe = desktopResponseReadEnd;
 		EsBufferWrite(&buffer, &header, sizeof(header));
 		EsBufferWrite(&buffer, initialMountPoints.array, sizeof(EsMountPoint) * header.initialMountPointCount);
 		EsBufferWrite(&buffer, initialDevices.array, sizeof(EsMessageDevice) * header.initialDeviceCount);
@@ -1821,6 +1942,10 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 		handleDuplicateList.Add(arguments.data.systemData);
 		handleModeDuplicateList.Add(0);
 		handleDuplicateList.Add(header.themeCursorData);
+		handleModeDuplicateList.Add(0);
+		handleDuplicateList.Add(header.desktopRequestPipe);
+		handleModeDuplicateList.Add(0);
+		handleDuplicateList.Add(header.desktopResponsePipe);
 		handleModeDuplicateList.Add(0);
 		EsHeapFree(buffer.out);
 
@@ -1835,6 +1960,9 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 		if (settingsNode.handle)       EsHandleClose(settingsNode.handle);
 		if (arguments.data.systemData) EsHandleClose(arguments.data.systemData);
 
+		EsHandleClose(desktopResponseReadEnd);
+		EsHandleClose(desktopRequestWriteEnd);
+
 		if (!ES_CHECK_ERROR(error)) {
 			EsHandleClose(information.mainThread.handle);
 
@@ -1842,8 +1970,17 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 			process->handle = information.handle;
 			process->id = information.pid;
 			process->application = application;
+			process->desktopResponsePipe = desktopResponseWriteEnd;
+			process->desktopRequestPipe = desktopRequestReadEnd;
 			desktop.allApplicationProcesses.Add(process);
+
+			EsThreadInformation information;
+			EsThreadCreate(DesktopRequestThread, &information, process); 
+			EsHandleClose(information.handle);
 		} else {
+			EsHandleClose(desktopRequestReadEnd);
+			EsHandleClose(desktopResponseWriteEnd);
+
 			ApplicationTemporaryDestroy(application);
 			_EsApplicationStartupInformation s = {};
 			s.data = CRASHED_TAB_INVALID_EXECUTABLE;
@@ -1931,15 +2068,11 @@ ApplicationInstance *ApplicationInstanceCreate(int64_t id, _EsApplicationStartup
 	}
 }
 
-ApplicationProcess *ApplicationProcessFindByPID(EsObjectID pid, bool removeIfFound = false) {
+ApplicationProcess *ApplicationProcessFindByPID(EsObjectID pid) {
 	for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
 		ApplicationProcess *process = desktop.allApplicationProcesses[i];
 
 		if (process->id == pid) {
-			if (removeIfFound) {
-				desktop.allApplicationProcesses.DeleteSwap(i);
-			}
-
 			return process;
 		}
 	}
@@ -1992,48 +2125,6 @@ void ApplicationInstanceCrashed(EsMessage *message) {
 
 	EsProcessTerminate(processHandle, 1); 
 	EsHandleClose(processHandle);
-}
-
-void ApplicationProcessTerminated(EsObjectID pid) {
-	for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-		ApplicationInstance *instance = desktop.allApplicationInstances[i];
-
-		if (instance->process->id == pid) {
-			EmbeddedWindowDestroyed(instance->embeddedWindowID);
-			i--; // EmbeddedWindowDestroyed removes it from the array.
-		}
-	}
-
-	ApplicationProcess *process = ApplicationProcessFindByPID(pid, true /* remove from array */);
-
-	if (process) {
-		InstalledApplication *application = process->application;
-
-		if (application) {
-			if (application->singleProcess && application->singleProcess->id == pid) {
-				application->singleProcess = nullptr;
-			}
-
-			application->singleInstance = nullptr;
-			ApplicationTemporaryDestroy(application);
-		}
-
-		EsAssert(!process->instanceCount);
-		EsHandleClose(process->handle);
-		EsHeapFree(process);
-	}
-
-	for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
-		OpenDocument *document = &desktop.openDocuments[i];
-
-		if (document->currentWriter == pid) {
-			document->currentWriter = 0;
-		}
-	}
-
-	if (!desktop.allApplicationProcesses.Length() && desktop.inShutdown) {
-		EsEventSet(desktop.shutdownReadyEvent);
-	}
 }
 
 //////////////////////////////////////////////////////
@@ -2693,60 +2784,61 @@ void DesktopSetup() {
 	desktop.setupDesktopUIComplete = true;
 }
 
-void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
-	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(message->desktop.windowID);
+bool /* returns false on fatal error */ DesktopSyscall(EsObjectID windowID, ApplicationProcess *process, uint8_t *buffer, size_t bytes, EsBuffer *pipe) {
+	EsMessageMutexCheck();
+	EsAssert(process);
+
+	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(windowID);
+	InstalledApplication *application = process->application;
+
+	if (instance && instance->process != process) {
+		EsPrint("DesktopSyscall - Process %d cannot operate on instance %d.\n", process->id, instance->embeddedWindowID);
+		return false;
+	}
 
 	if (buffer[0] == DESKTOP_MSG_START_APPLICATION) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+		if (~application->permissions & APPLICATION_PERMISSION_START_APPLICATION) return false;
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_START_APPLICATION)) {
-			// TODO Restricting what flags can be requested?
-			EsBuffer b = { .in = buffer + 1, .bytes = message->desktop.bytes - 1 };
-			EsApplicationStartupRequest request = {};
-			EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
-			request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
+		// TODO Restricting what flags can be requested?
+		EsBuffer b = { .in = buffer + 1, .bytes = bytes - 1 };
+		EsApplicationStartupRequest request = {};
+		EsBufferReadInto(&b, &request, sizeof(EsApplicationStartupRequest));
+		request.filePath = (const char *) EsBufferRead(&b, request.filePathBytes);
 
-			if (!b.error) {
-				ContainerWindow *container = nullptr /* new container */;
+		if (!b.error) {
+			ContainerWindow *container = nullptr /* new container */;
 
-				if ((request.flags & ES_APPLICATION_STARTUP_IN_SAME_CONTAINER) && instance && instance->tab) {
-					 container = instance->tab->container;
-				}
-
-				OpenDocumentWithApplication(&request, container);
+			if ((request.flags & ES_APPLICATION_STARTUP_IN_SAME_CONTAINER) && instance && instance->tab) {
+				container = instance->tab->container;
 			}
+
+			OpenDocumentWithApplication(&request, container);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_CREATE_CLIPBOARD_FILE && pipe) {
-		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
+		EsHandle handle;
+		char *path;
+		size_t pathBytes;
+		EsError error = TemporaryFileCreate(&handle, &path, &pathBytes, ES_FILE_WRITE);
 
-		if (processHandle) {
-			EsHandle handle;
-			char *path;
-			size_t pathBytes;
-			EsError error = TemporaryFileCreate(&handle, &path, &pathBytes, ES_FILE_WRITE);
-
-			if (error == ES_SUCCESS) {
-				if (desktop.nextClipboardFile) {
-					EsHandleClose(desktop.nextClipboardFile);
-				}
-
-				desktop.nextClipboardFile = handle;
-				desktop.nextClipboardProcessID = message->desktop.processID;
-
-				handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, processHandle, 0, 0);
-
-				EsHeapFree(path);
-			} else {
-				handle = ES_INVALID_HANDLE;
+		if (error == ES_SUCCESS) {
+			if (desktop.nextClipboardFile) {
+				EsHandleClose(desktop.nextClipboardFile);
 			}
 
-			EsBufferWrite(pipe, &handle, sizeof(handle));
-			EsBufferWrite(pipe, &error, sizeof(error));
+			desktop.nextClipboardFile = handle;
+			desktop.nextClipboardProcessID = process->id;
 
-			EsHandleClose(processHandle);
+			handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, process->handle, 0, 0);
+
+			EsHeapFree(path);
+		} else {
+			handle = ES_INVALID_HANDLE;
 		}
-	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_PUT && message->desktop.bytes == sizeof(ClipboardInformation)
-			&& desktop.nextClipboardFile && desktop.nextClipboardProcessID == message->desktop.processID) {
+
+		EsBufferWrite(pipe, &handle, sizeof(handle));
+		EsBufferWrite(pipe, &error, sizeof(error));
+	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_PUT && bytes == sizeof(ClipboardInformation)
+			&& desktop.nextClipboardFile && desktop.nextClipboardProcessID == process->id) {
 		ClipboardInformation *information = (ClipboardInformation *) buffer;
 
 		if (information->error == ES_SUCCESS) {
@@ -2772,83 +2864,62 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		desktop.nextClipboardFile = ES_INVALID_HANDLE;
 		desktop.nextClipboardProcessID = 0;
 	} else if (buffer[0] == DESKTOP_MSG_CLIPBOARD_GET && pipe) {
-		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
-
-		if (processHandle) {
-			EsHandle fileHandle = desktop.clipboardFile 
-				? EsSyscall(ES_SYSCALL_HANDLE_SHARE, desktop.clipboardFile, processHandle, 1 /* ES_FILE_READ_SHARED */, 0) : ES_INVALID_HANDLE;
-			EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
-			EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
-			EsHandleClose(processHandle);
-		}
+		EsHandle fileHandle = desktop.clipboardFile 
+			? EsSyscall(ES_SYSCALL_HANDLE_SHARE, desktop.clipboardFile, process->handle, 1 /* ES_FILE_READ_SHARED */, 0) : ES_INVALID_HANDLE;
+		EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
+		EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
-
 		ConfigurationWriteSectionsToBuffer("font", nullptr, false, pipe);
 		ConfigurationWriteSectionsToBuffer(nullptr, "ui_fonts", false, pipe);
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
+		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
 			ConfigurationWriteSectionsToBuffer(nullptr, "paths", false, pipe);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
-
-		if (application && (application->permissions & APPLICATION_PERMISSION_SHUTDOWN)) {
-			ShutdownModalCreate();
-		}
+		if (~application->permissions & APPLICATION_PERMISSION_SHUTDOWN) return false;
+		ShutdownModalCreate();
 	} else if (buffer[0] == DESKTOP_MSG_FILE_TYPES_GET && pipe) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+		if (~application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES) return false;
+		ConfigurationWriteSectionsToBuffer("file_type", nullptr, false, pipe);
+	} else if (buffer[0] == DESKTOP_MSG_ANNOUNCE_PATH_MOVED && bytes > 1 + sizeof(uintptr_t) * 2) {
+		if (~application->permissions & APPLICATION_PERMISSION_ALL_FILES) return false;
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES)) {
-			ConfigurationWriteSectionsToBuffer("file_type", nullptr, false, pipe);
+		uintptr_t oldPathBytes, newPathBytes;
+		EsMemoryCopy(&oldPathBytes, buffer + 1, sizeof(uintptr_t));
+		EsMemoryCopy(&newPathBytes, buffer + 1 + sizeof(uintptr_t), sizeof(uintptr_t));
+
+		if (oldPathBytes >= 0x4000 || newPathBytes >= 0x4000
+				|| oldPathBytes + newPathBytes + sizeof(uintptr_t) * 2 + 1 != bytes) {
+			return true;
 		}
-	} else if (buffer[0] == DESKTOP_MSG_ANNOUNCE_PATH_MOVED && message->desktop.bytes > 1 + sizeof(uintptr_t) * 2) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
-			uintptr_t oldPathBytes, newPathBytes;
-			EsMemoryCopy(&oldPathBytes, buffer + 1, sizeof(uintptr_t));
-			EsMemoryCopy(&newPathBytes, buffer + 1 + sizeof(uintptr_t), sizeof(uintptr_t));
+		const char *oldPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2;
+		const char *newPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes;
 
-			if (oldPathBytes >= 0x4000 || newPathBytes >= 0x4000
-					|| oldPathBytes + newPathBytes + sizeof(uintptr_t) * 2 + 1 != message->desktop.bytes) {
-				return;
-			}
-
-			const char *oldPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2;
-			const char *newPath = (const char *) buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes;
-
-			InstanceAnnouncePathMoved(application, oldPath, oldPathBytes, newPath, newPathBytes);
-		}
+		InstanceAnnouncePathMoved(application, oldPath, oldPathBytes, newPath, newPathBytes);
 	} else if (buffer[0] == DESKTOP_MSG_START_USER_TASK && pipe) {
-		ApplicationProcess *process = ApplicationProcessFindByPID(message->desktop.processID);
-
 		if (!process || !process->instanceCount) {
-			return;
+			return false;
 		}
-
-		InstalledApplication *application = process->application;
 
 		// HACK User tasks use an embedded window object for IPC.
 		// 	This allows us to basically treat them like other instances.
 
-		EsHandle processHandle = EsProcessOpen(message->desktop.processID);
 		EsHandle windowHandle = EsSyscall(ES_SYSCALL_WINDOW_CREATE, ES_WINDOW_NORMAL, 0, 0, 0);
 		ApplicationInstance *instance = (ApplicationInstance *) EsHeapAllocate(sizeof(ApplicationInstance), true);
 		bool added = false;
 
-		if (processHandle && windowHandle && instance) {
+		if (windowHandle && instance) {
 			added = desktop.allApplicationInstances.Add(instance);
 		}
 
-		if (!processHandle || !windowHandle || !instance || !added) {
-			if (processHandle) EsHandleClose(processHandle);
+		if (!windowHandle || !instance || !added) {
 			if (windowHandle) EsHandleClose(windowHandle);
 			if (instance) EsHeapFree(instance);
 
 			EsHandle invalid = ES_INVALID_HANDLE;
 			EsBufferWrite(pipe, &invalid, sizeof(invalid));
-			return;
+			return true;
 		}
 
 		instance->title[0] = ' ';
@@ -2860,99 +2931,94 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		instance->process->instanceCount++;
 		instance->application = application;
 
-		EsHandle targetWindowHandle = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, windowHandle, processHandle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
+		EsHandle targetWindowHandle = EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, windowHandle, process->handle, 0, ES_WINDOW_PROPERTY_EMBED_OWNER);
 		EsBufferWrite(pipe, &targetWindowHandle, sizeof(targetWindowHandle));
 
 		desktop.allOngoingUserTasks.Add(instance);
 		TaskBarTasksButtonUpdate();
 	} else if (buffer[0] == DESKTOP_MSG_QUERY_OPEN_DOCUMENT) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+		if (~application->permissions & APPLICATION_PERMISSION_ALL_FILES) return false;
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
-			EsObjectID id = 0;
+		EsObjectID id = 0;
 
-			for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
-				OpenDocument *document = &desktop.openDocuments[i];
+		for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
+			OpenDocument *document = &desktop.openDocuments[i];
 
-				if (0 == EsStringCompare(document->path, document->pathBytes, (char *) buffer + 1, message->desktop.bytes - 1)) {
-					id = document->id;
+			if (0 == EsStringCompare(document->path, document->pathBytes, (char *) buffer + 1, bytes - 1)) {
+				id = document->id;
+				break;
+			}
+		}
+
+		EsOpenDocumentInformation information;
+		EsMemoryZero(&information, sizeof(information));
+
+		if (id) {
+			information.isOpen = true;
+
+			for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
+				ApplicationInstance *instance = desktop.allApplicationInstances[i];
+
+				if (instance->documentID == id) {
+					information.isModified = instance->tab && (instance->tab->closeButton->customStyleState & THEME_STATE_CHECKED);
+					information.applicationNameBytes = MinimumInteger(EsCStringLength(instance->application->cName), 
+							sizeof(information.applicationName));
+					EsMemoryCopy(information.applicationName, instance->application->cName, information.applicationNameBytes);
 					break;
 				}
 			}
-
-			EsOpenDocumentInformation information;
-			EsMemoryZero(&information, sizeof(information));
-
-			if (id) {
-				information.isOpen = true;
-
-				for (uintptr_t i = 0; i < desktop.allApplicationInstances.Length(); i++) {
-					ApplicationInstance *instance = desktop.allApplicationInstances[i];
-
-					if (instance->documentID == id) {
-						information.isModified = instance->tab && (instance->tab->closeButton->customStyleState & THEME_STATE_CHECKED);
-						information.applicationNameBytes = MinimumInteger(EsCStringLength(instance->application->cName), 
-								sizeof(information.applicationName));
-						EsMemoryCopy(information.applicationName, instance->application->cName, information.applicationNameBytes);
-						break;
-					}
-				}
-			}
-
-			EsBufferWrite(pipe, &information, sizeof(information));
 		}
+
+		EsBufferWrite(pipe, &information, sizeof(information));
 	} else if (buffer[0] == DESKTOP_MSG_LIST_OPEN_DOCUMENTS) {
-		InstalledApplication *application = ApplicationFindByPID(message->desktop.processID);
+		if (~application->permissions & APPLICATION_PERMISSION_ALL_FILES) return false;
 
-		if (application && (application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
-			size_t count = desktop.openDocuments.Count();
-			EsBufferWrite(pipe, &count, sizeof(size_t));
+		size_t count = desktop.openDocuments.Count();
+		EsBufferWrite(pipe, &count, sizeof(size_t));
 
-			for (uintptr_t i = 0; i < count; i++) {
-				OpenDocument *document = &desktop.openDocuments[i];
-				EsBufferWrite(pipe, &document->pathBytes, sizeof(size_t));
-				EsBufferWrite(pipe, document->path, document->pathBytes);
-			}
+		for (uintptr_t i = 0; i < count; i++) {
+			OpenDocument *document = &desktop.openDocuments[i];
+			EsBufferWrite(pipe, &document->pathBytes, sizeof(size_t));
+			EsBufferWrite(pipe, document->path, document->pathBytes);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_RUN_TEMPORARY_APPLICATION) {
-		InstalledApplication *requestingApplication = ApplicationFindByPID(message->desktop.processID);
+		InstalledApplication *requestingApplication = application;
+		if (~requestingApplication->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION) return false;
 
-		if (requestingApplication && (requestingApplication->permissions & APPLICATION_PERMISSION_RUN_TEMPORARY_APPLICATION)) {
-			for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
-				if (EsCStringLength(desktop.installedApplications[i]->cExecutable) == message->desktop.bytes - 1
-						&& 0 == EsMemoryCompare(desktop.installedApplications[i]->cExecutable, buffer + 1, message->desktop.bytes - 1)) {
-					ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
-					return;
-				}
+		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
+			if (EsCStringLength(desktop.installedApplications[i]->cExecutable) == bytes - 1
+					&& 0 == EsMemoryCompare(desktop.installedApplications[i]->cExecutable, buffer + 1, bytes - 1)) {
+				ApplicationInstanceCreate(desktop.installedApplications[i]->id, nullptr, nullptr);
+				return true;
 			}
-
-			InstalledApplication *application = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
-			if (!application) return;
-			application->temporary = true;
-			application->hidden = true;
-			application->useSingleProcess = true;
-			application->cExecutable = (char *) EsHeapAllocate(message->desktop.bytes, false);
-			if (!application->cExecutable) { EsHeapFree(application); return; }
-			EsMemoryCopy(application->cExecutable, buffer + 1, message->desktop.bytes - 1);
-			application->cExecutable[message->desktop.bytes - 1] = 0;
-			static int64_t nextTemporaryID = -1;
-			application->id = nextTemporaryID--;
-			application->cName = (char *) EsHeapAllocate(32, false);
-			if (!application->cName) { EsHeapFree(application->cExecutable); EsHeapFree(application); return; }
-			for (int i = 1; i < 31; i++) application->cName[i] = (EsRandomU8() % 26) + 'a';
-			application->cName[0] = '_', application->cName[31] = 0;
-			EsHandle handle;
-			EsError error = TemporaryFileCreate(&handle, &application->settingsPath, &application->settingsPathBytes, ES_NODE_DIRECTORY);
-			if (error == ES_SUCCESS) EsHandleClose(handle);
-			desktop.installedApplications.Add(application);
-			ApplicationInstanceCreate(application->id, nullptr, nullptr);
 		}
+
+		InstalledApplication *temporaryApplication = (InstalledApplication *) EsHeapAllocate(sizeof(InstalledApplication), true);
+		if (!temporaryApplication) return true;
+		temporaryApplication->temporary = true;
+		temporaryApplication->hidden = true;
+		temporaryApplication->useSingleProcess = true;
+		temporaryApplication->cExecutable = (char *) EsHeapAllocate(bytes, false);
+		if (!temporaryApplication->cExecutable) { EsHeapFree(temporaryApplication); return true; }
+		EsMemoryCopy(temporaryApplication->cExecutable, buffer + 1, bytes - 1);
+		temporaryApplication->cExecutable[bytes - 1] = 0;
+		static int64_t nextTemporaryID = -1;
+		temporaryApplication->id = nextTemporaryID--;
+		temporaryApplication->cName = (char *) EsHeapAllocate(32, false);
+		if (!temporaryApplication->cName) { EsHeapFree(temporaryApplication->cExecutable); EsHeapFree(temporaryApplication); return true; }
+		for (int i = 1; i < 31; i++) temporaryApplication->cName[i] = (EsRandomU8() % 26) + 'a';
+		temporaryApplication->cName[0] = '_', temporaryApplication->cName[31] = 0;
+		EsHandle handle;
+		EsError error = TemporaryFileCreate(&handle, &temporaryApplication->settingsPath, &temporaryApplication->settingsPathBytes, ES_NODE_DIRECTORY);
+		if (error == ES_SUCCESS) EsHandleClose(handle);
+		desktop.installedApplications.Add(temporaryApplication);
+		ApplicationInstanceCreate(temporaryApplication->id, nullptr, nullptr);
 	} else if ((buffer[0] == DESKTOP_MSG_SET_TITLE || buffer[0] == DESKTOP_MSG_SET_ICON) && instance) {
 		if (buffer[0] == DESKTOP_MSG_SET_TITLE) {
 			instance->titleBytes = EsStringFormat(instance->title, sizeof(instance->title), "%s", 
-					message->desktop.bytes - 1, buffer + 1);
+					bytes - 1, buffer + 1);
 		} else {
-			if (message->desktop.bytes == 5) {
+			if (bytes == 5) {
 				EsMemoryCopy(&instance->iconID, buffer + 1, sizeof(uint32_t));
 			}
 		}
@@ -2968,11 +3034,11 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 				instance->tab->container->taskBarButton->Repaint(true);
 			}
 		}
-	} else if (buffer[0] == DESKTOP_MSG_SET_MODIFIED && message->desktop.bytes == 2 && instance) {
+	} else if (buffer[0] == DESKTOP_MSG_SET_MODIFIED && bytes == 2 && instance) {
 		if (instance->tab) {
 			EsButtonSetCheck(instance->tab->closeButton, buffer[1] ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 		}
-	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && message->desktop.bytes == 1 + sizeof(double) && instance->isUserTask && instance) {
+	} else if (buffer[0] == DESKTOP_MSG_SET_PROGRESS && bytes == 1 + sizeof(double) && instance->isUserTask && instance) {
 		double progress;
 		EsMemoryCopy(&progress, buffer + 1, sizeof(double));
 
@@ -2982,10 +3048,10 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 			EsElementRepaint(desktop.tasksButton);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SAVE && instance) {
-		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, message->desktop.bytes - 1, false);
+		ApplicationInstanceRequestSave(instance, (const char *) buffer + 1, bytes - 1, false);
 	} else if (buffer[0] == DESKTOP_MSG_RENAME && instance) {
 		const char *newName = (const char *) buffer + 1;
-		size_t newNameBytes = message->desktop.bytes - 1;
+		size_t newNameBytes = bytes - 1;
 		OpenDocument *document = desktop.openDocuments.Get(&instance->documentID);
 
 		if (!instance->documentID) {
@@ -3033,7 +3099,10 @@ void DesktopSyscall(EsMessage *message, uint8_t *buffer, EsBuffer *pipe) {
 		}
 	} else {
 		EsPrint("DesktopSyscall - Received unhandled message %d.\n", buffer[0]);
+		return false;
 	}
+
+	return true;
 }
 
 void EmbeddedWindowDestroyed(EsObjectID id) {
@@ -3063,25 +3132,9 @@ void DesktopSendMessage(EsMessage *message) {
 	}
 
 	if (message->type == ES_MSG_EMBEDDED_WINDOW_DESTROYED) {
-		EmbeddedWindowDestroyed(message->desktop.windowID);
-	} else if (message->type == ES_MSG_DESKTOP) {
-		uint8_t *buffer = (uint8_t *) EsHeapAllocate(message->desktop.bytes, false);
-
-		if (buffer) {
-			EsConstantBufferRead(message->desktop.buffer, buffer);
-			EsBuffer pipe = { .canGrow = true };
-			DesktopSyscall(message, buffer, &pipe);
-			if (message->desktop.pipe) EsPipeWrite(message->desktop.pipe, pipe.out, pipe.position);
-			EsHeapFree(pipe.out);
-			EsHeapFree(buffer);
-		}
-
-		EsHandleClose(message->desktop.buffer);
-		if (message->desktop.pipe) EsHandleClose(message->desktop.pipe);
+		EmbeddedWindowDestroyed(message->embeddedWindowDestroyedID);
 	} else if (message->type == ES_MSG_APPLICATION_CRASH) {
 		ApplicationInstanceCrashed(message);
-	} else if (message->type == ES_MSG_PROCESS_TERMINATED) {
-		ApplicationProcessTerminated(message->crash.pid);
 	} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
 		EsHandle rootDirectory = message->registerFileSystem.rootDirectory;
 

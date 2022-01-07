@@ -1367,45 +1367,6 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_WORK_AREA_GET) {
 	SYSCALL_RETURN(ES_SUCCESS, false);
 }
 
-SYSCALL_IMPLEMENT(ES_SYSCALL_MESSAGE_DESKTOP) {
-	char *buffer;
-	if (argument1 > DESKTOP_MESSAGE_SIZE_LIMIT) SYSCALL_RETURN(ES_ERROR_INSUFFICIENT_RESOURCES, false);
-	SYSCALL_READ_HEAP(buffer, argument0, argument1);
-
-	SYSCALL_HANDLE_2(argument2, (KernelObjectType) (KERNEL_OBJECT_EMBEDDED_WINDOW | KERNEL_OBJECT_NONE), _window);
-	SYSCALL_HANDLE_2(argument3, (KernelObjectType) (KERNEL_OBJECT_PIPE | KERNEL_OBJECT_NONE), _pipe);
-
-	EmbeddedWindow *window = (EmbeddedWindow *) _window.object;
-	Pipe *pipe = (Pipe *) _pipe.object;
-
-	if (pipe && (~_pipe.flags & PIPE_WRITER)) {
-		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
-	}
-
-	if (!scheduler.shutdown) {
-		if (pipe) {
-			OpenHandleToObject(pipe, KERNEL_OBJECT_PIPE, PIPE_WRITER);
-		}
-
-		void *constantBuffer = ConstantBufferCreate(buffer, argument1);
-
-		_EsMessageWithObject m = {};
-		m.message.type = ES_MSG_DESKTOP;
-		m.message.desktop.buffer = constantBuffer ? DesktopOpenHandle(constantBuffer, ES_FLAGS_DEFAULT, KERNEL_OBJECT_CONSTANT_BUFFER) : ES_INVALID_HANDLE;
-		m.message.desktop.bytes = argument1;
-		m.message.desktop.windowID = window ? window->id : 0;
-		m.message.desktop.processID = currentProcess->id;
-		m.message.desktop.pipe = pipe ? DesktopOpenHandle(pipe, PIPE_WRITER, KERNEL_OBJECT_PIPE) : ES_INVALID_HANDLE;
-
-		if (!m.message.desktop.buffer || !DesktopSendMessage(&m)) {
-			DesktopCloseHandle(m.message.desktop.buffer); 
-			DesktopCloseHandle(m.message.desktop.pipe); 
-		}
-	}
-
-	SYSCALL_RETURN(ES_SUCCESS, false);
-}
-
 #ifdef ENABLE_POSIX_SUBSYSTEM
 SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
 	SYSCALL_PERMISSION(ES_PERMISSION_POSIX_SUBSYSTEM);
@@ -1457,8 +1418,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_READ) {
 	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_PIPE, _pipe);
 	Pipe *pipe = (Pipe *) _pipe.object;
 	if ((~_pipe.flags & PIPE_READER)) SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
-	SYSCALL_BUFFER(argument1, argument2, 2, false);
-	SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, false, true), false);
+
+	if (argument1) {
+		SYSCALL_BUFFER(argument1, argument2, 2, false);
+		SYSCALL_RETURN(pipe->Access((void *) argument1, argument2, false, true), false);
+	} else {
+		// Discard data.
+		SYSCALL_RETURN(pipe->Access(nullptr, argument2, false, true), false);
+	}
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_PIPE_WRITE) {

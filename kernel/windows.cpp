@@ -936,7 +936,7 @@ void EmbeddedWindow::Close() {
 	SetEmbedOwner(nullptr);
 	m.object = nullptr;
 	m.message.type = ES_MSG_EMBEDDED_WINDOW_DESTROYED;
-	m.message.desktop.windowID = id;
+	m.message.embeddedWindowDestroyedID = id;
 	DesktopSendMessage(&m);
 
 	if (container && container->embed == this) {

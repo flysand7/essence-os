@@ -549,15 +549,6 @@ void ProcessKill(Process *process) {
 	// Don't actually deallocate it yet though; that is done on an async task queued by ProcessRemove.
 	// This must be destroyed after the handle table!
 	MMSpaceDestroy(process->vmm); 
-
-	// Tell Desktop the process has terminated.
-	if (!scheduler.shutdown) {
-		_EsMessageWithObject m;
-		EsMemoryZero(&m, sizeof(m));
-		m.message.type = ES_MSG_PROCESS_TERMINATED;
-		m.message.crash.pid = process->id;
-		DesktopSendMessage(&m);
-	}
 }
 
 void ThreadKill(KAsyncTask *task) {
@@ -1089,6 +1080,8 @@ void ProcessPause(Process *process, bool resume) {
 }
 
 void ProcessCrash(Process *process, EsCrashReason *crashReason) {
+	EsAssert(process == GetCurrentThread()->process); // TODO Test this function when crashing other processes!
+
 	if (process == kernelProcess) {
 		KernelPanic("ProcessCrash - Kernel process has crashed (%d).\n", crashReason->errorCode);
 	}
@@ -1097,36 +1090,34 @@ void ProcessCrash(Process *process, EsCrashReason *crashReason) {
 		KernelPanic("ProcessCrash - A critical process has crashed (%d).\n", crashReason->errorCode);
 	}
 
-	if (GetCurrentThread()->process != process) {
-		KernelPanic("ProcessCrash - Attempt to crash process from different process.\n");
-	}
+	bool pauseProcess = false;
 
 	KMutexAcquire(&process->crashMutex);
 
-	if (process->crashed) {
-		KMutexRelease(&process->crashMutex);
-		return;
-	}
+	if (!process->crashed) {
+		process->crashed = true;
+		pauseProcess = true;
 
-	process->crashed = true;
+		KernelLog(LOG_ERROR, "Scheduler", "process crashed", "Process %x has crashed! (%d)\n", process, crashReason->errorCode);
 
-	KernelLog(LOG_ERROR, "Scheduler", "process crashed", "Process %x has crashed! (%d)\n", process, crashReason->errorCode);
+		EsMemoryCopy(&process->crashReason, crashReason, sizeof(EsCrashReason));
 
-	EsMemoryCopy(&process->crashReason, crashReason, sizeof(EsCrashReason));
-
-	if (!scheduler.shutdown) {
-		_EsMessageWithObject m;
-		EsMemoryZero(&m, sizeof(m));
-		m.message.type = ES_MSG_APPLICATION_CRASH;
-		m.message.crash.pid = process->id;
-		EsMemoryCopy(&m.message.crash.reason, crashReason, sizeof(EsCrashReason));
-		DesktopSendMessage(&m);
+		if (!scheduler.shutdown) {
+			_EsMessageWithObject m;
+			EsMemoryZero(&m, sizeof(m));
+			m.message.type = ES_MSG_APPLICATION_CRASH;
+			m.message.crash.pid = process->id;
+			EsMemoryCopy(&m.message.crash.reason, crashReason, sizeof(EsCrashReason));
+			DesktopSendMessage(&m);
+		}
 	}
 
 	KMutexRelease(&process->crashMutex);
 
-	// TODO Shouldn't this be done before sending the desktop message?
-	ProcessPause(GetCurrentThread()->process, false);
+	if (pauseProcess) {
+		// TODO Shouldn't this be done before sending the desktop message?
+		ProcessPause(process, false);
+	}
 }
 
 Thread *Scheduler::PickThread(CPULocalStorage *local) {

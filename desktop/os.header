@@ -856,8 +856,6 @@ private enum EsSyscallType {
 	ES_SYSCALL_WINDOW_SET_CURSOR
 	ES_SYSCALL_WINDOW_SET_PROPERTY
 
-	ES_SYSCALL_MESSAGE_DESKTOP
-
 	// IO.
 
 	ES_SYSCALL_NODE_OPEN
@@ -1782,12 +1780,6 @@ struct EsMessageProcessCrash {
 	uintptr_t pid;
 };
 
-struct EsMessageDesktop {
-	EsObjectID windowID, processID;
-	EsHandle buffer, pipe;
-	size_t bytes;
-};
-
 struct EsMessageEyedrop {
 	uint32_t color;
 	bool cancelled;
@@ -1892,13 +1884,13 @@ struct EsMessage {
 		// Internal messages:
 		void *_argument;
 		EsMessageProcessCrash crash;
-		EsMessageDesktop desktop;
 		EsMessageEyedrop eyedrop;
 		EsMessageCreateInstance createInstance;
 		EsMessageTabOperation tabOperation;
 		EsMessageRegisterFileSystem registerFileSystem;
 		EsMessageUnregisterFileSystem unregisterFileSystem;
 		EsMessageDevice device;
+		EsObjectID embeddedWindowDestroyedID;
 	};
 }
 
@@ -2247,7 +2239,7 @@ function bool EsMouseIsMiddleHeld();
 // Pipes.
 
 function void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd);
-function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes);
+function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes); // If buffer is null, then the data is discarded.
 function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
 
 // Synchronisation and timing.
