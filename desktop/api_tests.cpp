@@ -1030,17 +1030,17 @@ bool UTF8Tests() {
 #endif
 
 const Test tests[] = {
-	TEST(BasicFileOperations, 30),
-	TEST(CRTMathFunctions, 30),
-	TEST(CRTStringFunctions, 30),
-	TEST(CRTOtherFunctions, 30),
-	TEST(PerformanceTimerDrift, 30),
-	TEST(TextboxEditOperations, 120),
-	TEST(OldTests2018, 30),
-	TEST(HeapReallocate, 30),
-	TEST(ArenaRandomAllocations, 30),
-	TEST(RangeSetTests, 30),
-	TEST(UTF8Tests, 30),
+	TEST(BasicFileOperations, 60),
+	TEST(CRTMathFunctions, 60),
+	TEST(CRTStringFunctions, 60),
+	TEST(CRTOtherFunctions, 60),
+	TEST(PerformanceTimerDrift, 60),
+	TEST(TextboxEditOperations, 240),
+	TEST(OldTests2018, 60),
+	TEST(HeapReallocate, 60),
+	TEST(ArenaRandomAllocations, 60),
+	TEST(RangeSetTests, 60),
+	TEST(UTF8Tests, 60),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
