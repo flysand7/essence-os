@@ -2239,7 +2239,7 @@ function bool EsMouseIsMiddleHeld();
 // Pipes.
 
 function void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd);
-function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes); // If buffer is null, then the data is discarded.
+function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes, bool allowShortReads); // If buffer is null, then the data is discarded. If allowShortReads is false, then the call will block until the buffer is full or there are no writers; if allowShortReads is true, then the call will block until the buffer is non-empty or there are no writers. Note that the modes are equivalent iff bytes is 0 or 1.
 function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
 
 // Synchronisation and timing.

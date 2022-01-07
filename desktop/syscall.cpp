@@ -769,12 +769,12 @@ void MessageDesktop(void *message, size_t messageBytes, EsHandle embeddedWindow 
 			EsPipeWrite(api.desktopRequestPipe, &length, sizeof(length));
 			EsPipeWrite(api.desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID));
 			EsPipeWrite(api.desktopRequestPipe, message, messageBytes);
-			EsPipeRead(api.desktopResponsePipe, &length, sizeof(length));
+			EsAssert(sizeof(length) == EsPipeRead(api.desktopResponsePipe, &length, sizeof(length), false));
 			EsAssert((length != 0) == (responseBuffer != 0));
 
 			while (length) {
 				char buffer[4096];
-				size_t bytesRead = EsPipeRead(api.desktopResponsePipe, buffer, sizeof(buffer) > length ? length : sizeof(buffer));
+				size_t bytesRead = EsPipeRead(api.desktopResponsePipe, buffer, sizeof(buffer) > length ? length : sizeof(buffer), false);
 				if (!bytesRead) break;
 				EsBufferWrite(responseBuffer, buffer, bytesRead);
 				length -= bytesRead;
@@ -904,12 +904,37 @@ void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd) {
 	EsSyscall(ES_SYSCALL_PIPE_CREATE, (uintptr_t) readEnd, (uintptr_t) writeEnd, 0, 0);
 }
 
-size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes) {
-	return EsSyscall(ES_SYSCALL_PIPE_READ, pipe, (uintptr_t) buffer, bytes, 0);
+size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes, bool allowShortReads) {
+	if (!bytes) {
+		return 0;
+	} else if (allowShortReads) {
+		return EsSyscall(ES_SYSCALL_PIPE_READ, pipe, (uintptr_t) buffer, bytes, 0);
+	} else {
+		size_t position = 0;
+
+		while (position != bytes) {
+			size_t read = EsPipeRead(pipe, buffer ? ((uint8_t *) buffer + position) : nullptr, bytes - position, true);
+
+			if (!read) {
+				// There are no writers.
+				break;
+			} else {
+				// Keeping reading until the buffer is full.
+				position += read;
+				EsAssert(position <= bytes);
+			}
+		}
+
+		return position;
+	}
 }
 
 size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes) {
-	return EsSyscall(ES_SYSCALL_PIPE_WRITE, pipe, (uintptr_t) buffer, bytes, 0);
+	if (bytes) {
+		return EsSyscall(ES_SYSCALL_PIPE_WRITE, pipe, (uintptr_t) buffer, bytes, 0);
+	} else {
+		return 0;
+	}
 }
 
 EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq) {

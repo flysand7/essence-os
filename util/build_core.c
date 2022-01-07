@@ -778,6 +778,10 @@ void ParseApplicationManifest(const char *manifestPath) {
 		manifest = s.buffer = (char *) LoadFile(manifestPath, &s.bytes);
 	}
 
+	if (!manifest) {
+		return;
+	}
+
 	const char *require = "";
 	bool needsNativeToolchain = false;
 	bool disabled = false;
@@ -840,7 +844,8 @@ void ParseApplicationManifest(const char *manifestPath) {
 	}
 
 	if (disabled || (require[0] && !FileExists(require))
-			|| (needsNativeToolchain && !hasNativeToolchain)) {
+			|| (needsNativeToolchain && !hasNativeToolchain)
+			|| !application.name) {
 		return;
 	}
 

@@ -1723,20 +1723,20 @@ void DesktopRequestThread(EsGeneric argument) {
 	EsObjectID embeddedWindowID;
 
 	while (true) {
-		bytes = EsPipeRead(process->desktopRequestPipe, &length, sizeof(length));
+		bytes = EsPipeRead(process->desktopRequestPipe, &length, sizeof(length), false);
 		if (bytes != sizeof(length)) break; // Process has terminated or closed the pipe.
-		bytes = EsPipeRead(process->desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID));
+		bytes = EsPipeRead(process->desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID), false);
 		if (bytes != sizeof(embeddedWindowID)) break; // Process has terminated or closed the pipe.
 
 		if (length < 1 || length > DESKTOP_MESSAGE_SIZE_LIMIT) {
 			// Discard the message.
 			// TODO Crash the process.
-			EsPipeRead(process->desktopRequestPipe, nullptr, length); 
+			EsPipeRead(process->desktopRequestPipe, nullptr, length, false); 
 			continue;
 		}
 
 		void *buffer = EsHeapAllocate(length, false);
-		bytes = EsPipeRead(process->desktopRequestPipe, buffer, length);
+		bytes = EsPipeRead(process->desktopRequestPipe, buffer, length, false);
 		if (bytes != length) break; // Process has terminated or closed the pipe.
 
 		if (!buffer) {

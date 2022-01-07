@@ -1027,6 +1027,95 @@ bool UTF8Tests() {
 
 //////////////////////////////////////////////////////////////
 
+EsHandle pipeRead, pipeWrite;
+
+void PipeTestsThread2(EsGeneric) {
+	for (uint16_t i = 0; i < 1000; i++) {
+		EsPipeWrite(pipeWrite, &i, sizeof(i));
+	}
+
+	uint16_t *buffer = (uint16_t *) EsHeapAllocate(10000, false);
+
+	for (uint16_t i = 0; i < 1000; i++) {
+		for (uintptr_t i = 0; i < 5000; i++) buffer[i] = i;
+		EsPipeWrite(pipeWrite, buffer, 10000);
+	}
+
+	uint16_t s = 0x1234;
+	EsPipeWrite(pipeWrite, &s, sizeof(s));
+	EsSleep(2000);
+	s = 0xFEDC;
+	EsPipeWrite(pipeWrite, &s, sizeof(s));
+	EsHandleClose(pipeWrite);
+
+	EsHeapFree(buffer);
+}
+
+void PipeTestsThread3(EsGeneric) {
+	uint8_t data[200];
+	EsPipeRead(pipeRead, data, sizeof(data), false);
+	EsHandleClose(pipeRead);
+}
+
+bool PipeTests() {
+	EsPipeCreate(&pipeRead, &pipeWrite);
+
+	int checkIndex = 0;
+	EsThreadInformation information;
+	CHECK(EsThreadCreate(PipeTestsThread2, &information, nullptr) == ES_SUCCESS);
+	EsHandleClose(information.handle);
+
+	for (uint16_t i = 0; i < 1000; i++) {
+		uint16_t j;
+		CHECK(sizeof(j) == EsPipeRead(pipeRead, &j, sizeof(j), true));
+		CHECK(i == j);
+	}
+
+	uint16_t *buffer = (uint16_t *) EsHeapAllocate(10000, false);
+
+	for (uint16_t i = 0; i < 1000; i++) {
+		EsMemoryZero(buffer, 10000);
+		uintptr_t position = 0;
+		
+		while (position < 10000) {
+			size_t read = EsPipeRead(pipeRead, (uint8_t *) buffer + position, 10000 - position, i >= 500);
+			if (i < 500) CHECK(read == 10000);
+			CHECK(read);
+			position += read;
+		}
+
+		CHECK(position == 10000);
+
+		for (uintptr_t i = 0; i < 5000; i++) CHECK(buffer[i] == i);
+	}
+
+	EsSleep(1000);
+
+	uint32_t s = 0x5678ABCD;
+	CHECK(2 == EsPipeRead(pipeRead, &s, sizeof(s), true));
+	CHECK(s == 0x56781234); // TODO Big endian support.
+	s = 0x5678ABCD;
+	CHECK(2 == EsPipeRead(pipeRead, &s, sizeof(s), false));
+	CHECK(s == 0x5678FEDC); // TODO Big endian support.
+	CHECK(0 == EsPipeRead(pipeRead, &s, sizeof(s), false));
+
+	EsHandleClose(pipeRead);
+
+	EsPipeCreate(&pipeRead, &pipeWrite);
+	CHECK(EsThreadCreate(PipeTestsThread3, &information, nullptr) == ES_SUCCESS);
+	EsHandleClose(information.handle);
+	size_t written = EsPipeWrite(pipeWrite, buffer, 10000);
+	CHECK(written > 0 && written < 10000); // The actual amountn written depends on the size of the internal pipe buffer, and whether the read happens in time.
+	CHECK(0 == EsPipeWrite(pipeWrite, buffer, 10000));
+	EsHandleClose(pipeWrite);
+
+	EsHeapFree(buffer);
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -1041,6 +1130,7 @@ const Test tests[] = {
 	TEST(ArenaRandomAllocations, 60),
 	TEST(RangeSetTests, 60),
 	TEST(UTF8Tests, 60),
+	TEST(PipeTests, 60),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
