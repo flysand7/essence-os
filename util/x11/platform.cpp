@@ -102,9 +102,7 @@ pthread_mutex_t memoryMappingsMutex;
 Array<MemoryMapping> memoryMappings;
 pthread_mutex_t windowsMutex;
 Array<UIWindow *> windows;
-pthread_mutex_t desktopRequestsMutex;
-Array<DesktopRequest> desktopRequests;
-sem_t desktopRequestsAvailable;
+int desktopRequestPipe, desktopResponsePipe;
 volatile EsObjectID objectIDAllocator = 1;
 extern BundleHeader _binary_bin_bundle_dat_start;
 
@@ -346,24 +344,13 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 		*(EsHandle *) argument1 = HandleOpen(writeEnd);
 
 		return ES_SUCCESS;
-	} else if (index == ES_SYSCALL_MESSAGE_DESKTOP) {
-		const uint8_t *message = (const uint8_t *) argument0;
-		size_t messageBytes = argument1;
-		DesktopRequest request = {};
-		request.message = (uint8_t *) EsHeapAllocate(messageBytes, false);
-		if (!request.message) return ES_ERROR_INSUFFICIENT_RESOURCES;
-		EsMemoryCopy(request.message, message, messageBytes);
-		request.bytes = messageBytes;
-		request.window = argument2;
-		request.pipe = argument3 ? dup(((Node *) HandleResolve(argument3, OBJECT_NODE))->fd) : -1;
-		pthread_mutex_lock(&desktopRequestsMutex);
-		desktopRequests.Add(request);
-		sem_post(&desktopRequestsAvailable);
-		pthread_mutex_unlock(&desktopRequestsMutex);
-		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_PIPE_READ) {
 		Node *node = (Node *) HandleResolve(argument0, OBJECT_NODE);
 		ssize_t x = read(node->fd, (void *) argument1, argument2);
+		return x < 0 ? ES_ERROR_UNKNOWN : x;
+	} else if (index == ES_SYSCALL_PIPE_WRITE) {
+		Node *node = (Node *) HandleResolve(argument0, OBJECT_NODE);
+		ssize_t x = write(node->fd, (void *) argument1, argument2);
 		return x < 0 ? ES_ERROR_UNKNOWN : x;
 	} else if (index == ES_SYSCALL_PRINT) {
 		fwrite((void *) argument0, 1, argument1, stderr);
@@ -704,46 +691,61 @@ void *UIThread(void *) {
 
 void *DesktopThread(void *) {
 	while (true) {
-		sem_wait(&desktopRequestsAvailable);
-		pthread_mutex_lock(&desktopRequestsMutex);
-		assert(desktopRequests.Length());
-		DesktopRequest request = desktopRequests.First();
-		desktopRequests.Delete(0);
-		pthread_mutex_unlock(&desktopRequestsMutex);
-
-		uint8_t *message = request.message;
-		size_t messageBytes = request.bytes;
-		EsHandle windowHandle = request.window;
-		int pipe = request.pipe;
+		uint32_t length;
+		EsObjectID embeddedWindowID;
+		if (sizeof(length) != read(desktopRequestPipe, &length, sizeof(length))) break;
+		if (sizeof(embeddedWindowID) != read(desktopRequestPipe, &embeddedWindowID, sizeof(embeddedWindowID))) break;
+		uint8_t *message = (uint8_t *) malloc(length);
+		if (length != read(desktopRequestPipe, message, length)) break;
+		uint32_t responseLength = 0;
 
 		if (message[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET) {
-			// TODO List fonts.
-			write(pipe, systemConfiguration, EsCRTstrlen(systemConfiguration));
-			assert(pipe != -1);
+			// TODO List all fonts.
+			responseLength = EsCRTstrlen(systemConfiguration);
+			write(desktopResponsePipe, &responseLength, sizeof(responseLength));
+			write(desktopResponsePipe, systemConfiguration, responseLength);
 		} else if (message[0] == DESKTOP_MSG_SET_TITLE) {
-			UIWindow *window = (UIWindow *) HandleResolve(windowHandle, OBJECT_WINDOW);
 			pthread_mutex_lock(&windowsMutex);
-			char cTitle[256];
-			snprintf(cTitle, sizeof(cTitle), "%.*s", (int) messageBytes - 1, message + 1);
-			XStoreName(ui.display, window->window, cTitle);
+
+			UIWindow *window = nullptr;
+
+			for (uintptr_t i = 0; i < windows.Length(); i++) {
+				if (windows[i]->id == embeddedWindowID) {
+					window = windows[i];
+					break;
+				}
+			}
+
+			if (window) {
+				char cTitle[256];
+				snprintf(cTitle, sizeof(cTitle), "%.*s", (int) length - 1, message + 1);
+				XStoreName(ui.display, window->window, cTitle);
+			}
+
 			pthread_mutex_unlock(&windowsMutex);
+			write(desktopResponsePipe, &responseLength, sizeof(responseLength));
 		} else if (message[0] == DESKTOP_MSG_SET_ICON) {
 			// TODO.
+			write(desktopResponsePipe, &responseLength, sizeof(responseLength));
 		} else if (message[0] == DESKTOP_MSG_SET_MODIFIED) {
 			// TODO.
+			write(desktopResponsePipe, &responseLength, sizeof(responseLength));
 		} else if (message[0] == DESKTOP_MSG_CLIPBOARD_GET) {
 			ClipboardInformation clipboardInformation = {};
 			EsHandle fileHandle = ES_INVALID_HANDLE;
-			write(pipe, &clipboardInformation, sizeof(clipboardInformation));
-			write(pipe, &fileHandle, sizeof(fileHandle));
+			responseLength = sizeof(clipboardInformation) + sizeof(fileHandle);
+			write(desktopResponsePipe, &responseLength, sizeof(responseLength));
+			write(desktopResponsePipe, &clipboardInformation, sizeof(clipboardInformation));
+			write(desktopResponsePipe, &fileHandle, sizeof(fileHandle));
 		} else {
 			fprintf(stderr, "Unimplemented desktop message %d.\n", message[0]);
 			exit(1);
 		}
 
-		EsHeapFree(message);
-		if (pipe != -1) close(pipe);
+		free(message);
 	}
+
+	return nullptr;
 }
 
 int main() {
@@ -751,11 +753,14 @@ int main() {
 	pthread_mutex_init(&handlesMutex, nullptr);
 	pthread_mutex_init(&messageQueueMutex, nullptr);
 	pthread_mutex_init(&windowsMutex, nullptr);
-	pthread_mutex_init(&desktopRequestsMutex, nullptr);
-	sem_init(&desktopRequestsAvailable, 0, 0);
 	sem_init(&messagesAvailable, 0, 0);
 
 	XInitThreads();
+
+	for (uintptr_t i = 0; i < 0x20; i++) {
+		// Prevent the first few handles from being used.
+		HandleOpen(nullptr);
+	}
 
 	ui.display = XOpenDisplay(NULL);
 	ui.visual = XDefaultVisual(ui.display, 0);
@@ -769,10 +774,6 @@ int main() {
 		XSetLocaleModifiers("@im=none");
 		ui.xim = XOpenIM(ui.display, 0, 0, 0);
 	}
-
-	pthread_t uiThread, desktopThread;
-	pthread_create(&uiThread, nullptr, UIThread, nullptr);
-	pthread_create(&desktopThread, nullptr, DesktopThread, nullptr);
 
 	globalData.clickChainTimeoutMs = 300;
 	globalData.uiScale = 1.0f;
@@ -804,6 +805,27 @@ int main() {
 	initialMountPoint->base = HandleOpen(baseMountPoint);
 	EsCRTstrcpy(initialMountPoint->prefix, "0:");
 	// TODO Settings mount point.
+
+	int pipes[2];
+	Node *pipeObject;
+	pipe(pipes);
+	desktopRequestPipe = pipes[0]; 
+	pipeObject = (Node *) EsHeapAllocate(sizeof(Node), true);
+	pipeObject->type = OBJECT_NODE;
+	pipeObject->referenceCount = 1;
+	pipeObject->fd = pipes[1];
+	startupHeader->desktopRequestPipe = HandleOpen(pipeObject);
+	pipe(pipes);
+	desktopResponsePipe = pipes[1]; 
+	pipeObject = (Node *) EsHeapAllocate(sizeof(Node), true);
+	pipeObject->type = OBJECT_NODE;
+	pipeObject->referenceCount = 1;
+	pipeObject->fd = pipes[0];
+	startupHeader->desktopResponsePipe = HandleOpen(pipeObject);
+
+	pthread_t uiThread, desktopThread;
+	pthread_create(&uiThread, nullptr, UIThread, nullptr);
+	pthread_create(&desktopThread, nullptr, DesktopThread, nullptr);
 
 	bundleDesktop.base = &_binary_bin_bundle_dat_start;
 
