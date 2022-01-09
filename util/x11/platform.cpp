@@ -16,6 +16,7 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/statvfs.h>
 #include <sys/mman.h>
 #include <X11/Xlib.h>
@@ -37,6 +38,7 @@ struct Object {
 };
 
 struct Thread : Object {
+	uintptr_t parameters[3];
 };
 
 struct Process : Object {
@@ -262,11 +264,19 @@ bool MessagePost(_EsMessageWithObject *message) {
 	return result;
 }
 
+void *ThreadUser(void *object) {
+	Thread *thread = (Thread *) object;
+	((void (*)(uintptr_t, uintptr_t)) thread->parameters[0])(thread->parameters[1], thread->parameters[2]);
+	ReferenceClose(thread);
+	return nullptr;
+}
+
 uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1, uintptr_t, uintptr_t argument2, uintptr_t argument3) {
 	// TODO.
 	
 	if (index == ES_SYSCALL_THREAD_GET_ID) {
-		return pthread_self();
+		// TODO.
+		return 0;
 	} else if (index == ES_SYSCALL_THREAD_SET_TLS) {
 		tls = argument0;
 		return ES_SUCCESS;
@@ -422,22 +432,27 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 	} else if (index == ES_SYSCALL_WINDOW_SET_PROPERTY) {
 		uint8_t property = argument3;
 		UIWindow *window = (UIWindow *) HandleResolve(argument0, OBJECT_WINDOW);
+		pthread_mutex_lock(&windowsMutex);
 
 		if (property == ES_WINDOW_PROPERTY_OBJECT) {
-			pthread_mutex_lock(&windowsMutex);
 			window->apiObject = (void *) argument2;
 			_EsMessageWithObject m = {};
 			m.object = window->apiObject;
 			m.message.type = ES_MSG_WINDOW_RESIZED;
 			m.message.windowResized.content = ES_RECT_2S(window->width, window->height);
 			MessagePost(&m);
-			pthread_mutex_unlock(&windowsMutex);
+		} else if (property == ES_WINDOW_PROPERTY_SOLID 
+				|| property == ES_WINDOW_PROPERTY_MATERIAL
+				|| property == ES_WINDOW_PROPERTY_BLUR_BOUNDS
+				|| property == ES_WINDOW_PROPERTY_ALPHA) {
+			// TODO.
 		} else {
 			fprintf(stderr, "Unimplemented window property %d.\n", property);
 			exit(1);
 			return ES_ERROR_UNSUPPORTED_FEATURE;
 		}
 
+		pthread_mutex_unlock(&windowsMutex);
 		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_WINDOW_SET_CURSOR) {
 		// TODO.
@@ -487,8 +502,155 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 
 		pthread_mutex_unlock(&windowsMutex);
 		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_WINDOW_CREATE) {
+		EsWindowStyle style = (EsWindowStyle) argument0;
+		void *apiObject = (void *) argument2;
+
+		UIWindow *window = (UIWindow *) EsHeapAllocate(sizeof(UIWindow), true);
+		window->type = OBJECT_WINDOW;
+		window->referenceCount = 1;
+		window->id = __sync_fetch_and_add(&objectIDAllocator, 1);
+		window->apiObject = apiObject;
+
+		pthread_mutex_lock(&windowsMutex);
+		XSetWindowAttributes attributes = {};
+		attributes.override_redirect = style == ES_WINDOW_MENU;
+		window->window = XCreateWindow(ui.display, DefaultRootWindow(ui.display), 0, 0, 800, 600, 0, 0, 
+				InputOutput, CopyFromParent, CWOverrideRedirect, &attributes);
+		XSelectInput(ui.display, window->window, SubstructureNotifyMask | ExposureMask | PointerMotionMask 
+				| ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask
+				| EnterWindowMask | LeaveWindowMask | ButtonMotionMask | KeymapStateMask | FocusChangeMask);
+		XSetWMProtocols(ui.display, window->window, &ui.windowClosedID, 1);
+		window->image = XCreateImage(ui.display, ui.visual, 24, ZPixmap, 0, NULL, 10, 10, 32, 0);
+		window->xic = XCreateIC(ui.xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, window->window, 
+				XNFocusWindow, window->window, NULL);
+		windows.Add(window);
+
+		if (argument2 == ES_WINDOW_MENU) {
+			Atom properties[] = {
+				XInternAtom(ui.display, "_NET_WM_WINDOW_TYPE", true),
+				XInternAtom(ui.display, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", true),
+				XInternAtom(ui.display, "_MOTIF_WM_HINTS", true),
+			};
+
+			XChangeProperty(ui.display, window->window, properties[0], XA_ATOM, 32, PropModeReplace, (uint8_t *) properties, 2);
+			XSetTransientForHint(ui.display, window->window, DefaultRootWindow(ui.display));
+
+			struct Hints {
+				int flags;
+				int functions;
+				int decorations;
+				int inputMode;
+				int status;
+			};
+
+			struct Hints hints = { 0 };
+			hints.flags = 2;
+			XChangeProperty(ui.display, window->window, properties[2], properties[2], 32, PropModeReplace, (uint8_t *) &hints, 5);
+		}
+
+		pthread_mutex_unlock(&windowsMutex);
+
+		return HandleOpen(window);
+	} else if (index == ES_SYSCALL_WINDOW_MOVE) {
+		UIWindow *window = (UIWindow *) HandleResolve(argument0, OBJECT_WINDOW);
+		EsRectangle point = *(EsRectangle *) argument1;
+		int width = ES_RECT_WIDTH(point), height = ES_RECT_HEIGHT(point);
+		pthread_mutex_lock(&windowsMutex);
+
+		if (argument3 & ES_WINDOW_MOVE_HIDDEN) {
+			// TODO.
+		} else {
+			XMapWindow(ui.display, window->window);
+		}
+
+		if (argument3 & ES_WINDOW_MOVE_MAXIMIZED) {
+			// TODO.
+		}
+
+		if (argument3 & ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN) {
+			for (int i = 0; i < ScreenCount(ui.display); i++) {
+				Screen *screen = ScreenOfDisplay(ui.display, i);
+
+				int x, y;
+				Window child;
+				XTranslateCoordinates(ui.display, screen->root, DefaultRootWindow(ui.display), 0, 0, &x, &y, &child);
+
+				if (point.l >= x && point.l < x + screen->width 
+						&& point.t >= y && point.t < y + screen->height) {
+					if (point.l + width > x + screen->width) point.l = x + screen->width - width;
+					if (point.t + height > y + screen->height) point.t = y + screen->height - height;
+					if (point.l < x) point.l = x;
+					if (point.t < y) point.t = y;
+					if (point.l + width > x + screen->width) width = x + screen->width - point.l;
+					if (point.t + height > y + screen->height) height = y + screen->height - point.t;
+					break;
+				}
+			}
+		}
+
+		XMoveResizeWindow(ui.display, window->window, point.l, point.t, width, height);
+		pthread_mutex_unlock(&windowsMutex);
+		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_THREAD_CREATE) {
+		Thread *threadObject = (Thread *) EsHeapAllocate(sizeof(Thread), true);
+		if (!threadObject) return ES_ERROR_INSUFFICIENT_RESOURCES;
+
+		threadObject->type = OBJECT_THREAD;
+		threadObject->referenceCount = 2;
+		threadObject->parameters[0] = argument0;
+		threadObject->parameters[1] = argument3;
+		threadObject->parameters[2] = argument1;
+
+		EsThreadInformation *thread = (EsThreadInformation *) argument2;
+		EsMemoryZero(thread, sizeof(EsThreadInformation));
+
+		pthread_t pthread;
+		pthread_create(&pthread, nullptr, ThreadUser, threadObject);
+		// TODO Handling errors.
+		// TODO Saving and closing this handle.
+
+		thread->tid = 0; // TODO.
+		thread->handle = HandleOpen(threadObject);
+
+		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_EVENT_SET) {
+		Event *event = (Event *) HandleResolve(argument0, OBJECT_EVENT);
+		int value;
+		sem_getvalue(&event->semaphore, &value);
+		assert(event->autoReset); // TODO Events with autoReset false.
+		assert(!value); 
+		sem_post(&event->semaphore);
+		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_EVENT_RESET) {
+		Event *event = (Event *) HandleResolve(argument0, OBJECT_EVENT);
+		int value;
+		sem_getvalue(&event->semaphore, &value);
+		assert(event->autoReset); // TODO Events with autoReset false.
+		assert(!value); 
+		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_WAIT) {
+		assert(argument1 == 1); // TODO Waiting on multiple object.
+		Object *object = HandleResolve(*(EsHandle *) argument0, 0);
+		assert(object->type == OBJECT_EVENT); // TODO Waiting on other object types.
+		Event *event = (Event *) object;
+		assert(event->autoReset); // TODO Events with autoReset false.
+
+		if ((int) argument2 == ES_WAIT_NO_TIMEOUT) {
+			while (sem_wait(&event->semaphore) == -1);
+			return ES_SUCCESS;
+		} else {
+			struct timespec t;
+			clock_gettime(CLOCK_REALTIME, &t);
+			uint64_t x = (uint64_t) t.tv_sec * 1000000000 + (uint64_t) t.tv_nsec + (uint64_t) argument2 * 1000000;
+			t.tv_sec = x / 1000000000, t.tv_nsec = x % 1000000000;
+			sem_timedwait(&event->semaphore, &t);
+			int s = -1;
+			while ((s = sem_timedwait(&event->semaphore, &t)) == -1 && errno == EINTR);
+			return s == -1 ? ES_ERROR_TIMEOUT_REACHED : 0;
+		}
 	} else if (index == ES_SYSCALL_PROCESS_CRASH) {
-		assert(false);
+		assert(false); // Do an assertion failure so it can be caught by an attached debugger.
 	} else {
 		fprintf(stderr, "Unimplemented system call '%s' (%ld).\n", EnumLookupNameFromValue(enumStrings_EsSyscallType, index), index);
 		exit(1);
@@ -648,7 +810,8 @@ void *UIThread(void *) {
 	XMapRaised(ui.display, window->window);
 	XSetWMProtocols(ui.display, window->window, &ui.windowClosedID, 1);
 	window->image = XCreateImage(ui.display, ui.visual, 24, ZPixmap, 0, NULL, 10, 10, 32, 0);
-	window->xic = XCreateIC(ui.xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, window->window, XNFocusWindow, window->window, NULL);
+	window->xic = XCreateIC(ui.xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, window->window, 
+			XNFocusWindow, window->window, NULL);
 	windows.Add(window);
 
 	_EsMessageWithObject m = {};
