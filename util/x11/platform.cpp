@@ -46,7 +46,18 @@ struct Process : Object {
 
 struct Event : Object {
 	bool autoReset;
-	sem_t semaphore;
+
+	union {
+		struct {
+			bool state;
+			pthread_mutex_t mutex;
+			pthread_cond_t condition;
+		};
+
+		struct {
+			sem_t semaphore;
+		};
+	};
 };
 
 struct SharedMemoryRegion : Object {
@@ -180,6 +191,94 @@ uint64_t ProcessorReadTimeStamp() {
 	return (uint64_t) time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
+void EventInitialise(Event *event, bool autoReset) {
+	if (autoReset) {
+		sem_init(&event->semaphore, 0, 0);
+		event->autoReset = true;
+	} else {
+		pthread_mutex_init(&event->mutex, nullptr);
+		pthread_cond_init(&event->condition, nullptr);
+		event->autoReset = false;
+	}
+}
+
+void EventDestroy(Event *event) {
+	if (event->autoReset) {
+		sem_destroy(&event->semaphore);
+	} else {
+		pthread_mutex_destroy(&event->mutex);
+		pthread_cond_destroy(&event->condition);
+	}
+}
+
+void EventSet(Event *event) {
+	if (event->autoReset) {
+		int value;
+		sem_getvalue(&event->semaphore, &value);
+		if (!value) sem_post(&event->semaphore);
+		else assert(value == 1);
+	} else {
+		pthread_mutex_lock(&event->mutex);
+		event->state = true;
+		pthread_cond_broadcast(&event->condition);
+		pthread_mutex_unlock(&event->mutex);
+	}
+}
+
+void EventReset(Event *event) {
+	if (event->autoReset) {
+		sem_trywait(&event->semaphore);
+	} else {
+		event->state = false;
+	}
+}
+
+bool EventWait(Event *event, int timeoutMs) {
+	if (timeoutMs != -1) {
+		struct timespec endTime;
+		clock_gettime(CLOCK_REALTIME, &endTime);
+		uint64_t x = (uint64_t) endTime.tv_sec * 1000000000 
+			+ (uint64_t) endTime.tv_nsec 
+			+ (uint64_t) timeoutMs * 1000000;
+		endTime.tv_sec = x / 1000000000;
+		endTime.tv_nsec = x % 1000000000;
+
+		if (event->autoReset) {
+			while (sem_timedwait(&event->semaphore, &endTime)) {
+				if (errno == ETIMEDOUT) {
+					return false;
+				}
+			}
+		} else {
+			pthread_mutex_lock(&event->mutex);
+
+			while (!event->state) {
+				if (pthread_cond_timedwait(&event->condition, &event->mutex, &endTime)) {
+					if (errno == ETIMEDOUT) {
+						return false;
+					}
+				}
+			}
+
+			pthread_mutex_unlock(&event->mutex);
+		}
+	} else {
+		if (event->autoReset) {
+			while (sem_wait(&event->semaphore));
+		} else {
+			pthread_mutex_lock(&event->mutex);
+
+			while (!event->state) {
+				pthread_cond_wait(&event->condition, &event->mutex);
+			}
+
+			pthread_mutex_unlock(&event->mutex);
+		}
+	}
+
+	return true;
+}
+
 void ReferenceClose(Object *object) {
 	pthread_mutex_lock(&handlesMutex);
 	assert(object);
@@ -288,14 +387,8 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 
 		event->type = OBJECT_EVENT;
 		event->referenceCount = 1;
-		event->autoReset = argument0;
-
-		if (0 != sem_init(&event->semaphore, 0, 0)) { 
-			EsHeapFree(event); 
-			return ES_ERROR_UNKNOWN; 
-		} else {
-			return HandleOpen(event);	
-		}
+		EventInitialise(event, argument0);
+		return HandleOpen(event);	
 	} else if (index == ES_SYSCALL_MEMORY_MAP_OBJECT) {
 		SharedMemoryRegion *region = (SharedMemoryRegion *) HandleResolve(argument0, OBJECT_SHMEM);
 		assert(argument3 != ES_MEMORY_MAP_OBJECT_READ_WRITE || argument3 != ES_MEMORY_MAP_OBJECT_READ_ONLY);
@@ -616,41 +709,22 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_EVENT_SET) {
 		Event *event = (Event *) HandleResolve(argument0, OBJECT_EVENT);
-		int value;
-		sem_getvalue(&event->semaphore, &value);
-		assert(event->autoReset); // TODO Events with autoReset false.
-		assert(!value); 
-		sem_post(&event->semaphore);
+		EventSet(event);
 		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_EVENT_RESET) {
 		Event *event = (Event *) HandleResolve(argument0, OBJECT_EVENT);
-		int value;
-		sem_getvalue(&event->semaphore, &value);
-		assert(event->autoReset); // TODO Events with autoReset false.
-		assert(!value); 
+		EventReset(event);
 		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_WAIT) {
 		assert(argument1 == 1); // TODO Waiting on multiple object.
 		Object *object = HandleResolve(*(EsHandle *) argument0, 0);
 		assert(object->type == OBJECT_EVENT); // TODO Waiting on other object types.
 		Event *event = (Event *) object;
-		assert(event->autoReset); // TODO Events with autoReset false.
-
-		if ((int) argument2 == ES_WAIT_NO_TIMEOUT) {
-			while (sem_wait(&event->semaphore) == -1);
-			return ES_SUCCESS;
-		} else {
-			struct timespec t;
-			clock_gettime(CLOCK_REALTIME, &t);
-			uint64_t x = (uint64_t) t.tv_sec * 1000000000 + (uint64_t) t.tv_nsec + (uint64_t) argument2 * 1000000;
-			t.tv_sec = x / 1000000000, t.tv_nsec = x % 1000000000;
-			sem_timedwait(&event->semaphore, &t);
-			int s = -1;
-			while ((s = sem_timedwait(&event->semaphore, &t)) == -1 && errno == EINTR);
-			return s == -1 ? ES_ERROR_TIMEOUT_REACHED : 0;
-		}
+		return EventWait(event, argument2) ? ES_ERROR_TIMEOUT_REACHED : 0;
 	} else if (index == ES_SYSCALL_PROCESS_CRASH) {
 		assert(false); // Do an assertion failure so it can be caught by an attached debugger.
+	} else if (index == ES_SYSCALL_YIELD_SCHEDULER) {
+		return ES_SUCCESS;
 	} else {
 		fprintf(stderr, "Unimplemented system call '%s' (%ld).\n", EnumLookupNameFromValue(enumStrings_EsSyscallType, index), index);
 		exit(1);
