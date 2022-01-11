@@ -236,7 +236,19 @@ void DeleteGlyph(void *cp) {
 	UIElementRefresh(kerning);
 }
 
+void DrawGlyph(UIPainter *painter, Glyph *g, int _x, int _y) {
+	for (int y = g->y0; y <= g->y1; y++) {
+		for (int x = g->x0; x <= g->x1; x++) {
+			if (g->bits[y][x]) {
+				UIDrawBlock(painter, UI_RECT_4(_x + x - g->xOrigin, _x + x + 1 - g->xOrigin, _y + y - g->yOrigin, _y + y + 1 - g->yOrigin), 0xFF000000);
+			}
+		}
+	}
+}
+
 int GlyphsTableMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	UITable *table = (UITable *) element;
+
 	if (message == UI_MSG_TABLE_GET_ITEM) {
 		UITableGetItem *m = (UITableGetItem *) dp;
 		m->isSelected = selectedGlyph == m->index;
@@ -251,7 +263,7 @@ int GlyphsTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 			return snprintf(m->buffer, m->bufferBytes, "U+%.4X", glyphsArray[m->index].number);
 		}
 	} else if (message == UI_MSG_LEFT_DOWN || message == UI_MSG_MOUSE_DRAG) {
-		int index = UITableHitTest((UITable *) element, element->window->cursorX, element->window->cursorY);
+		int index = UITableHitTest(table, element->window->cursorX, element->window->cursorY);
 
 		if (index != -1) {
 			selectedGlyph = index;
@@ -259,19 +271,31 @@ int GlyphsTableMessage(UIElement *element, UIMessage message, int di, void *dp) 
 			UIElementMessage(&tabPane->e, UI_MSG_LAYOUT, 0, 0);
 			UIElementRepaint(&tabPane->e, NULL);
 		}
+	} else if (message == UI_MSG_PAINT) {
+		element->messageClass(element, message, di, dp);
+
+		UIPainter *painter = (UIPainter *) dp;
+		UIRectangle oldClip = painter->clip;
+		UIRectangle bounds = element->bounds;
+		bounds.t += UI_SIZE_TABLE_HEADER * element->window->scale;
+		bounds.r -= UI_SIZE_SCROLL_BAR * element->window->scale;
+		painter->clip = UIRectangleIntersection(painter->clip, bounds);
+		UIRectangle row = bounds;
+		int rowHeight = UI_SIZE_TABLE_ROW * element->window->scale;
+		row.t -= (int64_t) table->vScroll->position % rowHeight;
+
+		for (int i = table->vScroll->position / rowHeight; i < table->itemCount; i++) {
+			if (row.t > element->clip.b) break;
+			row.b = row.t + rowHeight;
+			DrawGlyph(painter, &glyphsArray[i], row.r - 50, row.b - 8);
+			row.t += rowHeight;
+		}
+
+		painter->clip = oldClip;
+		return 1;
 	}
 
 	return 0;
-}
-
-void DrawGlyph(UIPainter *painter, Glyph *g, int _x, int _y) {
-	for (int y = g->y0; y <= g->y1; y++) {
-		for (int x = g->x0; x <= g->x1; x++) {
-			if (g->bits[y][x]) {
-				UIDrawBlock(painter, UI_RECT_4(_x + x - g->xOrigin, _x + x + 1 - g->xOrigin, _y + y - g->yOrigin, _y + y + 1 - g->yOrigin), 0xFF000000);
-			}
-		}
-	}
 }
 
 void SetOrigin(void *cp) {
