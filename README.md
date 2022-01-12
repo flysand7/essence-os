@@ -10,7 +10,7 @@ Video demonstration as of October 2021, running on real hardware: (YouTube)
 
 ## Links
 
-For discussion, join our Discord server: https://discord.gg/skeP9ZGDK8
+For discussion, join our Discord server: https://discord.gg/skeP9ZGDK8. 
 
 Alternatively, visit the forums (not very active): https://essence.handmade.network/forums.
 

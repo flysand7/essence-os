@@ -1,4 +1,4 @@
-MIT License
+This project is released under the MIT License. Please note that some files bundled in the source tree are taken from other projects which are made available under different licenses; these cases are detailed at the end of this file.
 
 Copyright (c) 2017-2022 nakst and other contributors (see CONTRIBUTING.md).
 
@@ -22,13 +22,13 @@ SOFTWARE.
 
 This project also include the work of other projects.
 Their licenses may be found in the following files:
-	- `util/nanosvg.h`
-	- `util/hsluv.h`
-	- `shared/stb_image.h`, `shared/stb_sprintf.h`, `shared/stb_ds.h` and `util/stb_truetype.h`
-	- `res/Fonts/Hack License.txt`, `res/Fonts/Inter License.txt`, `res/Fonts/Atkinson Hyperlegible License.txt`, `res/Fonts/OpenDyslexic License.txt`
-	- `res/Icons/elementary Icons License.txt`
-	- `res/Sample Images/Licenses.txt`
-	- `res/Keyboard Layouts/License.txt`
-	- Ported applications have their licenses in their respective folders in `ports/`.
+* `util/nanosvg.h`
+* `util/hsluv.h`
+* `shared/stb_image.h`, `shared/stb_sprintf.h`, `shared/stb_ds.h` and `util/stb_truetype.h`
+* `res/Fonts/Hack License.txt`, `res/Fonts/Inter License.txt`, `res/Fonts/Atkinson Hyperlegible License.txt`, `res/Fonts/OpenDyslexic License.txt`
+* `res/Icons/elementary Icons License.txt`
+* `res/Sample Images/Licenses.txt`
+* `res/Keyboard Layouts/License.txt`
+* Ported applications have their licenses in their respective folders in `ports/`.
 All trademarks are registered trademarks of their respective owners.
 Please tell me if I've forgotten something!
