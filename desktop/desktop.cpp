@@ -4,25 +4,16 @@
 
 // TODO Tabs:
 //	- New tab page - search; recent files.
-// 	- Right click menu.
-// 	- Duplicate tabs.
-
-// TODO Graphical issues:
-// 	- Inactivate windows don't dim outline around tabs.
-
+// 	- Duplicating tabs.
 // TODO Task bar:
 // 	- Right click menu.
 // 	- Notification area?
-
-// TODO Desktop experience:
-// 	- Alt+tab.
-// 	- Changing wallpaper.
-
 // TODO Global shortcuts:
 // 	- Restoring closed tabs.
 // 	- Switch to window.
 // 	- Print screen.
-
+// TODO On inactivate windows dim outline around tabs.
+// TODO Alt+tab.
 // TODO Restarting Desktop if it crashes.
 // TODO Make sure applications can't delete |Fonts:.
 // TODO Handle open document deletion.
@@ -1886,6 +1877,10 @@ bool ApplicationInstanceStart(int64_t applicationID, _EsApplicationStartupInform
 		}
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
+			// We will inform the process of new and removed mount points on the message thread,
+			// in response to ES_MSG_REGISTER_FILE_SYSTEM and ES_MSG_UNREGISTER_FILE_SYSTEM.
+			EsMessageMutexCheck();
+
 			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 				initialMountPoints.Add(api.mountPoints[i]);
 				handleDuplicateList.Add(api.mountPoints[i].base);

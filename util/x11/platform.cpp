@@ -19,10 +19,14 @@
 #include <errno.h>
 #include <sys/statvfs.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
+
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
 
 extern "C" void _StartApplication();
 
@@ -75,8 +79,8 @@ struct UIWindow : Object {
 	XImage *image;
 	XIC xic;
 	void *apiObject;
-	int x, y;
-	int width, height;
+	int32_t x, y;
+	int32_t width, height;
 	uint32_t *bits;
 };
 
@@ -115,6 +119,7 @@ pthread_mutex_t memoryMappingsMutex;
 Array<MemoryMapping> memoryMappings;
 pthread_mutex_t windowsMutex;
 Array<UIWindow *> windows;
+UIWindow *mainWindow;
 int desktopRequestPipe, desktopResponsePipe;
 volatile EsObjectID objectIDAllocator = 1;
 extern BundleHeader _binary_bin_bundle_dat_start;
@@ -292,6 +297,7 @@ void ReferenceClose(Object *object) {
 			EsHeapFree(((SharedMemoryRegion *) object)->pointer);
 		} else if (object->type == OBJECT_NODE) {
 			close(((Node *) object)->fd);
+		} else if (object->type == OBJECT_WINDOW) {
 		} else {
 			assert(false); // TODO.
 		}
@@ -601,7 +607,7 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 
 		UIWindow *window = (UIWindow *) EsHeapAllocate(sizeof(UIWindow), true);
 		window->type = OBJECT_WINDOW;
-		window->referenceCount = 1;
+		window->referenceCount = 2;
 		window->id = __sync_fetch_and_add(&objectIDAllocator, 1);
 		window->apiObject = apiObject;
 
@@ -716,14 +722,37 @@ uintptr_t _APISyscall(uintptr_t index, uintptr_t argument0, uintptr_t argument1,
 		EventReset(event);
 		return ES_SUCCESS;
 	} else if (index == ES_SYSCALL_WAIT) {
-		assert(argument1 == 1); // TODO Waiting on multiple object.
+		assert(argument1 == 1); // TODO Waiting on multiple objects.
 		Object *object = HandleResolve(*(EsHandle *) argument0, 0);
 		assert(object->type == OBJECT_EVENT); // TODO Waiting on other object types.
 		Event *event = (Event *) object;
 		return EventWait(event, argument2) ? ES_ERROR_TIMEOUT_REACHED : 0;
+	} else if (index == ES_SYSCALL_PROCESS_TERMINATE) {
+		exit(argument1);
 	} else if (index == ES_SYSCALL_PROCESS_CRASH) {
 		assert(false); // Do an assertion failure so it can be caught by an attached debugger.
 	} else if (index == ES_SYSCALL_YIELD_SCHEDULER) {
+		return ES_SUCCESS;
+	} else if (index == ES_SYSCALL_NODE_OPEN) {
+		return ES_ERROR_FILE_DOES_NOT_EXIST; // TODO File and directory operations.
+	} else if (index == ES_SYSCALL_WINDOW_CLOSE) {
+		UIWindow *window = (UIWindow *) HandleResolve(argument0, OBJECT_WINDOW);
+		pthread_mutex_lock(&windowsMutex);
+		EsHeapFree(window->bits);
+		window->image->data = NULL;
+		XDestroyImage(window->image);
+		XDestroyIC(window->xic);
+		XDestroyWindow(ui.display, window->window);
+		windows.FindAndDelete(window, true);
+
+		if (mainWindow == window) {
+			_EsMessageWithObject m = { .message = { .type = ES_MSG_APPLICATION_EXIT } };
+			MessagePost(&m);
+		}
+
+		pthread_mutex_unlock(&windowsMutex);
+		ReferenceClose(window);
+
 		return ES_SUCCESS;
 	} else {
 		fprintf(stderr, "Unimplemented system call '%s' (%ld).\n", EnumLookupNameFromValue(enumStrings_EsSyscallType, index), index);
@@ -796,8 +825,8 @@ void UIProcessEvent(XEvent *event) {
 	}
 
 	if (event->type == ClientMessage && (Atom) event->xclient.data.l[0] == ui.windowClosedID) {
-		// TODO Properly exiting.
-		exit(0);
+		_EsMessageWithObject m = { .message = { .type = ES_MSG_TAB_CLOSE_REQUEST, .tabOperation = { .id = mainWindow->id } } };
+		MessagePost(&m);
 	} else if (event->type == ConfigureNotify) {
 		UIWindow *window = UIFindWindow(event->xconfigure.window);
 
@@ -805,13 +834,24 @@ void UIProcessEvent(XEvent *event) {
 		window->y = event->xconfigure.y;
 
 		if (window->width != event->xconfigure.width || window->height != event->xconfigure.height) {
+			int32_t oldWidth = window->width, oldHeight = window->height;
+			uint32_t *oldBits = window->bits;
+
 			window->width = event->xconfigure.width;
 			window->height = event->xconfigure.height;
-			window->bits = (uint32_t *) EsHeapReallocate(window->bits, window->width * window->height * 4, false); // TODO Copying old bits correctly.
+			window->bits = (uint32_t *) EsHeapAllocate(window->width * window->height * 4, false);
 			window->image->width = window->width;
 			window->image->height = window->height;
 			window->image->bytes_per_line = window->width * 4;
 			window->image->data = (char *) window->bits;
+
+			for (int32_t y = 0; y < window->height; y++) {
+				for (int32_t x = 0; x < window->width; x++) {
+					window->bits[y * window->width + x] = y < oldHeight && x < oldWidth ? oldBits[y * oldWidth + x] : 0xFFFFFFFF;
+				}
+			}
+
+			EsHeapFree(oldBits, oldWidth * oldHeight * 4);
 
 			if (window->apiObject) {
 				_EsMessageWithObject m = {};
@@ -872,8 +912,9 @@ void UIProcessEvent(XEvent *event) {
 
 void *UIThread(void *) {
 	UIWindow *window = (UIWindow *) EsHeapAllocate(sizeof(UIWindow), true);
+	mainWindow = window;
 	window->type = OBJECT_WINDOW;
-	window->referenceCount = 1;
+	window->referenceCount = 2;
 	window->id = __sync_fetch_and_add(&objectIDAllocator, 1);
 	XSetWindowAttributes attributes = {};
 	window->window = XCreateWindow(ui.display, DefaultRootWindow(ui.display), 0, 0, 800, 600, 0, 0, 
@@ -891,6 +932,7 @@ void *UIThread(void *) {
 	_EsMessageWithObject m = {};
 	m.message.type = ES_MSG_INSTANCE_CREATE;
 	m.message.createInstance.window = HandleOpen(window);
+	// TODO _EsApplicationStartupInformation.
 	MessagePost(&m);
 
 	while (true) {
@@ -986,6 +1028,22 @@ void *DesktopThread(void *) {
 }
 
 int main() {
+	char *xdgConfigHome = getenv("XDG_CONFIG_HOME");
+	char *userHome = getenv("HOME");
+
+	if (!xdgConfigHome) {
+		const char *defaultConfig = "/.config";
+		xdgConfigHome = (char *) malloc(strlen(userHome) + strlen(defaultConfig) + 1);
+		strcpy(xdgConfigHome, userHome);
+		strcat(xdgConfigHome, defaultConfig);
+	}
+
+	char *applicationConfigDirectory = (char *) malloc(strlen(xdgConfigHome) + 1 + strlen(STRINGIFY(INSTALLATION_NAME)) + 1);
+	strcpy(applicationConfigDirectory, xdgConfigHome);
+	strcat(applicationConfigDirectory, "/");
+	strcat(applicationConfigDirectory, STRINGIFY(INSTALLATION_NAME));
+	mkdir(applicationConfigDirectory, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
 	pthread_mutex_init(&memoryMappingsMutex, nullptr);
 	pthread_mutex_init(&handlesMutex, nullptr);
 	pthread_mutex_init(&messageQueueMutex, nullptr);
@@ -1025,23 +1083,30 @@ int main() {
 	globalDataRegion->pointer = &globalData;
 	globalDataRegion->bytes = sizeof(globalData);
 
-	Node *baseMountPoint = (Node *) EsHeapAllocate(sizeof(Node), true);
-	baseMountPoint->type = OBJECT_NODE;
-	baseMountPoint->referenceCount = 1;
-	baseMountPoint->fd = open("/", O_DIRECTORY | O_PATH);
+	Node *rootMountPoint = (Node *) EsHeapAllocate(sizeof(Node), true);
+	rootMountPoint->type = OBJECT_NODE;
+	rootMountPoint->referenceCount = 1;
+	rootMountPoint->fd = open("/", O_DIRECTORY | O_PATH);
+	Node *settingsMountPoint = (Node *) EsHeapAllocate(sizeof(Node), true);
+	settingsMountPoint->type = OBJECT_NODE;
+	settingsMountPoint->referenceCount = 1;
+	settingsMountPoint->fd = open(applicationConfigDirectory, O_DIRECTORY | O_PATH);
 
 	SharedMemoryRegion *startupData = (SharedMemoryRegion *) EsHeapAllocate(sizeof(SharedMemoryRegion), true);
 	startupData->type = OBJECT_SHMEM;
 	startupData->referenceCount = 1;
-	startupData->bytes = sizeof(SystemStartupDataHeader) + sizeof(EsMountPoint);
+	startupData->bytes = sizeof(SystemStartupDataHeader) + sizeof(EsMountPoint) * 2;
 	startupData->pointer = EsHeapAllocate(startupData->bytes, true);
 	SystemStartupDataHeader *startupHeader = (SystemStartupDataHeader *) startupData->pointer;
-	startupHeader->initialMountPointCount = 1;
-	EsMountPoint *initialMountPoint = (EsMountPoint *) (startupHeader + 1);
-	initialMountPoint->prefixBytes = 2;
-	initialMountPoint->base = HandleOpen(baseMountPoint);
-	EsCRTstrcpy(initialMountPoint->prefix, "0:");
-	// TODO Settings mount point.
+	startupHeader->initialMountPointCount = 2;
+	EsMountPoint *mountPoint0 = (EsMountPoint *) (startupHeader + 1);
+	mountPoint0->prefixBytes = 2;
+	mountPoint0->base = HandleOpen(rootMountPoint);
+	EsCRTstrcpy(mountPoint0->prefix, "0:");
+	EsMountPoint *mountPoint1 = (EsMountPoint *) (mountPoint0 + 1);
+	mountPoint1->prefixBytes = 9;
+	mountPoint1->base = HandleOpen(settingsMountPoint);
+	EsCRTstrcpy(mountPoint1->prefix, "|Settings:");
 
 	int pipes[2];
 	Node *pipeObject;
