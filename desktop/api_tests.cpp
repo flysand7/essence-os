@@ -1201,6 +1201,25 @@ bool POSIXSubsystemTest() {
 
 //////////////////////////////////////////////////////////////
 
+bool RestartTest() {
+	size_t fileSize;
+	uint32_t *fileData = (uint32_t *) EsFileReadAll(EsLiteral("0:/restart_test.txt"), &fileSize);
+	uint32_t index = fileSize == sizeof(uint32_t) ? *fileData : 0;
+#ifdef DEBUG_BUILD
+	if (index == 30) return true;
+#else
+	if (index == 200) return true;
+#endif
+	index++;
+	if (ES_SUCCESS != EsFileWriteAll(EsLiteral("0:/restart_test.txt"), &index, sizeof(uint32_t))) return false;
+	EsPrint("Restart %d...\n", index);
+	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_RESTART, 0, 0, 0);
+	while (EsMessageReceive());
+	return false;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -1217,6 +1236,7 @@ const Test tests[] = {
 	TEST(UTF8Tests, 60),
 	TEST(PipeTests, 60),
 	TEST(POSIXSubsystemTest, 60),
+	TEST(RestartTest, 600),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
