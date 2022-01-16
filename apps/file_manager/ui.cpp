@@ -832,12 +832,24 @@ int ListCallback(EsElement *element, EsMessage *message) {
 
 			if (entry->isFolder) {
 				String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
-				InstanceLoadFolder(instance, path);
+
+				if (EsKeyboardIsCtrlHeld() || message->chooseItem.source == ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK) {
+					EsApplicationStartupRequest request = {};
+					request.id = EsInstanceGetStartupRequest(instance).id;
+					request.filePath = path.text;
+					request.filePathBytes = path.bytes;
+					request.flags = ES_APPLICATION_STARTUP_IN_SAME_CONTAINER | ES_APPLICATION_STARTUP_NO_DOCUMENT;
+					EsApplicationStart(instance, &request);
+					StringDestroy(&path);
+				} else {
+					InstanceLoadFolder(instance, path);
+				}
 			} else if (StringEquals(entry->GetExtension(), StringFromLiteral("esx"))) {
 				// TODO Temporary.
 				String path = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(entry->GetInternalName()));
 
-				if (StringEquals(path, StringFromLiteral("0:/Essence/Desktop.esx")) || StringEquals(path, StringFromLiteral("0:/Essence/Kernel.esx"))) {
+				if (StringEquals(path, StringFromLiteral("0:/Essence/Desktop.esx")) 
+						|| StringEquals(path, StringFromLiteral("0:/Essence/Kernel.esx"))) {
 					EsDialogShow(instance->window, INTERFACE_STRING(FileManagerOpenFileError),
 							INTERFACE_STRING(FileManagerCannotOpenSystemFile),
 							ES_ICON_DIALOG_ERROR, ES_DIALOG_ALERT_OK_BUTTON); 
