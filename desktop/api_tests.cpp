@@ -1117,6 +1117,90 @@ bool PipeTests() {
 
 //////////////////////////////////////////////////////////////
 
+#include <bits/syscall.h>
+
+#define _exit(x)          EsPOSIXSystemCall(SYS_exit_group, (intptr_t) x, 0, 0, 0, 0, 0)
+#define close(x)          EsPOSIXSystemCall(SYS_close, (intptr_t) x, 0, 0, 0, 0, 0)
+#define dup2(x, y)        EsPOSIXSystemCall(SYS_dup2, (intptr_t) x, (intptr_t) y, 0, 0, 0, 0)
+#define execve(x, y, z)   EsPOSIXSystemCall(SYS_execve, (intptr_t) x, (intptr_t) y, (intptr_t) z, 0, 0, 0)
+#define exit(x)           EsPOSIXSystemCall(SYS_exit_group, (intptr_t) x, 0, 0, 0, 0, 0)
+#define pipe(x)           EsPOSIXSystemCall(SYS_pipe, (intptr_t) x, 0, 0, 0, 0, 0)
+#define read(x, y, z)     EsPOSIXSystemCall(SYS_read, (intptr_t) x, (intptr_t) y, (intptr_t) z, 0, 0, 0)
+#define rename(x, y)      EsPOSIXSystemCall(SYS_rename, (intptr_t) x, (intptr_t) y, 0, 0, 0, 0)
+#define truncate(x, y)    EsPOSIXSystemCall(SYS_truncate, (intptr_t) x, (intptr_t) y, 0, 0, 0, 0)
+#define unlink(x)         EsPOSIXSystemCall(SYS_unlink, (intptr_t) x, 0, 0, 0, 0, 0)
+#define vfork()           EsPOSIXSystemCall(SYS_vfork, 0, 0, 0, 0, 0, 0)
+#define wait4(x, y, z, w) EsPOSIXSystemCall(SYS_wait4, (intptr_t) x, (intptr_t) y, (intptr_t) z, (intptr_t) w, 0, 0)
+
+bool POSIXSubsystemTest() {
+	const char *executeEnvironment[] = {
+		"PATH=/Applications/POSIX/bin",
+		"TMPDIR=/Applications/POSIX/tmp",
+		NULL,
+	};
+
+	const char *executable = "/Applications/POSIX/bin/busybox";
+
+	const char *argv[] = {
+		(char *) "busybox",
+		(char *) "echo",
+		(char *) "hello",
+		NULL,
+	};
+
+	int _argc; 
+	char **_argv;
+	EsPOSIXInitialise(&_argc, &_argv);
+
+	int stdoutPipe[2];
+	pipe(stdoutPipe);
+
+	long pid = vfork();
+
+	if (pid == 0) {
+		dup2(stdoutPipe[1], 1);
+		dup2(stdoutPipe[1], 2);
+		close(stdoutPipe[1]);
+		execve(executable, argv, executeEnvironment);
+		EsPrint("Could not execve.\n");
+		return false;
+	} else if (pid > 0) {
+		close(stdoutPipe[1]);
+		char readData[10];
+		int readPosition = 0;
+
+		while (true) {
+			intptr_t bytesRead = read(stdoutPipe[0], readData + readPosition, sizeof(readData) - readPosition);
+
+			if (bytesRead <= 0) {
+				break;
+			} else {
+				readPosition += bytesRead;
+			}
+		}
+
+		if (readPosition != 6 || EsMemoryCompare(readData, "hello\n", 6)) {
+			EsPrint("Incorrect output: '%s'.\n", readPosition, readData);
+			return false;
+		}
+
+		int status;
+		wait4(-1, &status, 0, NULL);
+
+		if (status) {
+			EsPrint("status = %d.\n", status);
+			return false;
+		}
+	} else {
+		EsPrint("Could not vfork.\n");
+		return false;
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -1132,6 +1216,7 @@ const Test tests[] = {
 	TEST(RangeSetTests, 60),
 	TEST(UTF8Tests, 60),
 	TEST(PipeTests, 60),
+	TEST(POSIXSubsystemTest, 60),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
