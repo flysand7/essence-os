@@ -159,6 +159,15 @@ void BuildAPIDependencies() {
 		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 
+	FILE *f = fopen("bin/Object Files/crt1.o", "rb");
+
+	if (f) {
+		fclose(f);
+	} else {
+		CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crt1.c -o bin/Object\\ Files/crt1.o");
+		CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o bin/Object\\ Files/crtglue.o");
+	}
+
 	CallSystem("ports/musl/build.sh " TARGET_NAME);
 	CallSystem("ports/freetype/build.sh " TARGET_NAME);
 	CallSystem("ports/harfbuzz/build.sh " TARGET_NAME);
