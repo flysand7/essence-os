@@ -1,3 +1,5 @@
+set -e
+
 if [ ! -d "bin/musl" ]; then
 	echo "Downloading Musl..."
 

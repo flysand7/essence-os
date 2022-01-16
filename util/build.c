@@ -153,30 +153,19 @@ int CallSystemF(const char *format, ...) {
 	return result;
 }
 
-void BuildAPIDependencies() {
+bool BuildAPIDependencies() {
 	if (CheckDependencies("API Header")) {
 		CallSystem("bin/build_core headers");
 		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 
-	CallSystem("ports/musl/build.sh " TARGET_NAME);
-
-	FILE *f = fopen("bin/Object Files/crt1.o", "rb");
-
-	if (f) {
-		fclose(f);
-	} else {
-		CallSystem("mkdir -p root/Applications/POSIX/lib");
-		CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crt1.c -o bin/Object\\ Files/crt1.o");
-		CallSystem("cp bin/Object\\ Files/crt1.o root/Applications/POSIX/lib");
-		CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o bin/Object\\ Files/crtglue.o");
-		CallSystem("cp bin/Object\\ Files/crtglue.o root/Applications/POSIX/lib");
-	}
-
-	CallSystem("ports/freetype/build.sh " TARGET_NAME);
-	CallSystem("ports/harfbuzz/build.sh " TARGET_NAME);
-
-	CallSystem("cp -p kernel/module.h root/Applications/POSIX/include");
+	if (CallSystem("ports/musl/build.sh " TARGET_NAME)) return false;
+	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crt1.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crt1.o")) return false;
+	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crtglue.o")) return false;
+	if (CallSystem("ports/freetype/build.sh " TARGET_NAME)) return false;
+	if (CallSystem("ports/harfbuzz/build.sh " TARGET_NAME)) return false;
+	if (CallSystem("cp -p kernel/module.h root/Applications/POSIX/include")) return false;
+	return true;
 }
 
 void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
@@ -254,7 +243,10 @@ void SaveConfig();
 void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 	buildStartTimeStamp = time(NULL);
 	BuildUtilities();
-	BuildAPIDependencies();
+
+	if (!BuildAPIDependencies()) {
+		return;
+	}
 
 	LoadOptions();
 
@@ -795,7 +787,11 @@ void BuildCrossCompiler() {
 
 		{
 			BuildUtilities();
-			BuildAPIDependencies();
+
+			if (!BuildAPIDependencies()) {
+				goto fail;
+			}
+
 			FILE *f = fopen("bin/build.ini", "wb");
 			OutputStartOfBuildINI(f, false);
 			fprintf(f, "[general]\nwithout_kernel=1\n");

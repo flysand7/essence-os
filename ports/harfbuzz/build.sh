@@ -1,3 +1,5 @@
+set -e
+
 CompileHarfbuzz() {
 	$CC -c hb-aat-layout.cc -o hb-aat-layout.o
 	$CC -c hb-aat-map.cc -o hb-aat-map.o

@@ -1,3 +1,5 @@
+set -e
+
 if [ ! -d "bin/freetype" ]; then
 	echo "Downloading FreeType..."
 
