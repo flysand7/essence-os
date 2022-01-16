@@ -502,6 +502,7 @@ uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInform
 _EsApplicationStartupInformation *ApplicationStartupInformationParse(const void *data, size_t dataBytes) {
 	EsBuffer buffer = { .in = (const uint8_t *) data, .bytes = dataBytes };
 	_EsApplicationStartupInformation *startupInformation = (_EsApplicationStartupInformation *) EsBufferRead(&buffer, sizeof(_EsApplicationStartupInformation));
+	if (!startupInformation) return nullptr;
 	startupInformation->filePath = (char *) EsHeapAllocate(startupInformation->filePathBytes, false);
 	EsBufferReadInto(&buffer, (char *) startupInformation->filePath, startupInformation->filePathBytes);
 	startupInformation->containingFolder = (char *) EsHeapAllocate(startupInformation->containingFolderBytes, false);

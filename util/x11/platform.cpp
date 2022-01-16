@@ -929,10 +929,20 @@ void *UIThread(void *) {
 			XNFocusWindow, window->window, NULL);
 	windows.Add(window);
 
+	_EsApplicationStartupInformation applicationStartupInformation = {};
+
+	SharedMemoryRegion *createInstanceData = (SharedMemoryRegion *) EsHeapAllocate(sizeof(SharedMemoryRegion), true);
+	createInstanceData->type = OBJECT_SHMEM;
+	createInstanceData->referenceCount = 1;
+	createInstanceData->pointer = EsHeapAllocate(sizeof(applicationStartupInformation) + 1, true);
+	createInstanceData->bytes = sizeof(applicationStartupInformation) + 1;
+	EsMemoryCopy((uint8_t *) createInstanceData->pointer + 1, &applicationStartupInformation, sizeof(applicationStartupInformation));
+
 	_EsMessageWithObject m = {};
 	m.message.type = ES_MSG_INSTANCE_CREATE;
 	m.message.createInstance.window = HandleOpen(window);
-	// TODO _EsApplicationStartupInformation.
+	m.message.createInstance.data = HandleOpen(createInstanceData);
+	m.message.createInstance.dataBytes = createInstanceData->bytes;
 	MessagePost(&m);
 
 	while (true) {
@@ -1079,7 +1089,7 @@ int main() {
 
 	SharedMemoryRegion *globalDataRegion = (SharedMemoryRegion *) EsHeapAllocate(sizeof(SharedMemoryRegion), true);
 	globalDataRegion->type = OBJECT_SHMEM;
-	globalDataRegion->referenceCount = 1;
+	globalDataRegion->referenceCount = 2;
 	globalDataRegion->pointer = &globalData;
 	globalDataRegion->bytes = sizeof(globalData);
 
@@ -1094,7 +1104,7 @@ int main() {
 
 	SharedMemoryRegion *startupData = (SharedMemoryRegion *) EsHeapAllocate(sizeof(SharedMemoryRegion), true);
 	startupData->type = OBJECT_SHMEM;
-	startupData->referenceCount = 1;
+	startupData->referenceCount = 2;
 	startupData->bytes = sizeof(SystemStartupDataHeader) + sizeof(EsMountPoint) * 2;
 	startupData->pointer = EsHeapAllocate(startupData->bytes, true);
 	SystemStartupDataHeader *startupHeader = (SystemStartupDataHeader *) startupData->pointer;
