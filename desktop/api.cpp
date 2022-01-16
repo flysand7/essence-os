@@ -1590,11 +1590,13 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		EsHeapFree(_data);
 
-		uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
-		EsBuffer responseBuffer = { .canGrow = true };
-		MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
-		SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
-		EsHeapFree(responseBuffer.out);
+		if (api.desktopRequestPipe) {
+			uint8_t m = DESKTOP_MSG_SYSTEM_CONFIGURATION_GET;
+			EsBuffer responseBuffer = { .canGrow = true };
+			MessageDesktop(&m, 1, ES_INVALID_HANDLE, &responseBuffer);
+			SystemConfigurationLoad((char *) responseBuffer.out, responseBuffer.bytes);
+			EsHeapFree(responseBuffer.out);
+		}
 
 		((void (*)()) api.startupInformation->applicationStartAddress)();
 	}
