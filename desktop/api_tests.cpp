@@ -1220,6 +1220,66 @@ bool RestartTest() {
 
 //////////////////////////////////////////////////////////////
 
+bool ResizeFileTest() {
+	int checkIndex = 0;
+
+	size_t dataBytes = 2 + 2 * 4096 + 2 * 262144;
+	uint8_t *data = (uint8_t *) EsHeapAllocate(dataBytes, false);
+	uint8_t *compare = (uint8_t *) EsHeapAllocate(dataBytes, false);
+	EsFileOffset currentSize = 0;
+
+	// Make a list of all the file sizes that should cover the interesting cases.
+
+	EsFileOffset sizes[125];
+	size_t sizeCount = 0;
+
+	for (int i = -2; i <= 2; i++) {
+		for (int j = -2; j <= 2; j++) {
+			for (int k = -2; k <= 2; k++) {
+				EsFileOffsetDifference size = k + j * 4096 /* page size */ + i * 262144 /* active section size */;
+				if (size < 0) continue;
+				EsAssert(sizeCount != sizeof(sizes) / sizeof(sizes[0]));
+				EsAssert((uintptr_t) size <= dataBytes);
+				sizes[sizeCount++] = size;
+			}
+		}
+	}
+
+	EsFileInformation file = EsFileOpen(EsLiteral("0:/resize.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
+	CHECK(file.error == ES_SUCCESS);
+
+	for (uintptr_t i = 0; i < sizeCount; i++) {
+		for (uintptr_t j = 0; j < sizeCount; j++) {
+			EsPrint("i %x, j %x\n", sizes[i], sizes[j]);
+
+			CHECK(ES_SUCCESS == EsFileResize(file.handle, sizes[i]));
+			if (sizes[i] > currentSize) EsMemoryZero(data + currentSize, sizes[i] - currentSize);
+			currentSize = sizes[i];
+			CHECK(currentSize == EsFileReadSync(file.handle, 0, dataBytes, compare));
+			CHECK(0 == EsMemoryCompare(data, compare, currentSize));
+
+			CHECK(ES_SUCCESS == EsFileResize(file.handle, sizes[j]));
+			if (sizes[j] > currentSize) EsMemoryZero(data + currentSize, sizes[j] - currentSize);
+			currentSize = sizes[j];
+			CHECK(currentSize == EsFileReadSync(file.handle, 0, dataBytes, compare));
+			CHECK(0 == EsMemoryCompare(data, compare, currentSize));
+
+			for (uintptr_t k = 0; k < currentSize; k++) {
+				data[k] = EsRandomU8();
+			}
+
+			EsFileWriteSync(file.handle, 0, currentSize, data);
+		}
+	}
+
+	EsHandleClose(file.handle);
+	EsHeapFree(data);
+	EsHeapFree(compare);
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -1237,6 +1297,7 @@ const Test tests[] = {
 	TEST(PipeTests, 60),
 	TEST(POSIXSubsystemTest, 60),
 	TEST(RestartTest, 600),
+	TEST(ResizeFileTest, 600),
 };
 
 #ifndef API_TESTS_FOR_RUNNER
