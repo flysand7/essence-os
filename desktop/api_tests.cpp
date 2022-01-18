@@ -1296,7 +1296,7 @@ const Test tests[] = {
 	TEST(UTF8Tests, 60),
 	TEST(PipeTests, 60),
 	TEST(POSIXSubsystemTest, 60),
-	TEST(RestartTest, 600),
+	TEST(RestartTest, 1200),
 	TEST(ResizeFileTest, 600),
 };
 
