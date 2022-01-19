@@ -330,7 +330,7 @@ void WindowManager::PressKey(uint32_t scancode) {
 
 	KMutexAcquire(&mutex);
 
-	if (scancode == ES_SCANCODE_NUM_DIVIDE) {
+	if (scancode == ES_SCANCODE_NUM_DIVIDE && (leftModifiers & ES_MODIFIER_FLAG)) {
 		KernelPanic("WindowManager::PressKey - Panic key pressed.\n");
 	}
 
