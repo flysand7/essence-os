@@ -1263,6 +1263,56 @@ void GetSource(const char *parameters, const char *checksum) {
 	if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
 }
 
+void RunTests(int singleTest) {
+	// TODO Capture (and compress) emulator memory dump if a test causes a KernelPanic or EsPanic.
+	// TODO Using SMP/KVM if available in the optimised test runs.
+
+	int successCount = 0, failureCount = 0;
+	CallSystem("mkdir -p root/Essence/Settings/API\\ Tests");
+	FILE *testFailures = fopen("bin/Logs/Test Failures.txt", "wb");
+
+	for (int optimisations = 0; optimisations <= 1; optimisations++) {
+		for (uint32_t index = 0; index < sizeof(tests) / sizeof(tests[0]); index++) {
+			if (singleTest != -1) {
+				if ((int) index != singleTest || optimisations) {
+					continue;
+				}
+			}
+
+			CallSystem("rm -f bin/Logs/qemu_serial1.txt");
+			FILE *f = fopen("root/Essence/Settings/API Tests/test.dat", "wb");
+			fwrite(&index, 1, sizeof(uint32_t), f);
+			uint32_t mode = 1;
+			fwrite(&mode, 1, sizeof(uint32_t), f);
+			fclose(f);
+			emulatorTimeout = tests[index].timeoutSeconds;
+			if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
+			else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
+			emulatorTimeout = 0;
+			if (emulatorDidTimeout) encounteredErrors = false;
+			if (encounteredErrors) { fprintf(stderr, "Compile errors, stopping tests.\n"); goto stopTests; }
+			char *log = (char *) LoadFile("bin/Logs/qemu_serial1.txt", NULL);
+			if (!log) { fprintf(stderr, "No log file, stopping tests.\n"); goto stopTests; }
+			bool success = strstr(log, "[APITests-Success]\n") && !emulatorDidTimeout;
+			bool failure = strstr(log, "[APITests-Failure]\n");
+			if (emulatorDidTimeout) fprintf(stderr, "'%s' (%d/%d): " ColorError "timeout" ColorNormal ".\n", tests[index].cName, optimisations, index);
+			else if (success) fprintf(stderr, "'%s' (%d/%d): success.\n", tests[index].cName, optimisations, index);
+			else if (failure) fprintf(stderr, "'%s' (%d/%d): " ColorError "failure" ColorNormal ".\n", tests[index].cName, optimisations, index);
+			else fprintf(stderr, "'%s' (%d/%d): " ColorError "no response" ColorNormal ".\n", tests[index].cName, optimisations, index);
+			if (success) successCount++;
+			else failureCount++;
+			free(log);
+			if (!success) CallSystemF("mv bin/Logs/qemu_serial1.txt bin/Logs/test_%d_%d.txt", optimisations, index);
+			if (!success) fprintf(testFailures, "%d/%d %s\n", optimisations, index, tests[index].cName);
+		}
+	}
+
+	stopTests:;
+	fprintf(stderr, ColorHighlight "%d/%d tests succeeded." ColorNormal "\n", successCount, successCount + failureCount);
+	fclose(testFailures);
+	if (failureCount && automatedBuild) exit(1);
+}
+
 void DoCommand(const char *l) {
 	while (l && (*l == ' ' || *l == '\t')) l++;
 
@@ -1700,47 +1750,9 @@ void DoCommand(const char *l) {
 		strcat(cwd, "/crash-report.tar.gz");
 		fprintf(stderr, "Crash report made at " ColorHighlight "%s" ColorNormal ".\n", cwd);
 	} else if (0 == strcmp(l, "run-tests")) {
-		// TODO Capture (and compress) emulator memory dump if a test causes a KernelPanic or EsPanic.
-		// TODO Using SMP/KVM if available in the optimised test runs.
-
-		int successCount = 0, failureCount = 0;
-		CallSystem("mkdir -p root/Essence/Settings/API\\ Tests");
-		FILE *testFailures = fopen("bin/Logs/Test Failures.txt", "wb");
-
-		for (int optimisations = 0; optimisations <= 1; optimisations++) {
-			for (uint32_t index = 0; index < sizeof(tests) / sizeof(tests[0]); index++) {
-				CallSystem("rm -f bin/Logs/qemu_serial1.txt");
-				FILE *f = fopen("root/Essence/Settings/API Tests/test.dat", "wb");
-				fwrite(&index, 1, sizeof(uint32_t), f);
-				uint32_t mode = 1;
-				fwrite(&mode, 1, sizeof(uint32_t), f);
-				fclose(f);
-				emulatorTimeout = tests[index].timeoutSeconds;
-				if (optimisations) BuildAndRun(OPTIMISE_FULL, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
-				else BuildAndRun(OPTIMISE_OFF, true, DEBUG_LATER, EMULATOR_QEMU_NO_GUI, LOG_NORMAL);
-				emulatorTimeout = 0;
-				if (emulatorDidTimeout) encounteredErrors = false;
-				if (encounteredErrors) { fprintf(stderr, "Compile errors, stopping tests.\n"); goto stopTests; }
-				char *log = (char *) LoadFile("bin/Logs/qemu_serial1.txt", NULL);
-				if (!log) { fprintf(stderr, "No log file, stopping tests.\n"); goto stopTests; }
-				bool success = strstr(log, "[APITests-Success]\n") && !emulatorDidTimeout;
-				bool failure = strstr(log, "[APITests-Failure]\n");
-				if (emulatorDidTimeout) fprintf(stderr, "'%s' (%d/%d): " ColorError "timeout" ColorNormal ".\n", tests[index].cName, optimisations, index);
-				else if (success) fprintf(stderr, "'%s' (%d/%d): success.\n", tests[index].cName, optimisations, index);
-				else if (failure) fprintf(stderr, "'%s' (%d/%d): " ColorError "failure" ColorNormal ".\n", tests[index].cName, optimisations, index);
-				else fprintf(stderr, "'%s' (%d/%d): " ColorError "no response" ColorNormal ".\n", tests[index].cName, optimisations, index);
-				if (success) successCount++;
-				else failureCount++;
-				free(log);
-				if (!success) CallSystemF("mv bin/Logs/qemu_serial1.txt bin/Logs/test_%d_%d.txt", optimisations, index);
-				if (!success) fprintf(testFailures, "%d/%d %s\n", optimisations, index, tests[index].cName);
-			}
-		}
-
-		stopTests:;
-		fprintf(stderr, ColorHighlight "%d/%d tests succeeded." ColorNormal "\n", successCount, successCount + failureCount);
-		fclose(testFailures);
-		if (failureCount && automatedBuild) exit(1);
+		RunTests(-1);
+	} else if (0 == memcmp(l, "run-test ", 9)) {
+		RunTests(atoi(l + 9));
 	} else if (0 == strcmp(l, "setup-pre-built-toolchain")) {
 		CallSystem("mv bin/source cross");
 		CallSystem("mkdir -p cross/bin2");

@@ -1132,26 +1132,8 @@ bool PipeTests() {
 #define vfork()           EsPOSIXSystemCall(SYS_vfork, 0, 0, 0, 0, 0, 0)
 #define wait4(x, y, z, w) EsPOSIXSystemCall(SYS_wait4, (intptr_t) x, (intptr_t) y, (intptr_t) z, (intptr_t) w, 0, 0)
 
-bool POSIXSubsystemTest() {
-	const char *executeEnvironment[] = {
-		"PATH=/Applications/POSIX/bin",
-		"TMPDIR=/Applications/POSIX/tmp",
-		NULL,
-	};
-
-	const char *executable = "/Applications/POSIX/bin/busybox";
-
-	const char *argv[] = {
-		(char *) "busybox",
-		(char *) "echo",
-		(char *) "hello",
-		NULL,
-	};
-
-	int _argc; 
-	char **_argv;
-	EsPOSIXInitialise(&_argc, &_argv);
-
+bool POSIXSubsystemRunCommandAndCheckOutput(const char **executeEnvironment, const char **argv, 
+		const char *executable, const char *expectedOutput) {
 	int stdoutPipe[2];
 	pipe(stdoutPipe);
 
@@ -1166,7 +1148,7 @@ bool POSIXSubsystemTest() {
 		return false;
 	} else if (pid > 0) {
 		close(stdoutPipe[1]);
-		char readData[10];
+		char readData[4096];
 		int readPosition = 0;
 
 		while (true) {
@@ -1179,7 +1161,8 @@ bool POSIXSubsystemTest() {
 			}
 		}
 
-		if (readPosition != 6 || EsMemoryCompare(readData, "hello\n", 6)) {
+		if (readPosition != (int) EsCStringLength(expectedOutput) 
+				|| EsMemoryCompare(readData, expectedOutput, readPosition)) {
 			EsPrint("Incorrect output: '%s'.\n", readPosition, readData);
 			return false;
 		}
@@ -1195,6 +1178,33 @@ bool POSIXSubsystemTest() {
 		EsPrint("Could not vfork.\n");
 		return false;
 	}
+
+	close(stdoutPipe[0]);
+	return true;
+}
+
+bool POSIXSubsystemTest() {
+	int checkIndex = 0;
+
+	const char *executeEnvironment[] = {
+		"PATH=/Applications/POSIX/bin",
+		"TMPDIR=/Applications/POSIX/tmp",
+		NULL,
+	};
+
+	int _argc; 
+	char **_argv;
+	EsPOSIXInitialise(&_argc, &_argv);
+
+	const char *executable = "/Applications/POSIX/bin/busybox";
+	const char *argv[] = { "busybox", "sh", "test.sh", NULL, };
+
+	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("echo hello")); 
+	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "hello\n"));
+	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("echo world")); 
+	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "world\n"));
+	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("find . | grep Kernel.esx")); 
+	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "./Essence/Kernel.esx\n"));
 
 	return true;
 }
