@@ -1233,6 +1233,7 @@ EsError FSNodeTraverseLayer(uintptr_t *sectionEnd,
 	size_t nameBytes = *sectionEnd - sectionStart;
 
 	if (!nameBytes) {
+		FSNodeCloseHandle(directory, 0);
 		return ES_ERROR_PATH_NOT_TRAVERSABLE;
 	}
 
