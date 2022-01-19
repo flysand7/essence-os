@@ -51,13 +51,13 @@ struct POSIXThread {
 
 #define SYSCALL_HANDLE_POSIX_2(handle, out) \
 	Handle _ ## out; \
-	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
+	uint8_t status_ ## out = handleTable->ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
 	if (status_ ## out == RESOLVE_HANDLE_FAILED) return -EBADF; \
 	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
 	const Handle out = _ ## out
 #define SYSCALL_HANDLE_POSIX(handle, out) \
 	Handle _ ## out; \
-	uint8_t status_ ## out = currentProcess->handleTable.ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
+	uint8_t status_ ## out = handleTable->ResolveHandle(&_ ## out, ConvertStandardInputTo3(handle), KERNEL_OBJECT_POSIX_FD); \
 	if (status_ ## out == RESOLVE_HANDLE_FAILED) return -EBADF; \
 	EsDefer(if (status_ ## out == RESOLVE_HANDLE_NORMAL) CloseHandleToObject(_ ## out.object, _ ## out.type, _ ## out.flags)); \
 	POSIXFile *const out = (POSIXFile *) _ ## out.object
@@ -625,7 +625,8 @@ namespace POSIX {
 				// Clone the oldfd as newfd.
 
 				OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, fd.flags);
-				return handleTable->OpenHandle(fd.object, fd.flags, fd.type, ConvertStandardInputTo3(syscall.arguments[1])) ? 0 : -EBUSY;
+				return handleTable->OpenHandle(fd.object, fd.flags, fd.type, 
+						ConvertStandardInputTo3(syscall.arguments[1])) ? syscall.arguments[1] : -EBUSY;
 			} break;
 
 			case SYS_pipe2: {

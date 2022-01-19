@@ -161,6 +161,10 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 	ProcessorCheckStackAlignment();
 #endif
 
+	if ((uintptr_t) n < sizeof(syscallNames) / sizeof(syscallNames[0])) {
+		// EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
+	}
+
 	long returnValue = 0;
 	_EsPOSIXSyscall syscall = { n, a1, a2, a3, a4, a5, a6 };
 
@@ -689,10 +693,9 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 		double endTime = EsTimeStampMs();
 		syscallTimeSpent[n] += endTime - startTime;
 		syscallCallCount[n]++;
+		// EsPrint(":: %z %x %x %x -> %x; %Fms\n", syscallNames[n], a1, a2, a3, returnValue, endTime - startTime);
 	}
 #endif
-
-	// EsPrint(":: %z %x %x %x -> %x; %Fms\n", syscallNames[n], a1, a2, a3, returnValue, endTime - startTime);
 
 	return returnValue;
 }

@@ -21,13 +21,32 @@ EsMutex mutex;
 int stdinWritePipe;
 EsTextbox *textboxOutput, *textboxInput;
 
-const EsStyle styleMonospacedTextbox = {
+const EsStyle styleOutputTextbox = {
 	.inherit = ES_STYLE_TEXTBOX_NO_BORDER,
 
 	.metrics = {
 		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_TEXT_SIZE,
 		.textSize = 12,
 		.fontFamily = ES_FONT_MONOSPACED,
+	},
+};
+
+const EsStyle styleInputTextbox = {
+	.inherit = ES_STYLE_TEXTBOX_BORDERED_SINGLE,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_TEXT_SIZE,
+		.textSize = 12,
+		.fontFamily = ES_FONT_MONOSPACED,
+	},
+};
+
+const EsStyle styleInputRow = {
+	.inherit = ES_STYLE_PANEL_FORM_TABLE,
+
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS,
+		.insets = ES_RECT_1(7),
 	},
 };
 
@@ -170,9 +189,11 @@ void MessageLoopThread(EsGeneric) {
 			EsWindow *window = instance->window;
 			EsWindowSetIcon(window, ES_ICON_UTILITIES_TERMINAL);
 			EsPanel *panel = EsPanelCreate(window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-			textboxOutput = EsTextboxCreate(panel, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleMonospacedTextbox);
+			textboxOutput = EsTextboxCreate(panel, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleOutputTextbox);
 			EsSpacerCreate(panel, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
-			textboxInput = EsTextboxCreate(panel, ES_CELL_H_FILL, &styleMonospacedTextbox);
+			EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleInputRow);
+			EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, EsLiteral("Input:"));
+			textboxInput = EsTextboxCreate(row, ES_CELL_H_FILL, &styleInputTextbox);
 			EsTextboxEnableSmartReplacement(textboxInput, false);
 			EsTextboxSetReadOnly(textboxOutput, true);
 			textboxInput->messageUser = ProcessTextboxInputMessage;
