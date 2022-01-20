@@ -193,6 +193,9 @@ make all-gcc -j`nproc`
 make all-target-libgcc -j`nproc`
 make DESTDIR=$SYSROOT install-strip-gcc
 make DESTDIR=$SYSROOT install-target-libgcc
+# TODO Waiting on GCC 11.3, see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100017  
+# make all-target-libstdc++-v3 
+# make DESTDIR=$SYSROOT install-target-libstdc++-v3
 cd ../..
 rm -rf bin/build-gcc
 
