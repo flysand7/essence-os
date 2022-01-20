@@ -1947,22 +1947,6 @@ int main(int _argc, char **_argv) {
 
 	SaveConfig();
 
-	if (argc >= 2) {
-		char buffer[4096];
-		buffer[0] = 0;
-
-		for (int i = 1; i < argc; i++) {
-			if (strlen(argv[i]) + 1 > sizeof(buffer) - strlen(buffer)) break;
-			if (i > 1) strcat(buffer, " ");
-			strcat(buffer, argv[i]);
-		}
-
-		DoCommand(buffer);
-		return 0;
-	} else {
-		interactiveMode = true;
-	}
-
 	const char *runFirstCommand = NULL;
 
 	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
@@ -1977,6 +1961,22 @@ int main(int _argc, char **_argv) {
 #endif
 		runFirstCommand = "b";
 		foundValidCrossCompiler = true;
+	}
+
+	if (argc >= 2) {
+		char buffer[4096];
+		buffer[0] = 0;
+
+		for (int i = 1; i < argc; i++) {
+			if (strlen(argv[i]) + 1 > sizeof(buffer) - strlen(buffer)) break;
+			if (i > 1) strcat(buffer, " ");
+			strcat(buffer, argv[i]);
+		}
+
+		DoCommand(buffer);
+		return 0;
+	} else {
+		interactiveMode = true;
 	}
 
 	SaveConfig();
