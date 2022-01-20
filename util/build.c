@@ -158,17 +158,25 @@ int CallSystemF(const char *format, ...) {
 }
 
 bool BuildAPIDependencies() {
+	LoadOptions();
+
 	if (CheckDependencies("API Header")) {
 		CallSystem("bin/build_core headers");
 		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 
 	if (CallSystem("ports/musl/build.sh " TARGET_NAME)) return false;
+
 	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crt1.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crt1.o")) return false;
 	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crtglue.o")) return false;
-	if (CallSystem("ports/freetype/build.sh " TARGET_NAME)) return false;
-	if (CallSystem("ports/harfbuzz/build.sh " TARGET_NAME)) return false;
+
+	if (IsOptionEnabled("Dependency.FreeTypeAndHarfBuzz")) {
+		if (CallSystem("ports/freetype/build.sh " TARGET_NAME)) return false;
+		if (CallSystem("ports/harfbuzz/build.sh " TARGET_NAME)) return false;
+	}
+
 	if (CallSystem("cp -p kernel/module.h root/Applications/POSIX/include")) return false;
+
 	return true;
 }
 
