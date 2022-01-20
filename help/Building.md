@@ -14,7 +14,7 @@ Start the build system.
 
     ./start.sh
 
-Follow the on-screen instructions to build a cross compiler.
+The compiler toolchain will be downloaded.
 
 Once complete, you can test the operating system in an emulator. 
 * If you have Qemu and KVM installed, run `k` in the build system. **Recommended!**

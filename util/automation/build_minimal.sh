@@ -15,6 +15,4 @@ echo "Dependency.stb_image=0"           >> bin/config.ini
 echo "Dependency.stb_image_write=0"     >> bin/config.ini
 echo "Dependency.stb_sprintf=0"         >> bin/config.ini
 echo "Dependency.FreeTypeAndHarfBuzz=0" >> bin/config.ini
-./start.sh get-source prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz
-./start.sh setup-pre-built-toolchain
 ./start.sh build-optimised

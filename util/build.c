@@ -1966,7 +1966,15 @@ int main(int _argc, char **_argv) {
 	const char *runFirstCommand = NULL;
 
 	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
+#if 0
 		BuildCrossCompiler();
+#else
+		fprintf(stderr, "Downloading the compiler toolchain...\n");
+		DoCommand("get-source-checked 700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
+				"prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
+		DoCommand("setup-pre-built-toolchain");
+		AddCompilerToPath();
+#endif
 		runFirstCommand = "b";
 		foundValidCrossCompiler = true;
 	}
