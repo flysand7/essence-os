@@ -430,7 +430,8 @@ void Build(int optimise, bool compile) {
 			(double) (endTime.tv_sec - startTime.tv_sec) + (double) (endTime.tv_nsec - startTime.tv_nsec) / 1000000000);
 }
 
-void *TimeoutThread(void *) {
+void *TimeoutThread(void *_unused) {
+	(void) _unused;
 	emulatorDidTimeout = false;
 
 	struct timespec endTime;
