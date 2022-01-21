@@ -34,7 +34,9 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <spawn.h>
+#ifdef __linux__
 #include <semaphore.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -56,7 +58,9 @@ bool interactiveMode;
 bool canBuildLuigi;
 volatile int emulatorTimeout;
 volatile bool emulatorDidTimeout;
+#ifdef __linux__
 sem_t emulatorSemaphore;
+#endif
 FILE *systemLog;
 char compilerPath[4096];
 int argc;
@@ -438,6 +442,7 @@ void Build(int optimise, bool compile) {
 			(double) (endTime.tv_sec - startTime.tv_sec) + (double) (endTime.tv_nsec - startTime.tv_nsec) / 1000000000);
 }
 
+#ifdef __linux__
 void *TimeoutThread(void *_unused) {
 	(void) _unused;
 	emulatorDidTimeout = false;
@@ -491,6 +496,7 @@ void *TimeoutThread(void *_unused) {
 
 	return NULL;
 }
+#endif
 
 #define LOG_VERBOSE (0)
 #define LOG_NORMAL (1)
@@ -601,6 +607,7 @@ void Run(int emulator, int log, int debug) {
 			const char *displayFlags = emulator == EMULATOR_QEMU_NO_GUI ? " -display none " : "";
 
 			char timeoutFlags[256];
+#ifdef __linux__
 			pthread_t timeoutThread;
 
 			if (emulatorTimeout) {
@@ -610,6 +617,9 @@ void Run(int emulator, int log, int debug) {
 			} else {
 				timeoutFlags[0] = 0;
 			}
+#else
+			timeoutFlags[0] = 0;
+#endif
 
 			int exitCode = CallSystemF("%s %s " QEMU_EXECUTABLE " %s%s %s -m %d %s -smp cores=%d -cpu Haswell "
 					" -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0,id=mykeyboard -device usb-mouse,bus=xhci.0,id=mymouse "
@@ -622,12 +632,14 @@ void Run(int emulator, int log, int debug) {
 
 			bool printStartupErrorMessage = exitCode != 0;
 
+#ifdef __linux__
 			if (emulatorTimeout) {
 				sem_post(&emulatorSemaphore);
 				pthread_join(timeoutThread, NULL);
 				if (emulatorDidTimeout) printStartupErrorMessage = false;
 				sem_destroy(&emulatorSemaphore);
 			}
+#endif
 
 			if (printStartupErrorMessage) {
 				printf("Unable to start Qemu. To manually run the system, use the drive image located at \"bin/drive\".\n");
