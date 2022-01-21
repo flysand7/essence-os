@@ -1034,15 +1034,28 @@ void WindowManager::Redraw(EsPoint position, int width, int height, Window *exce
 
 		if (!ES_RECT_VALID(rectangle)) continue;
 
-		EsPoint point = ES_POINT(window->position.x + rectangle.l, window->position.y + rectangle.t);
 		Surface *surface = &window->surface;
 
-		if (window->opaqueBounds.l <= rectangle.l && window->opaqueBounds.r >= rectangle.r 
-				&& window->opaqueBounds.t <= rectangle.t && window->opaqueBounds.b >= rectangle.b) {
-			graphics.frameBuffer.Copy(surface, point, rectangle, addToModifiedRegion);
-		} else {
-			EsRectangle blurRegion = Translate(EsRectangleIntersection(window->blurBounds, rectangle), window->position.x, window->position.y);
-			graphics.frameBuffer.BlendWindow(surface, point, rectangle, window->material, window->alpha, blurRegion);
+		EsRectangle transparentRegions[] = {
+			EsRectangleIntersection(rectangle, ES_RECT_4(0, window->opaqueBounds.l, 0, window->height)),
+			EsRectangleIntersection(rectangle, ES_RECT_4(window->opaqueBounds.r, window->width, 0, window->height)),
+			EsRectangleIntersection(rectangle, ES_RECT_4(window->opaqueBounds.l, window->opaqueBounds.r, 0, window->opaqueBounds.t)),
+			EsRectangleIntersection(rectangle, ES_RECT_4(window->opaqueBounds.l, window->opaqueBounds.r, window->opaqueBounds.b, window->height)),
+		};
+
+		EsRectangle opaqueRegion = EsRectangleIntersection(rectangle, window->opaqueBounds);
+		EsRectangle blurRegion = Translate(EsRectangleIntersection(window->blurBounds, rectangle), window->position.x, window->position.y);
+
+		for (uintptr_t i = 0; i < 4; i++) {
+			if (ES_RECT_VALID(transparentRegions[i])) {
+				EsPoint point = ES_POINT(window->position.x + transparentRegions[i].l, window->position.y + transparentRegions[i].t);
+				graphics.frameBuffer.BlendWindow(surface, point, transparentRegions[i], window->material, window->alpha, blurRegion);
+			}
+		}
+
+		if (ES_RECT_VALID(opaqueRegion)) {
+			EsPoint point = ES_POINT(window->position.x + opaqueRegion.l, window->position.y + opaqueRegion.t);
+			graphics.frameBuffer.Copy(surface, point, opaqueRegion, addToModifiedRegion);
 		}
 	}
 }
