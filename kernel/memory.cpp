@@ -2176,10 +2176,6 @@ void MMSpaceOpenReference(MMSpace *space) {
 		KernelPanic("MMSpaceOpenReference - Space %x has invalid reference count.\n", space);
 	}
 
-	if (space->referenceCount >= K_MAX_PROCESSORS + 1) {
-		KernelPanic("MMSpaceOpenReference - Space %x has too many references (expected a maximum of %d).\n", K_MAX_PROCESSORS + 1);
-	}
-
 	__sync_fetch_and_add(&space->referenceCount, 1);
 }
 

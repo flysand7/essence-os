@@ -934,10 +934,12 @@ void ThreadSetTemporaryAddressSpace(MMSpace *space) {
 	MMSpace *oldSpace = thread->temporaryAddressSpace ?: kernelMMSpace;
 	thread->temporaryAddressSpace = space;
 	MMSpace *newSpace = space ?: kernelMMSpace;
-	MMSpaceOpenReference(newSpace);
+	MMSpaceOpenReference(newSpace); // Open our reference to the space.
+	MMSpaceOpenReference(newSpace); // This reference will be closed in PostContextSwitch, simulating the reference opened in Scheduler::Yield.
 	ProcessorSetAddressSpace(&newSpace->data);
 	KSpinlockRelease(&scheduler.dispatchSpinlock);
-	MMSpaceCloseReference(oldSpace);
+	MMSpaceCloseReference(oldSpace); // Close our reference to the space.
+	MMSpaceCloseReference(oldSpace); // This reference was opened by Scheduler::Yield, and would have been closed in PostContextSwitch.
 }
 
 void AsyncTaskThread() {

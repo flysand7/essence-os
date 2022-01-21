@@ -1206,6 +1206,12 @@ bool POSIXSubsystemTest() {
 	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("find . | grep Kernel.esx")); 
 	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "./Essence/Kernel.esx\n"));
 
+	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("exit")); 
+
+	for (uintptr_t i = 0; i < 1000; i++) {
+		CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, ""));
+	}
+
 	return true;
 }
 
@@ -1305,7 +1311,7 @@ const Test tests[] = {
 	TEST(RangeSetTests, 60),
 	TEST(UTF8Tests, 60),
 	TEST(PipeTests, 60),
-	TEST(POSIXSubsystemTest, 60),
+	TEST(POSIXSubsystemTest, 120),
 	TEST(RestartTest, 1200),
 	TEST(ResizeFileTest, 600),
 };
