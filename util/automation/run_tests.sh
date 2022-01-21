@@ -12,6 +12,6 @@ echo "desktop/api_tests.ini" >> bin/extra_applications.ini
 echo `git log | head -n 1 | cut -b 8-14` > bin/commit.txt
 ./start.sh build
 ./start.sh build-port busybox
-./start.sh run-tests
 util/x11/build.sh apps/samples/hello.c
+./start.sh run-tests
 rm -rf cross .git bin/cache bin/freetype bin/harfbuzz bin/musl root/Applications/POSIX/lib bin/drive
