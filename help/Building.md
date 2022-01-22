@@ -37,12 +37,7 @@ Essence is built using GitHub Actions using their Ubuntu virtual machines. [This
 
 ## macOS
 
-1) Install `gcc@11` through brew
-2) Install `nasm` through brew
-3) Install `ctags` through brew
-4) Install `xz` through brew
-
-Follow the instructions above for Linux to build and test the system.
+Install `brew` and then run `brew install gcc@11 nasm ctags xz coreutils gnu-sed`. Follow the instructions above for Linux to build and test the system. KVM will not be available.
 
 ## Configuration
 
