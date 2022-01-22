@@ -71,11 +71,7 @@ if [ ! -d "bin/harfbuzz" ]; then
 	cd bin/harfbuzz/src
 
 	SED=sed
-
-	uname -a | grep Darwin > /dev/null
-	if [ $? -ne 1 ]; then
-		SED=gsed
-	fi
+	uname -a | grep Darwin && SED=gsed
 
 	find . -type f -exec $SED -i 's/#include <assert.h>/#include <essence.h>/g' {} \;
 	find . -type f -exec $SED -i 's/#include <atomic.h>/#include <essence.h>/g' {} \;
