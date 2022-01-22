@@ -18,6 +18,7 @@ echo "General.wallpaper=0:/Demo Content/Abstract.jpg" >> bin/config.ini
 echo "General.window_color=5"                         >> bin/config.ini
 
 # Setup toolchain, build the system and ports.
+./start.sh get-toolchain
 ./start.sh build-optimised
 ./start.sh build-optional-ports > /dev/null
 

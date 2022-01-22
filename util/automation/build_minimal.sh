@@ -15,4 +15,5 @@ echo "Dependency.stb_image=0"           >> bin/config.ini
 echo "Dependency.stb_image_write=0"     >> bin/config.ini
 echo "Dependency.stb_sprintf=0"         >> bin/config.ini
 echo "Dependency.FreeTypeAndHarfBuzz=0" >> bin/config.ini
+./start.sh get-toolchain
 ./start.sh build-optimised

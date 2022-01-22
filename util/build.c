@@ -758,7 +758,7 @@ void BuildCrossCompiler() {
 		if (processorCount > 16) processorCount = 16;
 
 		printf("Type 'yes' if you have updated your system.\n");
-		if (!GetYes()) { printf("The build has been canceled.\n"); exit(0); }
+		if (interactiveMode && !GetYes()) { printf("The build has been canceled.\n"); exit(0); }
 
 		{
 			getcwd(installationFolder, 4096);
@@ -768,7 +768,7 @@ void BuildCrossCompiler() {
 			strcpy(compilerPath, installationFolder);
 			strcat(compilerPath, "/bin");
 			printf("\nType 'yes' to install the compiler into '%s'.\n", installationFolder);
-			if (!GetYes()) { printf("The build has been canceled.\n"); exit(0); }
+			if (interactiveMode && !GetYes()) { printf("The build has been canceled.\n"); exit(0); }
 		}
 
 		if (!AddCompilerToPath()) {
@@ -1864,6 +1864,16 @@ void DoCommand(const char *l) {
 		getcwd(compilerPath, sizeof(compilerPath) - 64);
 		strcat(compilerPath, "/cross/bin2");
 		SaveConfig();
+	} else if (0 == strcmp(l, "get-toolchain")) {
+#if defined(__linux__) && defined(__x86_64__)
+		fprintf(stderr, "Downloading the compiler toolchain...\n");
+		DoCommand("get-source-checked 700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
+				"prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
+		DoCommand("setup-pre-built-toolchain");
+		AddCompilerToPath();
+#else
+		BuildCrossCompiler();
+#endif
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
 		printf("build         (b)                 - Build.\n");
@@ -1961,20 +1971,6 @@ int main(int _argc, char **_argv) {
 
 	const char *runFirstCommand = NULL;
 
-	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
-#if defined(__linux__) && defined(__x86_64__)
-		fprintf(stderr, "Downloading the compiler toolchain...\n");
-		DoCommand("get-source-checked 700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
-				"prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
-		DoCommand("setup-pre-built-toolchain");
-		AddCompilerToPath();
-#else
-		BuildCrossCompiler();
-#endif
-		runFirstCommand = "b";
-		foundValidCrossCompiler = true;
-	}
-
 	if (argc >= 2) {
 		char buffer[4096];
 		buffer[0] = 0;
@@ -1989,6 +1985,12 @@ int main(int _argc, char **_argv) {
 		return 0;
 	} else {
 		interactiveMode = true;
+	}
+
+	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
+		DoCommand("get-toolchain");
+		runFirstCommand = "b";
+		foundValidCrossCompiler = true;
 	}
 
 	SaveConfig();

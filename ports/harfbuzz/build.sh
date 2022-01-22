@@ -72,7 +72,8 @@ if [ ! -d "bin/harfbuzz" ]; then
 
 	SED=sed
 
-	if [ "$OSTYPE" = "darwin"* ]; then
+	uname -a | grep Darwin > /dev/null
+	if [ $? -ne 1 ]; then
 		SED=gsed
 	fi
 

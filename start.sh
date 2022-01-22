@@ -18,8 +18,8 @@ uname -a | grep Darwin > /dev/null
 if [ $? -ne 1 ]; then
 	export CC=gcc-11
 	export CXX=g++-11
-	export CPPFLAGS=-I/opt/homebrew/include
-	export LDFLAGS=-L/opt/homebrew/lib
+	export CPPFLAGS=-I$(brew --prefix)/include
+	export LDFLAGS=-L$(brew --prefix)/lib
 	alias md5sum="md5"
 	alias gcc="gcc-11"
 	alias g++="g++-11"

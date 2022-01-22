@@ -10,6 +10,7 @@ echo "accepted_license=1" >> bin/build_config.ini
 echo "Flag.ENABLE_POSIX_SUBSYSTEM=1" >> bin/config.ini
 echo "desktop/api_tests.ini" >> bin/extra_applications.ini
 echo `git log | head -n 1 | cut -b 8-14` > bin/commit.txt
+./start.sh get-toolchain
 ./start.sh build
 ./start.sh build-port busybox
 util/x11/build.sh apps/samples/hello.c
