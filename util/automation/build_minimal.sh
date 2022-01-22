@@ -9,7 +9,6 @@ echo "Flag.DEBUG_BUILD=0"               >> bin/config.ini
 echo "BuildCore.NoImportPOSIX=1"        >> bin/config.ini
 echo "BuildCore.RequiredFontsOnly=1"    >> bin/config.ini
 echo "Emulator.PrimaryDriveMB=32"       >> bin/config.ini
-echo "Emulator.PrimaryDriveMB=32"       >> bin/config.ini
 echo "Dependency.ACPICA=0"              >> bin/config.ini
 echo "Dependency.stb_image=0"           >> bin/config.ini
 echo "Dependency.stb_image_write=0"     >> bin/config.ini
