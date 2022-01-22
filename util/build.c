@@ -1326,7 +1326,7 @@ void GetSource(const char *parameters, const char *checksum) {
 #endif
 
 	if (checksum) {
-		fprintf(stderr, "Checking validity of downloading file...\n");
+		fprintf(stderr, "Checking validity of downloaded file...\n");
 
 		int checksumLength = strlen(checksum);
 
