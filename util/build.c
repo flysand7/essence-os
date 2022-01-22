@@ -1326,6 +1326,8 @@ void GetSource(const char *parameters, const char *checksum) {
 #endif
 
 	if (checksum) {
+		fprintf("Checking validity of downloading file...\n");
+
 		int checksumLength = strlen(checksum);
 
 		for (int i = 0; checksum[i]; i++) {
@@ -1342,8 +1344,11 @@ void GetSource(const char *parameters, const char *checksum) {
 		}
 	}
 
+	fprintf("Decompressing...\n");
 	if (CallSystemF("tar -x%cf %s", decompressFlag, name)) exit(1);
+	fprintf("Moving...\n");
 	if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
+	fprintf("Done.\n");
 }
 
 void RunTests(int singleTest) {
