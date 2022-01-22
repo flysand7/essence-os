@@ -1878,6 +1878,7 @@ void DoCommand(const char *l) {
 		AddCompilerToPath();
 #else
 		BuildCrossCompiler();
+		SaveConfig();
 #endif
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
