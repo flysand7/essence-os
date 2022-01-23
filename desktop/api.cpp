@@ -1352,6 +1352,11 @@ EsMessage *EsMessageReceive() {
 }
 
 void EsInstanceSetModified(EsInstance *instance, bool modified) {
+	if (((APIInstance *) instance->_private)->instanceClass != ES_INSTANCE_CLASS_EDITOR) {
+		// The modified flag should only be used if this is an editor-style application.
+		return;
+	}
+
 	EsCommandSetEnabled(EsCommandByID(instance, ES_COMMAND_SAVE), modified);
 
 	if (instance->window) {
