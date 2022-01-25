@@ -118,7 +118,7 @@ namespace POSIX {
 	}
 
 	intptr_t Write(POSIXFile *file, K_USER_BUFFER void *base, size_t length, bool baseMappedToFile) {
-		if (file->posixFlags & O_APPEND) {
+		if ((file->posixFlags & O_APPEND) && file->type == POSIX_FILE_NORMAL) {
 			// TODO Make this atomic.
 			file->offsetIntoFile = file->node->directoryEntry->totalSize;
 		}
@@ -241,7 +241,7 @@ namespace POSIX {
 				const char *devZero = "/dev/zero";
 				const char *devNull = "/dev/null";
 
-				// EsPrint("Open: %s, %x\n", pathLength, path, flags);
+				EsPrint("Open: %s, %x\n", pathLength, path, flags);
 
 				if ((EsCStringLength(devZero) == pathLength && 0 == EsMemoryCompare(path, devZero, pathLength))) {
 					file->type = POSIX_FILE_ZERO;
@@ -329,6 +329,14 @@ namespace POSIX {
 					handleTable->ModifyFlags(syscall.arguments[0], syscall.arguments[2]);
 				} else if (syscall.arguments[1] == F_GETFL) {
 					return file->posixFlags;
+				} else if (syscall.arguments[1] == F_SETFL) {
+					if (syscall.arguments[2] == O_APPEND) {
+						file->posixFlags |= O_APPEND;
+					} else if (syscall.arguments[2] == 0) {
+						file->posixFlags &= ~O_APPEND;
+					} else {
+						KernelPanic("POSIX::DoSyscall - Unimplemented F_SETFL %d.\n", syscall.arguments[2]);
+					}
 				} else if (syscall.arguments[1] == F_DUPFD) {
 					// Duplicate with FD_CLOEXEC clear.
 					OpenHandleToObject(file, KERNEL_OBJECT_POSIX_FD, 0);

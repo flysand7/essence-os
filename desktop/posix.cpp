@@ -419,6 +419,20 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			}
 		} break;
 
+		case SYS_faccessat: {
+			if (*(char *) a2 == '/') {
+				// We don't support file permissions yet, so just check the file exists.
+				int fd = EsPOSIXSystemCall(SYS_open, a2, O_PATH, 0, 0, 0, 0);
+				if (fd < 0) returnValue = fd;
+				else {
+					returnValue = 0;
+					EsPOSIXSystemCall(SYS_close, fd, 0, 0, 0, 0, 0);
+				}
+			} else {
+				EsPanic("Unsupported relative faccessat.\n");
+			}
+		} break;
+
 		case SYS_lstat:
 		case SYS_stat: {
 			int fd = EsPOSIXSystemCall(SYS_open, a1, O_PATH, 0, 0, 0, 0);

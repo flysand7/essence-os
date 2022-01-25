@@ -55,7 +55,6 @@ bool foundValidCrossCompiler;
 bool coloredOutput;
 bool encounteredErrors;
 bool interactiveMode;
-bool canBuildLuigi;
 volatile int emulatorTimeout;
 volatile bool emulatorDidTimeout;
 #ifdef __linux__
@@ -2029,9 +2028,6 @@ int main(int _argc, char **_argv) {
 
 	printf("Enter 'help' to get a list of commands.\n");
 	char *prev = NULL;
-
-	canBuildLuigi = !CallSystem("gcc -o bin/luigi.h.gch util/luigi.h -D UI_IMPLEMENTATION -D UI_LINUX 2> /dev/null");
-	unlink("bin/luigi.h.gch");
 
 	while (true) {
 		char *l = NULL;
