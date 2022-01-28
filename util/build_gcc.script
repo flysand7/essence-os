@@ -70,7 +70,7 @@ void Start() {
 	// Get the brew library path if we're running on Darwin.
 	str hostPlatform = StringTrim(SystemShellEvaluate("uname"));
 	str libraryPath = "";
-	if hostPlatform == "Darwin" libraryPath = SystemShellEvaluate("brew --prefix") + "/lib";
+	if hostPlatform == "Darwin" libraryPath = "-L" + SystemShellEvaluate("brew --prefix") + "/lib";
 
 	// Make sure we're not running as root.
 	assert StringTrim(SystemShellEvaluate("whoami")) != "root";
@@ -92,9 +92,9 @@ void Start() {
 
 	// Check all the needed libraries are available.
 	assert FileWriteAll("bin/test.c", "void main() {}");
-	assert !SystemShellExecute("gcc %libraryPath% -lmpc  bin/test.c 2>&1 | grep -i undefined"); // libmpc-dev
-	assert !SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c 2>&1 | grep -i undefined"); // libmpfr-dev
-	assert !SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c 2>&1 | grep -i undefined"); // libgmp-dev
+	assert SystemShellExecute("gcc %libraryPath% -lmpc  bin/test.c -o bin/test"); // If this fails, install mpc/libmpc/libmpc-dev.
+	assert SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c -o bin/test"); // If this fails, install mpfr/libmpfr/libmpfr-dev.
+	assert SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c -o bin/test"); // If this fails, install gmp/libgmp/libgmp-dev.
 
 	// Ask the user if they want to resume an incomplete build.
 	bool resumeBuild = false;
