@@ -72,6 +72,7 @@ void Start() {
 	str crossDirectory = sourceTree + "/cross";
 	str rootDirectory = sourceTree + "/root";
 	str compilerPath = crossDirectory + "/bin";
+	str destDir = "";
 
 	if buildCross {
 		// Modify the path.
@@ -105,6 +106,8 @@ void Start() {
 		assert SystemShellExecute("gcc %libraryPath% -lmpc  bin/test.c -o bin/test"); // If this fails, install mpc/libmpc/libmpc-dev.
 		assert SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c -o bin/test"); // If this fails, install mpfr/libmpfr/libmpfr-dev.
 		assert SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c -o bin/test"); // If this fails, install gmp/libgmp/libgmp-dev.
+	} else {
+		destDir = "DESTDIR=%rootDirectory%";
 	}
 
 	// Ask the user if they want to resume an incomplete build.
@@ -301,19 +304,19 @@ void Start() {
 					"../gmp-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
 					+ "--without-readline CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make -j %processorCount%");
-			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make DESTDIR=%rootDirectory% install");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make %destDir% install");
 
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", 
 					"../mpfr-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make -j %processorCount%");
-			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make DESTDIR=%rootDirectory% install");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make %destDir% install");
 
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", 
 					"../mpc-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make -j %processorCount%");
-			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make DESTDIR=%rootDirectory% install");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make %destDir% install");
 		}
 
 		// Run configure for Binutils and GCC.
@@ -343,11 +346,11 @@ void Start() {
 	// Run makefiles.
 	runningMakefiles = true;
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make -j %processorCount%");
-	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make install");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make %destDir% install");
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-gcc -j %processorCount%");
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-target-libgcc -j %processorCount%");
-	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-strip-gcc");
-	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-target-libgcc");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make %destDir% install-strip-gcc");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make %destDir% install-target-libgcc");
 
 	if buildCross {
 		// Modify the mm_malloc.h header.
