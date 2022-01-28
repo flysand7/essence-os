@@ -34,7 +34,6 @@
 #include <stdbool.h>
 
 #define T_ERROR               (0)
-
 #define T_EOF                 (1)
 #define T_IDENTIFIER          (2)
 #define T_STRING_LITERAL      (3)
@@ -321,47 +320,62 @@ void *FileLoad(const char *path, size_t *length);
 
 // --------------------------------- Base module.
 
-#define BASE_MODULE_SOURCE \
-	"void PrintStdErr(str x) #extcall;" \
-	"void PrintStdErrWarning(str x) #extcall;" \
-	"void PrintStdErrHighlight(str x) #extcall;" \
-	"str ConsoleGetLine() #extcall;" \
-	"str StringTrim(str x) #extcall;" \
-	"int StringToByte(str x) #extcall;" \
-	"bool SystemShellExecute(str x) #extcall;" /* Returns true on success. */ \
-	"bool SystemShellExecuteWithWorkingDirectory(str wd, str x) #extcall;" /* Returns true on success. */ \
-	"str SystemShellEvaluate(str x) #extcall;" \
-	"int SystemGetProcessorCount() #extcall;" \
-	"str SystemGetEnvironmentVariable(str name) #extcall;" \
-	"bool SystemSetEnvironmentVariable(str name, str value) #extcall;" \
-	"bool PathExists(str x) #extcall;" \
-	"bool PathCreateDirectory(str x) #extcall;" /* TODO Replace the return value with a enum. */ \
-	"bool PathDelete(str x) #extcall;" /* TODO Replace the return value with a enum. */ \
-	"bool PathDeleteRecursively(str x) #extcall;" \
-	"bool PathMove(str source, str destination) #extcall;" \
-	"str PathGetDefaultPrefix() #extcall;" \
-	"bool PathSetDefaultPrefixToScriptSourceDirectory() #extcall;" \
-	"str FileReadAll(str path) #extcall;" /* TODO Returning an error? */ \
-	"bool FileWriteAll(str path, str x) #extcall;" /* TODO Returning an error? */ \
-	"bool FileCopy(str source, str destination) #extcall;" \
-	"bool PersistRead(str path) #extcall;" \
-	\
-	"bool StringContains(str haystack, str needle) {" \
-	"	for int i = 0; i <= haystack:len() - needle:len(); i += 1 {" \
-	"		bool match = true;" \
-	"		for int j = 0; j < needle:len(); j += 1 { if haystack[i + j] != needle[j] match = false; }" \
-	"		if match { return true; }" \
-	"	}" \
-	"" \
-	"	return false;" \
-	"}" \
-	""\
-	"bool CharacterIsAlnum(str c) {" \
-	"	int b = StringToByte(c);" \
-	"	return (b >= StringToByte(\"A\") && b <= StringToByte(\"Z\")) || (b >= StringToByte(\"a\") && b <= StringToByte(\"z\"))" \
-	"		|| (b >= StringToByte(\"0\") && b <= StringToByte(\"9\"));" \
-	"}" \
+char baseModuleSource[] = {
+	// Logging:
 
+	"void PrintStdErr(str x) #extcall;"
+	"void PrintStdErrWarning(str x) #extcall;"
+	"void PrintStdErrHighlight(str x) #extcall;"
+
+	// String operations:
+
+	"str StringTrim(str x) #extcall;"
+	"int StringToByte(str x) #extcall;"
+	"bool StringContains(str haystack, str needle) {"
+	"	for int i = 0; i <= haystack:len() - needle:len(); i += 1 {"
+	"		bool match = true;"
+	"		for int j = 0; j < needle:len(); j += 1 { if haystack[i + j] != needle[j] match = false; }"
+	"		if match { return true; }"
+	"	}"
+	""
+	"	return false;"
+	"}"
+	"bool CharacterIsAlnum(str c) {"
+	"	int b = StringToByte(c);"
+	"	return (b >= StringToByte(\"A\") && b <= StringToByte(\"Z\")) || (b >= StringToByte(\"a\") && b <= StringToByte(\"z\"))"
+	"		|| (b >= StringToByte(\"0\") && b <= StringToByte(\"9\"));"
+	"}"
+
+	// Miscellaneous:
+
+	"int SystemGetProcessorCount() #extcall;"
+
+	// File system access:
+
+	"bool PathExists(str x) #extcall;"
+	"bool PathCreateDirectory(str x) #extcall;" // TODO Replace the return value with a enum.
+	"bool PathDelete(str x) #extcall;" // TODO Replace the return value with a enum.
+	"bool PathDeleteRecursively(str x) #extcall;"
+	"bool PathMove(str source, str destination) #extcall;"
+	"str PathGetDefaultPrefix() #extcall;"
+	"bool PathSetDefaultPrefixToScriptSourceDirectory() #extcall;"
+	"str FileReadAll(str path) #extcall;" // TODO Returning an error?
+	"bool FileWriteAll(str path, str x) #extcall;" // TODO Returning an error?
+	"bool FileCopy(str source, str destination) #extcall;"
+
+	// Persistent variables:
+
+	"bool PersistRead(str path) #extcall;"
+
+	// Command line:
+
+	"str ConsoleGetLine() #extcall;"
+	"str SystemGetEnvironmentVariable(str name) #extcall;"
+	"bool SystemSetEnvironmentVariable(str name, str value) #extcall;"
+	"bool SystemShellExecute(str x) #extcall;" // Returns true on success.
+	"bool SystemShellExecuteWithWorkingDirectory(str wd, str x) #extcall;" // Returns true on success.
+	"str SystemShellEvaluate(str x) #extcall;"
+};
 
 // --------------------------------- External function calls.
 
@@ -1631,8 +1645,8 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 
 			if (node->firstChild->token.textBytes == 15 
 					&& 0 == MemoryCompare(node->firstChild->token.text, "__base_module__", node->firstChild->token.textBytes)) {
-				fileData = BASE_MODULE_SOURCE;
-				t.inputBytes = sizeof(BASE_MODULE_SOURCE) - 1;
+				fileData = baseModuleSource;
+				t.inputBytes = sizeof(baseModuleSource) - 1;
 				t.isBaseModule = true;
 			} else {
 				fileData = FileLoad(path, &t.inputBytes);
