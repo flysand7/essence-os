@@ -1139,7 +1139,7 @@ void DoCommand(const char *l) {
 		LoadOptions();
 		Compile(COMPILE_FOR_EMULATOR, atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 	} else if (0 == strcmp(l, "build-cross")) {
-		CallSystem("bin/script util/build_gcc.script");
+		CallSystem("bin/script ports/gcc/port.script buildCross=true");
 		printf("Please restart the build system.\n");
 		exit(0);
 	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
@@ -1318,6 +1318,8 @@ void DoCommand(const char *l) {
 		while ((entry = readdir(directory))) {
 			fprintf(stderr, "build-optional-ports: Calling \"ports/%s/port.sh\"...\n", entry->d_name);
 			CallSystemF("ports/%s/port.sh", entry->d_name);
+			fprintf(stderr, "build-optional-ports: Calling \"bin/script ports/%s/port.script\"...\n", entry->d_name);
+			CallSystemF("bin/script ports/%s/port.script", entry->d_name);
 		}
 
 		closedir(directory);
@@ -1435,6 +1437,7 @@ void DoCommand(const char *l) {
 	} else if (0 == strcmp(l, "build-port") || 0 == memcmp(l, "build-port ", 11)) {
 		bool alreadyNamedPort = l[10] == ' ';
 		char *l2 = NULL;
+		char buffer[4096];
 
 		if (!alreadyNamedPort) {
 			printf("\nAvailable ports:\n");
@@ -1442,14 +1445,13 @@ void DoCommand(const char *l) {
 			struct dirent *entry;
 
 			while ((entry = readdir(directory))) {
-				char buffer[4096];
 				snprintf(buffer, sizeof(buffer), "ports/%s/port.sh", entry->d_name);
 				FILE *f = fopen(buffer, "rb");
+				snprintf(buffer, sizeof(buffer), "ports/%s/port.script", entry->d_name);
+				FILE *g = fopen(buffer, "rb");
 
-				if (f) {
-					printf("\t%s\n", entry->d_name);
-					fclose(f);
-				}
+				if (f) { printf("\t%s\n", entry->d_name); fclose(f); }
+				if (g) { printf("\t%s\n", entry->d_name); fclose(g); }
 			}
 
 			closedir(directory);
@@ -1469,7 +1471,13 @@ void DoCommand(const char *l) {
 			l2 = (char *) l + 11;
 		}
 
-		int status = CallSystemF("ports/%s/port.sh", l2);
+		snprintf(buffer, sizeof(buffer), "ports/%s/port.sh", l2);
+		FILE *f = fopen(buffer, "rb");
+		if (f) fclose(f);
+
+		int status; 
+		if (f) status = CallSystemF("ports/%s/port.sh", l2);
+		else status = CallSystemF("bin/script ports/%s/port.script", l2);
 
 		if (!alreadyNamedPort) {
 			free(l2);
@@ -1536,9 +1544,9 @@ void DoCommand(const char *l) {
 		AddCompilerToPath();
 #else
 		if (automatedBuild) {
-			CallSystem("bin/script util/build_gcc.script skipYesChecks=true");
+			CallSystem("bin/script ports/gcc/port.script buildCross=true skipYesChecks=true");
 		} else {
-			CallSystem("bin/script util/build_gcc.script");
+			CallSystem("bin/script ports/gcc/port.script buildCross=true");
 		}
 
 		exit(0);

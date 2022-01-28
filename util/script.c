@@ -1548,7 +1548,7 @@ bool ScopeAddEntry(Tokenizer *tokenizer, Scope *scope, Node *node) {
 }
 
 void ASTFreeScopes(Node *node) {
-	if (node->scope) {
+	if (node && node->scope) {
 		node->scope->entries = AllocateResize(node->scope->entries, 0);
 
 		Node *child = node->firstChild;

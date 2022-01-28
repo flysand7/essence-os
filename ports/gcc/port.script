@@ -1,0 +1,386 @@
+#import "util/get_source.script" get_source;
+
+// Persistent variables:
+bool runningMakefiles #persist;
+
+// Options:
+str gccVersion #option;
+str binutilsVersion #option;
+str gmpVersion #option;
+str mpfrVersion #option;
+str mpcVersion #option;
+str targetName #option;
+str toolchainPrefix #option;
+int processorCount #option;
+bool skipYesChecks #option;
+bool buildCross #option;
+
+bool ConsoleGetYes() {
+	if skipYesChecks { return true; }
+	str input = ConsoleGetLine();
+	return input == "yes" || input == "y";
+}
+
+void Start() {
+	if buildCross {
+		// Print instructions.
+		PrintStdErr("To build Essence, you need a cross compiler. This will be built for you automatically.\n");
+		PrintStdErr("- You need to be connected to the internet. ~100MB will be downloaded.\n");
+		PrintStdErr("- You need ~3GB of drive space available.\n");
+		PrintStdErr("- You need ~8GB of RAM available.\n");
+		PrintStdErr("- This should take ~20 minutes on a modern computer.\n");
+		PrintStdErr("- This does *not* require root permissions.\n");
+		PrintStdErr("- You must fully update your system before building.\n");
+		PrintStdErr("Enter 'yes' to continue.\n");
+		assert ConsoleGetYes();
+	}
+
+	// Make sure we're not running as root.
+	assert StringTrim(SystemShellEvaluate("whoami")) != "root";
+
+	// Set default values for options.
+	if gccVersion      == "" gccVersion      = "11.1.0";
+	if binutilsVersion == "" binutilsVersion = "2.36.1";
+	if gmpVersion      == "" gmpVersion      = "6.2.1";
+	if mpfrVersion     == "" mpfrVersion     = "4.1.0";
+	if mpcVersion      == "" mpcVersion      = "1.2.1";
+	if targetName      == "" targetName      = "x86_64";
+	if toolchainPrefix == "" toolchainPrefix = "x86_64-essence";
+
+	// Get the number of processors to compile with.
+	if processorCount == 0 {
+		processorCount = SystemGetProcessorCount();
+		if processorCount < 1 processorCount = 1;
+		if processorCount > 16 processorCount = 16;
+	}
+
+	// Create folders.
+	assert PathCreateDirectory("bin");
+	assert PathCreateDirectory("root");
+	assert PathCreateDirectory("root/Essence");
+	assert PathCreateDirectory("root/Applications");
+	assert PathCreateDirectory("root/Applications/POSIX");
+	assert PathCreateDirectory("root/Applications/POSIX/bin");
+	assert PathCreateDirectory("root/Applications/POSIX/include");
+	assert PathCreateDirectory("root/Applications/POSIX/lib");
+
+	// Load the persistent variables.
+	assert PersistRead("bin/build_gcc_state.dat");
+
+	// Get the directories.
+	str sourceTree = PathGetDefaultPrefix();
+	str crossDirectory = sourceTree + "/cross";
+	str rootDirectory = sourceTree + "/root";
+	str compilerPath = crossDirectory + "/bin";
+
+	if buildCross {
+		// Modify the path.
+		str path = compilerPath + ":" + SystemGetEnvironmentVariable("PATH");
+		SystemSetEnvironmentVariable("PATH", path);
+		assert !StringContains(path, "::");
+		assert SystemGetEnvironmentVariable("PATH") == path;
+
+		// Get the brew library path if we're running on Darwin.
+		str hostPlatform = StringTrim(SystemShellEvaluate("uname"));
+		str libraryPath = "";
+		if hostPlatform == "Darwin" libraryPath = "-L" + SystemShellEvaluate("brew --prefix") + "/lib";
+
+		// Check all the needed tools are available.
+		assert SystemShellExecute("which g++");
+		assert SystemShellExecute("which make");
+		assert SystemShellExecute("which bison");
+		assert SystemShellExecute("which flex");
+		assert SystemShellExecute("which curl");
+		assert SystemShellExecute("which nasm");
+		assert SystemShellExecute("which ctags");
+		assert SystemShellExecute("which xz");
+		assert SystemShellExecute("which gzip");
+		assert SystemShellExecute("which tar");
+		assert SystemShellExecute("which grep");
+		assert SystemShellExecute("which sed");
+		assert SystemShellExecute("which awk");
+
+		// Check all the needed libraries are available.
+		assert FileWriteAll("bin/test.c", "void main() {}");
+		assert SystemShellExecute("gcc %libraryPath% -lmpc  bin/test.c -o bin/test"); // If this fails, install mpc/libmpc/libmpc-dev.
+		assert SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c -o bin/test"); // If this fails, install mpfr/libmpfr/libmpfr-dev.
+		assert SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c -o bin/test"); // If this fails, install gmp/libgmp/libgmp-dev.
+	}
+
+	// Ask the user if they want to resume an incomplete build.
+	bool resumeBuild = false;
+	if runningMakefiles {
+		PrintStdErr("The build system has detected a build was started, but was not completed.\n");
+		PrintStdErr("Enter 'yes' to attempt to resume this build.\n");
+		resumeBuild = ConsoleGetYes();
+		runningMakefiles = false;
+	}
+
+	if !resumeBuild {
+		if buildCross {
+			assert PathDeleteRecursively("cross");
+		}
+
+		// Cleanup.
+		assert PathDeleteRecursively("bin/build-binutils");
+		assert PathDeleteRecursively("bin/build-gcc");
+		assert PathDeleteRecursively("bin/build-mpfr");
+		assert PathDeleteRecursively("bin/build-mpc");
+		assert PathDeleteRecursively("bin/build-gmp");
+		assert PathDeleteRecursively("bin/binutils-src");
+		assert PathDeleteRecursively("bin/gcc-src");
+		assert PathDeleteRecursively("bin/mpfr-src");
+		assert PathDeleteRecursively("bin/mpc-src");
+		assert PathDeleteRecursively("bin/gmp-src");
+
+		// Create folders.
+		assert PathCreateDirectory("bin/build-binutils");
+		assert PathCreateDirectory("bin/build-gcc");
+		assert PathCreateDirectory("bin/build-mpc");
+		assert PathCreateDirectory("bin/build-mpfr");
+		assert PathCreateDirectory("bin/build-gmp");
+
+		if buildCross {
+			// Copy the C standard library headers to their destination.
+			assert SystemShellExecute("ports/musl/build.sh %targetName%");
+		}
+
+		// Download the sources.
+		get_source.Get("ftp://ftp.gnu.org/gnu/binutils/binutils-%binutilsVersion%.tar.xz", "binutils-%binutilsVersion%",
+				"e81d9edf373f193af428a0f256674aea62a9d74dfe93f65192d4eae030b0f3b0");
+		assert PathMove("bin/source", "bin/binutils-src");
+		get_source.Get("ftp://ftp.gnu.org/gnu/gcc/gcc-%gccVersion%/gcc-%gccVersion%.tar.xz", "gcc-%gccVersion%",
+				"4c4a6fb8a8396059241c2e674b85b351c26a5d678274007f076957afa1cc9ddf");
+		assert PathMove("bin/source", "bin/gcc-src");
+		get_source.Get("ftp://ftp.gnu.org/gnu/gmp/gmp-%gmpVersion%.tar.xz", "gmp-%gmpVersion%",
+				"fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2");
+		assert PathMove("bin/source", "bin/gmp-src");
+		get_source.Get("ftp://ftp.gnu.org/gnu/mpfr/mpfr-%mpfrVersion%.tar.xz", "mpfr-%mpfrVersion%",
+				"0c98a3f1732ff6ca4ea690552079da9c597872d30e96ec28414ee23c95558a7f");
+		assert PathMove("bin/source", "bin/mpfr-src");
+		get_source.Get("ftp://ftp.gnu.org/gnu/mpc/mpc-%mpcVersion%.tar.gz", "mpc-%mpcVersion%",
+				"17503d2c395dfcf106b622dc142683c1199431d095367c6aacba6eec30340459");
+		assert PathMove("bin/source", "bin/mpc-src");
+
+		// Patch the sources.
+		assert FileCopy("ports/gcc/changes/binutils_bfd_config.bfd", "bin/binutils-src/bfd/config.bfd");
+		assert FileCopy("ports/gcc/changes/binutils_config.sub", "bin/binutils-src/config.sub");
+		assert FileCopy("ports/gcc/changes/binutils_gas_configure.tgt", "bin/binutils-src/gas/configure.tgt");
+		assert FileCopy("ports/gcc/changes/binutils_ld_configure.tgt", "bin/binutils-src/ld/configure.tgt");
+		assert FileCopy("ports/gcc/changes/gcc_config.sub", "bin/gcc-src/config.sub");
+		assert FileCopy("ports/gcc/changes/gcc_fixincludes_mkfixinc.sh", "bin/gcc-src/fixincludes/mkfixinc.sh");
+		assert FileCopy("ports/gcc/changes/gcc_gcc_config_essence.h", "bin/gcc-src/gcc/config/essence.h");
+		assert FileCopy("ports/gcc/changes/gcc_gcc_config_i386_t-x86_64-essence", "bin/gcc-src/gcc/config/i386/t-x86_64-essence");
+		assert FileCopy("ports/gcc/changes/gcc_gcc_config.gcc", "bin/gcc-src/gcc/config.gcc");
+		assert FileCopy("ports/gcc/changes/gcc_gcc_config_host_darwin.c", "bin/gcc-src/gcc/config/host-darwin.c");
+		assert FileCopy("ports/gcc/changes/gcc_libgcc_config.host", "bin/gcc-src/libgcc/config.host");
+		assert FileCopy("ports/gcc/changes/gcc_libstdc++-v3_configure", "bin/gcc-src/libstdc++-v3/configure");
+
+		// Set environment variables to force configure scripts to assume the unrecognised cross-compile target is okay.
+		if !buildCross {
+			SystemSetEnvironmentVariable("ac_cv_func_calloc_0_nonnull", "yes");
+			SystemSetEnvironmentVariable("ac_cv_func_chown_works", "yes");
+			SystemSetEnvironmentVariable("ac_cv_func_getgroups_works", "yes");
+			SystemSetEnvironmentVariable("ac_cv_func_malloc_0_nonnull", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_cbrtl_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_ceil_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_ceilf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_ceill_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_chown_ctime_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_chown_slash_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_exp2l_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_expm1_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fcntl_f_dupfd_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fdopendir_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_floorf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fma_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fmaf_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fmal_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fmod_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fmodf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fmodl_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_fpurge_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_futimens_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_futimesat_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_getgroups_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_gettimeofday_clobber", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_hypot_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_hypotf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_hypotl_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_isfinitel_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_isnanl_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_link_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_linkat_slash", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log10_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log10f_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log1p_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log1pf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log1pl_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log2_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log2f_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_log_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_logf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_lstat_dereferences_slashed_symlink", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mbrlen_empty_input", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mbrtowc_empty_input", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_memchr_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_memmem_works_fast", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mkdir_trailing_dot_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mkdir_trailing_slash_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mkfifo_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_mknod_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_modf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_modff_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_modfl_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_nanosleep", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_open_directory_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_perror_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_a", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_f", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_n", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_enomem", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_flag_zero", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_infinite", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_infinite_long_double", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_printf_sizes_c99", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_pselect_detects_ebadf", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_ptsname_sets_errno", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_readlink_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_realpath_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_remainder_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_remainderf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_remainderl_iee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_rename_dest_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_rename_link_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_rename_slash_dst_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_rename_slash_src_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_rmdir_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_round_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_roundf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_select_detects_ebadf", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_setenv_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_signbit", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_signbit_gcc", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_sleep_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_snprintf_directive_n", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_snprintf_retval_c99", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_snprintf_truncation_c99", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_stat_dir_slash", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_stat_file_slash", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_stpncpy", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_strcasestr_linear", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_strchrnul_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_strerror_0_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_strstr_linear", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_strtod_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_svid_putenv", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_symlink_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_tdelete_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_trunc_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_truncf_ieee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_truncl_iee", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_tzset_clobber", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_ungetc_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_unlink_honors_slashes", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_unsetenv_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_usleep_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_utimensat_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_vsnprintf_posix", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_vsnprintf_zerosize_c99", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_vsprintf_posix", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_wcwidth_works", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_working_getdelim", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_working_mkstemp", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_working_mktime", "yes");
+			SystemSetEnvironmentVariable("gl_cv_func_working_strerror", "yes");
+		}
+
+		// Build libraries.
+		if !buildCross {
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", 
+					"../gmp-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					+ "--without-readline CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make -j %processorCount%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make DESTDIR=%rootDirectory% install");
+
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", 
+					"../mpfr-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make -j %processorCount%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make DESTDIR=%rootDirectory% install");
+
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", 
+					"../mpc-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make -j %processorCount%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make DESTDIR=%rootDirectory% install");
+		}
+
+		// Run configure for Binutils and GCC.
+		if !buildCross {
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", 
+					"../binutils-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					+ "--with-local-prefix=\"/Applications/POSIX/local\" --with-build-sysroot=%rootDirectory% "
+					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
+					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", 
+					"../gcc-src/configure --host=%toolchainPrefix% --target=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					+ "--with-local-prefix=\"/Applications/POSIX/local\" --with-build-sysroot=%rootDirectory% "
+					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
+					+ "--enable-languages=c,c++ "
+					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ LD=%toolchainPrefix%-ld");
+		} else {
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", 
+					"../binutils-src/configure --target=%toolchainPrefix% --prefix=\"%crossDirectory%\" "
+					+ "--with-sysroot=\"%rootDirectory%\" --disable-nls --disable-werror");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", 
+					"../gcc-src/configure --target=%toolchainPrefix% --prefix=\"%crossDirectory%\" "
+					+ "--enable-languages=c,c++ --with-sysroot=\"%rootDirectory%\" --disable-nls"); 
+			// Add --without-headers for a x86_64-elf build.
+		}
+	}
+
+	// Run makefiles.
+	runningMakefiles = true;
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make install");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-gcc -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-target-libgcc -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-strip-gcc");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-target-libgcc");
+
+	if buildCross {
+		// Modify the mm_malloc.h header.
+		assert FileWriteAll("%crossDirectory%/lib/gcc/%toolchainPrefix%/%gccVersion%/include/mm_malloc.h", "/* removed */\n");
+
+		// Update the build configuration and compile the system.
+		FileWriteAll("bin/build_config.ini", "accepted_license=1\ncompiler_path=%compilerPath%\ncross_compiler_index=11\n");
+		SystemShellExecute("./start.sh c");
+
+		// Build libstdc++.
+		// TODO Waiting on GCC 11.3 to do this for the port. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100017.
+		assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-target-libstdc++-v3 -j %processorCount%");
+		assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-target-libstdc++-v3");
+	}
+	
+	// Copy license files.
+	assert FileCopy("bin/gcc-src/COPYING", "bin/GCC License.txt");
+	assert FileCopy("bin/binutils-src/COPYING", "bin/Binutils License.txt");
+	assert FileCopy("bin/gmp-src/COPYING", "bin/GMP License.txt");
+	assert FileCopy("bin/mpc-src/COPYING.LESSER", "bin/MPC License.txt");
+	assert FileCopy("bin/mpfr-src/COPYING.LESSER", "bin/MPFR License.txt");
+
+	// Cleanup.
+	runningMakefiles = false;
+	assert PathDeleteRecursively("bin/build-binutils");
+	assert PathDeleteRecursively("bin/build-gcc");
+	assert PathDeleteRecursively("bin/build-mpc");
+	assert PathDeleteRecursively("bin/build-mpfr");
+	assert PathDeleteRecursively("bin/build-gmp");
+	assert PathDeleteRecursively("bin/binutils-src");
+	assert PathDeleteRecursively("bin/gcc-src");
+	assert PathDeleteRecursively("bin/mpc-src");
+	assert PathDeleteRecursively("bin/mpfr-src");
+	assert PathDeleteRecursively("bin/gmp-src");
+	PrintStdErrHighlight("Build succeeded.\n");
+}
