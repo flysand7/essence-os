@@ -1535,7 +1535,12 @@ void DoCommand(const char *l) {
 		DoCommand("setup-pre-built-toolchain");
 		AddCompilerToPath();
 #else
-		CallSystem("bin/script util/build_gcc.script");
+		if (automatedBuild) {
+			CallSystem("bin/script util/build_gcc.script skipYesChecks=true");
+		} else {
+			CallSystem("bin/script util/build_gcc.script");
+		}
+
 		exit(0);
 #endif
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
