@@ -84,7 +84,7 @@ void Start() {
 		// Get the brew library path if we're running on Darwin.
 		str hostPlatform = StringTrim(SystemShellEvaluate("uname"));
 		str libraryPath = "";
-		if hostPlatform == "Darwin" libraryPath = "-L" + SystemShellEvaluate("brew --prefix") + "/lib";
+		if hostPlatform == "Darwin" libraryPath = "-L" + StringTrim(SystemShellEvaluate("brew --prefix")) + "/lib";
 
 		// Check all the needed tools are available.
 		assert SystemShellExecute("which g++");
