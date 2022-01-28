@@ -52,7 +52,20 @@ void Get(str url, str directoryName, str checksum) {
 		PrintStdErr("Valid checksum.\n");
 	}
 
-	assert SystemShellExecute("tar -xaf %cachePath%");
+	str decompressFlag = "";
+
+	if StringContains(url, ".tar.bz2") {
+		decompressFlag = "j";
+	} else if StringContains(url, ".tar.xz") {
+		decompressFlag = "J";
+	} else if StringContains(url, ".tar.gz") {
+		decompressFlag = "z";
+	} else {
+		PrintStdErrWarning("Error: Unrecognised archive format extension.\n");
+		assert false;
+	}
+
+	assert SystemShellExecute("tar -x%decompressFlag%f %cachePath%");
 	assert PathMove(directoryName, "bin/source");
 
 	PrintStdErr("File successfully downloaded and extracted.\n");
