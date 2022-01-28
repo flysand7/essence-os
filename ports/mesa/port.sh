@@ -1,7 +1,7 @@
 set -ex
 
 rm -rf bin/mesa
-bin/build get-source-checked df21351494f7caaec5a3ccc16f14f15512e98d2ecde178bba1d134edc899b961 mesa-20.1.8 https://archive.mesa3d.org//mesa-20.1.8.tar.xz
+bin/script util/get_source.script checksum=df21351494f7caaec5a3ccc16f14f15512e98d2ecde178bba1d134edc899b961 directoryName=mesa-20.1.8 url=https://archive.mesa3d.org//mesa-20.1.8.tar.xz
 mv bin/source bin/mesa
 
 echo "" > bin/meson_cross.txt

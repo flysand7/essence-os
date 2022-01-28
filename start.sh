@@ -68,6 +68,9 @@ if [ $? -ne 0 ]; then
 	exit
 fi
 
+# Compile the scripting engine.
+gcc -o bin/script util/script.c -g -Wall -Wextra -fsanitize=address
+
 # Compile and run Build.
 gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} \
 		-Wall -Wextra -Wno-format-security -Wno-format-overflow -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation \

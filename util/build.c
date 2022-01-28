@@ -1243,113 +1243,6 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 	}
 }
 
-void GetSource(const char *parameters, const char *checksum) {
-	if (CallSystem("mkdir -p bin/cache && rm -rf bin/source")) {
-		exit(1);
-	}
-
-	const char *folder = parameters;
-	const char *url = NULL;
-
-	for (int i = 0; folder[i]; i++) {
-		if (folder[i] == ' ') {
-			url = folder + i + 1;
-			break;
-		}
-	}
-
-	assert(url);
-
-	char name[1024];
-	strcpy(name, "bin/cache/");
-	char *nameWithoutDirectory = name + 10;
-
-	const char *extension = url;
-
-	for (int i = 0; url[i]; i++) {
-		name[i + 10] = isalnum(url[i]) ? url[i] : '_';
-		name[i + 11] = 0;
-		if (url[i] == '.') extension = url + i;
-	}
-
-	char decompressFlag;
-
-	if (0 == strcmp(extension, ".bz2")) {
-		decompressFlag = 'j';
-	} else if (0 == strcmp(extension, ".xz")) {
-		decompressFlag = 'J';
-	} else if (0 == strcmp(extension, ".gz")) {
-		decompressFlag = 'z';
-	} else {
-		fprintf(stderr, "Unknown archive format.\n");
-		exit(1);
-	}
-
-	char *alternateURL = NULL;
-
-	if (checksum) {
-		// If we're verifying the checksum of the file, then it should be okay to try downloading it from a non-official mirror.
-		const char *alternateURLPrefix = "https://github.com/nakst/cdn/raw/main/cache/";
-		alternateURL = (char *) malloc(strlen(alternateURLPrefix) + strlen(nameWithoutDirectory) + 1);
-		strcpy(alternateURL, alternateURLPrefix);
-		strcat(alternateURL, nameWithoutDirectory);
-	}
-
-	FILE *f = fopen(name, "rb");
-
-	if (f) {
-		// The file is cached.
-		fclose(f);
-	} else {
-		if (alternateURL) {
-			fprintf(stderr, "Attempting to download from '%s' with fallback '%s'...\n", alternateURL, url);
-		} else {
-			fprintf(stderr, "Attempting to download from '%s'...\n", url);
-		}
-		
-		if (!alternateURL || CallSystemF("curl -f -L %s > %s", alternateURL, name)) {
-			if (CallSystemF("curl -L %s > %s", url, name)) {
-				CallSystemF("rm %s", name); // Remove partially downloaded file.
-				fprintf(stderr, "Error: Could not download the file at '%s'. Exiting.\n", url);
-				exit(1);
-			}
-		}
-	}
-
-	free(alternateURL);
-
-#ifdef __APPLE__
-#define SHA256SUM "shasum -a 256"
-#else
-#define SHA256SUM "sha256sum"
-#endif
-
-	if (checksum) {
-		fprintf(stderr, "Checking validity of downloaded file...\n");
-
-		int checksumLength = strlen(checksum);
-
-		for (int i = 0; checksum[i]; i++) {
-			if (checksum[i] == ' ') {
-				checksumLength = i;
-				break;
-			}
-		}
-
-		if (CallSystemF(SHA256SUM " %s | grep %.*s > /dev/null", name, checksumLength, checksum)) {
-			fprintf(stderr, "Checksum mismatch for file '%s' downloaded from '%s'.\n", name, url);
-			CallSystemF("rm %s", name);
-			exit(1);
-		}
-	}
-
-	fprintf(stderr, "Decompressing...\n");
-	if (CallSystemF("tar -x%cf %s", decompressFlag, name)) exit(1);
-	fprintf(stderr, "Moving...\n");
-	if (CallSystemF("mv %.*s bin/source", (int) (url - folder), folder)) exit(1);
-	fprintf(stderr, "Done.\n");
-}
-
 void RunTests(int singleTest) {
 	// TODO Capture emulator memory dump if a test causes a EsPanic.
 	// TODO Using SMP/KVM if available in the optimised test runs.
@@ -1800,25 +1693,6 @@ void DoCommand(const char *l) {
 		if (automatedBuild) {
 			exit(status);
 		}
-	} else if (0 == memcmp(l, "get-source ", 11)) {
-		GetSource(l + 11, NULL);
-	} else if (0 == memcmp(l, "get-source-checked ", 19)) {
-		const char *checksum = l + 19;
-		const char *rest = NULL;
-
-		for (int i = 0; checksum[i]; i++) {
-			if (checksum[i] == ' ') {
-				rest = checksum + i + 1;
-				break;
-			}
-		}
-
-		if (!checksum) {
-			fprintf(stderr, "Invalid usage; expected checksum before other arguments.\n");
-			exit(1);
-		}
-
-		GetSource(rest, checksum);
 	} else if (0 == strcmp(l, "make-crash-report")) {
 		system("rm crash-report.tar.gz");
 		system("mkdir crash-report");
@@ -1871,8 +1745,8 @@ void DoCommand(const char *l) {
 	} else if (0 == strcmp(l, "get-toolchain")) {
 #if defined(__linux__) && defined(__x86_64__)
 		fprintf(stderr, "Downloading the compiler toolchain...\n");
-		DoCommand("get-source-checked 700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
-				"prefix https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
+		CallSystem("bin/script util/get_source.script checksum=700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
+				"directoryName=prefix url=https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
 		DoCommand("setup-pre-built-toolchain");
 		AddCompilerToPath();
 #else

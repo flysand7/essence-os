@@ -1,0 +1,63 @@
+str url #option;
+str directoryName #option;
+str checksum #option;
+
+void Get(str url, str directoryName, str checksum) {
+	assert url != "";
+	assert directoryName != "";
+
+	assert PathCreateDirectory("bin");
+	assert PathCreateDirectory("bin/cache");
+	assert PathDeleteRecursively("bin/source");
+
+	str url2 = "";
+
+	for int i = 0; i < url:len(); i += 1 {
+		if CharacterIsAlnum(url[i]) {
+			url2 += url[i];
+		} else {
+			url2 += "_";
+		}
+	}
+
+	str cachePath = "bin/cache/" + url2;
+	str alternateURL = "";
+
+	if checksum != "" {
+		// If we're verifying the checksum of the file, then it should be okay to try downloading it from a non-official mirror.
+		alternateURL = "https://github.com/nakst/cdn/raw/main/cache/" + url2;
+		PrintStdErr("Attempting to download from '%alternateURL%' with fallback '%url%'...\n");
+	} else {
+		PrintStdErr("Attempting to download from '%url%'...\n");
+	}
+
+	bool got = PathExists(cachePath);
+
+	if !got && alternateURL != "" got = SystemShellExecute("curl -f -L %alternateURL% > %cachePath%");
+	if !got got = SystemShellExecute("curl -f -L %url% > %cachePath%");
+
+	if !got {
+		PathDelete(cachePath);
+		PrintStdErrWarning("Error: Could not download the file at '%url%'. Exiting.\n");
+		assert false;
+	}
+
+	if checksum != "" {
+		if SystemShellEvaluate("shasum -a 256 %cachePath%") != "%checksum%  %cachePath%\n" {
+			PrintStdErrWarning("Error: Checksum mismatch for file '%cachePath%'.\n");
+			PathDelete(cachePath);
+			assert false;
+		}
+
+		PrintStdErr("Valid checksum.\n");
+	}
+
+	assert SystemShellExecute("tar -xaf %cachePath%");
+	assert PathMove(directoryName, "bin/source");
+
+	PrintStdErr("File successfully downloaded and extracted.\n");
+}
+
+void Start() {
+	Get(url, directoryName, checksum);
+}

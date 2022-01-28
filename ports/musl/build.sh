@@ -3,7 +3,7 @@ set -e
 if [ ! -d "bin/musl" ]; then
 	echo "Downloading Musl..."
 
-	bin/build get-source-checked 68af6e18539f646f9c41a3a2bb25be4a5cfa5a8f65f0bb647fd2bbfdf877e84b musl-1.2.1 https://musl.libc.org/releases/musl-1.2.1.tar.gz
+	bin/script util/get_source.script checksum=68af6e18539f646f9c41a3a2bb25be4a5cfa5a8f65f0bb647fd2bbfdf877e84b directoryName=musl-1.2.1 url=https://musl.libc.org/releases/musl-1.2.1.tar.gz
 	mv bin/source bin/musl
 
 	cp ports/musl/changes/config.mak                            bin/musl/config.mak

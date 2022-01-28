@@ -3,7 +3,7 @@ set -e
 if [ ! -d "bin/freetype" ]; then
 	echo "Downloading FreeType..."
 
-	bin/build get-source-checked bf380e4d7c4f3b5b1c1a7b2bf3abb967bda5e9ab480d0df656e0e08c5019c5e6 freetype-2.9 https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz
+	bin/script util/get_source.script checksum=bf380e4d7c4f3b5b1c1a7b2bf3abb967bda5e9ab480d0df656e0e08c5019c5e6 directoryName=freetype-2.9 url=https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz
 	mv bin/source bin/freetype
 
 	cp ports/freetype/patch-ftoption.h  bin/freetype/include/freetype/config/ftoption.h
