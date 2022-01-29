@@ -82,6 +82,7 @@
 #define T_INDEX               (91)
 #define T_LIST                (92)
 #define T_IMPORT_PATH         (93)
+#define T_LIST_LITERAL        (94)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -92,6 +93,8 @@
 #define T_INTERPOLATE_BOOL    (106)
 #define T_INTERPOLATE_INT     (107)
 #define T_INTERPOLATE_FLOAT   (108)
+#define T_DUP                 (109)
+#define T_SWAP                (110)
 
 #define T_FLOAT_ADD           (120)
 #define T_FLOAT_MINUS         (121)
@@ -837,9 +840,39 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 		node->firstChild = ParseType(tokenizer, false, false);
 		node->expressionType = node->firstChild;
 		if (!node->firstChild) return NULL;
+	} else if (node->token.type == T_LEFT_SQUARE) {
+		node->type = T_LIST_LITERAL;
+		Node **link = &node->firstChild;
+		bool needComma = false;
+
+		while (true) {
+			Token peek = TokenPeek(tokenizer);
+
+			if (peek.type == T_ERROR) {
+				return NULL;
+			} else if (peek.type == T_RIGHT_SQUARE) {
+				TokenNext(tokenizer);
+				break;
+			}
+
+			if (needComma) {
+				if (peek.type != T_COMMA) {
+					PrintError(tokenizer, "Expected a comma between list literal items.\n");
+					return NULL;
+				} else {
+					TokenNext(tokenizer);
+				}
+			}
+
+			Node *item = ParseExpression(tokenizer, false, 0);
+			if (!item) return NULL;
+			*link = item;
+			link = &item->sibling;
+			needComma = true;
+		}
 	} else {
 		PrintError2(tokenizer, node, "Expected an expression. "
-				"Expressions can start with a variable identifier, a string literal, a number, 'len', 'new', '!' or '('.\n");
+				"Expressions can start with a variable identifier, a string literal, a number, 'len', 'new', '!', '[' or '('.\n");
 		return NULL;
 	}
 
@@ -2098,6 +2131,26 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		node->expressionType = &globalExpressionTypeBool;
+	} else if (node->type == T_LIST_LITERAL) {
+		if (!node->firstChild) {
+			// TODO Support empty list literals?
+			PrintError2(tokenizer, node, "Empty list literals are not allowed. Instead, put 'new T[]' where 'T' is the item type.\n");
+			return false;
+		}
+
+		Node *item = node->firstChild;
+		node->expressionType = (Node *) AllocateFixed(sizeof(Node));
+		node->expressionType->type = T_LIST;
+		node->expressionType->firstChild = item->expressionType;
+
+		while (item) {
+			if (!ASTMatching(node->expressionType->firstChild, item->expressionType)) {
+				PrintError2(tokenizer, item, "The type of this item is different to the ones before it in the list.\n");
+				return false;
+			}
+
+			item = item->sibling;
+		}
 	} else {
 		PrintDebug("ASTSetTypes %d\n", node->type);
 		Assert(false);
@@ -2454,6 +2507,49 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->operationType, sizeof(node->operationType));
+		return true;
+	} else if (node->type == T_LIST_LITERAL) {
+		// Step 1: Create the list.
+		uint8_t b = T_NEW;
+		int16_t isManaged = ASTIsManagedType(node->expressionType->firstChild) ? -2 : -1;
+		FunctionBuilderAddLineNumber(builder, node);
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &isManaged, sizeof(isManaged));
+
+		// Step 2: Resize the list.
+		uint32_t size = 0;
+		Node *item = node->firstChild;
+		while (item) { size++; item = item->sibling; }
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_NUMERIC_LITERAL;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		Value v;
+		v.i = size;
+		FunctionBuilderAppend(builder, &v, sizeof(v));
+		b = T_OP_RESIZE;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+
+		// Step 3: Populate the list.
+		item = node->firstChild;
+		uint32_t i = 0;
+
+		while (item) {
+			b = T_DUP;
+			FunctionBuilderAppend(builder, &b, sizeof(b));
+			FunctionBuilderRecurse(tokenizer, item, builder, false);
+			b = T_SWAP;
+			FunctionBuilderAppend(builder, &b, sizeof(b));
+			b = T_NUMERIC_LITERAL;
+			FunctionBuilderAppend(builder, &b, sizeof(b));
+			Value v;
+			v.i = i++;
+			FunctionBuilderAppend(builder, &v, sizeof(v));
+			b = T_EQUALS_LIST;
+			FunctionBuilderAppend(builder, &b, sizeof(b));
+			item = item->sibling;
+		}
+
 		return true;
 	}
 
@@ -2825,6 +2921,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
+		// PrintDebug("--> %d\n", command);
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -3359,6 +3456,27 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 		} else if (command == T_POP) {
 			if (context->stackPointer < 1) return -1;
 			context->stackPointer--;
+		} else if (command == T_DUP) {
+			if (context->stackPointer < 1) return -1;
+
+			if (context->stackPointer == context->stackEntriesAllocated) {
+				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
+				return 0;
+			}
+
+			context->stack[context->stackPointer] = context->stack[context->stackPointer - 1];
+			context->stackIsManaged[context->stackPointer] = context->stackIsManaged[context->stackPointer - 1];
+			context->stackPointer++;
+		} else if (command == T_SWAP) {
+			if (context->stackPointer < 2) return -1;
+			Value v1 = context->stack[context->stackPointer - 1];
+			Value v2 = context->stack[context->stackPointer - 2];
+			bool m1 = context->stackIsManaged[context->stackPointer - 1];
+			bool m2 = context->stackIsManaged[context->stackPointer - 2];
+			context->stack[context->stackPointer - 1] = v2;
+			context->stack[context->stackPointer - 2] = v1;
+			context->stackIsManaged[context->stackPointer - 1] = m2;
+			context->stackIsManaged[context->stackPointer - 2] = m1;
 		} else if (command == T_ASSERT) {
 			if (context->stackPointer < 1) return -1;
 			Value condition = context->stack[--context->stackPointer];

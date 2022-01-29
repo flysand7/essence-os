@@ -182,121 +182,41 @@ void Start() {
 
 		// Set environment variables to force configure scripts to assume the unrecognised cross-compile target is okay.
 		if !buildCross {
-			SystemSetEnvironmentVariable("ac_cv_func_calloc_0_nonnull", "yes");
-			SystemSetEnvironmentVariable("ac_cv_func_chown_works", "yes");
-			SystemSetEnvironmentVariable("ac_cv_func_getgroups_works", "yes");
-			SystemSetEnvironmentVariable("ac_cv_func_malloc_0_nonnull", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_cbrtl_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_ceil_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_ceilf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_ceill_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_chown_ctime_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_chown_slash_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_exp2l_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_expm1_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fcntl_f_dupfd_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fdopendir_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_floorf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fma_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fmaf_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fmal_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fmod_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fmodf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fmodl_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_fpurge_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_futimens_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_futimesat_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_getgroups_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_gettimeofday_clobber", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_hypot_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_hypotf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_hypotl_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_isfinitel_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_isnanl_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_link_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_linkat_slash", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log10_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log10f_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log1p_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log1pf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log1pl_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log2_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log2f_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_log_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_logf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_lstat_dereferences_slashed_symlink", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mbrlen_empty_input", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mbrtowc_empty_input", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_memchr_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_memmem_works_fast", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mkdir_trailing_dot_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mkdir_trailing_slash_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mkfifo_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_mknod_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_modf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_modff_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_modfl_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_nanosleep", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_open_directory_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_perror_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_a", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_f", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_directive_n", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_enomem", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_flag_zero", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_infinite", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_infinite_long_double", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_printf_sizes_c99", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_pselect_detects_ebadf", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_ptsname_sets_errno", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_readlink_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_realpath_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_remainder_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_remainderf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_remainderl_iee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_rename_dest_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_rename_link_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_rename_slash_dst_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_rename_slash_src_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_rmdir_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_round_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_roundf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_select_detects_ebadf", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_setenv_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_signbit", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_signbit_gcc", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_sleep_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_snprintf_directive_n", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_snprintf_retval_c99", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_snprintf_truncation_c99", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_stat_dir_slash", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_stat_file_slash", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_stpncpy", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_strcasestr_linear", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_strchrnul_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_strerror_0_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_strstr_linear", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_strtod_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_svid_putenv", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_symlink_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_tdelete_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_trunc_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_truncf_ieee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_truncl_iee", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_tzset_clobber", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_ungetc_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_unlink_honors_slashes", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_unsetenv_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_usleep_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_utimensat_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_vsnprintf_posix", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_vsnprintf_zerosize_c99", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_vsprintf_posix", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_wcwidth_works", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_working_getdelim", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_working_mkstemp", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_working_mktime", "yes");
-			SystemSetEnvironmentVariable("gl_cv_func_working_strerror", "yes");
+			str[] variables = [
+				"ac_cv_func_calloc_0_nonnull", "ac_cv_func_chown_works", "ac_cv_func_getgroups_works", "ac_cv_func_malloc_0_nonnull",
+				"gl_cv_func_cbrtl_ieee", "gl_cv_func_ceil_ieee", "gl_cv_func_ceilf_ieee", "gl_cv_func_ceill_ieee",
+				"gl_cv_func_chown_ctime_works", "gl_cv_func_chown_slash_works", "gl_cv_func_exp2l_ieee", "gl_cv_func_expm1_ieee",
+				"gl_cv_func_fcntl_f_dupfd_works", "gl_cv_func_fdopendir_works", "gl_cv_func_floorf_ieee", "gl_cv_func_fma_works",
+				"gl_cv_func_fmaf_works", "gl_cv_func_fmal_works", "gl_cv_func_fmod_ieee", "gl_cv_func_fmodf_ieee",
+				"gl_cv_func_fmodl_ieee", "gl_cv_func_fpurge_works", "gl_cv_func_futimens_works", "gl_cv_func_futimesat_works",
+				"gl_cv_func_getgroups_works", "gl_cv_func_gettimeofday_clobber", "gl_cv_func_hypot_ieee", "gl_cv_func_hypotf_ieee",
+				"gl_cv_func_hypotl_ieee", "gl_cv_func_isfinitel_works", "gl_cv_func_isnanl_works", "gl_cv_func_link_works",
+				"gl_cv_func_linkat_slash", "gl_cv_func_log10_ieee", "gl_cv_func_log10f_ieee", "gl_cv_func_log1p_ieee",
+				"gl_cv_func_log1pf_ieee", "gl_cv_func_log1pl_ieee", "gl_cv_func_log2_ieee", "gl_cv_func_log2f_ieee",
+				"gl_cv_func_log_ieee", "gl_cv_func_logf_ieee", "gl_cv_func_lstat_dereferences_slashed_symlink", "gl_cv_func_mbrlen_empty_input",
+				"gl_cv_func_mbrtowc_empty_input", "gl_cv_func_memchr_works", "gl_cv_func_memmem_works_fast", "gl_cv_func_mkdir_trailing_dot_works",
+				"gl_cv_func_mkdir_trailing_slash_works", "gl_cv_func_mkfifo_works", "gl_cv_func_mknod_works", "gl_cv_func_modf_ieee",
+				"gl_cv_func_modff_ieee", "gl_cv_func_modfl_ieee", "gl_cv_func_nanosleep", "gl_cv_func_open_directory_works",
+				"gl_cv_func_perror_works", "gl_cv_func_printf_directive_a", "gl_cv_func_printf_directive_f", "gl_cv_func_printf_directive_n",
+				"gl_cv_func_printf_enomem", "gl_cv_func_printf_flag_zero", "gl_cv_func_printf_infinite", "gl_cv_func_printf_infinite_long_double",
+				"gl_cv_func_printf_sizes_c99", "gl_cv_func_pselect_detects_ebadf", "gl_cv_func_ptsname_sets_errno", "gl_cv_func_readlink_works",
+				"gl_cv_func_realpath_works", "gl_cv_func_remainder_ieee", "gl_cv_func_remainderf_ieee", "gl_cv_func_remainderl_iee",
+				"gl_cv_func_rename_dest_works", "gl_cv_func_rename_link_works", "gl_cv_func_rename_slash_dst_works", "gl_cv_func_rename_slash_src_works",
+				"gl_cv_func_rmdir_works", "gl_cv_func_round_ieee", "gl_cv_func_roundf_ieee", "gl_cv_func_select_detects_ebadf",
+				"gl_cv_func_setenv_works", "gl_cv_func_signbit", "gl_cv_func_signbit_gcc", "gl_cv_func_sleep_works",
+				"gl_cv_func_snprintf_directive_n", "gl_cv_func_snprintf_retval_c99", "gl_cv_func_snprintf_truncation_c99", "gl_cv_func_stat_dir_slash",
+				"gl_cv_func_stat_file_slash", "gl_cv_func_stpncpy", "gl_cv_func_strcasestr_linear", "gl_cv_func_strchrnul_works",
+				"gl_cv_func_strerror_0_works", "gl_cv_func_strstr_linear", "gl_cv_func_strtod_works", "gl_cv_func_svid_putenv",
+				"gl_cv_func_symlink_works", "gl_cv_func_tdelete_works", "gl_cv_func_trunc_ieee", "gl_cv_func_truncf_ieee",
+				"gl_cv_func_truncl_iee", "gl_cv_func_tzset_clobber", "gl_cv_func_ungetc_works", "gl_cv_func_unlink_honors_slashes",
+				"gl_cv_func_unsetenv_works", "gl_cv_func_usleep_works", "gl_cv_func_utimensat_works", "gl_cv_func_vsnprintf_posix",
+				"gl_cv_func_vsnprintf_zerosize_c99", "gl_cv_func_vsprintf_posix", "gl_cv_func_wcwidth_works", "gl_cv_func_working_getdelim",
+				"gl_cv_func_working_mkstemp", "gl_cv_func_working_mktime", "gl_cv_func_working_strerror"
+			];
+
+			for int i = 0; i < variables:len(); i += 1 {
+				SystemSetEnvironmentVariable(variables[i], "yes");
+			}
 		}
 
 		// Build libraries.

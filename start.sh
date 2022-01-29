@@ -69,7 +69,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Compile the scripting engine.
-gcc -o bin/script util/script.c -g -Wall -Wextra -fsanitize=address
+gcc -o bin/script util/script.c -g -Wall -Wextra -O2
 
 # Compile and run Build.
 gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D${ES_TARGET-TARGET_X86_64} \
