@@ -56,14 +56,11 @@ void Start() {
 	}
 
 	// Create folders.
-	assert PathCreateDirectory("bin");
-	assert PathCreateDirectory("root");
-	assert PathCreateDirectory("root/Essence");
-	assert PathCreateDirectory("root/Applications");
-	assert PathCreateDirectory("root/Applications/POSIX");
-	assert PathCreateDirectory("root/Applications/POSIX/bin");
-	assert PathCreateDirectory("root/Applications/POSIX/include");
-	assert PathCreateDirectory("root/Applications/POSIX/lib");
+	assert PathCreateLeadingDirectories("bin");
+	assert PathCreateLeadingDirectories("root/Essence");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/bin");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
 
 	// Load the persistent variables.
 	assert PersistRead("bin/build_gcc_state.dat");

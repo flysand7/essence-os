@@ -37,11 +37,8 @@ void Start() {
 	}
 
 	if install {
-		assert PathCreateDirectory("root");
-		assert PathCreateDirectory("root/Applications");
-		assert PathCreateDirectory("root/Applications/POSIX");
-		assert PathCreateDirectory("root/Applications/POSIX/lib");
-		assert PathCreateDirectory("root/Applications/POSIX/include");
+		assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
+		assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
 
 		assert FileCopy("ports/musl/libc.a", "root/Applications/POSIX/lib/libc.a");
 		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libm.a");

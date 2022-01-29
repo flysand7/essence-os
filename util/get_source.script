@@ -6,8 +6,7 @@ void Get(str url, str directoryName, str checksum) {
 	assert url != "";
 	assert directoryName != "";
 
-	assert PathCreateDirectory("bin");
-	assert PathCreateDirectory("bin/cache");
+	assert PathCreateLeadingDirectories("bin/cache");
 	assert PathDeleteRecursively("bin/source");
 
 	str url2 = "";

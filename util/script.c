@@ -357,6 +357,7 @@ char baseModuleSource[] = {
 
 	"bool PathExists(str x) #extcall;"
 	"bool PathCreateDirectory(str x) #extcall;" // TODO Replace the return value with a enum.
+	"bool PathCreateLeadingDirectories(str x) #extcall;"
 	"bool PathDelete(str x) #extcall;" // TODO Replace the return value with a enum.
 	"bool PathDeleteRecursively(str x) #extcall;"
 	"bool PathMove(str source, str destination) #extcall;"
@@ -397,6 +398,7 @@ int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValu
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue);
+int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue);
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue);
 int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue);
 int ExternalPathExists(ExecutionContext *context, Value *returnValue);
@@ -424,6 +426,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "SystemSetEnvironmentVariable", .callback = ExternalSystemSetEnvironmentVariable },
 	{ .cName = "PathExists", .callback = ExternalPathExists },
 	{ .cName = "PathCreateDirectory", .callback = ExternalPathCreateDirectory },
+	{ .cName = "PathCreateLeadingDirectories", .callback = ExternalPathCreateLeadingDirectories },
 	{ .cName = "PathDelete", .callback = ExternalPathDelete },
 	{ .cName = "PathDeleteRecursively", .callback = ExternalPathDeleteRecursively },
 	{ .cName = "PathMove", .callback = ExternalPathMove },
@@ -4044,6 +4047,39 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 #pragma message ("ExternalPathCreateDirectory unimplemented")
 	returnValue->i = 0;
 #else
+	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
+#endif
+	free(temporary);
+	return 2;
+}
+
+int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->stackPointer < 1) return -1;
+	uint64_t index = context->stack[--context->stackPointer].i;
+	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->heapEntriesAllocated <= index) return -1;
+	HeapEntry *entry = &context->heap[index];
+	returnValue->i = 0;
+	if (entry->type == T_EOF) return 2;
+	if (entry->type != T_STR) return -1;
+	char *temporary = malloc(entry->bytes + 1);
+	if (!temporary) return 2;
+	memcpy(temporary, entry->text, entry->bytes);
+	temporary[entry->bytes] = 0;
+	returnValue->i = 1;
+#ifdef _WIN32
+#pragma message ("ExternalPathCreateLeadingDirectories unimplemented")
+	returnValue->i = 0;
+#else
+	for (uintptr_t i = 1; i < entry->bytes; i++) {
+		if (temporary[i] == '/') {
+			temporary[i] = 0;
+			mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+			temporary[i] = '/';
+		}
+	}
+
 	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
 #endif
 	free(temporary);
