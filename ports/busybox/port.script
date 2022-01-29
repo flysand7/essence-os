@@ -1,0 +1,25 @@
+#import "util/get_source.script" get_source;
+
+str targetName #option;
+str toolchainPrefix #option;
+int processorCount #option;
+
+void Start() {
+	str rootDirectory = PathGetDefaultPrefix() + "/root";
+	str version = "1.33.1";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	if StringTrim(SystemShellEvaluate("uname")) == "Darwin" {
+		SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"));
+	}
+
+	get_source.Get("https://www.busybox.net/downloads/busybox-%version%.tar.bz2", "busybox-%version%",
+			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
+	assert FileCopy("ports/busybox/config", "bin/source/.config");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "sed -i \"51 i CONFIG_SYSROOT=\\\"%rootDirectory%\\\"\" .config");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
+	assert FileCopy("bin/source/busybox", "%rootDirectory%/Applications/POSIX/bin/busybox");
+	assert FileCopy("bin/source/LICENSE", "bin/BusyBox License.txt");
+
+	PathDeleteRecursively("bin/source");
+}

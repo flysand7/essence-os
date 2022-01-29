@@ -1139,7 +1139,7 @@ void DoCommand(const char *l) {
 		LoadOptions();
 		Compile(COMPILE_FOR_EMULATOR, atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 	} else if (0 == strcmp(l, "build-cross")) {
-		CallSystem("bin/script ports/gcc/port.script buildCross=true");
+		CallSystem("bin/script ports/gcc/port.script buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		printf("Please restart the build system.\n");
 		exit(0);
 	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
@@ -1319,7 +1319,7 @@ void DoCommand(const char *l) {
 			fprintf(stderr, "build-optional-ports: Calling \"ports/%s/port.sh\"...\n", entry->d_name);
 			CallSystemF("ports/%s/port.sh", entry->d_name);
 			fprintf(stderr, "build-optional-ports: Calling \"bin/script ports/%s/port.script\"...\n", entry->d_name);
-			CallSystemF("bin/script ports/%s/port.script", entry->d_name);
+			CallSystemF("bin/script ports/%s/port.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, entry->d_name);
 		}
 
 		closedir(directory);
@@ -1477,7 +1477,7 @@ void DoCommand(const char *l) {
 
 		int status; 
 		if (f) status = CallSystemF("ports/%s/port.sh", l2);
-		else status = CallSystemF("bin/script ports/%s/port.script", l2);
+		else status = CallSystemF("bin/script ports/%s/port.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
 
 		if (!alreadyNamedPort) {
 			free(l2);
@@ -1544,9 +1544,9 @@ void DoCommand(const char *l) {
 		AddCompilerToPath();
 #else
 		if (automatedBuild) {
-			CallSystem("bin/script ports/gcc/port.script buildCross=true skipYesChecks=true");
+			CallSystem("bin/script ports/gcc/port.script buildCross=true skipYesChecks=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		} else {
-			CallSystem("bin/script ports/gcc/port.script buildCross=true");
+			CallSystem("bin/script ports/gcc/port.script buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		}
 
 		exit(0);

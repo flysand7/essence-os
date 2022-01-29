@@ -22,6 +22,9 @@ bool ConsoleGetYes() {
 }
 
 void Start() {
+	assert targetName      != "";
+	assert toolchainPrefix != "";
+
 	if buildCross {
 		// Print instructions.
 		PrintStdErr("To build Essence, you need a cross compiler. This will be built for you automatically.\n");
@@ -44,8 +47,6 @@ void Start() {
 	if gmpVersion      == "" gmpVersion      = "6.2.1";
 	if mpfrVersion     == "" mpfrVersion     = "4.1.0";
 	if mpcVersion      == "" mpcVersion      = "1.2.1";
-	if targetName      == "" targetName      = "x86_64";
-	if toolchainPrefix == "" toolchainPrefix = "x86_64-essence";
 
 	// Get the number of processors to compile with.
 	if processorCount == 0 {
