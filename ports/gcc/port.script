@@ -146,7 +146,7 @@ void Start() {
 
 		if buildCross {
 			// Copy the C standard library headers to their destination.
-			assert SystemShellExecute("ports/musl/build.sh %targetName%");
+			assert SystemShellExecute("bin/script ports/musl/build.script targetName=%targetName%");
 		}
 
 		// Download the sources.
