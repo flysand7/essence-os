@@ -32,6 +32,10 @@ void Start() {
 		install = true;
 	}
 
+	if !PathExists("root/Applications/POSIX/include/stdio.h") {
+		install = true;
+	}
+
 	if install {
 		assert PathCreateDirectory("root");
 		assert PathCreateDirectory("root/Applications");

@@ -620,7 +620,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 								&& tokenizer->input[i + 1] != '%' 
 								&& tokenizer->input[i + 1] != '"' && tokenizer->input[i + 1] != '\\')) {
 						PrintError(tokenizer, "String contains unrecognized escape sequence '\\%c'. "
-								"Possibilities are: '\\\\', '\\%', '\\n', '\\t' and '\\\"'\n", tokenizer->input[i + 1]);
+								"Possibilities are: '\\\\', '\\%%', '\\n', '\\t' and '\\\"'\n", tokenizer->input[i + 1]);
 						tokenizer->error = true;
 						break;
 					} else {

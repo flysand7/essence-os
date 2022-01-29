@@ -175,7 +175,7 @@ bool BuildAPIDependencies() {
 
 	if (IsOptionEnabled("Dependency.FreeTypeAndHarfBuzz")) {
 		if (CallSystem("ports/freetype/build.sh " TARGET_NAME)) return false;
-		if (CallSystem("ports/harfbuzz/build.sh " TARGET_NAME)) return false;
+		if (CallSystem("bin/script ports/harfbuzz/build.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 	}
 
 	if (CallSystem("cp -p kernel/module.h root/Applications/POSIX/include")) return false;
