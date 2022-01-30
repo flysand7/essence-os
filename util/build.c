@@ -174,7 +174,7 @@ bool BuildAPIDependencies() {
 	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crtglue.o")) return false;
 
 	if (IsOptionEnabled("Dependency.FreeTypeAndHarfBuzz")) {
-		if (CallSystem("ports/freetype/build.sh " TARGET_NAME)) return false;
+		if (CallSystem("bin/script ports/freetype/build.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 		if (CallSystem("bin/script ports/harfbuzz/build.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 	}
 

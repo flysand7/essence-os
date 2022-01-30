@@ -24,7 +24,9 @@ void Start() {
 			assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", 
 					"find . -type f -exec %sed% -i 's/#include <%headers[i]%.h>/#include <essence.h>/g' {} \\;");
 		}
+	}
 
+	if !PathExists("root/Applications/POSIX/include/harfbuzz") {
 		assert PathCreateLeadingDirectories("root/Applications/POSIX/include/harfbuzz");
 		assert SystemShellExecute("cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz");
 	}

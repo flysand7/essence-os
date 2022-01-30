@@ -1,0 +1,47 @@
+#import "util/get_source.script" get_source;
+
+str targetName #option;
+str toolchainPrefix #option;
+int processorCount #option;
+
+void Start() {
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	if !PathExists("bin/freetype") {
+		get_source.Get("https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz", "freetype-2.9", 
+				"bf380e4d7c4f3b5b1c1a7b2bf3abb967bda5e9ab480d0df656e0e08c5019c5e6");
+		assert PathMove("bin/source", "bin/freetype");
+		assert FileCopy("ports/freetype/patch-ftoption.h", "bin/freetype/include/freetype/config/ftoption.h");
+		assert FileCopy("ports/freetype/patch-ftstdlib.h", "bin/freetype/include/freetype/config/ftstdlib.h");
+		assert FileCopy("ports/freetype/patch-modules.cfg", "bin/freetype/modules.cfg");
+	}
+
+	if !PathExists("root/Applications/POSIX/include/ft2build.h") {
+		assert SystemShellExecute("cp -p bin/freetype/include/ft2build.h root/Applications/POSIX/include");
+		assert SystemShellExecute("cp -p -r bin/freetype/include/freetype root/Applications/POSIX/include");
+	}
+
+	if !PathExists("bin/freetype/libfreetype_%targetName%.a") {
+		PathDelete("bin/freetype/objs/.libs/libfreetype.a");
+
+		if targetName == "x86_64" {
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz "
+					+ "CC=%toolchainPrefix%-gcc CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3\" --host=%toolchainPrefix%");
+		} else if targetName == "x86_32" {
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz "
+					+ "CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3 -I../../root/Applications/POSIX/include\" "
+					+ "LDFLAGS=\"-nostdlib -lgcc\" CC=%toolchainPrefix%-gcc --host=%toolchainPrefix%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"sed -i '/define FT_USE_AUTOCONF_SIZEOF_TYPES/d' builds/unix/ftconfig.h");
+		} else {
+			assert false;
+		}
+
+		assert SystemShellExecuteWithWorkingDirectory("bin/freetype", "make -j %processorCount%");
+		assert FileCopy("bin/freetype/objs/.libs/libfreetype.a", "bin/freetype/libfreetype_%targetName%.a");
+	}
+
+	assert FileCopy("bin/freetype/libfreetype_%targetName%.a", "root/Applications/POSIX/lib/libfreetype.a");
+}
