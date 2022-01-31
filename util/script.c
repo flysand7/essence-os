@@ -259,21 +259,28 @@ typedef struct HeapEntry {
 } HeapEntry;
 
 typedef struct ExecutionContext {
-	Value *variables;
-	bool *variableIsManaged;
-	size_t variableCount;
-	size_t variablesAllocated;
+	Value *globalVariables;
+	bool *globalVariableIsManaged;
+	size_t globalVariableCount;
+
 	Value stack[50]; // TODO Merge with variables?
 	bool stackIsManaged[50];
 	uintptr_t stackPointer;
 	size_t stackEntriesAllocated;
+
 	HeapEntry *heap;
 	uintptr_t heapFirstUnusedEntry;
 	size_t heapEntriesAllocated;
+
 	FunctionBuilder *functionData; // Cleanup the relations between ExecutionContext, FunctionBuilder, Tokenizer and ImportData.
 	Node *rootNode; // Only valid during script loading.
 	char *scriptPersistFile;
 	struct ImportData *mainModule;
+
+	Value *localVariables;
+	bool *localVariableIsManaged;
+	size_t localVariableCount;
+	size_t localVariablesAllocated;
 	BackTraceItem backTrace[300];
 	uintptr_t backTracePointer;
 } ExecutionContext;
@@ -2820,15 +2827,14 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 	Node *child = root->firstChild;
 
-	context->functionData->globalVariableOffset = context->variableCount;
-	context->variableCount += root->scope->variableEntryCount;
-	context->variablesAllocated += root->scope->variableEntryCount;
-	context->variables = AllocateResize(context->variables, sizeof(Value) * context->variablesAllocated);
-	context->variableIsManaged = AllocateResize(context->variableIsManaged, sizeof(Value) * context->variablesAllocated);
+	context->functionData->globalVariableOffset = context->globalVariableCount;
+	context->globalVariableCount += root->scope->variableEntryCount;
+	context->globalVariables = AllocateResize(context->globalVariables, sizeof(Value) * context->globalVariableCount);
+	context->globalVariableIsManaged = AllocateResize(context->globalVariableIsManaged, sizeof(Value) * context->globalVariableCount);
 
 	for (uintptr_t i = 0; i < root->scope->variableEntryCount; i++) {
-		context->variables[context->functionData->globalVariableOffset + i].i = 0;
-		context->variableIsManaged[context->functionData->globalVariableOffset + i] = false;
+		context->globalVariables[context->functionData->globalVariableOffset + i].i = 0;
+		context->globalVariableIsManaged[context->functionData->globalVariableOffset + i] = false;
 	}
 
 	uint8_t zero = 0; // Make sure no function can start at 0.
@@ -2838,10 +2844,10 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 		if (child->type == T_FUNCTION) {
 			uintptr_t variableIndex = context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false);
 			uintptr_t heapIndex = HeapAllocate(context);
-			context->variableIsManaged[variableIndex] = true;
+			context->globalVariableIsManaged[variableIndex] = true;
 			context->heap[heapIndex].type = T_FUNCPTR;
 			context->heap[heapIndex].lambdaID = context->functionData->dataBytes;
-			context->variables[variableIndex].i = heapIndex;
+			context->globalVariables[variableIndex].i = heapIndex;
 
 			if (child->isExternalCall) {
 				uint8_t b = T_EXTCALL;
@@ -2880,8 +2886,8 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 				return false;
 			}
 
-			context->variables[context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false)].i = 0;
-			context->variableIsManaged[context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false)] = ASTIsManagedType(child->expressionType);
+			context->globalVariables[context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false)].i = 0;
+			context->globalVariableIsManaged[context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false)] = ASTIsManagedType(child->expressionType);
 		}
 
 		child = child->sibling;
@@ -2948,9 +2954,15 @@ uintptr_t HeapAllocate(ExecutionContext *context) {
 			context->heap[i].gcMark = false;
 		}
 
-		for (uintptr_t i = 0; i < context->variableCount; i++) {
-			if (context->variableIsManaged[i]) {
-				HeapGarbageCollectMark(context, context->variables[i].i);
+		for (uintptr_t i = 0; i < context->globalVariableCount; i++) {
+			if (context->globalVariableIsManaged[i]) {
+				HeapGarbageCollectMark(context, context->globalVariables[i].i);
+			}
+		}
+
+		for (uintptr_t i = 0; i < context->localVariableCount; i++) {
+			if (context->localVariableIsManaged[i]) {
+				HeapGarbageCollectMark(context, context->localVariables[i].i);
 			}
 		}
 		
@@ -3021,7 +3033,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 	// 	Checking that this is actually a valid function body pointer.
 	// 	Checking various integer overflows.
 
-	uintptr_t variableBase = context->variableCount - 1;
+	uintptr_t variableBase = context->localVariableCount - 1;
 	uint8_t *functionData = context->functionData->data;
 
 	while (true) {
@@ -3032,32 +3044,32 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
 			instructionPointer += 2;
 
-			if (context->variableCount + newVariableCount > context->variablesAllocated) {
+			if (context->localVariableCount + newVariableCount > context->localVariablesAllocated) {
 				// TODO Handling memory errors here.
-				context->variablesAllocated = context->variableCount + newVariableCount;
-				context->variables = AllocateResize(context->variables, context->variablesAllocated * sizeof(Value)); 
-				context->variableIsManaged = AllocateResize(context->variableIsManaged, context->variablesAllocated * sizeof(bool)); 
+				context->localVariablesAllocated = context->localVariableCount + newVariableCount;
+				context->localVariables = AllocateResize(context->localVariables, context->localVariablesAllocated * sizeof(Value)); 
+				context->localVariableIsManaged = AllocateResize(context->localVariableIsManaged, context->localVariablesAllocated * sizeof(bool)); 
 			}
 
-			MemoryCopy(context->variableIsManaged + context->variableCount, functionData + instructionPointer, newVariableCount);
+			MemoryCopy(context->localVariableIsManaged + context->localVariableCount, functionData + instructionPointer, newVariableCount);
 			instructionPointer += newVariableCount;
 
-			for (uintptr_t i = context->variableCount; i < context->variableCount + newVariableCount; i++) {
+			for (uintptr_t i = context->localVariableCount; i < context->localVariableCount + newVariableCount; i++) {
 				if (command == T_FUNCBODY) {
 					if (context->stackPointer < 1) return -1;
-					context->variables[i] = context->stack[--context->stackPointer];
+					context->localVariables[i] = context->stack[--context->stackPointer];
 				} else {
 					Value zero = { 0 };
-					context->variables[i] = zero;
+					context->localVariables[i] = zero;
 				}
 			}
 
-			context->variableCount += newVariableCount;
+			context->localVariableCount += newVariableCount;
 		} else if (command == T_EXIT_SCOPE) {
 			uint16_t count = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
 			instructionPointer += 2;
-			if (context->variableCount < count) return -1;
-			context->variableCount -= count;
+			if (context->localVariableCount < count) return -1;
+			context->localVariableCount -= count;
 		} else if (command == T_NUMERIC_LITERAL) {
 			if (context->stackPointer == context->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
@@ -3188,30 +3200,34 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			int32_t scopeIndex;
 			MemoryCopy(&scopeIndex, &functionData[instructionPointer], sizeof(scopeIndex));
-			if (scopeIndex < 0) scopeIndex = variableBase - scopeIndex;
-
-			if ((uintptr_t) scopeIndex >= context->variableCount) {
-				return -1;
-			}
-
 			instructionPointer += sizeof(scopeIndex);
-			context->stackIsManaged[context->stackPointer] = context->variableIsManaged[scopeIndex];
-			context->stack[context->stackPointer++] = context->variables[scopeIndex];
+
+			if (scopeIndex >= 0) {
+				if ((uintptr_t) scopeIndex >= context->globalVariableCount) return -1;
+				context->stackIsManaged[context->stackPointer] = context->globalVariableIsManaged[scopeIndex];
+				context->stack[context->stackPointer++] = context->globalVariables[scopeIndex];
+			} else {
+				scopeIndex = variableBase - scopeIndex;
+				if ((uintptr_t) scopeIndex >= context->localVariableCount) return -1;
+				context->stackIsManaged[context->stackPointer] = context->localVariableIsManaged[scopeIndex];
+				context->stack[context->stackPointer++] = context->localVariables[scopeIndex];
+			}
 		} else if (command == T_EQUALS) {
+			if (!context->stackPointer) return -1;
 			int32_t scopeIndex;
 			MemoryCopy(&scopeIndex, &functionData[instructionPointer], sizeof(scopeIndex));
 			instructionPointer += sizeof(scopeIndex);
-			if (scopeIndex < 0) scopeIndex = variableBase - scopeIndex;
 
-			if ((uintptr_t) scopeIndex >= context->variableCount || !context->stackPointer) {
-				return -1;
+			if (scopeIndex >= 0) {
+				if ((uintptr_t) scopeIndex >= context->globalVariableCount) return -1;
+				if (context->globalVariableIsManaged[scopeIndex] != context->stackIsManaged[context->stackPointer - 1]) return -1;
+				context->globalVariables[scopeIndex] = context->stack[--context->stackPointer];
+			} else {
+				scopeIndex = variableBase - scopeIndex;
+				if ((uintptr_t) scopeIndex >= context->localVariableCount) return -1;
+				if (context->localVariableIsManaged[scopeIndex] != context->stackIsManaged[context->stackPointer - 1]) return -1;
+				context->localVariables[scopeIndex] = context->stack[--context->stackPointer];
 			}
-
-			if (context->variableIsManaged[scopeIndex] != context->stackIsManaged[context->stackPointer - 1]) {
-				return -1;
-			}
-
-			context->variables[scopeIndex] = context->stack[--context->stackPointer];
 		} else if (command == T_EQUALS_DOT) {
 			if (context->stackPointer < 2) return -1;
 			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
@@ -3545,7 +3561,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			link->popResult = popResult;
 			link->assertResult = assertResult;
 			instructionPointer = newBody.i;
-			variableBase = context->variableCount - 1;
+			variableBase = context->localVariableCount - 1;
 		} else if (command == T_IF) {
 			if (context->stackPointer < 1) return -1;
 			Value condition = context->stack[--context->stackPointer];
@@ -3723,7 +3739,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				}
 			}
 
-			context->variableCount = variableBase + 1;
+			context->localVariableCount = variableBase + 1;
 
 			if (context->backTracePointer) {
 				BackTraceItem *item = &context->backTrace[context->backTracePointer - 1];
@@ -3812,7 +3828,7 @@ bool ScriptParseOptions(ExecutionContext *context) {
 			context->heap[heapIndex].type = T_STR;
 			context->heap[heapIndex].bytes = optionLength - equalsPosition - 1;
 			context->heap[heapIndex].text = AllocateResize(NULL, context->heap[heapIndex].bytes);
-			context->variables[index].i = heapIndex;
+			context->globalVariables[index].i = heapIndex;
 			MemoryCopy(context->heap[heapIndex].text, options[i] + equalsPosition + 1, context->heap[heapIndex].bytes);
 		} else if (node->expressionType->type == T_INT) {
 			// TODO Overflow checking.
@@ -3832,7 +3848,7 @@ bool ScriptParseOptions(ExecutionContext *context) {
 				}
 			}
 
-			context->variables[index] = v;
+			context->globalVariables[index] = v;
 		} else if (node->expressionType->type == T_BOOL) {
 			char c = options[i][equalsPosition + 1];
 			bool truthy = c == 't' || c == 'y' || c == '1';
@@ -3843,7 +3859,7 @@ bool ScriptParseOptions(ExecutionContext *context) {
 				return false;
 			}
 
-			context->variables[index].i = truthy ? 1 : 0;
+			context->globalVariables[index].i = truthy ? 1 : 0;
 		} else {
 			PrintError3("#option variable '%.*s' is not of string, boolean or integer type.\n", node->token.textBytes, node->token.text);
 			return false;
@@ -3919,7 +3935,7 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 		intptr_t index = ScopeLookupIndex(&n, module->rootNode->scope, true, false);
 
 		if (index != -1) {
-			int result = ScriptExecuteFunction(context->heap[context->variables[index + module->globalVariableOffset].i].lambdaID, context);
+			int result = ScriptExecuteFunction(context->heap[context->globalVariables[index + module->globalVariableOffset].i].lambdaID, context);
 
 			if (result == 0) {
 				// A runtime error occurred.
@@ -3933,7 +3949,7 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 		module = module->nextImport;
 	}
 
-	int result = ScriptExecuteFunction(context->heap[context->variables[context->functionData->globalVariableOffset + startIndex].i].lambdaID, context);
+	int result = ScriptExecuteFunction(context->heap[context->globalVariables[context->functionData->globalVariableOffset + startIndex].i].lambdaID, context);
 
 	if (result == 0) {
 		// A runtime error occurred.
@@ -3965,8 +3981,10 @@ void ScriptFree(ExecutionContext *context) {
 	}
 
 	AllocateResize(context->heap, 0);
-	AllocateResize(context->variables, 0);
-	AllocateResize(context->variableIsManaged, 0);
+	AllocateResize(context->globalVariables, 0);
+	AllocateResize(context->globalVariableIsManaged, 0);
+	AllocateResize(context->localVariables, 0);
+	AllocateResize(context->localVariableIsManaged, 0);
 	AllocateResize(context->functionData->lineNumbers, 0);
 	AllocateResize(context->functionData->data, 0);
 	AllocateResize(context->scriptPersistFile, 0);
@@ -4630,17 +4648,17 @@ int ExternalPersistRead(ExecutionContext *context, Value *returnValue) {
 					&& scope->entries[j]->isPersistentVariable) {
 				if (scope->entries[j]->expressionType->type == T_STR) {
 					// TODO Handling allocation failures.
-					context->variables[k].i = HeapAllocate(context);
-					context->heap[context->variables[k].i].type = T_STR;
-					context->heap[context->variables[k].i].bytes = variableDataLength;
-					context->heap[context->variables[k].i].text = AllocateResize(NULL, variableDataLength);
-					memcpy(context->heap[context->variables[k].i].text, &data[i], variableDataLength);
+					context->globalVariables[k].i = HeapAllocate(context);
+					context->heap[context->globalVariables[k].i].type = T_STR;
+					context->heap[context->globalVariables[k].i].bytes = variableDataLength;
+					context->heap[context->globalVariables[k].i].text = AllocateResize(NULL, variableDataLength);
+					memcpy(context->heap[context->globalVariables[k].i].text, &data[i], variableDataLength);
 				} else if (scope->entries[j]->expressionType->type == T_INT) {
-					if (variableDataLength == sizeof(int64_t)) memcpy(&context->variables[k].i, &data[i], sizeof(int64_t));
+					if (variableDataLength == sizeof(int64_t)) memcpy(&context->globalVariables[k].i, &data[i], sizeof(int64_t));
 				} else if (scope->entries[j]->expressionType->type == T_FLOAT) {
-					if (variableDataLength == sizeof(double)) memcpy(&context->variables[k].f, &data[i], sizeof(double));
+					if (variableDataLength == sizeof(double)) memcpy(&context->globalVariables[k].f, &data[i], sizeof(double));
 				} else if (scope->entries[j]->expressionType->type == T_BOOL) {
-					if (variableDataLength == 1) context->variables[k].i = data[i] == 1;
+					if (variableDataLength == 1) context->globalVariables[k].i = data[i] == 1;
 				} else {
 					// TODO What should happen here?
 				}
@@ -4685,7 +4703,7 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 			fwrite(&variableNameLength, 1, sizeof(uint32_t), f);
 
 			if (scope->entries[j]->expressionType->type == T_STR) {
-				HeapEntry *entry = &context->heap[context->variables[k].i];
+				HeapEntry *entry = &context->heap[context->globalVariables[k].i];
 				uint32_t variableDataLength = entry->type == T_STR ? entry->bytes : 0;
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
@@ -4694,17 +4712,17 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 				uint32_t variableDataLength = sizeof(int64_t);
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
-				fwrite(&context->variables[k].i, 1, sizeof(int64_t), f);
+				fwrite(&context->globalVariables[k].i, 1, sizeof(int64_t), f);
 			} else if (scope->entries[j]->expressionType->type == T_FLOAT) {
 				uint32_t variableDataLength = sizeof(double);
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
-				fwrite(&context->variables[k].f, 1, sizeof(double), f);
+				fwrite(&context->globalVariables[k].f, 1, sizeof(double), f);
 			} else if (scope->entries[j]->expressionType->type == T_BOOL) {
 				uint32_t variableDataLength = 1;
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
-				uint8_t b = context->variables[k].i == 1;
+				uint8_t b = context->globalVariables[k].i == 1;
 				fwrite(&b, 1, sizeof(uint8_t), f);
 			} else {
 				PrintDebug("\033[0;32mWarning: The persistent variable %.*s could not be written, because it had an unsupported type.\033[0m\n",
