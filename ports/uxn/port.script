@@ -1,0 +1,19 @@
+#import "util/get_source.script" get_source;
+
+str targetName #option;
+str toolchainPrefix #option;
+int processorCount #option;
+
+void Start() {
+	PathDeleteRecursively("bin/uxn");
+	PathDeleteRecursively("bin/noodle");
+	assert SystemShellExecute("git clone https://git.sr.ht/~rabbits/uxn bin/uxn");
+	assert SystemShellExecute("git clone https://git.sr.ht/~rabbits/noodle bin/noodle");
+	assert SystemShellExecuteWithWorkingDirectory("bin/uxn", "git checkout d2cf7213d0287f9777fac583f6889ee18b188f8d");
+	assert SystemShellExecuteWithWorkingDirectory("bin/noodle", "git checkout 17b6b2d48c6fa07adbf25f8c79b0e1b8675be8ad");
+	assert SystemShellExecute("cc -DNDEBUG -Os -g0 -s bin/uxn/src/uxnasm.c -o bin/uxnasm"); // Build the assembler.
+	assert SystemShellExecuteWithWorkingDirectory("bin/noodle", "../uxnasm src/main.tal ../noodle.rom"); // Build the ROM.
+	assert FileWriteAll("bin/uxn/src/devices/ppu.h", "/* removed */");
+	assert SystemShellExecute("%toolchainPrefix%-gcc -DNDEBUG -Os -g0 -s ports/uxn/emulator.c "
+			+ "-ffreestanding -nostdlib -lgcc -z max-page-size=0x1000 -o bin/uxnemu"); // Build the emulator.
+}
