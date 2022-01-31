@@ -2067,6 +2067,7 @@ EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *propertie
 	// TODO Vertical text layout (UAX50).
 	// TODO Supporting arbitrary OpenType features.
 	// TODO Reshaping lines once word wrapping is applied.
+	// TODO Don't break lines in the middle of emails/URLs.
 
 	// EsPrint("EsTextPlanCreate... width %d\n", Width(bounds) * FREETYPE_UNIT_SCALE);
 

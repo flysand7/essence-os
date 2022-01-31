@@ -1,0 +1,36 @@
+#import "util/get_source.script" get_source;
+
+str targetName #option;
+str toolchainPrefix #option;
+int processorCount #option;
+
+void Start() {
+	str rootDirectory = PathGetDefaultPrefix() + "/root";
+	str version = "4.3.1";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	get_source.Get("https://ffmpeg.org/releases/ffmpeg-%version%.tar.xz", "ffmpeg-%version%",
+			"ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb");
+
+	assert PathCreateDirectory("bin/build-ffmpeg");
+	assert PathCreateDirectory("bin/FFmpeg License");
+
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", 
+			"../source/configure --disable-all --enable-cross-compile --disable-pthreads "
+			+ "--cc=%toolchainPrefix%-gcc --cxx=%toolchainPrefix%-g++ --prefix=/Applications/POSIX "
+			+ "--enable-avcodec --enable-avformat --enable-swscale --enable-decoder=h264 --enable-parser=h264 "
+			+ "--enable-decoder=aac --enable-parser=aac --enable-demuxer=mov --enable-protocol=file ");
+	// --disable-optimizations
+
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make DESTDIR=%rootDirectory% install");
+
+	assert FileCopy("bin/source/LICENSE.md", "bin/FFmpeg License/LICENSE.md");
+	assert FileCopy("bin/source/COPYING.GPLv2", "bin/FFmpeg License/COPYING.GPLv2");
+	assert FileCopy("bin/source/COPYING.GPLv3", "bin/FFmpeg License/COPYING.GPLv3");
+	assert FileCopy("bin/source/COPYING.LGPLv2.1", "bin/FFmpeg License/COPYING.LGPLv2.1");
+	assert FileCopy("bin/source/COPYING.LGPLv3", "bin/FFmpeg License/COPYING.LGPLv3");
+
+	PathDeleteRecursively("bin/source");
+	PathDeleteRecursively("bin/build-ffmpeg");
+}

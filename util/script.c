@@ -127,6 +127,7 @@
 #define T_OP_DISCARD          (151)
 #define T_OP_ASSERT           (152)
 #define T_OP_CURRY            (153)
+#define T_OP_ASYNC            (154)
 
 #define T_IF                  (160)
 #define T_WHILE               (161)
@@ -217,10 +218,12 @@ typedef struct FunctionBuilder {
 	struct ImportData *importData; // Only valid during script loading.
 } FunctionBuilder;
 
-typedef struct BackTraceLink {
-	struct BackTraceLink *previous;
+typedef struct BackTraceItem {
 	uint32_t instructionPointer;
-} BackTraceLink;
+	uint32_t variableBase : 30,
+		 popResult : 1,
+		 assertResult : 1;
+} BackTraceItem;
 
 typedef struct HeapEntry {
 	uint8_t type;
@@ -268,10 +271,11 @@ typedef struct ExecutionContext {
 	uintptr_t heapFirstUnusedEntry;
 	size_t heapEntriesAllocated;
 	FunctionBuilder *functionData; // Cleanup the relations between ExecutionContext, FunctionBuilder, Tokenizer and ImportData.
-	BackTraceLink *backTrace;
 	Node *rootNode; // Only valid during script loading.
 	char *scriptPersistFile;
 	struct ImportData *mainModule;
+	BackTraceItem backTrace[300];
+	uintptr_t backTracePointer;
 } ExecutionContext;
 
 typedef struct ExternalFunction {
@@ -1822,6 +1826,11 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 
 		if (type->type == T_IDENTIFIER) {
 			Node *lookup = ScopeLookup(tokenizer, type, false);
+
+			if (!lookup) {
+				return false;
+			}
+
 			Node *previousSibling = node->expressionType->sibling;
 
 			if (!lookup) {
@@ -2113,6 +2122,20 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		else if (isList && KEYWORD("last")) returnsItem = true, op = T_OP_LAST;
 		else if ((isList || isStr) && KEYWORD("len")) returnsInt = true, op = T_OP_LEN;
 
+		else if (isFuncPtr && KEYWORD("async")) {
+			if (expressionType->firstChild->firstChild) {
+				PrintError2(tokenizer, node, "The function pointer should take no arguments. Use ':curry(...)' to set them before ':async()'.\n");
+				return false;
+			} else if (!ASTMatching(expressionType->firstChild->sibling, &globalExpressionTypeVoid)) {
+				PrintError2(tokenizer, node, "The function pointer should not return anything. Use ':discard()' or ':assert()' before ':async()'.\n");
+				return false;
+			}
+
+			// TODO Allow currying here, for convenience.
+			op = T_OP_ASYNC;
+			returnsInt = true;
+		}
+
 		else if (isFuncPtr && (KEYWORD("assert") || KEYWORD("discard"))) {
 			if (KEYWORD("assert")) {
 				op = T_OP_ASSERT;
@@ -2139,7 +2162,10 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		else if (isFuncPtr && KEYWORD("curry")) {
-			if (!ASTMatching(expressionType->firstChild->firstChild->expressionType, node->firstChild->sibling->firstChild->expressionType)) {
+			if (!expressionType->firstChild->firstChild) {
+				PrintError2(tokenizer, node, "The function pointer doesn't take any arguments.\n");
+				return false;
+			} else if (!ASTMatching(expressionType->firstChild->firstChild->expressionType, node->firstChild->sibling->firstChild->expressionType)) {
 				PrintError2(tokenizer, node, "The curried argument does not match the type of the first argument.\n");
 				return false;
 			} else if (node->firstChild->sibling->firstChild->sibling) {
@@ -3506,53 +3532,20 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					return -1;
 				}
 			} 
+
+			if (context->backTracePointer == sizeof(context->backTrace) / sizeof(context->backTrace[0])) {
+				PrintError4(context, instructionPointer - 1, "Back trace overflow.\n");
+				return 0;
+			}
 			
-			{
-				BackTraceLink link;
-				link.previous = context->backTrace;
-				link.instructionPointer = instructionPointer;
-				context->backTrace = &link;
-				int value = ScriptExecuteFunction(newBody.i, context);
-				context->backTrace = link.previous;
-				if (value <= 0) return value;
-			}
-
-			if (popResult) {
-				if (context->stackPointer < 1) return -1;
-				context->stackPointer--;
-			} else if (assertResult) {
-				if (context->stackPointer < 1) return -1;
-				Value condition = context->stack[--context->stackPointer];
-
-				if (condition.i == 0) {
-					PrintError4(context, instructionPointer - 1, "Assertion failed on asserting function pointer.\n");
-					return 0;
-				}
-			}
-		} else if (command == T_EXTCALL) {
-			uint16_t index = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
-			instructionPointer += 2;
-
-			if (index < sizeof(externalFunctions) / sizeof(externalFunctions[0])) {
-				Value returnValue;
-				int result = externalFunctions[index].callback(context, &returnValue);
-				if (result <= 0) return result;
-
-				if (result == 2 || result == 3) {
-					if (context->stackPointer == context->stackEntriesAllocated) {
-						PrintDebug("Evaluation stack overflow.\n");
-						return -1;
-					}
-
-					context->stackIsManaged[context->stackPointer] = result == 3;
-					context->stack[context->stackPointer++] = returnValue;
-				}
-			} else {
-				return -1;
-			}
-
-			context->variableCount = variableBase + 1;
-			break;
+			BackTraceItem *link = &context->backTrace[context->backTracePointer];
+			context->backTracePointer++;
+			link->instructionPointer = instructionPointer;
+			link->variableBase = variableBase;
+			link->popResult = popResult;
+			link->assertResult = assertResult;
+			instructionPointer = newBody.i;
+			variableBase = context->variableCount - 1;
 		} else if (command == T_IF) {
 			if (context->stackPointer < 1) return -1;
 			Value condition = context->stack[--context->stackPointer];
@@ -3702,9 +3695,66 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->stackIsManaged[context->stackPointer - 2] = true;
 			context->stack[context->stackPointer - 2].i = index;
 			context->stackPointer--;
-		} else if (command == T_END_FUNCTION) {
+		} else if (command == T_OP_ASYNC) {
+			// TODO.
+			context->stackIsManaged[context->stackPointer - 1] = false;
+			context->stack[context->stackPointer - 1].i = -1;
+		} else if (command == T_END_FUNCTION || command == T_EXTCALL) {
+			if (command == T_EXTCALL) {
+				uint16_t index = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
+				instructionPointer += 2;
+
+				if (index < sizeof(externalFunctions) / sizeof(externalFunctions[0])) {
+					Value returnValue;
+					int result = externalFunctions[index].callback(context, &returnValue);
+					if (result <= 0) return result;
+
+					if (result == 2 || result == 3) {
+						if (context->stackPointer == context->stackEntriesAllocated) {
+							PrintDebug("Evaluation stack overflow.\n");
+							return -1;
+						}
+
+						context->stackIsManaged[context->stackPointer] = result == 3;
+						context->stack[context->stackPointer++] = returnValue;
+					}
+				} else {
+					return -1;
+				}
+			}
+
 			context->variableCount = variableBase + 1;
-			break;
+
+			if (context->backTracePointer) {
+				BackTraceItem *item = &context->backTrace[context->backTracePointer - 1];
+
+				if (command == T_EXTCALL) {
+					context->backTracePointer--;
+					instructionPointer = item->instructionPointer;
+					variableBase = item->variableBase;
+				}
+
+				if (item->popResult) {
+					if (context->stackPointer < 1) return -1;
+					context->stackPointer--;
+				} else if (item->assertResult) {
+					if (context->stackPointer < 1) return -1;
+					Value condition = context->stack[--context->stackPointer];
+
+					if (condition.i == 0) {
+						PrintError4(context, instructionPointer - 1, "Return value was false on an asserting function pointer.\n");
+						return 0;
+					}
+				}
+
+				if (command != T_EXTCALL) {
+					context->backTracePointer--;
+					instructionPointer = item->instructionPointer;
+					variableBase = item->variableBase;
+				}
+			} else {
+				break;
+			}
 		} else {
 			PrintDebug("Unknown command %d.\n", command);
 			return -1;
@@ -4779,6 +4829,10 @@ void PrintDebug(const char *format, ...) {
 }
 
 void PrintLine(ImportData *importData, uintptr_t line) {
+	if (!importData) {
+		return;
+	}
+	
 	uintptr_t position = 0;
 
 	for (uintptr_t i = 1; i < line; i++) {
@@ -4842,23 +4896,27 @@ void LineNumberLookup(ExecutionContext *context, uint32_t instructionPointer, Li
 void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const char *format, ...) {
 	LineNumber lineNumber = { 0 };
 	LineNumberLookup(context, instructionPointer, &lineNumber);
-	fprintf(stderr, "\033[0;33mRuntime error on line %d of '%s'\033[0m:\n", lineNumber.lineNumber, lineNumber.importData->path);
+	fprintf(stderr, "\033[0;33mRuntime error on line %d of '%s'\033[0m:\n", lineNumber.lineNumber, 
+			lineNumber.importData ? lineNumber.importData->path : "??");
 	va_list arguments;
 	va_start(arguments, format);
 	vfprintf(stderr, format, arguments);
 	va_end(arguments);
 	PrintLine(lineNumber.importData, lineNumber.lineNumber);
 
-	BackTraceLink *link = context->backTrace;
 	fprintf(stderr, "Back trace:\n");
-	fprintf(stderr, "\t%s:%d %s %.*s\n", lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
-			lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
 
-	while (link) {
-		LineNumberLookup(context, link->instructionPointer, &lineNumber);
+	if (lineNumber.importData) {
 		fprintf(stderr, "\t%s:%d %s %.*s\n", lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
 				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
-		link = link->previous;
+	}
+
+	while (context->backTracePointer) {
+		BackTraceItem *link = &context->backTrace[--context->backTracePointer];
+		LineNumberLookup(context, link->instructionPointer, &lineNumber);
+		fprintf(stderr, "\t%s:%d %s %.*s\n", lineNumber.importData->path ? lineNumber.importData->path : "??", 
+				lineNumber.lineNumber, lineNumber.function ? "in" : "",
+				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
 	}
 }
 
