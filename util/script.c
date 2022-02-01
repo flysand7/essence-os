@@ -1,7 +1,7 @@
 // TODO StringJoin is extremely slow and uses a lot of memory. Add a StringBuilder.
 
 // TODO Basic missing features:
-// 	- Other list operations: insert_many, delete, delete_many, delete_last, delete_all.
+// 	- Other list operations: insert_many, delete, delete_many, delete_last.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
@@ -98,6 +98,7 @@
 #define T_INTERPOLATE_FLOAT   (108)
 #define T_DUP                 (109)
 #define T_SWAP                (110)
+#define T_INTERPOLATE_ILIST   (111)
 
 #define T_FLOAT_ADD           (120)
 #define T_FLOAT_MINUS         (121)
@@ -1980,6 +1981,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		// TODO Converting more types to strings.
 
 		if (!ASTMatching(expression->expressionType, &globalExpressionTypeInt)
+				&& !ASTMatching(expression->expressionType, &globalExpressionTypeIntList)
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeStr)
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeFloat)
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeBool)) {
@@ -2781,10 +2783,12 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &b, sizeof(b));
 	} else if (node->type == T_STR_INTERPOLATE) {
-		uint8_t b = node->firstChild->sibling->expressionType->type == T_STR ? T_INTERPOLATE_STR
-			: node->firstChild->sibling->expressionType->type == T_FLOAT ? T_INTERPOLATE_FLOAT
-			: node->firstChild->sibling->expressionType->type == T_INT ? T_INTERPOLATE_INT
-			: node->firstChild->sibling->expressionType->type == T_BOOL ? T_INTERPOLATE_BOOL : T_ERROR;
+		Node *type = node->firstChild->sibling->expressionType;
+		uint8_t b = type->type == T_STR ? T_INTERPOLATE_STR
+			: type->type == T_FLOAT ? T_INTERPOLATE_FLOAT
+			: type->type == T_INT ? T_INTERPOLATE_INT
+			: (type->type == T_LIST && type->firstChild->type == T_INT) ? T_INTERPOLATE_ILIST
+			: type->type == T_BOOL ? T_INTERPOLATE_BOOL : T_ERROR;
 		Assert(b != T_ERROR);
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &b, sizeof(b));
@@ -3234,7 +3238,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			context->c->stackPointer--;
 		} else if (command == T_INTERPOLATE_STR || command == T_INTERPOLATE_BOOL 
-				|| command == T_INTERPOLATE_INT || command == T_INTERPOLATE_FLOAT) {
+				|| command == T_INTERPOLATE_INT || command == T_INTERPOLATE_FLOAT
+				|| command == T_INTERPOLATE_ILIST) {
 			if (context->c->stackPointer < 3) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
@@ -3246,6 +3251,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			const char *text1 = entry1->type == T_STR ? entry1->text : "";
 			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
 
+			char *freeText = NULL;
 			const char *text2 = "";
 			size_t bytes2 = 0;
 			char temp[30];
@@ -3267,6 +3273,43 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			} else if (command == T_INTERPOLATE_FLOAT) {
 				text2 = temp;
 				bytes2 = PrintFloatToBuffer(temp, sizeof(temp), context->c->stack[context->c->stackPointer - 2].f);
+			} else if (command == T_INTERPOLATE_ILIST) {
+				if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+				uint64_t index2 = context->c->stack[context->c->stackPointer - 2].i;
+				if (context->heapEntriesAllocated <= index2) return -1;
+				HeapEntry *entry2 = &context->heap[index2];
+				if (entry2->type != T_EOF && entry2->type != T_LIST) return -1;
+
+				if (entry2->type == T_EOF) {
+					text2 = "null";
+					bytes2 = 4;
+				} else if (entry2->length == 0) {
+					text2 = "[]";
+					bytes2 = 2;
+				} else {
+					if (entry2->internalValuesAreManaged) return -1;
+					bytes2 = 4;
+
+					for (uintptr_t i = 0; i < entry2->length; i++) {
+						bytes2 += PrintIntegerToBuffer(temp, sizeof(temp), entry2->list[i].i) + 2;
+					}
+
+					freeText = (char *) AllocateResize(freeText, bytes2);
+					text2 = freeText;
+					bytes2 = 0;
+					freeText[bytes2++] = '[';
+					freeText[bytes2++] = ' ';
+
+					for (uintptr_t i = 0; i < entry2->length; i++) {
+						bytes2 += PrintIntegerToBuffer(freeText + bytes2, sizeof(temp) /* enough space */, entry2->list[i].i);
+						freeText[bytes2++] = ',';
+						freeText[bytes2++] = ' ';
+					}
+
+					bytes2 -= 2;
+					freeText[bytes2++] = ' ';
+					freeText[bytes2++] = ']';
+				}
 			}
 
 			uint64_t index3 = context->c->stack[context->c->stackPointer - 1].i;
@@ -3285,6 +3328,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (bytes2) MemoryCopy(context->heap[index].text + bytes1,          text2, bytes2);
 			if (bytes3) MemoryCopy(context->heap[index].text + bytes1 + bytes2, text3, bytes3);
 			context->c->stack[context->c->stackPointer - 3].i = index;
+
+			if (freeText) AllocateResize(freeText, 0);
 
 			context->c->stackPointer -= 2;
 		} else if (command == T_VARIABLE) {
@@ -3869,6 +3914,24 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			entry->list[insertIndex] = context->c->stack[context->c->stackPointer - 2];
 
 			context->c->stackPointer -= 3;
+		} else if (command == T_OP_DELETE_ALL) {
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+
+			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+
+			context->heap[index].length = context->heap[index].allocated = 0;
+			context->heap[index].list = AllocateResize(context->heap[index].list, 0);
+			context->c->stackPointer--;
 		} else if (command == T_OP_FIND_AND_DELETE) {
 			if (context->c->stackPointer < 2) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
