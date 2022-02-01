@@ -207,19 +207,19 @@ void PortGCC() {
 		if SystemGetHostName() == "Darwin" libraryPath = "-L" + StringTrim(SystemShellEvaluate("brew --prefix")) + "/lib";
 
 		// Check all the needed tools are available.
-		assert SystemShellExecute("awk -V");
-		assert SystemShellExecute("bison -V");
-		assert SystemShellExecute("ctags --version");
-		assert SystemShellExecute("curl -V");
-		assert SystemShellExecute("flex -V");
-		assert SystemShellExecute("g++ --version");
-		assert SystemShellExecute("grep -V");
-		assert SystemShellExecute("gzip -V");
-		assert SystemShellExecute("make -v");
-		assert SystemShellExecute("nasm -v");
-		assert SystemShellExecute("sed --version");
-		assert SystemShellExecute("tar --version");
-		assert SystemShellExecute("xz -V");
+		assert SystemShellExecute("which awk");
+		assert SystemShellExecute("which bison");
+		assert SystemShellExecute("which ctags");
+		assert SystemShellExecute("which curl");
+		assert SystemShellExecute("which flex");
+		assert SystemShellExecute("which g++");
+		assert SystemShellExecute("which grep");
+		assert SystemShellExecute("which gzip");
+		assert SystemShellExecute("which make");
+		assert SystemShellExecute("which nasm");
+		assert SystemShellExecute("which sed");
+		assert SystemShellExecute("which tar");
+		assert SystemShellExecute("which xz");
 
 		// Check all the needed libraries are available.
 		assert FileWriteAll("bin/test.c", "void main() {}");
