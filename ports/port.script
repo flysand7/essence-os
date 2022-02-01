@@ -110,7 +110,7 @@ void PortBusybox() {
 	str version = "1.33.1";
 	if processorCount == 0 processorCount = SystemGetProcessorCount();
 
-	if StringTrim(SystemShellEvaluate("uname")) == "Darwin" {
+	if SystemGetHostName() == "Darwin" {
 		SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"));
 	}
 
@@ -174,7 +174,7 @@ void PortGCC() {
 	}
 
 	// Make sure we're not running as root.
-	assert StringTrim(SystemShellEvaluate("whoami")) != "root";
+	assert !SystemRunningAsAdministrator();
 
 	// Version strings:
 	str gccVersion      = "11.1.0";
@@ -203,24 +203,23 @@ void PortGCC() {
 		assert SystemGetEnvironmentVariable("PATH") == path;
 
 		// Get the brew library path if we're running on Darwin.
-		str hostPlatform = StringTrim(SystemShellEvaluate("uname"));
 		str libraryPath = "";
-		if hostPlatform == "Darwin" libraryPath = "-L" + StringTrim(SystemShellEvaluate("brew --prefix")) + "/lib";
+		if SystemGetHostName() == "Darwin" libraryPath = "-L" + StringTrim(SystemShellEvaluate("brew --prefix")) + "/lib";
 
 		// Check all the needed tools are available.
-		assert SystemShellExecute("which g++");
-		assert SystemShellExecute("which make");
-		assert SystemShellExecute("which bison");
-		assert SystemShellExecute("which flex");
-		assert SystemShellExecute("which curl");
-		assert SystemShellExecute("which nasm");
-		assert SystemShellExecute("which ctags");
-		assert SystemShellExecute("which xz");
-		assert SystemShellExecute("which gzip");
-		assert SystemShellExecute("which tar");
-		assert SystemShellExecute("which grep");
-		assert SystemShellExecute("which sed");
-		assert SystemShellExecute("which awk");
+		assert SystemShellExecute("awk -V");
+		assert SystemShellExecute("bison -V");
+		assert SystemShellExecute("ctags --version");
+		assert SystemShellExecute("curl -V");
+		assert SystemShellExecute("flex -V");
+		assert SystemShellExecute("g++ --version");
+		assert SystemShellExecute("grep -V");
+		assert SystemShellExecute("gzip -V");
+		assert SystemShellExecute("make -v");
+		assert SystemShellExecute("nasm -v");
+		assert SystemShellExecute("sed --version");
+		assert SystemShellExecute("tar --version");
+		assert SystemShellExecute("xz -V");
 
 		// Check all the needed libraries are available.
 		assert FileWriteAll("bin/test.c", "void main() {}");

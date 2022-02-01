@@ -395,6 +395,8 @@ char baseModuleSource[] = {
 	// Miscellaneous:
 
 	"int SystemGetProcessorCount() #extcall;"
+	"bool SystemRunningAsAdministrator() #extcall;"
+	"str SystemGetHostName() #extcall;"
 
 	// File system access:
 
@@ -440,6 +442,8 @@ int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
+int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue);
+int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue);
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue);
@@ -467,6 +471,8 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "SystemGetProcessorCount", .callback = ExternalSystemGetProcessorCount },
 	{ .cName = "SystemGetEnvironmentVariable", .callback = ExternalSystemGetEnvironmentVariable },
 	{ .cName = "SystemSetEnvironmentVariable", .callback = ExternalSystemSetEnvironmentVariable },
+	{ .cName = "SystemRunningAsAdministrator", .callback = ExternalSystemRunningAsAdministrator },
+	{ .cName = "SystemGetHostName", .callback = ExternalSystemGetHostName },
 	{ .cName = "PathExists", .callback = ExternalPathExists },
 	{ .cName = "PathCreateDirectory", .callback = ExternalPathCreateDirectory },
 	{ .cName = "PathCreateLeadingDirectories", .callback = ExternalPathCreateLeadingDirectories },
@@ -4294,6 +4300,7 @@ void ScriptFree(ExecutionContext *context) {
 #else
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/utsname.h>
 #endif
 #include <errno.h>
 #include <stdarg.h>
@@ -5063,6 +5070,35 @@ int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValu
 	if (returnValue->i < 1) returnValue->i = 1;
 	if (returnValue->i > 10000) returnValue->i = 1; // Values this large are obviously wrong.
 	return 2;
+}
+
+int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+#ifdef _WIN32
+#pragma message ("ExternalSystemRunningAsAdministrator unimplemented")
+	returnValue->i = 0;
+#else
+	returnValue->i = geteuid() == 0;
+#endif
+	return 2;
+}
+
+int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	const char *name;
+#ifdef _WIN32
+	name = "Windows";
+#else
+	struct utsname buffer;
+	uname(&buffer);
+	name = buffer.sysname;
+#endif
+	returnValue->i = HeapAllocate(context);
+	context->heap[returnValue->i].type = T_STR;
+	context->heap[returnValue->i].bytes = strlen(name);
+	context->heap[returnValue->i].text = AllocateResize(NULL, context->heap[returnValue->i].bytes);
+	memcpy(context->heap[returnValue->i].text, name, context->heap[returnValue->i].bytes);
+	return 3;
 }
 
 void *AllocateFixed(size_t bytes) {
