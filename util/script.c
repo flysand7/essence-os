@@ -1,5 +1,5 @@
 // TODO Basic missing features:
-// 	- Other list operations: add, insert, insert_many, delete, delete_many, delete_last, delete_all.
+// 	- Other list operations: insert, insert_many, delete, delete_many, delete_last, delete_all.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
@@ -7,7 +7,6 @@
 // 	- Resolving type identifiers when structs or function pointers contain references to other structs or function pointers.
 
 // TODO Larger missing features:
-// 	- Coroutines.
 // 	- Serialization.
 // 	- Debugging.
 // 	- Verbose mode, where every external call is logged, every variable modification is logged, every line is logged, etc? Saving output to file.
@@ -128,6 +127,7 @@
 #define T_OP_ASSERT           (152)
 #define T_OP_CURRY            (153)
 #define T_OP_ASYNC            (154)
+#define T_OP_FIND_AND_DELETE  (155)
 
 #define T_IF                  (160)
 #define T_WHILE               (161)
@@ -151,6 +151,7 @@
 #define T_OPTION              (179)
 #define T_IMPORT              (180)
 #define T_INLINE              (181)
+#define T_AWAIT               (182)
 
 typedef struct Token {
 	struct ImportData *module;
@@ -219,10 +220,10 @@ typedef struct FunctionBuilder {
 } FunctionBuilder;
 
 typedef struct BackTraceItem {
-	uint32_t instructionPointer;
-	uint32_t variableBase : 30,
+	uint32_t instructionPointer : 30,
 		 popResult : 1,
 		 assertResult : 1;
+	int32_t variableBase : 30;
 } BackTraceItem;
 
 typedef struct HeapEntry {
@@ -258,15 +259,37 @@ typedef struct HeapEntry {
 	};
 } HeapEntry;
 
-typedef struct ExecutionContext {
-	Value *globalVariables;
-	bool *globalVariableIsManaged;
-	size_t globalVariableCount;
-
+typedef struct CoroutineState {
+	Value *localVariables;
+	bool *localVariableIsManaged;
+	size_t localVariableCount;
+	size_t localVariablesAllocated;
 	Value stack[50]; // TODO Merge with variables?
 	bool stackIsManaged[50];
 	uintptr_t stackPointer;
 	size_t stackEntriesAllocated;
+	BackTraceItem backTrace[300];
+	uintptr_t backTracePointer;
+	uint64_t id;
+	int64_t unblockedBy;
+	struct CoroutineState *nextCoroutine;
+	struct CoroutineState **previousCoroutineLink;
+	struct CoroutineState *nextUnblockedCoroutine;
+	struct CoroutineState **previousUnblockedCoroutineLink;
+	struct CoroutineState **waiters;
+	size_t waiterCount;
+	size_t waitersAllocated;
+	struct CoroutineState ***waitingOn;
+	size_t waitingOnCount;
+	bool awaiting, startedByAsync;
+	uintptr_t instructionPointer;
+	uintptr_t variableBase;
+} CoroutineState;
+
+typedef struct ExecutionContext {
+	Value *globalVariables;
+	bool *globalVariableIsManaged;
+	size_t globalVariableCount;
 
 	HeapEntry *heap;
 	uintptr_t heapFirstUnusedEntry;
@@ -277,12 +300,10 @@ typedef struct ExecutionContext {
 	char *scriptPersistFile;
 	struct ImportData *mainModule;
 
-	Value *localVariables;
-	bool *localVariableIsManaged;
-	size_t localVariableCount;
-	size_t localVariablesAllocated;
-	BackTraceItem backTrace[300];
-	uintptr_t backTracePointer;
+	CoroutineState *c; // Active coroutine.
+	CoroutineState *allCoroutines;
+	CoroutineState *unblockedCoroutines;
+	uint64_t lastCoroutineID;
 } ExecutionContext;
 
 typedef struct ExternalFunction {
@@ -306,6 +327,7 @@ Node globalExpressionTypeInt = { .type = T_INT };
 Node globalExpressionTypeFloat = { .type = T_FLOAT };
 Node globalExpressionTypeBool = { .type = T_BOOL };
 Node globalExpressionTypeStr = { .type = T_STR };
+Node globalExpressionTypeIntList = { .type = T_LIST, .firstChild = &globalExpressionTypeInt };
 
 // Global variables:
 char *scriptSourceDirectory;
@@ -320,6 +342,7 @@ Node *ParseBlock(Tokenizer *tokenizer);
 Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t precedence);
 void ScriptPrintNode(Node *node, int indent);
 bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData);
+void ScriptFreeCoroutine(CoroutineState *c);
 uintptr_t HeapAllocate(ExecutionContext *context);
 
 // --------------------------------- Platform layer definitions.
@@ -338,6 +361,7 @@ void PrintError(Tokenizer *tokenizer, const char *format, ...);
 void PrintError2(Tokenizer *tokenizer, Node *node, const char *format, ...);
 void PrintError3(const char *format, ...);
 void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const char *format, ...);
+void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix);
 void *FileLoad(const char *path, size_t *length);
 
 // --------------------------------- Base module.
@@ -478,9 +502,10 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_MINUS)           return 50;
 	if (t == T_ASTERISK)        return 60;
 	if (t == T_SLASH)           return 60;
+	if (t == T_LOGICAL_NOT)     return 70;
 	if (t == T_DOT)             return 80;
 	if (t == T_COLON)           return 80;
-	if (t == T_LOGICAL_NOT)     return 90;
+	if (t == T_AWAIT)           return 90;
 	if (t == T_LEFT_ROUND)      return 100;
 	Assert(false);
 }
@@ -570,6 +595,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("#option") token.type = T_OPTION;
 			else if KEYWORD("#persist") token.type = T_PERSIST;
 			else if KEYWORD("assert") token.type = T_ASSERT;
+			else if KEYWORD("await") token.type = T_AWAIT;
 			else if KEYWORD("bool") token.type = T_BOOL;
 			else if KEYWORD("else") token.type = T_ELSE;
 			else if KEYWORD("false") token.type = T_FALSE;
@@ -893,6 +919,9 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 			link = &item->sibling;
 			needComma = true;
 		}
+	} else if (node->token.type == T_AWAIT) {
+		node->type = T_AWAIT;
+		node->firstChild = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->token.type));
 	} else {
 		PrintError2(tokenizer, node, "Expected an expression. "
 				"Expressions can start with a variable identifier, a string literal, a number, 'len', 'new', '!', '[' or '('.\n");
@@ -1004,8 +1033,11 @@ Node *ParseIf(Tokenizer *tokenizer) {
 		node->firstChild->sibling = ParseBlock(tokenizer);
 		if (!node->firstChild->sibling) return NULL;
 	} else {
-		node->firstChild->sibling = ParseExpression(tokenizer, true, 0);
-		if (!node->firstChild->sibling) return NULL;
+		Node *wrapper = (Node *) AllocateFixed(sizeof(Node));
+		wrapper->type = T_BLOCK;
+		wrapper->firstChild = ParseExpression(tokenizer, true, 0);
+		if (!wrapper->firstChild) return NULL;
+		node->firstChild->sibling = wrapper;
 
 		Token semicolon = TokenNext(tokenizer);
 
@@ -2114,7 +2146,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 		Token token = node->token;
 		Node *arguments[2] = { 0 };
-		bool returnsItem = false, returnsInt = false, simple = true;
+		bool returnsItem = false, returnsInt = false, returnsBool = false, simple = true;
 		uint8_t op;
 
 		if (isList && KEYWORD("resize")) arguments[0] = &globalExpressionTypeInt, op = T_OP_RESIZE;
@@ -2122,6 +2154,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		else if (isList && KEYWORD("insert")) arguments[0] = expressionType->firstChild, arguments[1] = &globalExpressionTypeInt, op = T_OP_INSERT;
 		else if (isList && KEYWORD("insert_many")) arguments[0] = &globalExpressionTypeInt, arguments[1] = &globalExpressionTypeInt, op = T_OP_INSERT_MANY;
 		else if (isList && KEYWORD("delete")) arguments[0] = &globalExpressionTypeInt, op = T_OP_DELETE;
+		else if (isList && KEYWORD("find_and_delete")) arguments[0] = expressionType->firstChild, op = T_OP_FIND_AND_DELETE, returnsBool = true;
 		else if (isList && KEYWORD("delete_many")) arguments[0] = &globalExpressionTypeInt, arguments[1] = &globalExpressionTypeInt, op = T_OP_DELETE_MANY;
 		else if (isList && KEYWORD("delete_last")) op = T_OP_DELETE_LAST;
 		else if (isList && KEYWORD("delete_all")) op = T_OP_DELETE_ALL;
@@ -2196,6 +2229,11 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			return false;
 		}
 
+		if (op == T_OP_FIND_AND_DELETE && ASTMatching(arguments[0], &globalExpressionTypeFloat)) {
+			PrintError2(tokenizer, node, "The find_and_delete operation cannot be used with floats.\n");
+			return false;
+		}
+
 		if (simple) {
 			Node *argument1 = node->firstChild->sibling->firstChild;
 			Node *argument2 = argument1 ? argument1->sibling : NULL;
@@ -2217,7 +2255,9 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				return false;
 			}
 
-			node->expressionType = returnsItem ? expressionType->firstChild : returnsInt ? &globalExpressionTypeInt : NULL;
+			node->expressionType = returnsItem ? expressionType->firstChild 
+				: returnsInt ? &globalExpressionTypeInt 
+				: returnsBool ? &globalExpressionTypeBool : NULL;
 		}
 
 		node->operationType = op;
@@ -2238,7 +2278,10 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		Node *item = node->firstChild;
 		node->expressionType = (Node *) AllocateFixed(sizeof(Node));
 		node->expressionType->type = T_LIST;
-		node->expressionType->firstChild = item->expressionType;
+		Node *copy = (Node *) AllocateFixed(sizeof(Node));
+		*copy = *item->expressionType;
+		copy->sibling = NULL;
+		node->expressionType->firstChild = copy;
 
 		while (item) {
 			if (!ASTMatching(node->expressionType->firstChild, item->expressionType)) {
@@ -2248,6 +2291,13 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 			item = item->sibling;
 		}
+	} else if (node->type == T_AWAIT) {
+		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeIntList)) {
+			PrintError2(tokenizer, node, "Expected a list of task IDs to wait on.\n");
+			return false;
+		}
+
+		node->expressionType = &globalExpressionTypeInt;
 	} else {
 		PrintDebug("ASTSetTypes %d\n", node->type);
 		Assert(false);
@@ -2658,7 +2708,8 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		}
 
 		if (node->type == T_BLOCK && child->expressionType && child->expressionType->type != T_VOID) {
-			if (child->type == T_CALL) {
+			if (child->type == T_CALL || child->type == T_AWAIT 
+					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DELETE)) {
 				uint8_t b = T_POP;
 				FunctionBuilderAppend(builder, &b, sizeof(b));
 			} else if (child->type == T_DECLARE || child->type == T_EQUALS) {
@@ -2683,7 +2734,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		uint8_t b = T_END_FUNCTION;
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &b, sizeof(b));
-	} else if (node->type == T_ASSERT || node->type == T_NULL || node->type == T_LOGICAL_NOT) {
+	} else if (node->type == T_ASSERT || node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT) {
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
 	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH) {
@@ -2960,18 +3011,24 @@ uintptr_t HeapAllocate(ExecutionContext *context) {
 			}
 		}
 
-		for (uintptr_t i = 0; i < context->localVariableCount; i++) {
-			if (context->localVariableIsManaged[i]) {
-				HeapGarbageCollectMark(context, context->localVariables[i].i);
+		CoroutineState *c = context->allCoroutines;
+
+		while (c) {
+			for (uintptr_t i = 0; i < c->localVariableCount; i++) {
+				if (c->localVariableIsManaged[i]) {
+					HeapGarbageCollectMark(context, c->localVariables[i].i);
+				}
 			}
+
+			for (uintptr_t i = 0; i < c->stackPointer; i++) {
+				if (c->stackIsManaged[i]) {
+					HeapGarbageCollectMark(context, c->stack[i].i);
+				}
+			}
+
+			c = c->nextCoroutine;
 		}
 		
-		for (uintptr_t i = 0; i < context->stackPointer; i++) {
-			if (context->stackIsManaged[i]) {
-				HeapGarbageCollectMark(context, context->stack[i].i);
-			}
-		}
-
 		uintptr_t *link = &context->heapFirstUnusedEntry;
 		uintptr_t reclaimed = 0;
 
@@ -3033,62 +3090,62 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 	// 	Checking that this is actually a valid function body pointer.
 	// 	Checking various integer overflows.
 
-	uintptr_t variableBase = context->localVariableCount - 1;
+	uintptr_t variableBase = context->c->localVariableCount - 1;
 	uint8_t *functionData = context->functionData->data;
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
-		// PrintDebug("--> %d\n", command);
+		// PrintDebug("--> %d, %ld, %d\n", command, context->c->id);
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
 			instructionPointer += 2;
 
-			if (context->localVariableCount + newVariableCount > context->localVariablesAllocated) {
+			if (context->c->localVariableCount + newVariableCount > context->c->localVariablesAllocated) {
 				// TODO Handling memory errors here.
-				context->localVariablesAllocated = context->localVariableCount + newVariableCount;
-				context->localVariables = AllocateResize(context->localVariables, context->localVariablesAllocated * sizeof(Value)); 
-				context->localVariableIsManaged = AllocateResize(context->localVariableIsManaged, context->localVariablesAllocated * sizeof(bool)); 
+				context->c->localVariablesAllocated = context->c->localVariableCount + newVariableCount;
+				context->c->localVariables = AllocateResize(context->c->localVariables, context->c->localVariablesAllocated * sizeof(Value)); 
+				context->c->localVariableIsManaged = AllocateResize(context->c->localVariableIsManaged, context->c->localVariablesAllocated * sizeof(bool)); 
 			}
 
-			MemoryCopy(context->localVariableIsManaged + context->localVariableCount, functionData + instructionPointer, newVariableCount);
+			MemoryCopy(context->c->localVariableIsManaged + context->c->localVariableCount, functionData + instructionPointer, newVariableCount);
 			instructionPointer += newVariableCount;
 
-			for (uintptr_t i = context->localVariableCount; i < context->localVariableCount + newVariableCount; i++) {
+			for (uintptr_t i = context->c->localVariableCount; i < context->c->localVariableCount + newVariableCount; i++) {
 				if (command == T_FUNCBODY) {
-					if (context->stackPointer < 1) return -1;
-					context->localVariables[i] = context->stack[--context->stackPointer];
+					if (context->c->stackPointer < 1) return -1;
+					context->c->localVariables[i] = context->c->stack[--context->c->stackPointer];
 				} else {
 					Value zero = { 0 };
-					context->localVariables[i] = zero;
+					context->c->localVariables[i] = zero;
 				}
 			}
 
-			context->localVariableCount += newVariableCount;
+			context->c->localVariableCount += newVariableCount;
 		} else if (command == T_EXIT_SCOPE) {
 			uint16_t count = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
 			instructionPointer += 2;
-			if (context->localVariableCount < count) return -1;
-			context->localVariableCount -= count;
+			if (context->c->localVariableCount < count) return -1;
+			context->c->localVariableCount -= count;
 		} else if (command == T_NUMERIC_LITERAL) {
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
 
-			context->stackIsManaged[context->stackPointer] = false;
-			MemoryCopy(&context->stack[context->stackPointer++], &functionData[instructionPointer], sizeof(Value));
+			context->c->stackIsManaged[context->c->stackPointer] = false;
+			MemoryCopy(&context->c->stack[context->c->stackPointer++], &functionData[instructionPointer], sizeof(Value));
 			instructionPointer += sizeof(Value);
 		} else if (command == T_NULL) {
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
 
-			context->stackIsManaged[context->stackPointer] = true;
-			context->stack[context->stackPointer++].i = 0;
+			context->c->stackIsManaged[context->c->stackPointer] = true;
+			context->c->stack[context->c->stackPointer++].i = 0;
 		} else if (command == T_STRING_LITERAL) {
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
@@ -3107,21 +3164,21 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			Value v;
 			v.i = index;
-			context->stackIsManaged[context->stackPointer] = true;
-			context->stack[context->stackPointer++] = v;
+			context->c->stackIsManaged[context->c->stackPointer] = true;
+			context->c->stack[context->c->stackPointer++] = v;
 		} else if (command == T_CONCAT) {
-			if (context->stackPointer < 2) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index1 = context->stack[context->stackPointer - 2].i;
+			uint64_t index1 = context->c->stack[context->c->stackPointer - 2].i;
 			if (context->heapEntriesAllocated <= index1) return -1;
 			HeapEntry *entry1 = &context->heap[index1];
 			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
 			const char *text1 = entry1->type == T_STR ? entry1->text : "";
 			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
 
-			uint64_t index2 = context->stack[context->stackPointer - 1].i;
+			uint64_t index2 = context->c->stack[context->c->stackPointer - 1].i;
 			if (context->heapEntriesAllocated <= index2) return -1;
 			HeapEntry *entry2 = &context->heap[index2];
 			if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
@@ -3135,16 +3192,16 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->heap[index].text = (char *) AllocateResize(NULL, context->heap[index].bytes);
 			if (bytes1) MemoryCopy(context->heap[index].text + 0,      text1, bytes1);
 			if (bytes2) MemoryCopy(context->heap[index].text + bytes1, text2, bytes2);
-			context->stack[context->stackPointer - 2].i = index;
+			context->c->stack[context->c->stackPointer - 2].i = index;
 
-			context->stackPointer--;
+			context->c->stackPointer--;
 		} else if (command == T_INTERPOLATE_STR || command == T_INTERPOLATE_BOOL 
 				|| command == T_INTERPOLATE_INT || command == T_INTERPOLATE_FLOAT) {
-			if (context->stackPointer < 3) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 3]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 3) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index1 = context->stack[context->stackPointer - 3].i;
+			uint64_t index1 = context->c->stack[context->c->stackPointer - 3].i;
 			if (context->heapEntriesAllocated <= index1) return -1;
 			HeapEntry *entry1 = &context->heap[index1];
 			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
@@ -3156,25 +3213,25 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			char temp[30];
 
 			if (command == T_INTERPOLATE_STR) {
-				if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
-				uint64_t index2 = context->stack[context->stackPointer - 2].i;
+				if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+				uint64_t index2 = context->c->stack[context->c->stackPointer - 2].i;
 				if (context->heapEntriesAllocated <= index2) return -1;
 				HeapEntry *entry2 = &context->heap[index2];
 				if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
 				text2 = entry2->type == T_STR ? entry2->text : "";
 				bytes2 = entry2->type == T_STR ? entry2->bytes : 0;
 			} else if (command == T_INTERPOLATE_BOOL) {
-				text2 = context->stack[context->stackPointer - 2].i ? "true" : "false";
-				bytes2 = context->stack[context->stackPointer - 2].i ? 4 : 5;
+				text2 = context->c->stack[context->c->stackPointer - 2].i ? "true" : "false";
+				bytes2 = context->c->stack[context->c->stackPointer - 2].i ? 4 : 5;
 			} else if (command == T_INTERPOLATE_INT) {
 				text2 = temp;
-				bytes2 = PrintIntegerToBuffer(temp, sizeof(temp), context->stack[context->stackPointer - 2].i);
+				bytes2 = PrintIntegerToBuffer(temp, sizeof(temp), context->c->stack[context->c->stackPointer - 2].i);
 			} else if (command == T_INTERPOLATE_FLOAT) {
 				text2 = temp;
-				bytes2 = PrintFloatToBuffer(temp, sizeof(temp), context->stack[context->stackPointer - 2].f);
+				bytes2 = PrintFloatToBuffer(temp, sizeof(temp), context->c->stack[context->c->stackPointer - 2].f);
 			}
 
-			uint64_t index3 = context->stack[context->stackPointer - 1].i;
+			uint64_t index3 = context->c->stack[context->c->stackPointer - 1].i;
 			if (context->heapEntriesAllocated <= index3) return -1;
 			HeapEntry *entry3 = &context->heap[index3];
 			if (entry3->type != T_EOF && entry3->type != T_STR) return -1;
@@ -3189,11 +3246,11 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (bytes1) MemoryCopy(context->heap[index].text + 0,               text1, bytes1);
 			if (bytes2) MemoryCopy(context->heap[index].text + bytes1,          text2, bytes2);
 			if (bytes3) MemoryCopy(context->heap[index].text + bytes1 + bytes2, text3, bytes3);
-			context->stack[context->stackPointer - 3].i = index;
+			context->c->stack[context->c->stackPointer - 3].i = index;
 
-			context->stackPointer -= 2;
+			context->c->stackPointer -= 2;
 		} else if (command == T_VARIABLE) {
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintDebug("Stack overflow.\n");
 				return -1;
 			}
@@ -3204,35 +3261,35 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			if (scopeIndex >= 0) {
 				if ((uintptr_t) scopeIndex >= context->globalVariableCount) return -1;
-				context->stackIsManaged[context->stackPointer] = context->globalVariableIsManaged[scopeIndex];
-				context->stack[context->stackPointer++] = context->globalVariables[scopeIndex];
+				context->c->stackIsManaged[context->c->stackPointer] = context->globalVariableIsManaged[scopeIndex];
+				context->c->stack[context->c->stackPointer++] = context->globalVariables[scopeIndex];
 			} else {
 				scopeIndex = variableBase - scopeIndex;
-				if ((uintptr_t) scopeIndex >= context->localVariableCount) return -1;
-				context->stackIsManaged[context->stackPointer] = context->localVariableIsManaged[scopeIndex];
-				context->stack[context->stackPointer++] = context->localVariables[scopeIndex];
+				if ((uintptr_t) scopeIndex >= context->c->localVariableCount) return -1;
+				context->c->stackIsManaged[context->c->stackPointer] = context->c->localVariableIsManaged[scopeIndex];
+				context->c->stack[context->c->stackPointer++] = context->c->localVariables[scopeIndex];
 			}
 		} else if (command == T_EQUALS) {
-			if (!context->stackPointer) return -1;
+			if (!context->c->stackPointer) return -1;
 			int32_t scopeIndex;
 			MemoryCopy(&scopeIndex, &functionData[instructionPointer], sizeof(scopeIndex));
 			instructionPointer += sizeof(scopeIndex);
 
 			if (scopeIndex >= 0) {
 				if ((uintptr_t) scopeIndex >= context->globalVariableCount) return -1;
-				if (context->globalVariableIsManaged[scopeIndex] != context->stackIsManaged[context->stackPointer - 1]) return -1;
-				context->globalVariables[scopeIndex] = context->stack[--context->stackPointer];
+				if (context->globalVariableIsManaged[scopeIndex] != context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+				context->globalVariables[scopeIndex] = context->c->stack[--context->c->stackPointer];
 			} else {
 				scopeIndex = variableBase - scopeIndex;
-				if ((uintptr_t) scopeIndex >= context->localVariableCount) return -1;
-				if (context->localVariableIsManaged[scopeIndex] != context->stackIsManaged[context->stackPointer - 1]) return -1;
-				context->localVariables[scopeIndex] = context->stack[--context->stackPointer];
+				if ((uintptr_t) scopeIndex >= context->c->localVariableCount) return -1;
+				if (context->c->localVariableIsManaged[scopeIndex] != context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+				context->c->localVariables[scopeIndex] = context->c->stack[--context->c->stackPointer];
 			}
 		} else if (command == T_EQUALS_DOT) {
-			if (context->stackPointer < 2) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 1].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The struct is null.\n");
@@ -3250,17 +3307,17 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (isManaged) fieldIndex = -fieldIndex - 1;
 			if (fieldIndex < 0 || fieldIndex >= entry->fieldCount) return -1;
 
-			entry->fields[fieldIndex] = context->stack[context->stackPointer - 2];
-			if (isManaged != context->stackIsManaged[context->stackPointer - 2]) return -1;
+			entry->fields[fieldIndex] = context->c->stack[context->c->stackPointer - 2];
+			if (isManaged != context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
 			((uint8_t *) entry->fields - 1)[-fieldIndex] = isManaged;
 
-			context->stackPointer -= 2;
+			context->c->stackPointer -= 2;
 		} else if (command == T_EQUALS_LIST) {
-			if (context->stackPointer < 3) return -1;
-			if (context->stackIsManaged[context->stackPointer - 1]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
+			if (context->c->stackPointer < 3) return -1;
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 2].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The list is null.\n");
@@ -3271,23 +3328,23 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_LIST) return -1;
 
-			index = context->stack[context->stackPointer - 1].i;
+			index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (index >= entry->length) {
 				PrintError4(context, instructionPointer - 1, "The index %ld is not valid for the list, which has length %d.\n", index, entry->length);
 				return 0;
 			}
 
-			entry->list[index] = context->stack[context->stackPointer - 3];
-			if (entry->internalValuesAreManaged != context->stackIsManaged[context->stackPointer - 3]) return -1;
+			entry->list[index] = context->c->stack[context->c->stackPointer - 3];
+			if (entry->internalValuesAreManaged != context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
 
-			context->stackPointer -= 3;
+			context->c->stackPointer -= 3;
 		} else if (command == T_INDEX_LIST) {
-			if (context->stackPointer < 2) return -1;
-			if (context->stackIsManaged[context->stackPointer - 1]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 2].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The list is null.\n");
@@ -3298,21 +3355,21 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_LIST) return -1;
 
-			index = context->stack[context->stackPointer - 1].i;
+			index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (index >= entry->length) {
 				PrintError4(context, instructionPointer - 1, "The index %ld is not valid for the list, which has length %d.\n", index, entry->length);
 				return 0;
 			}
 
-			context->stack[context->stackPointer - 2] = entry->list[index];
-			context->stackIsManaged[context->stackPointer - 2] = entry->internalValuesAreManaged;
-			context->stackPointer--;
+			context->c->stack[context->c->stackPointer - 2] = entry->list[index];
+			context->c->stackIsManaged[context->c->stackPointer - 2] = entry->internalValuesAreManaged;
+			context->c->stackPointer--;
 		} else if (command == T_OP_FIRST || command == T_OP_LAST) {
-			if (context->stackPointer < 1) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 1].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The list is null.\n");
@@ -3328,13 +3385,13 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				return 0;
 			}
 
-			context->stack[context->stackPointer - 1] = entry->list[command == T_OP_FIRST ? 0 : entry->length - 1];
-			context->stackIsManaged[context->stackPointer - 1] = entry->internalValuesAreManaged;
+			context->c->stack[context->c->stackPointer - 1] = entry->list[command == T_OP_FIRST ? 0 : entry->length - 1];
+			context->c->stackIsManaged[context->c->stackPointer - 1] = entry->internalValuesAreManaged;
 		} else if (command == T_DOT) {
-			if (context->stackPointer < 1) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 1].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The struct is null.\n");
@@ -3355,110 +3412,110 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			// Only allow the isManaged bool to be incorrect if it's a null managed variable.
 			if (isManaged != ((uint8_t *) entry->fields - 1)[-fieldIndex] && (entry->fields[fieldIndex].i || !isManaged)) return -1;
 
-			context->stack[context->stackPointer - 1] = entry->fields[fieldIndex];
-			context->stackIsManaged[context->stackPointer - 1] = isManaged;
+			context->c->stack[context->c->stackPointer - 1] = entry->fields[fieldIndex];
+			context->c->stackIsManaged[context->c->stackPointer - 1] = isManaged;
 		} else if (command == T_ADD) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i + context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i + context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_MINUS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i - context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i - context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_ASTERISK) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i * context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i * context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_SLASH) {
-			if (context->stackPointer < 2) return -1;
+			if (context->c->stackPointer < 2) return -1;
 
-			if (0 == context->stack[context->stackPointer - 1].i) {
+			if (0 == context->c->stack[context->c->stackPointer - 1].i) {
 				PrintError4(context, instructionPointer - 1, "Attempted division by zero.\n");
 				return 0;
 			}
 
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f / context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f / context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_ADD) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].f = context->stack[context->stackPointer - 2].f + context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f + context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_MINUS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].f = context->stack[context->stackPointer - 2].f - context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f - context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_ASTERISK) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].f = context->stack[context->stackPointer - 2].f * context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f * context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_SLASH) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].f = context->stack[context->stackPointer - 2].f / context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f / context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_LESS_THAN) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i < context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i < context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_GREATER_THAN) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i > context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i > context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_LT_OR_EQUAL) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i <= context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i <= context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_GT_OR_EQUAL) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i >= context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i >= context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_DOUBLE_EQUALS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i == context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i == context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_NOT_EQUALS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].i != context->stack[context->stackPointer - 1].i;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i != context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_LOGICAL_NOT) {
-			if (context->stackPointer < 1) return -1;
-			context->stack[context->stackPointer - 1].i = !context->stack[context->stackPointer - 1].i;
+			if (context->c->stackPointer < 1) return -1;
+			context->c->stack[context->c->stackPointer - 1].i = !context->c->stack[context->c->stackPointer - 1].i;
 		} else if (command == T_FLOAT_LESS_THAN) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f < context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f < context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_GREATER_THAN) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f > context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f > context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_LT_OR_EQUAL) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f <= context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f <= context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_GT_OR_EQUAL) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f >= context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f >= context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_DOUBLE_EQUALS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f == context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f == context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_FLOAT_NOT_EQUALS) {
-			if (context->stackPointer < 2) return -1;
-			context->stack[context->stackPointer - 2].i = context->stack[context->stackPointer - 2].f != context->stack[context->stackPointer - 1].f;
-			context->stackPointer--;
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f != context->c->stack[context->c->stackPointer - 1].f;
+			context->c->stackPointer--;
 		} else if (command == T_STR_DOUBLE_EQUALS || command == T_STR_NOT_EQUALS) {
-			if (context->stackPointer < 2) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 
-			uint64_t index1 = context->stack[context->stackPointer - 2].i;
+			uint64_t index1 = context->c->stack[context->c->stackPointer - 2].i;
 			if (context->heapEntriesAllocated <= index1) return -1;
 			HeapEntry *entry1 = &context->heap[index1];
 			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
 			const char *text1 = entry1->type == T_STR ? entry1->text : 0;
 			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
 
-			uint64_t index2 = context->stack[context->stackPointer - 1].i;
+			uint64_t index2 = context->c->stack[context->c->stackPointer - 1].i;
 			if (context->heapEntriesAllocated <= index2) return -1;
 			HeapEntry *entry2 = &context->heap[index2];
 			if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
@@ -3467,14 +3524,14 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			bool equal = bytes1 == bytes2 && 0 == MemoryCompare(text1, text2, bytes1);
 
-			context->stack[context->stackPointer - 2].i = command == T_STR_NOT_EQUALS ? !equal : equal;
-			context->stackIsManaged[context->stackPointer - 2] = false;
+			context->c->stack[context->c->stackPointer - 2].i = command == T_STR_NOT_EQUALS ? !equal : equal;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = false;
 
-			context->stackPointer--;
+			context->c->stackPointer--;
 		} else if (command == T_OP_LEN) {
-			if (context->stackPointer < 1) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
-			uint64_t index = context->stack[context->stackPointer - 1].i;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
 			if (context->heapEntriesAllocated <= index) return -1;
 			HeapEntry *entry = &context->heap[index];
 			int64_t length;
@@ -3482,17 +3539,17 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			else if (entry->type == T_STR) length = entry->bytes;
 			else if (entry->type == T_LIST) length = entry->length;
 			else return -1;
-			context->stack[context->stackPointer - 1].i = length;
-			context->stackIsManaged[context->stackPointer - 1] = false;
+			context->c->stack[context->c->stackPointer - 1].i = length;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = false;
 		} else if (command == T_INDEX) {
-			if (context->stackPointer < 1) return -1;
-			if (context->stackIsManaged[context->stackPointer - 1]) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
-			uint64_t index = context->stack[context->stackPointer - 2].i;
+			if (context->c->stackPointer < 1) return -1;
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
 			if (context->heapEntriesAllocated <= index) return -1;
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_EOF && entry->type != T_STR) return -1;
-			index = context->stack[context->stackPointer - 1].i;
+			index = context->c->stack[context->c->stackPointer - 1].i;
 			size_t bytes = entry->type == T_STR ? entry->bytes : 0;
 
 			if (index >= bytes) {
@@ -3507,13 +3564,14 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->heap[index].bytes = 1;
 			context->heap[index].text = (char *) AllocateResize(NULL, 1); // TODO Handling allocation failure.
 			context->heap[index].text[0] = c;
-			context->stack[context->stackPointer - 2].i = index;
-			context->stackIsManaged[context->stackPointer - 2] = true;
-			context->stackPointer--;
+			context->c->stack[context->c->stackPointer - 2].i = index;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = true;
+			context->c->stackPointer--;
 		} else if (command == T_CALL) {
-			if (context->stackPointer < 1) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
-			Value newBody = context->stack[--context->stackPointer];
+			callCommand:;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			Value newBody = context->c->stack[--context->c->stackPointer];
 
 			if (newBody.i == 0) {
 				PrintError4(context, instructionPointer - 1, "Function pointer was null.\n");
@@ -3534,14 +3592,14 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				} else if (entry->type == T_OP_ASSERT) {
 					assertResult = true;
 				} else if (entry->type == T_OP_CURRY) {
-					if (context->stackPointer == context->stackEntriesAllocated) {
+					if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 						PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 						return 0;
 					}
 
-					context->stack[context->stackPointer] = entry->curryValue;
-					context->stackIsManaged[context->stackPointer] = entry->internalValuesAreManaged;
-					context->stackPointer++;
+					context->c->stack[context->c->stackPointer] = entry->curryValue;
+					context->c->stackIsManaged[context->c->stackPointer] = entry->internalValuesAreManaged;
+					context->c->stackPointer++;
 				} else if (entry->type == T_FUNCPTR) {
 					break;
 				} else {
@@ -3549,70 +3607,70 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				}
 			} 
 
-			if (context->backTracePointer == sizeof(context->backTrace) / sizeof(context->backTrace[0])) {
+			if (context->c->backTracePointer == sizeof(context->c->backTrace) / sizeof(context->c->backTrace[0])) {
 				PrintError4(context, instructionPointer - 1, "Back trace overflow.\n");
 				return 0;
 			}
 			
-			BackTraceItem *link = &context->backTrace[context->backTracePointer];
-			context->backTracePointer++;
+			BackTraceItem *link = &context->c->backTrace[context->c->backTracePointer];
+			context->c->backTracePointer++;
 			link->instructionPointer = instructionPointer;
 			link->variableBase = variableBase;
 			link->popResult = popResult;
 			link->assertResult = assertResult;
 			instructionPointer = newBody.i;
-			variableBase = context->localVariableCount - 1;
+			variableBase = context->c->localVariableCount - 1;
 		} else if (command == T_IF) {
-			if (context->stackPointer < 1) return -1;
-			Value condition = context->stack[--context->stackPointer];
+			if (context->c->stackPointer < 1) return -1;
+			Value condition = context->c->stack[--context->c->stackPointer];
 			int32_t delta;
 			MemoryCopy(&delta, &functionData[instructionPointer], sizeof(delta));
 			instructionPointer += condition.i ? (int32_t) sizeof(delta) : delta; 
 		} else if (command == T_LOGICAL_OR) {
-			if (context->stackPointer < 1) return -1;
-			Value condition = context->stack[context->stackPointer - 1];
+			if (context->c->stackPointer < 1) return -1;
+			Value condition = context->c->stack[context->c->stackPointer - 1];
 			int32_t delta;
 			MemoryCopy(&delta, &functionData[instructionPointer], sizeof(delta));
 			instructionPointer += condition.i ? delta : (int32_t) sizeof(delta); 
-			if (!condition.i) context->stackPointer--;
+			if (!condition.i) context->c->stackPointer--;
 		} else if (command == T_LOGICAL_AND) {
-			if (context->stackPointer < 1) return -1;
-			Value condition = context->stack[context->stackPointer - 1];
+			if (context->c->stackPointer < 1) return -1;
+			Value condition = context->c->stack[context->c->stackPointer - 1];
 			int32_t delta;
 			MemoryCopy(&delta, &functionData[instructionPointer], sizeof(delta));
 			instructionPointer += condition.i ? (int32_t) sizeof(delta) : delta; 
-			if (condition.i) context->stackPointer--;
+			if (condition.i) context->c->stackPointer--;
 		} else if (command == T_BRANCH) {
 			int32_t delta;
 			MemoryCopy(&delta, &functionData[instructionPointer], sizeof(delta));
 			instructionPointer += delta; 
 		} else if (command == T_POP) {
-			if (context->stackPointer < 1) return -1;
-			context->stackPointer--;
+			if (context->c->stackPointer < 1) return -1;
+			context->c->stackPointer--;
 		} else if (command == T_DUP) {
-			if (context->stackPointer < 1) return -1;
+			if (context->c->stackPointer < 1) return -1;
 
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
 
-			context->stack[context->stackPointer] = context->stack[context->stackPointer - 1];
-			context->stackIsManaged[context->stackPointer] = context->stackIsManaged[context->stackPointer - 1];
-			context->stackPointer++;
+			context->c->stack[context->c->stackPointer] = context->c->stack[context->c->stackPointer - 1];
+			context->c->stackIsManaged[context->c->stackPointer] = context->c->stackIsManaged[context->c->stackPointer - 1];
+			context->c->stackPointer++;
 		} else if (command == T_SWAP) {
-			if (context->stackPointer < 2) return -1;
-			Value v1 = context->stack[context->stackPointer - 1];
-			Value v2 = context->stack[context->stackPointer - 2];
-			bool m1 = context->stackIsManaged[context->stackPointer - 1];
-			bool m2 = context->stackIsManaged[context->stackPointer - 2];
-			context->stack[context->stackPointer - 1] = v2;
-			context->stack[context->stackPointer - 2] = v1;
-			context->stackIsManaged[context->stackPointer - 1] = m2;
-			context->stackIsManaged[context->stackPointer - 2] = m1;
+			if (context->c->stackPointer < 2) return -1;
+			Value v1 = context->c->stack[context->c->stackPointer - 1];
+			Value v2 = context->c->stack[context->c->stackPointer - 2];
+			bool m1 = context->c->stackIsManaged[context->c->stackPointer - 1];
+			bool m2 = context->c->stackIsManaged[context->c->stackPointer - 2];
+			context->c->stack[context->c->stackPointer - 1] = v2;
+			context->c->stack[context->c->stackPointer - 2] = v1;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = m2;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = m1;
 		} else if (command == T_ASSERT) {
-			if (context->stackPointer < 1) return -1;
-			Value condition = context->stack[--context->stackPointer];
+			if (context->c->stackPointer < 1) return -1;
+			Value condition = context->c->stack[--context->c->stackPointer];
 
 			if (condition.i == 0) {
 				PrintError4(context, instructionPointer - 1, "Assertion failed.\n");
@@ -3623,7 +3681,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				return 0;
 			}
 		} else if (command == T_NEW) {
-			if (context->stackPointer == context->stackEntriesAllocated) {
+			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
@@ -3652,13 +3710,13 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			Value v;
 			v.i = index;
-			context->stackIsManaged[context->stackPointer] = true;
-			context->stack[context->stackPointer++] = v;
+			context->c->stackIsManaged[context->c->stackPointer] = true;
+			context->c->stack[context->c->stackPointer++] = v;
 		} else if (command == T_OP_RESIZE) {
-			if (context->stackPointer < 2) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
 
-			uint64_t index = context->stack[context->stackPointer - 2].i;
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
 
 			if (!index) {
 				PrintError4(context, instructionPointer - 1, "The list is null.\n");
@@ -3669,7 +3727,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_LIST) return -1;
 
-			int64_t newLength = context->stack[context->stackPointer - 1].i;
+			int64_t newLength = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (newLength < 0 || newLength >= 1000000000) {
 				PrintError4(context, instructionPointer - 1, "The new length of the list is out of the supported range (0..1000000000).\n");
@@ -3687,34 +3745,242 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				context->heap[index].list[i].i = 0;
 			}
 
-			context->stackPointer -= 2;
+			context->c->stackPointer -= 2;
+		} else if (command == T_OP_ADD) {
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+
+			int64_t newLength = entry->length + 1;
+
+			if (newLength < 0 || newLength >= 1000000000) {
+				PrintError4(context, instructionPointer - 1, "The new length of the list is out of the supported range (0..1000000000).\n");
+				return 0;
+			}
+
+			uint32_t oldLength = context->heap[index].length;
+			entry->length = newLength;
+
+			if (entry->length > entry->allocated) {
+				// TODO Handling out of memory errors.
+				entry->allocated = entry->allocated ? entry->allocated * 2 : 4;
+				entry->list = AllocateResize(entry->list, entry->allocated * sizeof(Value));
+				Assert(entry->length <= entry->allocated);
+			}
+
+			if (entry->internalValuesAreManaged != context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			entry->list[oldLength] = context->c->stack[context->c->stackPointer - 1];
+
+			context->c->stackPointer -= 2;
+		} else if (command == T_OP_FIND_AND_DELETE) {
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+
+			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+			if (entry->internalValuesAreManaged != context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			bool found = false;
+
+			for (uintptr_t i = 0; i < entry->length; i++) {
+				if (entry->list[i].i == context->c->stack[context->c->stackPointer - 1].i) {
+					entry->length--;
+					found = true;
+
+					for (uintptr_t j = i; j < entry->length; j++) {
+						entry->list[j] = entry->list[j + 1];
+					}
+
+					break;
+				}
+			}
+
+			context->c->stack[context->c->stackPointer - 2].i = found;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = false;
+			context->c->stackPointer--;
 		} else if (command == T_OP_DISCARD || command == T_OP_ASSERT) {
-			if (context->stackPointer < 1) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 1]) return -1;
-			int64_t id = context->stack[context->stackPointer - 1].i;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			int64_t id = context->c->stack[context->c->stackPointer - 1].i;
 			uintptr_t index = HeapAllocate(context);
 			context->heap[index].type = command;
 			context->heap[index].lambdaID = id;
-			context->stackIsManaged[context->stackPointer - 1] = true;
-			context->stack[context->stackPointer - 1].i = index;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = true;
+			context->c->stack[context->c->stackPointer - 1].i = index;
 		} else if (command == T_OP_CURRY) {
-			if (context->stackPointer < 2) return -1;
-			if (!context->stackIsManaged[context->stackPointer - 2]) return -1;
-			bool valueIsManaged = context->stackIsManaged[context->stackPointer - 1];
-			Value value = context->stack[context->stackPointer - 1];
-			int64_t id = context->stack[context->stackPointer - 2].i;
+			if (context->c->stackPointer < 2) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			bool valueIsManaged = context->c->stackIsManaged[context->c->stackPointer - 1];
+			Value value = context->c->stack[context->c->stackPointer - 1];
+			int64_t id = context->c->stack[context->c->stackPointer - 2].i;
 			uintptr_t index = HeapAllocate(context);
 			context->heap[index].type = command;
 			context->heap[index].lambdaID = id;
 			context->heap[index].curryValue = value;
 			context->heap[index].internalValuesAreManaged = valueIsManaged;
-			context->stackIsManaged[context->stackPointer - 2] = true;
-			context->stack[context->stackPointer - 2].i = index;
-			context->stackPointer--;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = true;
+			context->c->stack[context->c->stackPointer - 2].i = index;
+			context->c->stackPointer--;
 		} else if (command == T_OP_ASYNC) {
-			// TODO.
-			context->stackIsManaged[context->stackPointer - 1] = false;
-			context->stack[context->stackPointer - 1].i = -1;
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			CoroutineState *c = (CoroutineState *) AllocateResize(NULL, sizeof(CoroutineState)); // TODO Handle allocation failure.
+			CoroutineState empty = { 0 };
+			*c = empty;
+			c->id = ++context->lastCoroutineID;
+			c->startedByAsync = true;
+			c->stackEntriesAllocated = sizeof(context->c->stack) / sizeof(context->c->stack[0]);
+			c->stackPointer = 2;
+			c->stack[0].i = -1; // Indicates to T_AWAIT to remove the coroutine.
+			c->stackIsManaged[0] = false;
+			c->stack[1] = context->c->stack[context->c->stackPointer - 1];
+			c->stackIsManaged[1] = true;
+			c->nextCoroutine = context->allCoroutines;
+			if (c->nextCoroutine) c->nextCoroutine->previousCoroutineLink = &c->nextCoroutine;
+			c->previousCoroutineLink = &context->allCoroutines;
+			context->allCoroutines = c;
+			c->nextUnblockedCoroutine = context->unblockedCoroutines;
+			if (c->nextUnblockedCoroutine) c->nextUnblockedCoroutine->previousUnblockedCoroutineLink = &c->nextUnblockedCoroutine;
+			c->previousUnblockedCoroutineLink = &context->unblockedCoroutines;
+			context->unblockedCoroutines = c;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = false;
+			context->c->stack[context->c->stackPointer - 1].i = c->id;
+		} else if (command == T_AWAIT) {
+			if (context->c->stackPointer < 1) return -1;
+
+			// PrintDebug("== AWAIT from %ld\n", context->c->id);
+			Assert(!context->c->nextUnblockedCoroutine && !context->c->previousUnblockedCoroutineLink);
+
+			if (context->c->stack[context->c->stackPointer - 1].i == -1) {
+				if (context->c->stackPointer != 1) return -1;
+				// The coroutine has finished. Remove it from the list of all coroutines.
+				*context->c->previousCoroutineLink = context->c->nextCoroutine;
+				if (context->c->nextCoroutine) context->c->nextCoroutine->previousCoroutineLink = context->c->previousCoroutineLink;
+
+				// PrintDebug("== finished\n");
+
+				for (uintptr_t i = 0; i < context->c->waiterCount; i++) {
+					CoroutineState *c = context->c->waiters[i];
+					if (!c) continue;
+					Assert(!c->nextUnblockedCoroutine && !c->previousUnblockedCoroutineLink);
+					c->unblockedBy = context->c->id;
+					c->nextUnblockedCoroutine = context->unblockedCoroutines;
+					if (c->nextUnblockedCoroutine) c->nextUnblockedCoroutine->previousUnblockedCoroutineLink = &c->nextUnblockedCoroutine;
+					c->previousUnblockedCoroutineLink = &context->unblockedCoroutines;
+					context->unblockedCoroutines = c;
+
+					for (uintptr_t j = 0; j < c->waitingOnCount; j++) {
+						Assert(*(c->waitingOn[j]) == c);
+						*(c->waitingOn[j]) = NULL;
+					}
+
+					c->waitingOnCount = 0;
+					// PrintDebug("== unblocked %ld\n", c->id);
+				}
+
+				ScriptFreeCoroutine(context->c);
+			} else {
+				if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+				// The coroutine is waiting.
+				context->c->unblockedBy = -1;
+				context->c->awaiting = true;
+				context->c->instructionPointer = instructionPointer;
+				context->c->variableBase = variableBase;
+				uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
+				if (context->heapEntriesAllocated <= index) return -1;
+				HeapEntry *entry = &context->heap[index];
+				if (entry->internalValuesAreManaged || entry->type != T_LIST) return -1;
+				
+				context->c->waitingOn = (CoroutineState ***) AllocateResize(context->c->waitingOn, sizeof(CoroutineState **) * entry->length);
+				Assert(context->c->waitingOnCount == 0);
+				CoroutineState *c = context->allCoroutines;
+
+				while (c) {
+					for (uintptr_t i = 0; i < entry->length; i++) {
+						if (c->id == (uint64_t) entry->list[i].i) {
+							if (c->waiterCount == c->waitersAllocated) {
+								c->waitersAllocated = c->waitersAllocated ? c->waitersAllocated * 2 : 4;
+								c->waiters = (CoroutineState **) AllocateResize(c->waiters, sizeof(CoroutineState *) * c->waitersAllocated);
+							}
+
+							c->waiters[c->waiterCount] = context->c;
+							context->c->waitingOn[context->c->waitingOnCount++] = &c->waiters[c->waiterCount];
+							c->waiterCount++;
+						}
+					}
+
+					c = c->nextCoroutine;
+				}
+
+				// PrintDebug("== waiting on %d...\n", context->c->waitingOnCount);
+
+				if (!context->c->waitingOnCount) {
+					// PrintDebug("== immediately unblocking\n");
+					context->c->unblockedBy = entry->length ? entry->list[0].i : -1;
+				}
+			}
+
+			CoroutineState *next = context->unblockedCoroutines;
+
+			if (!next) {
+				PrintError4(context, instructionPointer - 1, "No tasks can run if this task (ID %ld) starts waiting.\n", context->c->id);
+				PrintDebug("All tasks:\n");
+				CoroutineState *c = context->allCoroutines;
+
+				while (c) {
+					PrintDebug("\t%ld blocks ", c->id);
+					bool first = true;
+
+					for (uintptr_t i = 0; i < c->waiterCount; i++) {
+						if (!c->waiters[i]) continue;
+						PrintDebug("%s%ld", first ? "" : ", ", c->waiters[i]->id);
+						first = false;
+					}
+
+					PrintDebug("\n");
+					PrintBackTrace(context, c->instructionPointer - 1, c, "\t");
+					c = c->nextCoroutine;
+				}
+
+				return 0;
+			}
+
+			Assert(next->previousUnblockedCoroutineLink);
+			*next->previousUnblockedCoroutineLink = next->nextUnblockedCoroutine;
+			if (next->nextUnblockedCoroutine) next->nextUnblockedCoroutine->previousUnblockedCoroutineLink = next->previousUnblockedCoroutineLink;
+			next->nextUnblockedCoroutine = NULL;
+			next->previousUnblockedCoroutineLink = NULL;
+			context->c = next;
+			// PrintDebug("== switch to %ld\n", next->id);
+
+			if (context->c->awaiting) {
+				context->c->stackIsManaged[context->c->stackPointer - 1] = false;
+				context->c->stack[context->c->stackPointer - 1].i = context->c->unblockedBy;
+				instructionPointer = context->c->instructionPointer;
+				variableBase = context->c->variableBase;
+				// PrintDebug("== unblocked by %ld\n", context->c->unblockedBy);
+			} else {
+				// PrintDebug("== just started\n");
+				instructionPointer--;
+				goto callCommand;
+			}
 		} else if (command == T_END_FUNCTION || command == T_EXTCALL) {
 			if (command == T_EXTCALL) {
 				uint16_t index = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -3726,36 +3992,36 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					if (result <= 0) return result;
 
 					if (result == 2 || result == 3) {
-						if (context->stackPointer == context->stackEntriesAllocated) {
+						if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 							PrintDebug("Evaluation stack overflow.\n");
 							return -1;
 						}
 
-						context->stackIsManaged[context->stackPointer] = result == 3;
-						context->stack[context->stackPointer++] = returnValue;
+						context->c->stackIsManaged[context->c->stackPointer] = result == 3;
+						context->c->stack[context->c->stackPointer++] = returnValue;
 					}
 				} else {
 					return -1;
 				}
 			}
 
-			context->localVariableCount = variableBase + 1;
+			context->c->localVariableCount = variableBase + 1;
 
-			if (context->backTracePointer) {
-				BackTraceItem *item = &context->backTrace[context->backTracePointer - 1];
+			if (context->c->backTracePointer) {
+				BackTraceItem *item = &context->c->backTrace[context->c->backTracePointer - 1];
 
 				if (command == T_EXTCALL) {
-					context->backTracePointer--;
+					context->c->backTracePointer--;
 					instructionPointer = item->instructionPointer;
 					variableBase = item->variableBase;
 				}
 
 				if (item->popResult) {
-					if (context->stackPointer < 1) return -1;
-					context->stackPointer--;
+					if (context->c->stackPointer < 1) return -1;
+					context->c->stackPointer--;
 				} else if (item->assertResult) {
-					if (context->stackPointer < 1) return -1;
-					Value condition = context->stack[--context->stackPointer];
+					if (context->c->stackPointer < 1) return -1;
+					Value condition = context->c->stack[--context->c->stackPointer];
 
 					if (condition.i == 0) {
 						PrintError4(context, instructionPointer - 1, "Return value was false on an asserting function pointer.\n");
@@ -3764,7 +4030,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				}
 
 				if (command != T_EXTCALL) {
-					context->backTracePointer--;
+					context->c->backTracePointer--;
 					instructionPointer = item->instructionPointer;
 					variableBase = item->variableBase;
 				}
@@ -3775,6 +4041,11 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			PrintDebug("Unknown command %d.\n", command);
 			return -1;
 		}
+	}
+
+	if (context->allCoroutines->nextCoroutine || context->allCoroutines->startedByAsync) {
+		PrintError3("Script ended with unfinished tasks.\n");
+		return false;
 	}
 
 	return true;
@@ -3940,7 +4211,7 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 			if (result == 0) {
 				// A runtime error occurred.
 				return 1;
-			} else if (result == -1 || context->stackPointer != 0) {
+			} else if (result == -1 || context->c->stackPointer != 0) {
 				PrintError3("The script was malformed.\n");
 				return 1;
 			}
@@ -3954,12 +4225,20 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 	if (result == 0) {
 		// A runtime error occurred.
 		return 1;
-	} else if (result == -1 || context->stackPointer != 0) {
+	} else if (result == -1 || context->c->stackPointer != 0) {
 		PrintError3("The script was malformed.\n");
 		return 1;
 	}
 
 	return 0;
+}
+
+void ScriptFreeCoroutine(CoroutineState *c) {
+	AllocateResize(c->waiters, 0);
+	AllocateResize(c->waitingOn, 0);
+	AllocateResize(c->localVariables, 0);
+	AllocateResize(c->localVariableIsManaged, 0);
+	AllocateResize(c, 0);
 }
 
 void ScriptFree(ExecutionContext *context) {
@@ -3980,11 +4259,17 @@ void ScriptFree(ExecutionContext *context) {
 		}
 	}
 
+	CoroutineState *coroutine = context->allCoroutines;
+
+	while (coroutine) {
+		CoroutineState *next = coroutine->nextCoroutine;
+		ScriptFreeCoroutine(coroutine);
+		coroutine = next;
+	}
+
 	AllocateResize(context->heap, 0);
 	AllocateResize(context->globalVariables, 0);
 	AllocateResize(context->globalVariableIsManaged, 0);
-	AllocateResize(context->localVariables, 0);
-	AllocateResize(context->localVariableIsManaged, 0);
 	AllocateResize(context->functionData->lineNumbers, 0);
 	AllocateResize(context->functionData->data, 0);
 	AllocateResize(context->scriptPersistFile, 0);
@@ -4017,9 +4302,9 @@ size_t fixedAllocationCurrentSize;
 
 int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	if (entry->type == T_EOF) { returnValue->i = 0; return 3; }
@@ -4058,9 +4343,9 @@ int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 
 int ExternalStringToByte(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	if (entry->type == T_EOF) { returnValue->i = -1; return 2; }
@@ -4070,9 +4355,9 @@ int ExternalStringToByte(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	if (entry->type != T_STR && entry->type != T_EOF) return -1;
@@ -4095,11 +4380,11 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 2) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
-	uint64_t index2 = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 2) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	if (context->heapEntriesAllocated <= index2) return -1;
 	HeapEntry *entry = &context->heap[index];
@@ -4136,9 +4421,9 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 }
 
 int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	if (entry->type != T_STR && entry->type != T_EOF) return -1;
@@ -4196,9 +4481,9 @@ int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	if (entry->type == T_STR) fprintf(stderr, "%.*s", (int) entry->bytes, (char *) entry->text);
@@ -4208,9 +4493,9 @@ int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	static int coloredOutput = 0;
@@ -4225,9 +4510,9 @@ int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	static int coloredOutput = 0;
@@ -4242,9 +4527,9 @@ int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) 
 
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4267,9 +4552,9 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4300,9 +4585,9 @@ int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *retur
 
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4319,9 +4604,9 @@ int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPathExists(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4381,9 +4666,9 @@ bool PathDeleteRecursively(const char *path) {
 
 int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4400,13 +4685,13 @@ int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue)
 
 int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 2) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 2) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
-	uint64_t index2 = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index2) return -1;
 	HeapEntry *entry2 = &context->heap[index2];
 	returnValue->i = 0;
@@ -4430,13 +4715,13 @@ int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
 
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 2) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 2) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
-	uint64_t index2 = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index2) return -1;
 	HeapEntry *entry2 = &context->heap[index2];
 	returnValue->i = 0;
@@ -4477,9 +4762,9 @@ int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4504,11 +4789,11 @@ int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *retur
 }
 
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 2) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
-	uint64_t index2 = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 2) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	if (context->heapEntriesAllocated <= index2) return -1;
 	HeapEntry *entry = &context->heap[index];
@@ -4531,9 +4816,9 @@ int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *retur
 }
 
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4555,11 +4840,11 @@ int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
-	if (context->stackPointer < 2) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
-	uint64_t index2 = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 2) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	if (context->heapEntriesAllocated <= index2) return -1;
 	HeapEntry *entry = &context->heap[index];
@@ -4609,9 +4894,9 @@ int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *contex
 
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->stackPointer < 1) return -1;
-	uint64_t index = context->stack[--context->stackPointer].i;
-	if (!context->stackIsManaged[context->stackPointer]) return -1;
+	if (context->c->stackPointer < 1) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	if (context->heapEntriesAllocated <= index) return -1;
 	HeapEntry *entry = &context->heap[index];
 	returnValue->i = 0;
@@ -4911,6 +5196,27 @@ void LineNumberLookup(ExecutionContext *context, uint32_t instructionPointer, Li
 	}
 }
 
+void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix) {
+	LineNumber lineNumber = { 0 };
+	LineNumberLookup(context, instructionPointer, &lineNumber);
+
+	if (lineNumber.importData) {
+		fprintf(stderr, "%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
+				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
+	}
+
+	uintptr_t btp = c->backTracePointer;
+	uintptr_t minimum = c->startedByAsync ? 1 : 0;
+
+	while (btp > minimum) {
+		BackTraceItem *link = &c->backTrace[--btp];
+		LineNumberLookup(context, link->instructionPointer - 1, &lineNumber);
+		fprintf(stderr, "%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path ? lineNumber.importData->path : "??", 
+				lineNumber.lineNumber, lineNumber.function ? "in" : "",
+				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
+	}
+}
+
 void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const char *format, ...) {
 	LineNumber lineNumber = { 0 };
 	LineNumberLookup(context, instructionPointer, &lineNumber);
@@ -4921,21 +5227,8 @@ void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const c
 	vfprintf(stderr, format, arguments);
 	va_end(arguments);
 	PrintLine(lineNumber.importData, lineNumber.lineNumber);
-
 	fprintf(stderr, "Back trace:\n");
-
-	if (lineNumber.importData) {
-		fprintf(stderr, "\t%s:%d %s %.*s\n", lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
-				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
-	}
-
-	while (context->backTracePointer) {
-		BackTraceItem *link = &context->backTrace[--context->backTracePointer];
-		LineNumberLookup(context, link->instructionPointer, &lineNumber);
-		fprintf(stderr, "\t%s:%d %s %.*s\n", lineNumber.importData->path ? lineNumber.importData->path : "??", 
-				lineNumber.lineNumber, lineNumber.function ? "in" : "",
-				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
-	}
+	PrintBackTrace(context, instructionPointer, context->c, "");
 }
 
 void *FileLoad(const char *path, size_t *length) {
@@ -4988,13 +5281,18 @@ int main(int argc, char **argv) {
 	context.functionData = &builder;
 	context.mainModule = &importData;
 
-	context.stackEntriesAllocated = sizeof(context.stack) / sizeof(context.stack[0]);
 	context.heapEntriesAllocated = 2;
 	context.heap = (HeapEntry *) AllocateResize(NULL, sizeof(HeapEntry) * context.heapEntriesAllocated);
 	context.heap[0].type = T_EOF;
 	context.heap[1].type = T_ERROR;
 	context.heap[1].nextUnusedEntry = 0;
 	context.heapFirstUnusedEntry = 1;
+	context.c = (CoroutineState *) AllocateResize(0, sizeof(CoroutineState));
+	CoroutineState empty = { 0 };
+	*context.c = empty;
+	context.c->stackEntriesAllocated = sizeof(context.c->stack) / sizeof(context.c->stack[0]);
+	context.c->previousCoroutineLink = &context.allCoroutines;
+	context.allCoroutines = context.c;
 
 	int result = ScriptLoad(tokenizer, &context, &importData) ? ScriptExecute(&context, &importData) : 1;
 	ScriptFree(&context);
