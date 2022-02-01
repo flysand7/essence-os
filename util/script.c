@@ -1,5 +1,7 @@
+// TODO StringJoin is extremely slow and uses a lot of memory. Add a StringBuilder.
+
 // TODO Basic missing features:
-// 	- Other list operations: insert, insert_many, delete, delete_many, delete_last, delete_all.
+// 	- Other list operations: insert_many, delete, delete_many, delete_last, delete_all.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
@@ -28,6 +30,7 @@
 // 	- More escape sequences in string literals.
 // 	- Setting the initial values of global variables.
 // 	- Better handling of memory allocation failures.
+// 	- Operation arguments are evaluated in the opposite order to functions?
 
 #include <stdint.h>
 #include <stddef.h>
@@ -376,20 +379,40 @@ char baseModuleSource[] = {
 	// String operations:
 
 	"str StringTrim(str x) #extcall;"
-	"int StringToByte(str x) #extcall;"
+	"str StringSlice(str x, int start, int end) #extcall;"
+	"int CharacterToByte(str x) #extcall;"
 	"bool StringContains(str haystack, str needle) {"
 	"	for int i = 0; i <= haystack:len() - needle:len(); i += 1 {"
 	"		bool match = true;"
 	"		for int j = 0; j < needle:len(); j += 1 { if haystack[i + j] != needle[j] match = false; }"
 	"		if match { return true; }"
 	"	}"
-	""
 	"	return false;"
 	"}"
+	"str[] StringSplitByCharacter(str string, str character, bool includeEmptyString) {"
+	"	str[] list = new str[];"
+	"	int x = 0;"
+	"	for int i = 0; i < string:len(); i += 1 {"
+	"		if string[i] == character {"
+	"			if (includeEmptyString || x != i) { list:add(StringSlice(string, x, i)); }"
+	"			x = i + 1;"
+	"		}"
+	"	}"
+	"	if (includeEmptyString || x != string:len()) { list:add(StringSlice(string, x, string:len())); }"
+	"	return list;"
+	"}"
+	"str StringJoin(str[] strings, str k, bool trailing) {"
+	"	str c = \"\";"
+	"	for int i = 0; i < strings:len(); i += 1 {"
+	"		if i < strings:len() - 1 || trailing { c = c + strings[i] + k; }"
+	"		else { c = c + strings[i]; }"
+	"	}"
+	"	return c;"
+	"}"
 	"bool CharacterIsAlnum(str c) {"
-	"	int b = StringToByte(c);"
-	"	return (b >= StringToByte(\"A\") && b <= StringToByte(\"Z\")) || (b >= StringToByte(\"a\") && b <= StringToByte(\"z\"))"
-	"		|| (b >= StringToByte(\"0\") && b <= StringToByte(\"9\"));"
+	"	int b = CharacterToByte(c);"
+	"	return (b >= CharacterToByte(\"A\") && b <= CharacterToByte(\"Z\")) || (b >= CharacterToByte(\"a\") && b <= CharacterToByte(\"z\"))"
+	"		|| (b >= CharacterToByte(\"0\") && b <= CharacterToByte(\"9\"));"
 	"}"
 
 	// Miscellaneous:
@@ -435,7 +458,8 @@ int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue);
 int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue);
 int ExternalStringTrim(ExecutionContext *context, Value *returnValue);
-int ExternalStringToByte(ExecutionContext *context, Value *returnValue);
+int ExternalStringSlice(ExecutionContext *context, Value *returnValue);
+int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue);
@@ -464,7 +488,8 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "PrintStdErrHighlight", .callback = ExternalPrintStdErrHighlight },
 	{ .cName = "ConsoleGetLine", .callback = ExternalConsoleGetLine },
 	{ .cName = "StringTrim", .callback = ExternalStringTrim },
-	{ .cName = "StringToByte", .callback = ExternalStringToByte },
+	{ .cName = "StringSlice", .callback = ExternalStringSlice },
+	{ .cName = "CharacterToByte", .callback = ExternalCharacterToByte },
 	{ .cName = "SystemShellExecute", .callback = ExternalSystemShellExecute },
 	{ .cName = "SystemShellExecuteWithWorkingDirectory", .callback = ExternalSystemShellExecuteWithWorkingDirectory },
 	{ .cName = "SystemShellEvaluate", .callback = ExternalSystemShellEvaluate },
@@ -2263,7 +2288,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				return false;
 			}
 
-			if (argument2 && !ASTMatching(argument1->expressionType, arguments[1])) {
+			if (argument2 && !ASTMatching(argument2->expressionType, arguments[1])) {
 				PrintError2(tokenizer, node, "Incorrect second argument type for the operation '%.*s'.\n", token.textBytes, token.text);
 				return false;
 			}
@@ -3795,6 +3820,55 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			entry->list[oldLength] = context->c->stack[context->c->stackPointer - 1];
 
 			context->c->stackPointer -= 2;
+		} else if (command == T_OP_INSERT) {
+			if (context->c->stackPointer < 3) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
+
+			uint64_t index = context->c->stack[context->c->stackPointer - 3].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+
+			int64_t newLength = entry->length + 1;
+
+			if (newLength < 0 || newLength >= 1000000000) {
+				PrintError4(context, instructionPointer - 1, "The new length of the list is out of the supported range (0..1000000000).\n");
+				return 0;
+			}
+
+			uint32_t oldLength = context->heap[index].length;
+			entry->length = newLength;
+
+			if (entry->length > entry->allocated) {
+				// TODO Handling out of memory errors.
+				entry->allocated = entry->allocated ? entry->allocated * 2 : 4;
+				entry->list = AllocateResize(entry->list, entry->allocated * sizeof(Value));
+				Assert(entry->length <= entry->allocated);
+			}
+
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			int64_t insertIndex = context->c->stack[context->c->stackPointer - 1].i;
+
+			if (insertIndex < 0 || insertIndex > oldLength) {
+				PrintError4(context, instructionPointer - 1, "Cannot insert at index %ld. The list has length %ld.\n",
+						insertIndex, oldLength);
+				return 0;
+			}
+
+			for (int64_t i = oldLength - 1; i >= insertIndex; i--) {
+				entry->list[i + 1] = entry->list[i];
+			}
+
+			if (entry->internalValuesAreManaged != context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			entry->list[insertIndex] = context->c->stack[context->c->stackPointer - 2];
+
+			context->c->stackPointer -= 3;
 		} else if (command == T_OP_FIND_AND_DELETE) {
 			if (context->c->stackPointer < 2) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
@@ -4355,7 +4429,41 @@ int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	return 3;
 }
 
-int ExternalStringToByte(ExecutionContext *context, Value *returnValue) {
+int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->stackPointer < 3) return -1;
+	uint64_t index = context->c->stack[--context->c->stackPointer].i;
+	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t start = context->c->stack[--context->c->stackPointer].i;
+	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t end = context->c->stack[--context->c->stackPointer].i;
+	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	if (context->heapEntriesAllocated <= index) return -1;
+	HeapEntry *entry = &context->heap[index];
+	if (entry->type != T_EOF && entry->type != T_STR) return -1;
+	char *string = entry->type == T_EOF ? "" : entry->text;
+	size_t bytes = entry->type == T_EOF ? 0 : entry->bytes;
+
+	if (start > bytes || end > bytes || end < start) {
+		PrintError4(context, 0, "The slice range (%ld..%ld) is invalid for the string of length %ld.\n",
+				start, end, bytes);
+		return 0;
+	}
+
+	char *buffer = AllocateResize(NULL, end - start);
+	MemoryCopy(buffer, string + start, end - start);
+
+	// TODO Handling allocation failures.
+	index = HeapAllocate(context);
+	context->heap[index].type = T_STR;
+	context->heap[index].bytes = end - start;
+	context->heap[index].text = buffer;
+	returnValue->i = index;
+
+	return 3;
+}
+
+int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	if (context->c->stackPointer < 1) return -1;
 	uint64_t index = context->c->stack[--context->c->stackPointer].i;

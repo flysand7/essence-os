@@ -116,8 +116,9 @@ void PortBusybox() {
 
 	get_source.Get("https://www.busybox.net/downloads/busybox-%version%.tar.bz2", "busybox-%version%",
 			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
-	assert FileCopy("ports/busybox/config", "bin/source/.config");
-	assert SystemShellExecuteWithWorkingDirectory("bin/source", "sed -i \"51 i CONFIG_SYSROOT=\\\"%rootDirectory%\\\"\" .config");
+	str[] config = StringSplitByCharacter(FileReadAll("ports/busybox/config"), "\n", true);
+	config:insert("CONFIG_SYSROOT=\"%rootDirectory%\"", 51);
+	assert FileWriteAll("bin/source/.config", StringJoin(config, "\n", false));
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
 	assert FileCopy("bin/source/busybox", "%rootDirectory%/Applications/POSIX/bin/busybox");
 	assert FileCopy("bin/source/LICENSE", "bin/BusyBox License.txt");
