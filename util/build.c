@@ -1139,7 +1139,7 @@ void DoCommand(const char *l) {
 		LoadOptions();
 		Compile(COMPILE_FOR_EMULATOR, atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
 	} else if (0 == strcmp(l, "build-cross")) {
-		CallSystem("bin/script ports/gcc/port.script buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
+		CallSystem("bin/script ports/port.script portName=gcc buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		printf("Please restart the build system.\n");
 		exit(0);
 	} else if (0 == strcmp(l, "build-utilities") || 0 == strcmp(l, "u")) {
@@ -1514,9 +1514,9 @@ void DoCommand(const char *l) {
 		AddCompilerToPath();
 #else
 		if (automatedBuild) {
-			CallSystem("bin/script ports/gcc/port.script buildCross=true skipYesChecks=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
+			CallSystem("bin/script ports/port.script portName=gcc buildCross=true skipYesChecks=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		} else {
-			CallSystem("bin/script ports/gcc/port.script buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
+			CallSystem("bin/script ports/port.script portName=gcc buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 		}
 
 		exit(0);
