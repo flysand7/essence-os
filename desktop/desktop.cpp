@@ -2734,7 +2734,7 @@ void DesktopSetup() {
 				ApplicationInstanceCreate(&startupInformation, nullptr);
 			});
 
-			desktop.taskBar.taskList.Initialise(panel, ES_CELL_FILL, ReorderListMessage, nullptr);
+			desktop.taskBar.taskList.Initialise(panel, ES_CELL_FILL, ReorderListMessage, ES_STYLE_TASK_BAR_LIST);
 			desktop.taskBar.taskList.cName = "task list";
 
 			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON);
