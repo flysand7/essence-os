@@ -1,3 +1,6 @@
+// TODO Replace calls to cp.
+// TODO Parallel builds.
+
 #import "util/get_source.script" get_source;
 
 str portName #option;
@@ -15,6 +18,9 @@ str compilerPath;
 bool buildCross #option;
 bool runningMakefiles #persist;
 
+// Musl port only:
+bool forceRebuild #option;
+
 functype void PortCallback();
 
 bool ConsoleGetYes() {
@@ -25,7 +31,6 @@ bool ConsoleGetYes() {
 
 void PortFFmpeg() {
 	str version = "4.3.1";
-	if processorCount == 0 processorCount = SystemGetProcessorCount();
 
 	get_source.Get("https://ffmpeg.org/releases/ffmpeg-%version%.tar.xz", "ffmpeg-%version%",
 			"ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb");
@@ -69,21 +74,17 @@ void PortUxn() {
 
 void PortNasm() {
 	str version = "2.15.05";
-	if processorCount == 0 processorCount = SystemGetProcessorCount();
-
 	get_source.Get("https://www.nasm.us/pub/nasm/releasebuilds/%version%/nasm-%version%.tar.xz", "nasm-%version%",
 			"3caf6729c1073bf96629b57cee31eeb54f4f8129b01902c73428836550b30a3f");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "./configure --host=%toolchainPrefix% CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ --prefix=/Applications/POSIX");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make install DESTDIR=%rootDirectory%");
 	assert FileCopy("bin/source/LICENSE", "bin/Nasm License.txt");
-
 	PathDeleteRecursively("bin/source");
 }
 
 void PortBochs() {
 	str version = "2.6.9";
-	if processorCount == 0 processorCount = SystemGetProcessorCount();
 	get_source.Get("https://netix.dl.sourceforge.net/project/bochs/bochs/%version%/bochs-%version%.tar.gz", "bochs-%version%",
 			"ee5b677fd9b1b9f484b5aeb4614f43df21993088c0c0571187f93acb0866e98c");
 	assert FileCopy("ports/bochs/config.cc", "bin/source/config.cc");
@@ -108,7 +109,6 @@ void PortBochs() {
 
 void PortBusybox() {
 	str version = "1.33.1";
-	if processorCount == 0 processorCount = SystemGetProcessorCount();
 
 	if SystemGetHostName() == "Darwin" {
 		SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"));
@@ -127,8 +127,6 @@ void PortBusybox() {
 }
 
 void PortMesa() {
-	if processorCount == 0 processorCount = SystemGetProcessorCount();
-
 	get_source.Get("https://archive.mesa3d.org/mesa-20.1.8.tar.xz", "mesa-20.1.8",
 			"df21351494f7caaec5a3ccc16f14f15512e98d2ecde178bba1d134edc899b961");
 
@@ -183,13 +181,6 @@ void PortGCC() {
 	str gmpVersion      = "6.2.1";
 	str mpfrVersion     = "4.1.0";
 	str mpcVersion      = "1.2.1";
-
-	// Get the number of processors to compile with.
-	if processorCount == 0 {
-		processorCount = SystemGetProcessorCount();
-		if processorCount < 1 processorCount = 1;
-		if processorCount > 16 processorCount = 16;
-	}
 
 	// Load the persistent variables.
 	assert PersistRead("bin/build_gcc_state.dat");
@@ -266,7 +257,7 @@ void PortGCC() {
 
 		if buildCross {
 			// Copy the C standard library headers to their destination.
-			assert SystemShellExecute("bin/script ports/musl/build.script targetName=%targetName%");
+			PortMusl();
 		}
 
 		// Download the sources.
@@ -429,7 +420,169 @@ void PortGCC() {
 	PrintStdErrHighlight("Build succeeded.\n");
 }
 
+void PortFreeType() {
+	if !PathExists("bin/freetype") {
+		get_source.Get("https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz", "freetype-2.9", 
+				"bf380e4d7c4f3b5b1c1a7b2bf3abb967bda5e9ab480d0df656e0e08c5019c5e6");
+		assert PathMove("bin/source", "bin/freetype");
+		assert FileCopy("ports/freetype/patch-ftoption.h", "bin/freetype/include/freetype/config/ftoption.h");
+		assert FileCopy("ports/freetype/patch-ftstdlib.h", "bin/freetype/include/freetype/config/ftstdlib.h");
+		assert FileCopy("ports/freetype/patch-modules.cfg", "bin/freetype/modules.cfg");
+	}
+
+	if !PathExists("root/Applications/POSIX/include/ft2build.h") {
+		assert SystemShellExecute("cp -p bin/freetype/include/ft2build.h root/Applications/POSIX/include");
+		assert SystemShellExecute("cp -p -r bin/freetype/include/freetype root/Applications/POSIX/include");
+	}
+
+	if !PathExists("bin/freetype/libfreetype_%targetName%.a") {
+		PathDelete("bin/freetype/objs/.libs/libfreetype.a");
+
+		if targetName == "x86_64" {
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz "
+					+ "CC=%toolchainPrefix%-gcc CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3\" --host=%toolchainPrefix%");
+		} else if targetName == "x86_32" {
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz "
+					+ "CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3 -I../../root/Applications/POSIX/include\" "
+					+ "LDFLAGS=\"-nostdlib -lgcc\" CC=%toolchainPrefix%-gcc --host=%toolchainPrefix%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
+					"sed -i '/define FT_USE_AUTOCONF_SIZEOF_TYPES/d' builds/unix/ftconfig.h");
+		} else {
+			assert false;
+		}
+
+		assert SystemShellExecuteWithWorkingDirectory("bin/freetype", "make -j %processorCount%");
+		assert FileCopy("bin/freetype/objs/.libs/libfreetype.a", "bin/freetype/libfreetype_%targetName%.a");
+	}
+
+	assert FileCopy("bin/freetype/libfreetype_%targetName%.a", "root/Applications/POSIX/lib/libfreetype.a");
+}
+
+void PortHarfBuzz() {
+	if !PathExists("bin/harfbuzz") {
+		get_source.Get("https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz", "harfbuzz-2.6.4", 
+				"9413b8d96132d699687ef914ebb8c50440efc87b3f775d25856d7ec347c03c12");
+		assert PathMove("bin/source", "bin/harfbuzz");
+		assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz", 
+				"./configure --with-glib=no --with-icu=no --with-freetype=no --with-cairo=no --with-fontconfig=no --enable-shared "
+				+ "CFLAGS=\"-g -O3 -DHB_TINY\" CXXFLAGS=\"-g -O3 -DHB_TINY\"");
+		assert FileCopy("ports/harfbuzz/essence-config.h", "bin/harfbuzz/config.h");
+
+		str sed = "sed";
+		if SystemGetHostName() == "Darwin" sed = "gsed";
+		str[] headers = [ "assert", "atomic", "builtins", "float", "locale", "math", "stdio", "stdlib", "string", "unistd", "xlocale" ];
+
+		for int i = 0; i < headers:len(); i += 1 {
+			// TODO Replace this.
+			assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", 
+					"find . -type f -exec %sed% -i 's/#include <%headers[i]%.h>/#include <essence.h>/g' {} \\;");
+		}
+	}
+
+	if !PathExists("root/Applications/POSIX/include/harfbuzz") {
+		assert PathCreateLeadingDirectories("root/Applications/POSIX/include/harfbuzz");
+		assert SystemShellExecute("cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz");
+	}
+
+	if !PathExists("bin/harfbuzz/libharfbuzz_%targetName%.a") {
+		str[] sources = [
+			"hb-aat-layout", "hb-aat-map", "hb-blob", "hb-buffer-serialize", 
+			"hb-buffer", "hb-common", "hb-face", "hb-fallback-shape", 
+			"hb-font", "hb-map", "hb-number", "hb-ot-cff1-table", 
+			"hb-ot-cff2-table", "hb-ot-color", "hb-ot-face", "hb-ot-font", 
+			"hb-ot-layout", "hb-ot-map", "hb-ot-math", "hb-ot-meta", 
+			"hb-ot-metrics", "hb-ot-name", "hb-ot-shape-complex-arabic", "hb-ot-shape-complex-default", 
+			"hb-ot-shape-complex-hangul", "hb-ot-shape-complex-hebrew", "hb-ot-shape-complex-indic-table", "hb-ot-shape-complex-indic", 
+			"hb-ot-shape-complex-khmer", "hb-ot-shape-complex-myanmar", "hb-ot-shape-complex-thai", "hb-ot-shape-complex-use-table", 
+			"hb-ot-shape-complex-use", "hb-ot-shape-complex-vowel-constraints", "hb-ot-shape-fallback", "hb-ot-shape-normalize", 
+			"hb-ot-shape", "hb-ot-tag", "hb-ot-var", "hb-set", 
+			"hb-shape-plan", "hb-shape", "hb-shaper", "hb-static", 
+			"hb-ucd", "hb-unicode", "hb-ft"
+		];
+
+		str link = "%toolchainPrefix%-ar cr libharfbuzz.a ";
+
+		for int i = 0; i < sources:len(); i += 1 {
+			assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", 
+				"%toolchainPrefix%-gcc -c %sources[i]%.cc -o %sources[i]%.o "
+				+ "-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-exceptions -fno-threadsafe-statics "
+				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I../../../root/Applications/POSIX/include");
+			link += sources[i] + ".o ";
+		}
+
+		assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", link);
+		assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", "%toolchainPrefix%-ranlib libharfbuzz.a");
+		assert FileCopy("bin/harfbuzz/src/libharfbuzz.a", "bin/harfbuzz/libharfbuzz_%targetName%.a");
+	}
+
+	assert FileCopy("bin/harfbuzz/libharfbuzz_%targetName%.a", "root/Applications/POSIX/lib/libharfbuzz.a");
+}
+
+void PortMusl() {
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	bool install = false;
+
+	if !PathExists("bin/musl") {
+		get_source.Get("https://musl.libc.org/releases/musl-1.2.1.tar.gz", "musl-1.2.1", 
+				"68af6e18539f646f9c41a3a2bb25be4a5cfa5a8f65f0bb647fd2bbfdf877e84b");
+		assert PathMove("bin/source", "bin/musl");
+		assert FileCopy("ports/musl/changes/config.mak", "bin/musl/config.mak");
+		assert FileCopy("ports/musl/changes/dist_config.mak", "bin/musl/dist/config.mak");
+		assert FileCopy("ports/musl/changes/arch_x86_64_syscall_arch.h", "bin/musl/arch/x86_64/syscall_arch.h");
+		assert FileCopy("ports/musl/changes/src_env___init_tls.c", "bin/musl/src/env/__init_tls.c");
+		assert FileCopy("ports/musl/changes/src_process_x86_64_vfork.s", "bin/musl/src/process/x86_64/vfork.s");
+		assert FileCopy("ports/musl/changes/src_signal_x86_64_restore.s", "bin/musl/src/signal/x86_64/restore.s");
+		assert FileCopy("ports/musl/changes/src_thread_x86_64___unmapself.s", "bin/musl/src/thread/x86_64/__unmapself.s");
+		assert FileCopy("ports/musl/changes/src_thread_x86_64_clone.s", "bin/musl/src/thread/x86_64/clone.s");
+		assert FileCopy("ports/musl/changes/src_thread_x86_64_syscall_cp.s", "bin/musl/src/thread/x86_64/syscall_cp.s");
+		install = true;
+	}
+
+	if forceRebuild {
+		assert SystemShellExecuteWithWorkingDirectory("bin/musl", "make clean");
+		assert SystemShellExecuteWithWorkingDirectory("bin/musl", "make -j %processorCount% lib/libc.a");
+		assert FileCopy("bin/musl/lib/libc.a", "ports/musl/libc.a");
+		install = true;
+	}
+
+	if !PathExists("root/Applications/POSIX/include/stdio.h") {
+		install = true;
+	}
+
+	if install {
+		assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
+		assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
+
+		assert FileCopy("ports/musl/libc.a", "root/Applications/POSIX/lib/libc.a");
+		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libm.a");
+		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libpthread.a");
+		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/librt.a");
+
+		assert SystemShellExecute("cp -p -r bin/musl/include/* root/Applications/POSIX/include/");
+		assert SystemShellExecute("cp -p -r bin/musl/arch/generic/* root/Applications/POSIX/include/");
+		assert SystemShellExecute("cp -p -r ports/musl/obj_bits_%targetName%/* root/Applications/POSIX/include/");
+
+		if targetName == "x86_64" {
+			assert SystemShellExecute("cp -p -r bin/musl/arch/x86_64/* root/Applications/POSIX/include/");
+		} else if targetName == "x86_32" {
+			assert SystemShellExecute("cp -p -r bin/musl/arch/i386/* root/Applications/POSIX/include/");
+		} else {
+			assert false;
+		}
+	}
+}
+
 void Start() {
+	// Get the number of processors to compile with.
+	if processorCount == 0 {
+		processorCount = SystemGetProcessorCount();
+		if processorCount < 1 processorCount = 1;
+		if processorCount > 16 processorCount = 16;
+	}
+
 	// Create folders.
 	assert PathCreateLeadingDirectories("bin");
 	assert PathCreateLeadingDirectories("root/Essence");
@@ -442,8 +595,8 @@ void Start() {
 	rootDirectory = sourceTree + "/root";
 	compilerPath = crossDirectory + "/bin";
 
-	str[] portNames = [ "ffmpeg", "uxn", "nasm", "bochs", "busybox", "mesa", "gcc" ];
-	PortCallback[] portCallbacks = [ PortFFmpeg, PortUxn, PortNasm, PortBochs, PortBusybox, PortMesa, PortGCC ];
+	str[] portNames = [ "ffmpeg", "uxn", "nasm", "bochs", "busybox", "mesa", "gcc", "freetype", "harfbuzz", "musl" ];
+	PortCallback[] portCallbacks = [ PortFFmpeg, PortUxn, PortNasm, PortBochs, PortBusybox, PortMesa, PortGCC, PortFreeType, PortHarfBuzz, PortMusl ];
 
 	if portName == "" {
 		PrintStdErrHighlight("Available ports:\n");

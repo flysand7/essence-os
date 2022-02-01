@@ -168,14 +168,14 @@ bool BuildAPIDependencies() {
 		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 
-	if (CallSystem("bin/script ports/musl/build.script targetName=" TARGET_NAME)) return false;
+	if (CallSystem("bin/script ports/port.script portName=musl targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 
 	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crt1.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crt1.o")) return false;
 	if (CallSystem(TOOLCHAIN_PREFIX "-gcc -c desktop/crtglue.c -o cross/lib/gcc/" TOOLCHAIN_PREFIX "/" GCC_VERSION "/crtglue.o")) return false;
 
 	if (IsOptionEnabled("Dependency.FreeTypeAndHarfBuzz")) {
-		if (CallSystem("bin/script ports/freetype/build.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
-		if (CallSystem("bin/script ports/harfbuzz/build.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
+		if (CallSystem("bin/script ports/port.script portName=freetype targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
+		if (CallSystem("bin/script ports/port.script portName=harfbuzz targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 	}
 
 	if (CallSystem("cp -p kernel/module.h root/Applications/POSIX/include")) return false;
