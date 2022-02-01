@@ -1860,7 +1860,7 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 		child = child->sibling;
 	}
 
-	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW) {
+	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST) {
 		Node *type = node->firstChild;
 
 		if (type->type == T_IDENTIFIER) {
@@ -1868,6 +1868,10 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 
 			if (!lookup) {
 				return false;
+			}
+
+			if (!node->expressionType) {
+				node->expressionType = node->firstChild;
 			}
 
 			Node *previousSibling = node->expressionType->sibling;
@@ -1995,6 +1999,9 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 	} else if (node->type == T_DECLARE) {
 		if (node->firstChild->sibling && !ASTMatching(node->firstChild, node->firstChild->sibling->expressionType)) {
+			ScriptPrintNode(node->firstChild, 0);
+			ScriptPrintNode(node->firstChild->sibling->expressionType, 0);
+
 			PrintError2(tokenizer, node, "The type of the variable being assigned does not match the expression.\n");
 			return false;
 		}

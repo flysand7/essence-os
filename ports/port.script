@@ -1,19 +1,21 @@
 #import "util/get_source.script" get_source;
 
-// Persistent variables:
-bool runningMakefiles #persist;
-
-// Options:
-str gccVersion #option;
-str binutilsVersion #option;
-str gmpVersion #option;
-str mpfrVersion #option;
-str mpcVersion #option;
+str portName #option;
 str targetName #option;
 str toolchainPrefix #option;
 int processorCount #option;
 bool skipYesChecks #option;
+
+str sourceTree;
+str crossDirectory;
+str rootDirectory;
+str compilerPath;
+
+// GCC port only:
 bool buildCross #option;
+bool runningMakefiles #persist;
+
+functype void PortCallback();
 
 bool ConsoleGetYes() {
 	if skipYesChecks { return true; }
@@ -21,10 +23,143 @@ bool ConsoleGetYes() {
 	return input == "yes" || input == "y";
 }
 
-void Start() {
-	assert targetName      != "";
-	assert toolchainPrefix != "";
+void PortFFmpeg() {
+	str version = "4.3.1";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
 
+	get_source.Get("https://ffmpeg.org/releases/ffmpeg-%version%.tar.xz", "ffmpeg-%version%",
+			"ad009240d46e307b4e03a213a0f49c11b650e445b1f8be0dda2a9212b34d2ffb");
+
+	assert PathCreateDirectory("bin/build-ffmpeg");
+	assert PathCreateDirectory("bin/FFmpeg License");
+
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", 
+			"../source/configure --disable-all --enable-cross-compile --disable-pthreads "
+			+ "--cc=%toolchainPrefix%-gcc --cxx=%toolchainPrefix%-g++ --prefix=/Applications/POSIX "
+			+ "--enable-avcodec --enable-avformat --enable-swscale --enable-decoder=h264 --enable-parser=h264 "
+			+ "--enable-decoder=aac --enable-parser=aac --enable-demuxer=mov --enable-protocol=file ");
+	// --disable-optimizations
+
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make DESTDIR=%rootDirectory% install");
+
+	assert FileCopy("bin/source/LICENSE.md", "bin/FFmpeg License/LICENSE.md");
+	assert FileCopy("bin/source/COPYING.GPLv2", "bin/FFmpeg License/COPYING.GPLv2");
+	assert FileCopy("bin/source/COPYING.GPLv3", "bin/FFmpeg License/COPYING.GPLv3");
+	assert FileCopy("bin/source/COPYING.LGPLv2.1", "bin/FFmpeg License/COPYING.LGPLv2.1");
+	assert FileCopy("bin/source/COPYING.LGPLv3", "bin/FFmpeg License/COPYING.LGPLv3");
+
+	PathDeleteRecursively("bin/source");
+	PathDeleteRecursively("bin/build-ffmpeg");
+}
+
+void PortUxn() {
+	PathDeleteRecursively("bin/uxn");
+	PathDeleteRecursively("bin/noodle");
+	assert SystemShellExecute("git clone https://git.sr.ht/~rabbits/uxn bin/uxn");
+	assert SystemShellExecute("git clone https://git.sr.ht/~rabbits/noodle bin/noodle");
+	assert SystemShellExecuteWithWorkingDirectory("bin/uxn", "git checkout d2cf7213d0287f9777fac583f6889ee18b188f8d");
+	assert SystemShellExecuteWithWorkingDirectory("bin/noodle", "git checkout 17b6b2d48c6fa07adbf25f8c79b0e1b8675be8ad");
+	assert SystemShellExecute("cc -DNDEBUG -Os -g0 -s bin/uxn/src/uxnasm.c -o bin/uxnasm"); // Build the assembler.
+	assert SystemShellExecuteWithWorkingDirectory("bin/noodle", "../uxnasm src/main.tal ../noodle.rom"); // Build the ROM.
+	assert FileWriteAll("bin/uxn/src/devices/ppu.h", "/* removed */");
+	assert SystemShellExecute("%toolchainPrefix%-gcc -DNDEBUG -Os -g0 -s ports/uxn/emulator.c "
+			+ "-ffreestanding -nostdlib -lgcc -z max-page-size=0x1000 -o bin/uxnemu"); // Build the emulator.
+}
+
+void PortNasm() {
+	str version = "2.15.05";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	get_source.Get("https://www.nasm.us/pub/nasm/releasebuilds/%version%/nasm-%version%.tar.xz", "nasm-%version%",
+			"3caf6729c1073bf96629b57cee31eeb54f4f8129b01902c73428836550b30a3f");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "./configure --host=%toolchainPrefix% CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ --prefix=/Applications/POSIX");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make install DESTDIR=%rootDirectory%");
+	assert FileCopy("bin/source/LICENSE", "bin/Nasm License.txt");
+
+	PathDeleteRecursively("bin/source");
+}
+
+void PortBochs() {
+	str version = "2.6.9";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+	get_source.Get("https://netix.dl.sourceforge.net/project/bochs/bochs/%version%/bochs-%version%.tar.gz", "bochs-%version%",
+			"ee5b677fd9b1b9f484b5aeb4614f43df21993088c0c0571187f93acb0866e98c");
+	assert FileCopy("ports/bochs/config.cc", "bin/source/config.cc");
+	assert FileCopy("ports/bochs/config.h.in", "bin/source/config.h.in");
+	assert FileCopy("ports/bochs/configure.in", "bin/source/configure.in");
+	assert FileCopy("ports/bochs/main.cc", "bin/source/main.cc");
+	assert FileCopy("ports/bochs/Makefile.in", "bin/source/Makefile.in");
+	assert FileCopy("ports/bochs/plugin.cc", "bin/source/plugin.cc");
+	assert FileCopy("ports/bochs/plugin.h", "bin/source/plugin.h");
+	assert FileCopy("ports/bochs/essence.cc", "bin/source/gui/essence.cc");
+	assert FileCopy("ports/bochs/gui_Makefile.in", "bin/source/gui/Makefile.in");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "autoconf");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", 
+			"./configure --with-essence CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ "
+			+ "CFLAGS=\" -O2 -D_GNU_SOURCE \" CXXFLAGS=\" -O2 -D_GNU_SOURCE \" "
+			+ "--host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" --exec-prefix=\"/Applications/POSIX\" "
+			+ "--enable-cpu-level=6 --enable-x86-64 --enable-all-optimizations");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make DESTDIR=%rootDirectory% install");
+	PathDeleteRecursively("bin/source");
+}
+
+void PortBusybox() {
+	str version = "1.33.1";
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	if StringTrim(SystemShellEvaluate("uname")) == "Darwin" {
+		SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"));
+	}
+
+	get_source.Get("https://www.busybox.net/downloads/busybox-%version%.tar.bz2", "busybox-%version%",
+			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
+	assert FileCopy("ports/busybox/config", "bin/source/.config");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "sed -i \"51 i CONFIG_SYSROOT=\\\"%rootDirectory%\\\"\" .config");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
+	assert FileCopy("bin/source/busybox", "%rootDirectory%/Applications/POSIX/bin/busybox");
+	assert FileCopy("bin/source/LICENSE", "bin/BusyBox License.txt");
+
+	PathDeleteRecursively("bin/source");
+}
+
+void PortMesa() {
+	if processorCount == 0 processorCount = SystemGetProcessorCount();
+
+	get_source.Get("https://archive.mesa3d.org/mesa-20.1.8.tar.xz", "mesa-20.1.8",
+			"df21351494f7caaec5a3ccc16f14f15512e98d2ecde178bba1d134edc899b961");
+
+	assert FileWriteAll("bin/meson_cross.txt", 
+			"[binaries]\nc = '%toolchainPrefix%-gcc'\ncpp = '%toolchainPrefix%-g++'\nar = '%toolchainPrefix%-ar'\nstrip = '%toolchainPrefix%-strip'\n"
+			+ "[properties]\nsys_root = '%rootDirectory%'\nc_args = ['-D_POSIX_SOURCE']\ncpp_args = ['-D_POSIX_SOURCE']\n"
+			+ "[host_machine]\nsystem = 'essence'\ncpu_family = '%targetName%'\ncpu = 'generic'\nendian = 'little'\n");
+
+	assert FileCopy("ports/mesa/changes/include_c11_threads_posix.h", "bin/source/include/c11/threads_posix.h");
+	assert FileCopy("ports/mesa/changes/src_util_detect_os.h", "bin/source/src/util/detect_os.h");
+	assert FileCopy("ports/mesa/changes/src_util_u_thread.h", "bin/source/src/util/u_thread.h");
+	assert FileCopy("ports/mesa/changes/src_util_anon_file.c", "bin/source/src/util/anon_file.c");
+	assert FileCopy("ports/mesa/changes/src_util_os_misc.c", "bin/source/src/util/os_misc.c");
+	assert FileCopy("ports/mesa/changes/meson.build", "bin/source/meson.build");
+	assert FileCopy("ports/mesa/changes/src_gallium_targets_osmesa_meson.build", "bin/source/src/gallium/targets/osmesa/meson.build");
+
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "meson ../build-mesa --cross-file ../meson_cross.txt "
+			+ "-Dosmesa=gallium -Ddefault_library=static -Dllvm=false");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "ninja -C ../build-mesa -j %processorCount%");
+
+	assert FileCopy("bin/build-mesa/subprojects/expat-2.2.5/libexpat.a", "root/Applications/POSIX/lib/libexpat.a");
+	assert FileCopy("bin/build-mesa/subprojects/zlib-1.2.11/libz.a", "root/Applications/POSIX/lib/libz.a");
+	assert FileCopy("bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a", "root/Applications/POSIX/lib/libOSMesa.a");
+	assert SystemShellExecute("cp -r bin/source/include/GL root/Applications/POSIX/include");
+	assert SystemShellExecute("cp -r bin/source/include/KHR root/Applications/POSIX/include");
+	assert FileCopy("bin/source/docs/license.html", "bin/Mesa License.html");
+
+	PathDeleteRecursively("bin/source");
+	PathDeleteRecursively("bin/build-mesa");
+}
+
+void PortGCC() {
 	if buildCross {
 		// Print instructions.
 		PrintStdErr("To build Essence, you need a cross compiler. This will be built for you automatically.\n");
@@ -41,12 +176,12 @@ void Start() {
 	// Make sure we're not running as root.
 	assert StringTrim(SystemShellEvaluate("whoami")) != "root";
 
-	// Set default values for options.
-	if gccVersion      == "" gccVersion      = "11.1.0";
-	if binutilsVersion == "" binutilsVersion = "2.36.1";
-	if gmpVersion      == "" gmpVersion      = "6.2.1";
-	if mpfrVersion     == "" mpfrVersion     = "4.1.0";
-	if mpcVersion      == "" mpcVersion      = "1.2.1";
+	// Version strings:
+	str gccVersion      = "11.1.0";
+	str binutilsVersion = "2.36.1";
+	str gmpVersion      = "6.2.1";
+	str mpfrVersion     = "4.1.0";
+	str mpcVersion      = "1.2.1";
 
 	// Get the number of processors to compile with.
 	if processorCount == 0 {
@@ -55,21 +190,9 @@ void Start() {
 		if processorCount > 16 processorCount = 16;
 	}
 
-	// Create folders.
-	assert PathCreateLeadingDirectories("bin");
-	assert PathCreateLeadingDirectories("root/Essence");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/bin");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
-
 	// Load the persistent variables.
 	assert PersistRead("bin/build_gcc_state.dat");
 
-	// Get the directories.
-	str sourceTree = PathGetDefaultPrefix();
-	str crossDirectory = sourceTree + "/cross";
-	str rootDirectory = sourceTree + "/root";
-	str compilerPath = crossDirectory + "/bin";
 	str destDir = "";
 
 	if buildCross {
@@ -304,4 +427,38 @@ void Start() {
 	assert PathDeleteRecursively("bin/mpfr-src");
 	assert PathDeleteRecursively("bin/gmp-src");
 	PrintStdErrHighlight("Build succeeded.\n");
+}
+
+void Start() {
+	// Create folders.
+	assert PathCreateLeadingDirectories("bin");
+	assert PathCreateLeadingDirectories("root/Essence");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/bin");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
+	assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
+
+	sourceTree = PathGetDefaultPrefix();
+	crossDirectory = sourceTree + "/cross";
+	rootDirectory = sourceTree + "/root";
+	compilerPath = crossDirectory + "/bin";
+
+	str[] portNames = [ "ffmpeg", "uxn", "nasm", "bochs", "busybox", "mesa", "gcc" ];
+	PortCallback[] portCallbacks = [ PortFFmpeg, PortUxn, PortNasm, PortBochs, PortBusybox, PortMesa, PortGCC ];
+
+	if portName == "" {
+		PrintStdErrHighlight("Available ports:\n");
+
+		for int i = 0; i < portNames:len(); i += 1 {
+			PrintStdErr("\t%portNames[i]%\n");
+		}
+	} else {
+		assert targetName      != "";
+		assert toolchainPrefix != "";
+
+		for int i = 0; i < portNames:len(); i += 1 {
+			if portNames[i] == portName || portName == "all" {
+				portCallbacks[i]();
+			}
+		}
+	}
 }

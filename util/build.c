@@ -1312,17 +1312,7 @@ void DoCommand(const char *l) {
 
 		printf("\n");
 	} else if (0 == strcmp(l, "build-optional-ports")) {
-		DIR *directory = opendir("ports");
-		struct dirent *entry;
-
-		while ((entry = readdir(directory))) {
-			fprintf(stderr, "build-optional-ports: Calling \"ports/%s/port.sh\"...\n", entry->d_name);
-			CallSystemF("ports/%s/port.sh", entry->d_name);
-			fprintf(stderr, "build-optional-ports: Calling \"bin/script ports/%s/port.script\"...\n", entry->d_name);
-			CallSystemF("bin/script ports/%s/port.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, entry->d_name);
-		}
-
-		closedir(directory);
+		CallSystemF("bin/script ports/port.script portName=all targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
 	} else if (0 == memcmp(l, "do ", 3)) {
 		CallSystem(l + 3);
 	} else if (0 == memcmp(l, "live ", 5) || 0 == strcmp(l, "live")) {
@@ -1437,24 +1427,10 @@ void DoCommand(const char *l) {
 	} else if (0 == strcmp(l, "build-port") || 0 == memcmp(l, "build-port ", 11)) {
 		bool alreadyNamedPort = l[10] == ' ';
 		char *l2 = NULL;
-		char buffer[4096];
 
 		if (!alreadyNamedPort) {
-			printf("\nAvailable ports:\n");
-			DIR *directory = opendir("ports");
-			struct dirent *entry;
-
-			while ((entry = readdir(directory))) {
-				snprintf(buffer, sizeof(buffer), "ports/%s/port.sh", entry->d_name);
-				FILE *f = fopen(buffer, "rb");
-				snprintf(buffer, sizeof(buffer), "ports/%s/port.script", entry->d_name);
-				FILE *g = fopen(buffer, "rb");
-
-				if (f) { printf("\t%s\n", entry->d_name); fclose(f); }
-				if (g) { printf("\t%s\n", entry->d_name); fclose(g); }
-			}
-
-			closedir(directory);
+			printf("\n");
+			CallSystem("bin/script ports/port.script");
 
 			LoadOptions();
 
@@ -1471,13 +1447,7 @@ void DoCommand(const char *l) {
 			l2 = (char *) l + 11;
 		}
 
-		snprintf(buffer, sizeof(buffer), "ports/%s/port.sh", l2);
-		FILE *f = fopen(buffer, "rb");
-		if (f) fclose(f);
-
-		int status; 
-		if (f) status = CallSystemF("ports/%s/port.sh", l2);
-		else status = CallSystemF("bin/script ports/%s/port.script targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
+		int status = CallSystemF("bin/script ports/port.script portName=%s targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
 
 		if (!alreadyNamedPort) {
 			free(l2);
