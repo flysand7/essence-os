@@ -453,6 +453,7 @@ char baseModuleSource[] = {
 	"bool SystemShellExecute(str x) #extcall;" // Returns true on success.
 	"bool SystemShellExecuteWithWorkingDirectory(str wd, str x) #extcall;" // Returns true on success.
 	"str SystemShellEvaluate(str x) #extcall;"
+	"void SystemShellEnableLogging(bool x) #extcall;"
 };
 
 // --------------------------------- External function calls.
@@ -467,6 +468,7 @@ int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue);
+int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
@@ -497,6 +499,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "SystemShellExecute", .callback = ExternalSystemShellExecute },
 	{ .cName = "SystemShellExecuteWithWorkingDirectory", .callback = ExternalSystemShellExecuteWithWorkingDirectory },
 	{ .cName = "SystemShellEvaluate", .callback = ExternalSystemShellEvaluate },
+	{ .cName = "SystemShellEnableLogging", .callback = ExternalSystemShellEnableLogging },
 	{ .cName = "SystemGetProcessorCount", .callback = ExternalSystemGetProcessorCount },
 	{ .cName = "SystemGetEnvironmentVariable", .callback = ExternalSystemGetEnvironmentVariable },
 	{ .cName = "SystemSetEnvironmentVariable", .callback = ExternalSystemSetEnvironmentVariable },
@@ -4499,6 +4502,8 @@ sem_t externalCoroutineSemaphore;
 pthread_mutex_t externalCoroutineMutex;
 CoroutineState *externalCoroutineUnblockedList;
 
+bool systemShellLoggingEnabled = true;
+
 int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	if (context->c->stackPointer < 1) return -1;
@@ -4622,7 +4627,7 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 	if (temporary) {
 		memcpy(temporary, text, bytes);
 		temporary[bytes] = 0;
-		PrintDebug("\033[0;32m%s\033[0m\n", temporary);
+		if (systemShellLoggingEnabled) PrintDebug("\033[0;32m%s\033[0m\n", temporary);
 		context->c->externalCoroutineData2 = temporary;
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteThread, context->c);
@@ -4670,7 +4675,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	memcpy(temporary2, entry2->text, entry2->bytes);
 	temporary2[entry2->bytes] = 0;
 
-	PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
+	if (systemShellLoggingEnabled) PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
 	
 	pid_t pid = fork();
 
@@ -4752,6 +4757,14 @@ int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
 	}
 
 	return 3;
+}
+
+int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->stackPointer < 1) return -1;
+	systemShellLoggingEnabled = context->c->stack[--context->c->stackPointer].i;
+	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	return 1;
 }
 
 int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {

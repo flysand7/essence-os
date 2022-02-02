@@ -1555,14 +1555,6 @@ int main(int _argc, char **_argv) {
 	argc = _argc;
 	argv = _argv;
 
-	char cwd[PATH_MAX];
-	getcwd(cwd, sizeof(cwd));
-
-	if (strchr(cwd, ' ')) {
-		printf("Error: The path to your essence directory, '%s', contains spaces.\n", cwd);
-		return 1;
-	}
-
 	sh_new_strdup(applicationDependencies);
 	unlink("bin/dependencies.ini");
 

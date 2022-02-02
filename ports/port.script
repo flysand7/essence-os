@@ -183,7 +183,7 @@ void PortGCC() {
 	str mpcVersion      = "1.2.1";
 
 	// Load the persistent variables.
-	assert PersistRead("bin/build_gcc_state.dat");
+	assert PersistRead("bin/port.script.persist");
 
 	str destDir = "";
 
