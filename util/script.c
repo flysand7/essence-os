@@ -5363,6 +5363,7 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 }
 
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
+	(void) context;
 	while (sem_wait(&externalCoroutineSemaphore) == -1);
 	pthread_mutex_lock(&externalCoroutineMutex);
 	CoroutineState *unblocked = externalCoroutineUnblockedList;
