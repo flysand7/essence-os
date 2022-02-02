@@ -503,15 +503,18 @@ void PortHarfBuzz() {
 		];
 
 		str link = "%toolchainPrefix%-ar cr libharfbuzz.a ";
+		int[] tasks = new int[];
 
 		for int i = 0; i < sources:len(); i += 1 {
-			assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", 
-				"%toolchainPrefix%-gcc -c %sources[i]%.cc -o %sources[i]%.o "
+			if tasks:len() == processorCount { tasks:find_and_delete(await tasks); }
+			str command = "%toolchainPrefix%-gcc -c %sources[i]%.cc -o %sources[i]%.o "
 				+ "-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-exceptions -fno-threadsafe-statics "
-				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I../../../root/Applications/POSIX/include");
+				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I../../../root/Applications/POSIX/include";
+			tasks:add(SystemShellExecuteWithWorkingDirectory:curry("bin/harfbuzz/src"):curry(command):assert():async());
 			link += sources[i] + ".o ";
 		}
 
+		while tasks:len() != 0 { tasks:find_and_delete(await tasks); }
 		assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", link);
 		assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", "%toolchainPrefix%-ranlib libharfbuzz.a");
 		assert FileCopy("bin/harfbuzz/src/libharfbuzz.a", "bin/harfbuzz/libharfbuzz_%targetName%.a");
