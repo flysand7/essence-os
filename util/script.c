@@ -1,4 +1,5 @@
-// TODO StringJoin is extremely slow and uses a lot of memory. Add a StringBuilder.
+// TODO StringJoin is extremely slow and uses a lot of memory. 
+// 	Add a StringBuilder? Or maybe a T_CONCAT heap object?
 
 // TODO Basic missing features:
 // 	- Other list operations: insert_many, delete, delete_many, delete_last.
@@ -285,9 +286,11 @@ typedef struct CoroutineState {
 	size_t waitersAllocated;
 	struct CoroutineState ***waitingOn;
 	size_t waitingOnCount;
-	bool awaiting, startedByAsync;
+	bool awaiting, startedByAsync, externalCoroutine;
 	uintptr_t instructionPointer;
 	uintptr_t variableBase;
+	Value externalCoroutineData;
+	void *externalCoroutineData2;
 } CoroutineState;
 
 typedef struct ExecutionContext {
@@ -308,6 +311,7 @@ typedef struct ExecutionContext {
 	CoroutineState *allCoroutines;
 	CoroutineState *unblockedCoroutines;
 	uint64_t lastCoroutineID;
+	uint32_t externalCoroutineCount;
 } ExecutionContext;
 
 typedef struct ExternalFunction {
@@ -367,6 +371,7 @@ void PrintError3(const char *format, ...);
 void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const char *format, ...);
 void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix);
 void *FileLoad(const char *path, size_t *length);
+CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context);
 
 // --------------------------------- Base module.
 
@@ -452,8 +457,6 @@ char baseModuleSource[] = {
 
 // --------------------------------- External function calls.
 
-int ExternalPrintInt(ExecutionContext *context, Value *returnValue);
-int ExternalPrintString(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue);
@@ -2245,7 +2248,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			if (!expressionType->firstChild->firstChild) {
 				PrintError2(tokenizer, node, "The function pointer doesn't take any arguments.\n");
 				return false;
-			} else if (!ASTMatching(expressionType->firstChild->firstChild->expressionType, node->firstChild->sibling->firstChild->expressionType)) {
+			} else if (!ASTMatching(expressionType->firstChild->firstChild->firstChild, node->firstChild->sibling->firstChild->expressionType)) {
 				PrintError2(tokenizer, node, "The curried argument does not match the type of the first argument.\n");
 				return false;
 			} else if (node->firstChild->sibling->firstChild->sibling) {
@@ -2930,9 +2933,6 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 		context->globalVariableIsManaged[context->functionData->globalVariableOffset + i] = false;
 	}
 
-	uint8_t zero = 0; // Make sure no function can start at 0.
-	FunctionBuilderAppend(context->functionData, &zero, sizeof(zero));
-
 	while (child) {
 		if (child->type == T_FUNCTION) {
 			uintptr_t variableIndex = context->functionData->globalVariableOffset + ScopeLookupIndex(child, root->scope, false, false);
@@ -3137,7 +3137,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
-		// PrintDebug("--> %d, %ld, %d\n", command, context->c->id);
+		// PrintDebug("--> %d, %ld, %ld\n", command, instructionPointer - 1, context->c->id);
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -4013,12 +4013,21 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stackIsManaged[context->c->stackPointer - 1] = false;
 			context->c->stack[context->c->stackPointer - 1].i = c->id;
 		} else if (command == T_AWAIT) {
-			if (context->c->stackPointer < 1) return -1;
+			awaitCommand:;
+			if (context->c->stackPointer < 1 && !context->c->externalCoroutine) return -1;
 
 			// PrintDebug("== AWAIT from %ld\n", context->c->id);
 			Assert(!context->c->nextUnblockedCoroutine && !context->c->previousUnblockedCoroutineLink);
+			bool unblockImmediately = false;
 
-			if (context->c->stack[context->c->stackPointer - 1].i == -1) {
+			if (context->c->externalCoroutine) {
+				// PrintDebug("== external coroutine\n");
+				context->c->unblockedBy = -1;
+				context->c->awaiting = true;
+				context->c->instructionPointer = instructionPointer;
+				context->c->variableBase = variableBase;
+				context->c->waitingOnCount = 0;
+			} else if (context->c->stack[context->c->stackPointer - 1].i == -1) {
 				if (context->c->stackPointer != 1) return -1;
 				// The coroutine has finished. Remove it from the list of all coroutines.
 				*context->c->previousCoroutineLink = context->c->nextCoroutine;
@@ -4084,51 +4093,66 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				if (!context->c->waitingOnCount) {
 					// PrintDebug("== immediately unblocking\n");
 					context->c->unblockedBy = entry->length ? entry->list[0].i : -1;
+					unblockImmediately = true;
 				}
 			}
 
-			CoroutineState *next = context->unblockedCoroutines;
+			CoroutineState *next = unblockImmediately ? context->c : context->unblockedCoroutines;
 
 			if (!next) {
-				PrintError4(context, instructionPointer - 1, "No tasks can run if this task (ID %ld) starts waiting.\n", context->c->id);
-				PrintDebug("All tasks:\n");
-				CoroutineState *c = context->allCoroutines;
+				if (context->externalCoroutineCount) {
+					// PrintDebug("== wait for an external coroutine\n");
+					next = ExternalCoroutineWaitAny(context);
+					Assert(next->externalCoroutine);
+					unblockImmediately = true;
+				} else {
+					// TODO Earlier deadlock detection.
+					PrintError4(context, instructionPointer - 1, "No tasks can run if this task (ID %ld) starts waiting.\n", context->c->id);
+					PrintDebug("All tasks:\n");
+					CoroutineState *c = context->allCoroutines;
 
-				while (c) {
-					PrintDebug("\t%ld blocks ", c->id);
-					bool first = true;
+					while (c) {
+						PrintDebug("\t%ld blocks ", c->id);
+						bool first = true;
 
-					for (uintptr_t i = 0; i < c->waiterCount; i++) {
-						if (!c->waiters[i]) continue;
-						PrintDebug("%s%ld", first ? "" : ", ", c->waiters[i]->id);
-						first = false;
+						for (uintptr_t i = 0; i < c->waiterCount; i++) {
+							if (!c->waiters[i]) continue;
+							PrintDebug("%s%ld", first ? "" : ", ", c->waiters[i]->id);
+							first = false;
+						}
+
+						PrintDebug("\n");
+						PrintBackTrace(context, c->instructionPointer - 1, c, "\t");
+						c = c->nextCoroutine;
 					}
 
-					PrintDebug("\n");
-					PrintBackTrace(context, c->instructionPointer - 1, c, "\t");
-					c = c->nextCoroutine;
+					return 0;
 				}
-
-				return 0;
 			}
 
-			Assert(next->previousUnblockedCoroutineLink);
-			*next->previousUnblockedCoroutineLink = next->nextUnblockedCoroutine;
-			if (next->nextUnblockedCoroutine) next->nextUnblockedCoroutine->previousUnblockedCoroutineLink = next->previousUnblockedCoroutineLink;
+			if (!unblockImmediately) {
+				Assert(next->previousUnblockedCoroutineLink);
+				*next->previousUnblockedCoroutineLink = next->nextUnblockedCoroutine;
+				if (next->nextUnblockedCoroutine) next->nextUnblockedCoroutine->previousUnblockedCoroutineLink = next->previousUnblockedCoroutineLink;
+			}
+
 			next->nextUnblockedCoroutine = NULL;
 			next->previousUnblockedCoroutineLink = NULL;
 			context->c = next;
 			// PrintDebug("== switch to %ld\n", next->id);
 
 			if (context->c->awaiting) {
-				context->c->stackIsManaged[context->c->stackPointer - 1] = false;
-				context->c->stack[context->c->stackPointer - 1].i = context->c->unblockedBy;
+				if (!context->c->externalCoroutine) {
+					context->c->stackIsManaged[context->c->stackPointer - 1] = false;
+					context->c->stack[context->c->stackPointer - 1].i = context->c->unblockedBy;
+				}
+
 				instructionPointer = context->c->instructionPointer;
 				variableBase = context->c->variableBase;
 				// PrintDebug("== unblocked by %ld\n", context->c->unblockedBy);
 			} else {
 				// PrintDebug("== just started\n");
-				instructionPointer--;
+				instructionPointer = 1; // There is a T_AWAIT command at address 1.
 				goto callCommand;
 			}
 		} else if (command == T_END_FUNCTION || command == T_EXTCALL) {
@@ -4140,6 +4164,18 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					Value returnValue;
 					int result = externalFunctions[index].callback(context, &returnValue);
 					if (result <= 0) return result;
+
+					if (result == 4) {
+						context->externalCoroutineCount++;
+						context->c->externalCoroutine = true;
+						instructionPointer -= 3;
+						// PrintDebug("start external coroutine %ld\n", context->c->id);
+						goto awaitCommand;
+					} else if (context->c->externalCoroutine) {
+						context->externalCoroutineCount--;
+						context->c->externalCoroutine = false;
+						// PrintDebug("end external coroutine %ld\n", context->c->id);
+					}
 
 					if (result == 2 || result == 3) {
 						if (context->c->stackPointer == context->c->stackEntriesAllocated) {
@@ -4304,6 +4340,11 @@ bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *impo
 	context->rootNode = ParseRoot(&tokenizer); 
 	context->functionData->importData = tokenizer.module;
 
+	uint8_t b = 0; // Make sure no function can start at 0.
+	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
+	b = T_AWAIT; // Put a T_AWAIT command at address 1.
+	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
+
 	bool success = context->rootNode 
 		&& ASTSetScopes(&tokenizer, context, context->rootNode, NULL)
 		&& ASTLookupTypeIdentifiers(&tokenizer, context->rootNode)
@@ -4438,6 +4479,9 @@ void ScriptFree(ExecutionContext *context) {
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
+#include <pthread.h>
+#include <semaphore.h>
 #endif
 #include <errno.h>
 #include <stdarg.h>
@@ -4450,6 +4494,10 @@ void **fixedAllocationBlocks;
 uint8_t *fixedAllocationCurrentBlock;
 uintptr_t fixedAllocationCurrentPosition;
 size_t fixedAllocationCurrentSize;
+
+sem_t externalCoroutineSemaphore;
+pthread_mutex_t externalCoroutineMutex;
+CoroutineState *externalCoroutineUnblockedList;
 
 int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
@@ -4539,7 +4587,28 @@ int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 	return 2;
 }
 
+void ExternalCoroutineDone(CoroutineState *coroutine) {
+	sem_post(&externalCoroutineSemaphore);
+	pthread_mutex_lock(&externalCoroutineMutex);
+	coroutine->nextUnblockedCoroutine = externalCoroutineUnblockedList;
+	externalCoroutineUnblockedList = coroutine;
+	pthread_mutex_unlock(&externalCoroutineMutex);
+}
+
+void *SystemShellExecuteThread(void *_coroutine) {
+	CoroutineState *coroutine = (CoroutineState *) _coroutine;
+	coroutine->externalCoroutineData.i = system((char *) coroutine->externalCoroutineData2) == 0;
+	free((char *) coroutine->externalCoroutineData2);
+	ExternalCoroutineDone(coroutine);
+	return NULL;
+}
+
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
+	if (context->c->externalCoroutine) {
+		*returnValue = context->c->externalCoroutineData;
+		return 2;
+	}
+
 	if (context->c->stackPointer < 1) return -1;
 	uint64_t index = context->c->stack[--context->c->stackPointer].i;
 	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
@@ -4554,17 +4623,32 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 		memcpy(temporary, text, bytes);
 		temporary[bytes] = 0;
 		PrintDebug("\033[0;32m%s\033[0m\n", temporary);
-		returnValue->i = system(temporary) == 0;
-		free(temporary);
+		context->c->externalCoroutineData2 = temporary;
+		pthread_t thread;
+		pthread_create(&thread, NULL, SystemShellExecuteThread, context->c);
+		return 4;
 	} else {
 		fprintf(stderr, "Error in ExternalSystemShellExecute: Out of memory.\n");
 		returnValue->i = 0;
+		return 2;
 	}
+}
 
-	return 2;
+void *SystemShellExecuteWithWorkingDirectoryThread(void *_coroutine) {
+	CoroutineState *coroutine = (CoroutineState *) _coroutine;
+	int status;
+	Assert(coroutine->externalCoroutineData.i == waitpid(coroutine->externalCoroutineData.i, &status, 0));
+	coroutine->externalCoroutineData.i = WEXITSTATUS(status) == 0;
+	ExternalCoroutineDone(coroutine);
+	return NULL;
 }
 
 int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Value *returnValue) {
+	if (context->c->externalCoroutine) {
+		*returnValue = context->c->externalCoroutineData;
+		return 2;
+	}
+
 	if (context->c->stackPointer < 2) return -1;
 	uint64_t index = context->c->stack[--context->c->stackPointer].i;
 	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
@@ -4586,22 +4670,28 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	memcpy(temporary2, entry2->text, entry2->bytes);
 	temporary2[entry2->bytes] = 0;
 
-	char *data = (char *) malloc(10000);
-
-	if (!data || data != getcwd(data, 10000)) {
-		PrintError4(context, 0, "Could not get the working directory.\n");
-		free(data);
-		return 0;
-	}
-
-	chdir(temporary);
 	PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
-	returnValue->i = system(temporary2) == 0;
-	chdir(data);
+	
+	pid_t pid = fork();
+
+	if (pid == 0) {
+		chdir(temporary);
+		exit(system(temporary2));
+	} else if (pid < 0) {
+		PrintDebug("Unable to fork(), got pid = %d, errno = %d.\n", pid, errno);
+		returnValue->i = 0;
+	} 
 
 	free(temporary);
 	free(temporary2);
-	free(data);
+
+	if (pid > 0) {
+		context->c->externalCoroutineData.i = pid;
+		pthread_t thread;
+		pthread_create(&thread, NULL, SystemShellExecuteWithWorkingDirectoryThread, context->c);
+		return 4;
+	}
+
 	return 2;
 }
 
@@ -5272,6 +5362,17 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 	return 3;
 }
 
+CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
+	while (sem_wait(&externalCoroutineSemaphore) == -1);
+	pthread_mutex_lock(&externalCoroutineMutex);
+	CoroutineState *unblocked = externalCoroutineUnblockedList;
+	Assert(unblocked);
+	externalCoroutineUnblockedList = unblocked->nextUnblockedCoroutine;
+	unblocked->nextUnblockedCoroutine = NULL;
+	pthread_mutex_unlock(&externalCoroutineMutex);
+	return unblocked;
+}
+
 void *AllocateFixed(size_t bytes) {
 	if (!bytes) {
 		return NULL;
@@ -5464,6 +5565,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Usage: %s <path to script> <script options...>\n", argv[0]);
 		return 1;
 	}
+
+	sem_init(&externalCoroutineSemaphore, 0, 0);
 
 	options = argv + 2;
 	optionCount = argc - 2;
