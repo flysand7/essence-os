@@ -4652,8 +4652,16 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 void *SystemShellExecuteWithWorkingDirectoryThread(void *_coroutine) {
 	CoroutineState *coroutine = (CoroutineState *) _coroutine;
 	int status;
-	Assert(coroutine->externalCoroutineData.i == waitpid(coroutine->externalCoroutineData.i, &status, 0));
-	coroutine->externalCoroutineData.i = WEXITSTATUS(status) == 0;
+	pid_t p = waitpid(coroutine->externalCoroutineData.i, &status, 0);
+
+	if (p != coroutine->externalCoroutineData.i) {
+		fprintf(stderr, "waitpid returned %d\n", p);
+		perror("waitpid failed: ");
+		coroutine->externalCoroutineData.i = 0;
+	} else {
+		coroutine->externalCoroutineData.i = WEXITSTATUS(status) == 0;
+	}
+
 	ExternalCoroutineDone(coroutine);
 	return NULL;
 }
