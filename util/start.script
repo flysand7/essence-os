@@ -4,7 +4,7 @@ str options #option;
 str target #option;
 
 void Start() {
-	SystemShellEnableLogging(false);
+	// SystemShellEnableLogging(false);
 
 	assert PathCreateLeadingDirectories("bin/dependency_files");
 	assert PathCreateLeadingDirectories("bin/Logs");

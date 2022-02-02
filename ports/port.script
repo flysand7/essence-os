@@ -611,11 +611,11 @@ void Start() {
 		assert targetName      != "";
 		assert toolchainPrefix != "";
 
-		PrintStdErrHighlight("Building port: '%portName%'\n");
-		PrintStdErrHighlight("Target name: '%targetName%'\n");
-		PrintStdErrHighlight("Toolchain prefix: '%toolchainPrefix%'\n");
-		PrintStdErrHighlight("Processors to use for compilation: '%processorCount%'\n");
-		PrintStdErrHighlight("Skip yes checks: '%skipYesChecks%'\n");
+		// PrintStdErrHighlight("Building port: '%portName%'\n");
+		// PrintStdErrHighlight("Target name: '%targetName%'\n");
+		// PrintStdErrHighlight("Toolchain prefix: '%toolchainPrefix%'\n");
+		// PrintStdErrHighlight("Processors to use for compilation: '%processorCount%'\n");
+		// PrintStdErrHighlight("Skip yes checks: '%skipYesChecks%'\n");
 
 		for int i = 0; i < portNames:len(); i += 1 {
 			if portNames[i] == portName || portName == "all" {
