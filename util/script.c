@@ -281,6 +281,7 @@ typedef struct CoroutineState {
 	struct CoroutineState **previousCoroutineLink;
 	struct CoroutineState *nextUnblockedCoroutine;
 	struct CoroutineState **previousUnblockedCoroutineLink;
+	struct CoroutineState *nextExternalCoroutine;
 	struct CoroutineState **waiters;
 	size_t waiterCount;
 	size_t waitersAllocated;
@@ -546,6 +547,7 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_AWAIT)           return 90;
 	if (t == T_LEFT_ROUND)      return 100;
 	Assert(false);
+	return 0;
 }
 
 Token TokenNext(Tokenizer *tokenizer) {
@@ -4596,7 +4598,7 @@ void ExternalCoroutineDone(CoroutineState *coroutine) {
 #ifdef __linux__
 	sem_post(&externalCoroutineSemaphore);
 	pthread_mutex_lock(&externalCoroutineMutex);
-	coroutine->nextUnblockedCoroutine = externalCoroutineUnblockedList;
+	coroutine->nextExternalCoroutine = externalCoroutineUnblockedList;
 	externalCoroutineUnblockedList = coroutine;
 	pthread_mutex_unlock(&externalCoroutineMutex);
 #else
@@ -4636,6 +4638,7 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 #ifdef __linux__
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteThread, context->c);
+		pthread_detach(thread);
 		return 4;
 #else
 		SystemShellExecuteThread(context->c);
@@ -4713,6 +4716,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 		context->c->externalCoroutineData.i = pid;
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteWithWorkingDirectoryThread, context->c);
+		pthread_detach(thread);
 		return 4;
 	}
 #else
@@ -5413,8 +5417,8 @@ CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	pthread_mutex_lock(&externalCoroutineMutex);
 	CoroutineState *unblocked = externalCoroutineUnblockedList;
 	Assert(unblocked);
-	externalCoroutineUnblockedList = unblocked->nextUnblockedCoroutine;
-	unblocked->nextUnblockedCoroutine = NULL;
+	externalCoroutineUnblockedList = unblocked->nextExternalCoroutine;
+	unblocked->nextExternalCoroutine = NULL;
 	pthread_mutex_unlock(&externalCoroutineMutex);
 	return unblocked;
 }
