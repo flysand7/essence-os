@@ -4593,11 +4593,15 @@ int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 }
 
 void ExternalCoroutineDone(CoroutineState *coroutine) {
+#ifdef __linux__
 	sem_post(&externalCoroutineSemaphore);
 	pthread_mutex_lock(&externalCoroutineMutex);
 	coroutine->nextUnblockedCoroutine = externalCoroutineUnblockedList;
 	externalCoroutineUnblockedList = coroutine;
 	pthread_mutex_unlock(&externalCoroutineMutex);
+#else
+	(void) coroutine;
+#endif
 }
 
 void *SystemShellExecuteThread(void *_coroutine) {
@@ -4629,9 +4633,15 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 		temporary[bytes] = 0;
 		if (systemShellLoggingEnabled) PrintDebug("\033[0;32m%s\033[0m\n", temporary);
 		context->c->externalCoroutineData2 = temporary;
+#ifdef __linux__
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteThread, context->c);
 		return 4;
+#else
+		SystemShellExecuteThread(context->c);
+		*returnValue = context->c->externalCoroutineData;
+		return 2;
+#endif
 	} else {
 		fprintf(stderr, "Error in ExternalSystemShellExecute: Out of memory.\n");
 		returnValue->i = 0;
@@ -4691,10 +4701,16 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	free(temporary2);
 
 	if (pid > 0) {
+#ifdef __linux__
 		context->c->externalCoroutineData.i = pid;
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteWithWorkingDirectoryThread, context->c);
 		return 4;
+#else
+		SystemShellExecuteWithWorkingDirectoryThread(context->c);
+		*returnValue = context->c->externalCoroutineData;
+		return 2;
+#endif
 	}
 
 	return 2;
