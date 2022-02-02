@@ -4596,11 +4596,11 @@ int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 
 void ExternalCoroutineDone(CoroutineState *coroutine) {
 #ifdef __linux__
-	sem_post(&externalCoroutineSemaphore);
 	pthread_mutex_lock(&externalCoroutineMutex);
 	coroutine->nextExternalCoroutine = externalCoroutineUnblockedList;
 	externalCoroutineUnblockedList = coroutine;
 	pthread_mutex_unlock(&externalCoroutineMutex);
+	sem_post(&externalCoroutineSemaphore);
 #else
 	(void) coroutine;
 #endif
