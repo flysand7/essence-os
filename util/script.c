@@ -4656,7 +4656,7 @@ void *SystemShellExecuteWithWorkingDirectoryThread(void *_coroutine) {
 
 	if (p != coroutine->externalCoroutineData.i) {
 		fprintf(stderr, "waitpid returned %d\n", p);
-		perror("waitpid failed: ");
+		perror("waitpid failed");
 		coroutine->externalCoroutineData.i = 0;
 	} else {
 		coroutine->externalCoroutineData.i = WEXITSTATUS(status) == 0;
@@ -4695,6 +4695,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 
 	if (systemShellLoggingEnabled) PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
 	
+#ifdef __linux__
 	pid_t pid = fork();
 
 	if (pid == 0) {
@@ -4709,17 +4710,24 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	free(temporary2);
 
 	if (pid > 0) {
-#ifdef __linux__
 		context->c->externalCoroutineData.i = pid;
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteWithWorkingDirectoryThread, context->c);
 		return 4;
-#else
-		SystemShellExecuteWithWorkingDirectoryThread(context->c);
-		*returnValue = context->c->externalCoroutineData;
-		return 2;
-#endif
 	}
+#else
+	char *data = (char *) malloc(10000);
+
+	if (!data || data != getcwd(data, 10000)) {
+		PrintError4(context, 0, "Could not get the working directory.\n");
+		free(data);
+		return 0;
+	}
+
+	chdir(temporary);
+	returnValue->i = system(temporary2) == 0;
+	chdir(data);
+#endif
 
 	return 2;
 }
