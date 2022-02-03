@@ -214,7 +214,7 @@ void PortGCC() {
 		assert SystemShellExecute("which xz");
 
 		// Check all the needed libraries are available.
-		assert FileWriteAll("bin/test.c", "void main() {}");
+		assert FileWriteAll("bin/test.c", "int main() { return 0; }");
 		assert SystemShellExecute("gcc %libraryPath% -lmpc  bin/test.c -o bin/test"); // If this fails, install mpc/libmpc/libmpc-dev.
 		assert SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c -o bin/test"); // If this fails, install mpfr/libmpfr/libmpfr-dev.
 		assert SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c -o bin/test"); // If this fails, install gmp/libgmp/libgmp-dev.

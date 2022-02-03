@@ -4732,7 +4732,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	pid_t pid = fork();
 
 	if (pid == 0) {
-		chdir(temporary);
+		Assert(chdir(temporary) == 0);
 		exit(system(temporary2));
 	} else if (pid < 0) {
 		PrintDebug("Unable to fork(), got pid = %d, errno = %d.\n", pid, errno);
@@ -4758,7 +4758,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 		return 0;
 	}
 
-	chdir(temporary);
+	Assert(chdir(temporary) == 0);
 	returnValue->i = system(temporary2) == 0;
 	chdir(data);
 	free(temporary);
@@ -5257,7 +5257,8 @@ int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue) {
 #else
 	char *line = NULL;
 	size_t pos;
-	getline(&line, &pos, stdin);
+	size_t unused = getline(&line, &pos, stdin);
+	(void) unused;
 	uintptr_t index = HeapAllocate(context);
 	context->heap[index].type = T_STR;
 	context->heap[index].bytes = strlen(line) - 1;
@@ -5502,8 +5503,9 @@ void *FileLoad(const char *path, size_t *length) {
 	fseek(file, 0, SEEK_SET);
 	char *buffer = (char *) malloc(fileSize + 1);
 	buffer[fileSize] = 0;
-	fread(buffer, 1, fileSize, file);
+	size_t readBytes = fread(buffer, 1, fileSize, file);
 	fclose(file);
+	if (readBytes != fileSize) { free(buffer); return NULL; }
 	if (length) *length = fileSize;
 	return buffer;
 }
