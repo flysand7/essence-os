@@ -892,20 +892,6 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 void OutputOdin(Entry *root) {
 	FilePrintFormat(output, "package es\n");
 
-	// HACK Workaround for Odin issue #854.
-
-	for (int i = 0; i < arrlen(root->children); i++) {
-		Entry *entry = root->children + i;
-
-		if (entry->type == ENTRY_STRUCT && 0 == strcmp(entry->name, "EsElementPublic")) {
-			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
-			OutputOdinRecord(entry, 0);
-			FilePrintFormat(output, "}\n");
-			arrdel(root->children, i);
-			break;
-		}
-	}
-
 	FilePrintFormat(output, "Generic :: rawptr;\n");
 	FilePrintFormat(output, "INSTANCE_TYPE :: Instance;\n");
 
@@ -919,7 +905,39 @@ void OutputOdin(Entry *root) {
 			if (styleCast) {
 				FilePrintFormat(output, "%s :: (^Style)(uintptr(%d));\n", TrimPrefix(entry->name), atoi(styleCast + 11));
 			} else {
-				FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), OdinReplaceTypes(entry->define.value, false));
+				const char *name = TrimPrefix(entry->name);
+				const char *value = OdinReplaceTypes(entry->define.value, false);
+
+				const char *enumPrefix = NULL;
+				char e[64];
+				int ep = 0;
+
+				for (uintptr_t i = 0; value[i]; i++) {
+					if (value[i] == ' ' || value[i] == '(' || value[i] == ')' 
+							|| value[i] == '\t' || ep == sizeof(e) - 1) {
+						// Ignore.
+					} else {
+						e[ep++] = value[i];
+						e[ep] = 0;
+					}
+				}
+
+				for (int i = 0; i < arrlen(root->children); i++) {
+					if (root->children[i].type == ENTRY_ENUM) {
+						for (int j = 0; j < arrlen(root->children[i].children); j++) {
+							const char *enumName = TrimPrefix(root->children[i].children[j].name);
+
+							if (0 == strcmp(enumName, e)) {
+								enumPrefix = TrimPrefix(root->children[i].name);
+								value = enumName;
+								goto gotEnumPrefix;
+							}
+						}
+					}
+				}
+
+				gotEnumPrefix:;
+				FilePrintFormat(output, "%s :: %s%s%s;\n", name, enumPrefix ? enumPrefix : "", enumPrefix ? "." : "", value);
 			}
 		} else if (entry->type == ENTRY_STRUCT) {
 			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
