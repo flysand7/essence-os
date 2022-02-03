@@ -145,7 +145,7 @@ void AutomationBuild() {
 	// Compress the result.
 	assert PathMove("bin/ova/Essence.ova", "Essence/Essence.ova");
 	assert PathMove("bin/drive", "Essence/drive");
-	assert PathCopy("bin/commit.txt", "Essence/commit.txt");
+	assert FileCopy("bin/commit.txt", "Essence/commit.txt");
 	assert SystemShellExecute("tar -cJf ../Essence.tar.xz Essence/");
 
 	// Compress the debug info.
