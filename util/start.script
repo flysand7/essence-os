@@ -115,7 +115,7 @@ void AutomationBuild() {
 	assert FileCopy("util/stb_truetype.h", "Essence/Licenses/stb_truetype.h");
 	assert FileCopy("res/Fonts/Hack License.md", "Essence/Licenses/Hack License.md");
 	assert FileCopy("res/Fonts/Inter License.txt", "Essence/Licenses/Inter License.txt");
-	assert FileCopy("res/Fonts/Atkinson Hyperlegible", "License.txt Essence/Licenses/Atkinson Hyperlegible License.txt");
+	assert FileCopy("res/Fonts/Atkinson Hyperlegible License.txt", "License.txt Essence/Licenses/Atkinson Hyperlegible License.txt");
 	assert FileCopy("res/Fonts/OpenDyslexic License.txt", "Essence/Licenses/OpenDyslexic License.txt");
 	assert FileCopy("res/elementary Icons License.txt", "Essence/Licenses/elementary Icons License.txt");
 	assert FileCopy("res/Sample Images/Licenses.txt", "Essence/Licenses/Sample Images.txt");

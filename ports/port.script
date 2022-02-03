@@ -614,7 +614,10 @@ void Start() {
 		assert targetName      != "";
 		assert toolchainPrefix != "";
 
-		// PrintStdErrHighlight("Building port: '%portName%'\n");
+		if portName == "all" {
+			PrintStdErrHighlight("Building port: '%portName%'\n");
+		}
+
 		// PrintStdErrHighlight("Target name: '%targetName%'\n");
 		// PrintStdErrHighlight("Toolchain prefix: '%toolchainPrefix%'\n");
 		// PrintStdErrHighlight("Processors to use for compilation: '%processorCount%'\n");
