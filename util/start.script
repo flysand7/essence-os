@@ -107,9 +107,9 @@ void AutomationBuild() {
 	// Copy licenses.
 	assert FileCopy("LICENSE.md", "Essence/Licenses/Essence License.txt");
 	assert FileCopy("util/nanosvg.h", "Essence/Licenses/nanosvg.h");
-	assert FileCopy("util/hsluv.h Essence/Licenses/hsluv.h");
-	assert FileCopy("util/stb_ds.h Essence/Licenses/stb_ds.h");
-	assert FileCopy("util/stb_truetype.h Essence/Licenses/stb_truetype.h");
+	assert FileCopy("util/hsluv.h", "Essence/Licenses/hsluv.h");
+	assert FileCopy("util/stb_ds.h", "Essence/Licenses/stb_ds.h");
+	assert FileCopy("util/stb_truetype.h", "Essence/Licenses/stb_truetype.h");
 	assert FileCopy("res/Fonts/Hack License.md", "Essence/Licenses/Hack License.md");
 	assert FileCopy("res/Fonts/Inter License.txt", "Essence/Licenses/Inter License.txt");
 	assert FileCopy("res/Fonts/Atkinson Hyperlegible", "License.txt Essence/Licenses/Atkinson Hyperlegible License.txt");
