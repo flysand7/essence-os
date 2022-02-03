@@ -158,6 +158,23 @@
 #define T_INLINE              (181)
 #define T_AWAIT               (182)
 
+#define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
+	if (context->c->stackPointer < stackIndex) return -1; \
+	if (!context->c->stackIsManaged[context->c->stackPointer - stackIndex]) return -1; \
+	uint64_t _index ## stackIndex = context->c->stack[context->c->stackPointer - stackIndex].i; \
+	if (context->heapEntriesAllocated <= _index ## stackIndex) return -1; \
+	HeapEntry *_entry ## stackIndex = &context->heap[_index ## stackIndex]; \
+	if (_entry ## stackIndex->type != T_EOF && _entry ## stackIndex->type != T_STR) return -1; \
+	const char *textVariable = _entry ## stackIndex->type == T_STR ? _entry ## stackIndex->text : ""; \
+	size_t bytesVariable = _entry ## stackIndex->type == T_STR ? _entry ## stackIndex->bytes : 0;
+#define STACK_POP_STRING(textVariable, bytesVariable) \
+	STACK_READ_STRING(textVariable, bytesVariable, 1); \
+	context->c->stackPointer--;
+#define STACK_POP_STRING_2(textVariable1, bytesVariable1, textVariable2, bytesVariable2) \
+	STACK_READ_STRING(textVariable1, bytesVariable1, 1); \
+	STACK_READ_STRING(textVariable2, bytesVariable2, 2); \
+	context->c->stackPointer -= 2;
+
 typedef struct Token {
 	struct ImportData *module;
 	const char *text;
@@ -3214,23 +3231,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stackIsManaged[context->c->stackPointer] = true;
 			context->c->stack[context->c->stackPointer++] = v;
 		} else if (command == T_CONCAT) {
-			if (context->c->stackPointer < 2) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
-
-			uint64_t index1 = context->c->stack[context->c->stackPointer - 2].i;
-			if (context->heapEntriesAllocated <= index1) return -1;
-			HeapEntry *entry1 = &context->heap[index1];
-			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
-			const char *text1 = entry1->type == T_STR ? entry1->text : "";
-			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
-
-			uint64_t index2 = context->c->stack[context->c->stackPointer - 1].i;
-			if (context->heapEntriesAllocated <= index2) return -1;
-			HeapEntry *entry2 = &context->heap[index2];
-			if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
-			const char *text2 = entry2->type == T_STR ? entry2->text : "";
-			size_t bytes2 = entry2->type == T_STR ? entry2->bytes : 0;
+			STACK_READ_STRING(text1, bytes1, 2);
+			STACK_READ_STRING(text2, bytes2, 1);
 
 			// TODO Handle memory allocation failures here.
 			uintptr_t index = HeapAllocate(context);
@@ -3245,16 +3247,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 		} else if (command == T_INTERPOLATE_STR || command == T_INTERPOLATE_BOOL 
 				|| command == T_INTERPOLATE_INT || command == T_INTERPOLATE_FLOAT
 				|| command == T_INTERPOLATE_ILIST) {
-			if (context->c->stackPointer < 3) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
-
-			uint64_t index1 = context->c->stack[context->c->stackPointer - 3].i;
-			if (context->heapEntriesAllocated <= index1) return -1;
-			HeapEntry *entry1 = &context->heap[index1];
-			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
-			const char *text1 = entry1->type == T_STR ? entry1->text : "";
-			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
+			STACK_READ_STRING(text1, bytes1, 3);
+			STACK_READ_STRING(text3, bytes3, 1);
 
 			char *freeText = NULL;
 			const char *text2 = "";
@@ -3316,13 +3310,6 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					freeText[bytes2++] = ']';
 				}
 			}
-
-			uint64_t index3 = context->c->stack[context->c->stackPointer - 1].i;
-			if (context->heapEntriesAllocated <= index3) return -1;
-			HeapEntry *entry3 = &context->heap[index3];
-			if (entry3->type != T_EOF && entry3->type != T_STR) return -1;
-			const char *text3 = entry3->type == T_STR ? entry3->text : "";
-			size_t bytes3 = entry3->type == T_STR ? entry3->bytes : 0;
 
 			// TODO Handle memory allocation failures here.
 			uintptr_t index = HeapAllocate(context);
@@ -3592,29 +3579,11 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f != context->c->stack[context->c->stackPointer - 1].f;
 			context->c->stackPointer--;
 		} else if (command == T_STR_DOUBLE_EQUALS || command == T_STR_NOT_EQUALS) {
-			if (context->c->stackPointer < 2) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
-
-			uint64_t index1 = context->c->stack[context->c->stackPointer - 2].i;
-			if (context->heapEntriesAllocated <= index1) return -1;
-			HeapEntry *entry1 = &context->heap[index1];
-			if (entry1->type != T_EOF && entry1->type != T_STR) return -1;
-			const char *text1 = entry1->type == T_STR ? entry1->text : 0;
-			size_t bytes1 = entry1->type == T_STR ? entry1->bytes : 0;
-
-			uint64_t index2 = context->c->stack[context->c->stackPointer - 1].i;
-			if (context->heapEntriesAllocated <= index2) return -1;
-			HeapEntry *entry2 = &context->heap[index2];
-			if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
-			const char *text2 = entry2->type == T_STR ? entry2->text : 0;
-			size_t bytes2 = entry2->type == T_STR ? entry2->bytes : 0;
-
+			STACK_READ_STRING(text1, bytes1, 2);
+			STACK_READ_STRING(text2, bytes2, 1);
 			bool equal = bytes1 == bytes2 && 0 == MemoryCompare(text1, text2, bytes1);
-
 			context->c->stack[context->c->stackPointer - 2].i = command == T_STR_NOT_EQUALS ? !equal : equal;
 			context->c->stackIsManaged[context->c->stackPointer - 2] = false;
-
 			context->c->stackPointer--;
 		} else if (command == T_OP_LEN) {
 			if (context->c->stackPointer < 1) return -1;
@@ -3630,23 +3599,18 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stack[context->c->stackPointer - 1].i = length;
 			context->c->stackIsManaged[context->c->stackPointer - 1] = false;
 		} else if (command == T_INDEX) {
-			if (context->c->stackPointer < 1) return -1;
+			if (context->c->stackPointer < 2) return -1;
+			STACK_READ_STRING(text, bytes, 2);
 			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
-			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
-			uint64_t index = context->c->stack[context->c->stackPointer - 2].i;
-			if (context->heapEntriesAllocated <= index) return -1;
-			HeapEntry *entry = &context->heap[index];
-			if (entry->type != T_EOF && entry->type != T_STR) return -1;
-			index = context->c->stack[context->c->stackPointer - 1].i;
-			size_t bytes = entry->type == T_STR ? entry->bytes : 0;
+			uintptr_t index = context->c->stack[context->c->stackPointer - 1].i;
 
 			if (index >= bytes) {
 				PrintError4(context, instructionPointer - 1, "Index %ld out of bounds in string '%.*s' of length %ld.\n", 
-						index, bytes, entry->type == T_STR ? entry->text : "", bytes);
+						index, bytes, text, bytes);
 				return 0;
 			}
 
-			char c = entry->text[index];
+			char c = text[index];
 			index = HeapAllocate(context);
 			context->heap[index].type = T_STR;
 			context->heap[index].bytes = 1;
@@ -4506,20 +4470,23 @@ CoroutineState *externalCoroutineUnblockedList;
 
 bool systemShellLoggingEnabled = true;
 
+char *StringZeroTerminate(const char *text, size_t bytes) {
+	char *buffer = malloc(bytes + 1);
+	if (!buffer) return NULL;
+	memcpy(buffer, text, bytes);
+	buffer[bytes] = 0;
+	return buffer;
+}
+
 int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type == T_EOF) { returnValue->i = 0; return 3; }
-	if (entry->type != T_STR) return -1;
+	STACK_POP_STRING(entryText, entryBytes);
+	if (entryBytes == 0) { returnValue->i = 0; return 3; }
 
-	uintptr_t start = 0, end = entry->bytes;
+	uintptr_t start = 0, end = entryBytes;
 
 	while (start != end) {
-		if (entry->text[start] == ' ' || entry->text[start] == '\t' || entry->text[start] == '\r' || entry->text[start] == '\n') {
+		if (entryText[start] == ' ' || entryText[start] == '\t' || entryText[start] == '\r' || entryText[start] == '\n') {
 			start++;
 		} else {
 			break;
@@ -4527,7 +4494,7 @@ int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	}
 
 	while (start != end) {
-		if (entry->text[end - 1] == ' ' || entry->text[end - 1] == '\t' || entry->text[end - 1] == '\r' || entry->text[end - 1] == '\n') {
+		if (entryText[end - 1] == ' ' || entryText[end - 1] == '\t' || entryText[end - 1] == '\r' || entryText[end - 1] == '\n') {
 			end--;
 		} else {
 			break;
@@ -4535,10 +4502,10 @@ int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 	}
 
 	char *buffer = AllocateResize(NULL, end - start);
-	MemoryCopy(buffer, entry->text + start, end - start);
+	MemoryCopy(buffer, entryText + start, end - start);
 
 	// TODO Handling allocation failures.
-	index = HeapAllocate(context);
+	uintptr_t index = HeapAllocate(context);
 	context->heap[index].type = T_STR;
 	context->heap[index].bytes = end - start;
 	context->heap[index].text = buffer;
@@ -4550,17 +4517,11 @@ int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
 int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	if (context->c->stackPointer < 3) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	STACK_POP_STRING(string, bytes);
 	uint64_t start = context->c->stack[--context->c->stackPointer].i;
 	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
 	uint64_t end = context->c->stack[--context->c->stackPointer].i;
 	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type != T_EOF && entry->type != T_STR) return -1;
-	char *string = entry->type == T_EOF ? "" : entry->text;
-	size_t bytes = entry->type == T_EOF ? 0 : entry->bytes;
 
 	if (start > bytes || end > bytes || end < start) {
 		PrintError4(context, 0, "The slice range (%ld..%ld) is invalid for the string of length %ld.\n",
@@ -4572,7 +4533,7 @@ int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
 	MemoryCopy(buffer, string + start, end - start);
 
 	// TODO Handling allocation failures.
-	index = HeapAllocate(context);
+	uintptr_t index = HeapAllocate(context);
 	context->heap[index].type = T_STR;
 	context->heap[index].bytes = end - start;
 	context->heap[index].text = buffer;
@@ -4583,14 +4544,8 @@ int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
 
 int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type == T_EOF) { returnValue->i = -1; return 2; }
-	if (entry->type != T_STR) return -1;
-	returnValue->i = entry->bytes ? entry->text[0] : -1;
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = entryBytes ? entryText[0] : -1;
 	return 2;
 }
 
@@ -4620,19 +4575,10 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 		return 2;
 	}
 
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type != T_STR && entry->type != T_EOF) return -1;
-	const char *text = entry->type == T_STR ? entry->text : "";
-	size_t bytes = entry->type == T_STR ? entry->bytes : 0;
-	char *temporary = malloc(bytes + 1);
+	STACK_POP_STRING(text, bytes);
+	char *temporary = StringZeroTerminate(text, bytes);
 
 	if (temporary) {
-		memcpy(temporary, text, bytes);
-		temporary[bytes] = 0;
 		if (systemShellLoggingEnabled) PrintDebug("\033[0;32m%s\033[0m\n", temporary);
 		context->c->externalCoroutineData2 = temporary;
 #ifdef __linux__
@@ -4675,26 +4621,12 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 		return 2;
 	}
 
-	if (context->c->stackPointer < 2) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	if (context->heapEntriesAllocated <= index2) return -1;
-	HeapEntry *entry = &context->heap[index];
-	HeapEntry *entry2 = &context->heap[index2];
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF || entry2->type == T_EOF) return 2;
-	if (entry2->type != T_STR) return -1;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	char *temporary2 = malloc(entry2->bytes + 1);
-	memcpy(temporary2, entry2->text, entry2->bytes);
-	temporary2[entry2->bytes] = 0;
+	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
+	if (!temporary2) return 3;
 
 	if (systemShellLoggingEnabled) PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
 	
@@ -4731,25 +4663,19 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	chdir(temporary);
 	returnValue->i = system(temporary2) == 0;
 	chdir(data);
+	free(temporary);
+	free(temporary2);
+	free(data);
 #endif
 
 	return 2;
 }
 
 int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type != T_STR && entry->type != T_EOF) return -1;
-	const char *text = entry->type == T_STR ? entry->text : "";
-	size_t bytes = entry->type == T_STR ? entry->bytes : 0;
-	char *temporary = malloc(bytes + 1);
+	STACK_POP_STRING(text, bytes);
+	char *temporary = StringZeroTerminate(text, bytes);
 
 	if (temporary) {
-		memcpy(temporary, text, bytes);
-		temporary[bytes] = 0;
 		FILE *f = popen(temporary, "r");
 		
 		if (f) {
@@ -4805,69 +4731,44 @@ int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnVal
 
 int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	if (entry->type == T_STR) fprintf(stderr, "%.*s", (int) entry->bytes, (char *) entry->text);
-	else if (entry->type != T_EOF) return -1;
+	STACK_POP_STRING(entryText, entryBytes);
+	fprintf(stderr, "%.*s", (int) entryBytes, (char *) entryText);
 	return 1;
 }
 
 int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	static int coloredOutput = 0;
 #ifndef _WIN32
 	if (!coloredOutput) coloredOutput = isatty(STDERR_FILENO) ? 2 : 1;
 #endif
-	if (entry->type == T_STR) fprintf(stderr, coloredOutput == 2 ? "\033[0;33m%.*s\033[0;m" : "%.*s", 
-			(int) entry->bytes, (char *) entry->text);
-	else if (entry->type != T_EOF) return -1;
+	fprintf(stderr, coloredOutput == 2 ? "\033[0;33m%.*s\033[0;m" : "%.*s", (int) entryBytes, (char *) entryText);
 	return 1;
 }
 
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	static int coloredOutput = 0;
 #ifndef _WIN32
 	if (!coloredOutput) coloredOutput = isatty(STDERR_FILENO) ? 2 : 1;
 #endif
-	if (entry->type == T_STR) fprintf(stderr, coloredOutput == 2 ? "\033[0;36m%.*s\033[0;m" : "%.*s", 
-			(int) entry->bytes, (char *) entry->text);
-	else if (entry->type != T_EOF) return -1;
+	fprintf(stderr, coloredOutput == 2 ? "\033[0;36m%.*s\033[0;m" : "%.*s", (int) entryBytes, (char *) entryText);
 	return 1;
 }
 
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	returnValue->i = 1;
 #ifdef _WIN32
 #pragma message ("ExternalPathCreateDirectory unimplemented")
-	returnValue->i = 0;
 #else
+	returnValue->i = 1;
 	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
 #endif
 	free(temporary);
@@ -4876,24 +4777,17 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	returnValue->i = 1;
 #ifdef _WIN32
 #pragma message ("ExternalPathCreateLeadingDirectories unimplemented")
-	returnValue->i = 0;
 #else
-	for (uintptr_t i = 1; i < entry->bytes; i++) {
+	returnValue->i = 1;
+
+	for (uintptr_t i = 1; i < entryBytes; i++) {
 		if (temporary[i] == '/') {
 			temporary[i] = 0;
 			mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
@@ -4909,18 +4803,11 @@ int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *retur
 
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	returnValue->i = unlink(temporary) == 0;
 	free(temporary);
 	return 2;
@@ -4928,18 +4815,11 @@ int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPathExists(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	struct stat s = { 0 };
 	returnValue->i = stat(temporary, &s) == 0;
 	free(temporary);
@@ -4990,18 +4870,11 @@ bool PathDeleteRecursively(const char *path) {
 
 int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	returnValue->i = PathDeleteRecursively(temporary);
 	free(temporary);
 	return 2;
@@ -5009,28 +4882,13 @@ int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue)
 
 int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 2) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index2) return -1;
-	HeapEntry *entry2 = &context->heap[index2];
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	if (entry2->type == T_EOF) return 2;
-	if (entry2->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0 || entry2Bytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	char *temporary2 = malloc(entry2->bytes + 1);
+	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
 	if (!temporary2) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	memcpy(temporary2, entry2->text, entry2->bytes);
-	temporary2[entry2->bytes] = 0;
 	returnValue->i = rename(temporary, temporary2) == 0;
 	free(temporary);
 	free(temporary2);
@@ -5039,28 +4897,13 @@ int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
 
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 2) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
-	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index2) return -1;
-	HeapEntry *entry2 = &context->heap[index2];
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	if (entry2->type == T_EOF) return 2;
-	if (entry2->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0 || entry2Bytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	char *temporary2 = malloc(entry2->bytes + 1);
+	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
 	if (!temporary2) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	memcpy(temporary2, entry2->text, entry2->bytes);
-	temporary2[entry2->bytes] = 0;
 	FILE *f = fopen(temporary, "rb");
 	FILE *f2 = fopen(temporary2, "wb");
 	free(temporary);
@@ -5086,24 +4929,17 @@ int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 3;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 3;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	char *data = getenv(temporary);
 	size_t length = data ? strlen(data) : 0;
 	char *copy = (char *) malloc(length + 1);
 	if (length) strcpy(copy, data);
 	else *copy = 0;
-	index = HeapAllocate(context);
+	uintptr_t index = HeapAllocate(context);
 	context->heap[index].type = T_STR;
 	context->heap[index].bytes = length;
 	context->heap[index].text = copy;
@@ -5113,26 +4949,13 @@ int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *retur
 }
 
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
-	if (context->c->stackPointer < 2) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	if (context->heapEntriesAllocated <= index2) return -1;
-	HeapEntry *entry = &context->heap[index];
-	HeapEntry *entry2 = &context->heap[index2];
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF || entry2->type == T_EOF) return 2;
-	if (entry2->type != T_STR) return -1;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0 || entry2Bytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
-	char *temporary2 = malloc(entry2->bytes + 1);
-	memcpy(temporary2, entry2->text, entry2->bytes);
-	temporary2[entry2->bytes] = 0;
+	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
+	if (!temporary2) return 3;
 	returnValue->i = setenv(temporary, temporary2, true) == 0;
 	free(temporary);
 	free(temporary2);
@@ -5140,21 +4963,14 @@ int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *retur
 }
 
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 3;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 3;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	size_t length = 0;
 	void *data = FileLoad(temporary, &length);
-	index = HeapAllocate(context);
+	uintptr_t index = HeapAllocate(context);
 	context->heap[index].type = T_STR;
 	context->heap[index].bytes = length;
 	context->heap[index].text = data;
@@ -5164,27 +4980,15 @@ int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
-	if (context->c->stackPointer < 2) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	uint64_t index2 = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	if (context->heapEntriesAllocated <= index2) return -1;
-	HeapEntry *entry = &context->heap[index];
-	HeapEntry *entry2 = &context->heap[index2];
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry2->type != T_STR && entry2->type != T_EOF) return -1;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	FILE *f = fopen(temporary, "wb");
 
 	if (f) {
-		if (entry2->type == T_STR) returnValue->i = entry2->bytes == fwrite(entry2->text, 1, entry2->bytes, f);
+		returnValue->i = entry2Bytes == fwrite(entry2Text, 1, entry2Bytes, f);
 		if (fclose(f)) returnValue->i = 0;
 	}
 
@@ -5218,18 +5022,11 @@ int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *contex
 
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->stackPointer < 1) return -1;
-	uint64_t index = context->c->stack[--context->c->stackPointer].i;
-	if (!context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	if (context->heapEntriesAllocated <= index) return -1;
-	HeapEntry *entry = &context->heap[index];
+	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entry->type == T_EOF) return 2;
-	if (entry->type != T_STR) return -1;
-	char *temporary = malloc(entry->bytes + 1);
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	memcpy(temporary, entry->text, entry->bytes);
-	temporary[entry->bytes] = 0;
 	free(context->scriptPersistFile);
 	context->scriptPersistFile = temporary;
 	size_t length = 0;
