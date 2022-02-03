@@ -3,7 +3,7 @@
 str options #option;
 str target #option;
 
-void Setup() {
+void Setup(bool forAutomation) {
 	SystemShellEnableLogging(false);
 
 	assert PathCreateLeadingDirectories("bin/dependency_files");
@@ -42,10 +42,16 @@ void Setup() {
 
 	assert SystemShellExecute("gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D%target% "
 			+ "-Wall -Wextra -Wno-missing-field-initializers");
+
+	if forAutomation {
+		assert FileWriteAll("bin/build_config.ini", "accepted_license=1\nautomated_build=1\n");
+		assert SystemShellExecute("bin/build get-toolchain");
+		assert FileWriteAll("bin/commit.txt", StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15));
+	}
 }
 
 void Start() {
-	Setup();
+	Setup(false);
 	SystemShellExecute("bin/build %options%");
 	PrintStdErrHighlight("\n");
 }
@@ -55,7 +61,7 @@ void AutomationBuild() {
 	// Copy the source onto the drive for self hosting.
 	// Producing installer images (including for real hardware).
 
-	Setup();
+	Setup(true);
 
 	// Create directories.
 	assert PathCreateLeadingDirectories("bin/ova");
@@ -63,16 +69,13 @@ void AutomationBuild() {
 	assert PathCreateLeadingDirectories("root/API Samples");
 	assert PathCreateLeadingDirectories("Essence/Licenses");
 
-	// Setup the config files.
-	assert FileWriteAll("bin/build_config.ini", "accepted_license=1\n"
-			+ "automated_build=1\n");
+	// Setup the config file.
 	assert FileWriteAll("bin/config.ini", "Flag.DEBUG_BUILD=0\n"
 			+ "Flag.ENABLE_POSIX_SUBSYSTEM=1\n"
 			+ "General.Wallpaper=0:/Demo Content/Abstract.jpg\n"
 			+ "General.window_color=5\n");
 
 	// Setup toolchain, build the system and ports.
-	assert SystemShellExecute("bin/build get-toolchain");
 	assert SystemShellExecute("bin/build build-optimised");
 	assert SystemShellExecute("bin/build build-optional-ports > /dev/null");
 
@@ -140,11 +143,9 @@ void AutomationBuild() {
 	assert FileCopy("bin/FFmpeg License/LICENSE.md", "Essence/Licenses/FFmpeg.md");
 
 	// Compress the result.
-	str commit = StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15);
 	assert PathMove("bin/ova/Essence.ova", "Essence/Essence.ova");
 	assert PathMove("bin/drive", "Essence/drive");
-	assert FileWriteAll("Essence/commit.txt", commit);
-	assert FileWriteAll("bin/commit.txt", commit);
+	assert PathCopy("bin/commit.txt", "Essence/commit.txt");
 	assert SystemShellExecute("tar -cJf ../Essence.tar.xz Essence/");
 
 	// Compress the debug info.
@@ -158,4 +159,41 @@ void AutomationBuild() {
 	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
 	PathDeleteRecursively(".git");
 	assert SystemShellExecuteWithWorkingDirectory("..", "tar -cJf debug_info.tar.xz essence");
+}
+
+void AutomationBuildDefault() {
+	Setup(true);
+	assert SystemShellExecute("bin/build build");
+}
+
+void AutomationBuildMinimal() {
+	Setup(true);
+	assert FileWriteAll("bin/config.ini", "Flag.DEBUG_BUILD=0\n"
+			+ "BuildCore.NoImportPOSIX=1\n"
+			+ "BuildCore.RequiredFontsOnly=1\n"
+			+ "Emulator.PrimaryDriveMB=32\n"
+			+ "Dependency.ACPICA=0\n"
+			+ "Dependency.stb_image=0\n"
+			+ "Dependency.stb_image_write=0\n"
+			+ "Dependency.stb_sprintf=0\n"
+			+ "Dependency.FreeTypeAndHarfBuzz=0\n");
+	assert SystemShellExecute("bin/build build-optimised");
+}
+
+void AutomationRunTests() {
+	Setup(true);
+	assert FileWriteAll("bin/build_config.ini", "accepted_license=1\n");
+	assert FileWriteAll("bin/config.ini", "Flag.ENABLE_POSIX_SUBSYSTEM=1\n");
+	assert FileWriteAll("bin/extra_applications.ini", "desktop/api_tests.ini\n");
+	assert SystemShellExecute("bin/build build");
+	assert SystemShellExecute("bin/build build-port busybox");
+	assert SystemShellExecute("bin/build run-tests");
+	PathDeleteRecursively("cross");
+	PathDeleteRecursively("bin/cache");
+	PathDeleteRecursively("bin/freetype");
+	PathDeleteRecursively("bin/harfbuzz");
+	PathDeleteRecursively("bin/musl");
+	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
+	PathDeleteRecursively("bin/drive");
+	PathDeleteRecursively(".git");
 }
