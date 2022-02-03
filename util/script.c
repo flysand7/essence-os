@@ -1,6 +1,3 @@
-// TODO StringJoin is extremely slow and uses a lot of memory. 
-// 	Add a StringBuilder? Or maybe a T_CONCAT heap object?
-
 // TODO Basic missing features:
 // 	- Other list operations: insert_many, delete, delete_many, delete_last.
 // 	- Maps: T[int], T[str].
@@ -164,10 +161,10 @@
 	uint64_t _index ## stackIndex = context->c->stack[context->c->stackPointer - stackIndex].i; \
 	if (context->heapEntriesAllocated <= _index ## stackIndex) return -1; \
 	HeapEntry *_entry ## stackIndex = &context->heap[_index ## stackIndex]; \
-	if (_entry ## stackIndex->type != T_EOF && _entry ## stackIndex->type != T_STR) return -1; \
+	if (_entry ## stackIndex->type != T_EOF && _entry ## stackIndex->type != T_STR && _entry ## stackIndex->type != T_CONCAT) return -1; \
 	const char *textVariable; \
 	size_t bytesVariable; \
-	ScriptHeapEntryToString(_entry ## stackIndex, &textVariable, &bytesVariable);
+	ScriptHeapEntryToString(context, _entry ## stackIndex, &textVariable, &bytesVariable);
 #define STACK_POP_STRING(textVariable, bytesVariable) \
 	STACK_READ_STRING(textVariable, bytesVariable, 1); \
 	context->c->stackPointer--;
@@ -278,6 +275,11 @@ typedef struct HeapEntry {
 		struct {
 			int64_t lambdaID;
 			Value curryValue;
+		};
+
+		struct {
+			uint32_t concat1, concat2;
+			size_t concatBytes;
 		};
 	};
 } HeapEntry;
@@ -3015,6 +3017,7 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 // --------------------------------- Main script execution.
 
 void HeapGarbageCollectMark(ExecutionContext *context, uintptr_t index) {
+	start:;
 	Assert(index < context->heapEntriesAllocated);
 	if (context->heap[index].gcMark) return;
 	context->heap[index].gcMark = true;
@@ -3033,6 +3036,19 @@ void HeapGarbageCollectMark(ExecutionContext *context, uintptr_t index) {
 				HeapGarbageCollectMark(context, context->heap[index].list[i].i);
 			}
 		}
+	} else if (context->heap[index].type == T_CONCAT) {
+		uintptr_t index1 = context->heap[index].concat1;
+		uintptr_t index2 = context->heap[index].concat2;
+
+		if (context->heap[index1].type == T_CONCAT) {
+			HeapGarbageCollectMark(context, index2);
+			index = index1;
+		} else {
+			HeapGarbageCollectMark(context, index1);
+			index = index2;
+		}
+
+		goto start;
 	} else if (context->heap[index].type == T_OP_DISCARD || context->heap[index].type == T_OP_ASSERT) {
 		HeapGarbageCollectMark(context, context->heap[index].lambdaID);
 	} else if (context->heap[index].type == T_OP_CURRY) {
@@ -3054,7 +3070,8 @@ void HeapFreeEntry(ExecutionContext *context, uintptr_t i) {
 	} else if (context->heap[i].type == T_LIST) {
 		AllocateResize(context->heap[i].list, 0);
 	} else if (context->heap[i].type == T_OP_DISCARD || context->heap[i].type == T_OP_ASSERT 
-			|| context->heap[i].type == T_FUNCPTR || context->heap[i].type == T_OP_CURRY) {
+			|| context->heap[i].type == T_FUNCPTR || context->heap[i].type == T_OP_CURRY
+			|| context->heap[i].type == T_CONCAT) {
 	} else {
 		Assert(false);
 	}
@@ -3149,13 +3166,74 @@ void ScriptPrintNode(Node *node, int indent) {
 	}
 }
 
-void ScriptHeapEntryToString(HeapEntry *entry, const char **text, size_t *bytes) {
+size_t ScriptHeapEntryGetStringBytes(HeapEntry *entry) {
+	if (entry->type == T_STR) {
+		return entry->bytes;
+	} else if (entry->type == T_EOF) {
+		return 0;
+	} else if (entry->type == T_CONCAT) {
+		return entry->concatBytes;
+	} else {
+		Assert(false);
+	}
+}
+
+void ScriptHeapEntryConcatConvertToStringWrite(ExecutionContext *context, HeapEntry *entry, char *buffer) {
+	while (true) {
+		if (entry->type == T_STR) {
+			MemoryCopy(buffer, entry->text, entry->bytes);
+		} else if (entry->type == T_EOF) {
+		} else if (entry->type == T_CONCAT) {
+			HeapEntry *part1 = &context->heap[entry->concat1], *part2 = &context->heap[entry->concat2];
+			size_t part1Bytes = ScriptHeapEntryGetStringBytes(part1);
+
+			if (part1->type == T_CONCAT) {
+				ScriptHeapEntryConcatConvertToStringWrite(context, part2, buffer + part1Bytes);
+				Assert(part2->type != T_CONCAT);
+				entry = part1;
+				continue;
+			} else if (part2->type == T_CONCAT) {
+				ScriptHeapEntryConcatConvertToStringWrite(context, part1, buffer);
+				Assert(part1->type != T_CONCAT);
+				entry = part2;
+				buffer += part1Bytes;
+				continue;
+			} else {
+				ScriptHeapEntryConcatConvertToStringWrite(context, part1, buffer);
+				ScriptHeapEntryConcatConvertToStringWrite(context, part2, buffer + part1Bytes);
+			}
+		} else {
+			Assert(false);
+		}
+
+		break;
+	}
+}
+
+void ScriptHeapEntryConcatConvertToString(ExecutionContext *context, HeapEntry *entry) {
+	// TODO Efficient concatenation of many strings.
+	// TODO Preventing stack overflow.
+	Assert(entry->type == T_CONCAT);
+	HeapEntry *part1 = &context->heap[entry->concat1], *part2 = &context->heap[entry->concat2];
+	size_t part1Bytes = ScriptHeapEntryGetStringBytes(part1), part2Bytes = ScriptHeapEntryGetStringBytes(part2);
+	Assert(entry->concatBytes == part1Bytes + part2Bytes);
+	entry->type = T_STR;
+	entry->bytes = part1Bytes + part2Bytes;
+	entry->text = AllocateResize(NULL, entry->bytes);
+	ScriptHeapEntryConcatConvertToStringWrite(context, part1, entry->text);
+	ScriptHeapEntryConcatConvertToStringWrite(context, part2, entry->text + part1Bytes);
+}
+
+void ScriptHeapEntryToString(ExecutionContext *context, HeapEntry *entry, const char **text, size_t *bytes) {
 	if (entry->type == T_STR) {
 		*text = entry->text;
 		*bytes = entry->bytes;
 	} else if (entry->type == T_EOF) {
 		*text = "";
 		*bytes = 0;
+	} else if (entry->type == T_CONCAT) {
+		ScriptHeapEntryConcatConvertToString(context, entry);
+		ScriptHeapEntryToString(context, entry, text, bytes);
 	} else {
 		Assert(false);
 	}
@@ -3244,18 +3322,28 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stackIsManaged[context->c->stackPointer] = true;
 			context->c->stack[context->c->stackPointer++] = v;
 		} else if (command == T_CONCAT) {
-			STACK_READ_STRING(text1, bytes1, 2);
-			STACK_READ_STRING(text2, bytes2, 1);
+			if (context->c->stackPointer < 2) return -1;
+			uint64_t index1 = context->c->stack[context->c->stackPointer - 2].i;
+			uint64_t index2 = context->c->stack[context->c->stackPointer - 1].i;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			if (context->heapEntriesAllocated <= index1) return -1;
+			if (context->heapEntriesAllocated <= index2) return -1;
+			Assert(index1 <= 0xFFFFFFFF && index2 <= 0xFFFFFFFF);
+			size_t bytes1 = ScriptHeapEntryGetStringBytes(&context->heap[index1]);
+			size_t bytes2 = ScriptHeapEntryGetStringBytes(&context->heap[index2]);
+			uintptr_t index = HeapAllocate(context); // TODO Handle memory allocation failures here.
+			context->heap[index].type = T_CONCAT;
+			context->heap[index].concat1 = index1;
+			context->heap[index].concat2 = index2;
+			context->heap[index].concatBytes = bytes1 + bytes2;
 
-			// TODO Handle memory allocation failures here.
-			uintptr_t index = HeapAllocate(context);
-			context->heap[index].type = T_STR;
-			context->heap[index].bytes = bytes1 + bytes2;
-			context->heap[index].text = (char *) AllocateResize(NULL, context->heap[index].bytes);
-			if (bytes1) MemoryCopy(context->heap[index].text + 0,      text1, bytes1);
-			if (bytes2) MemoryCopy(context->heap[index].text + bytes1, text2, bytes2);
+			// At most one argument can be a T_CONCAT (ohterwise converting to a string could stack overflow).
+			if (context->heap[index1].type == T_CONCAT && context->heap[index2].type == T_CONCAT) {
+				ScriptHeapEntryConcatConvertToString(context, bytes1 < bytes2 ? &context->heap[index1] : &context->heap[index2]);
+			}
+
 			context->c->stack[context->c->stackPointer - 2].i = index;
-
 			context->c->stackPointer--;
 		} else if (command == T_INTERPOLATE_STR || command == T_INTERPOLATE_BOOL 
 				|| command == T_INTERPOLATE_INT || command == T_INTERPOLATE_FLOAT
@@ -5122,7 +5210,7 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 				HeapEntry *entry = &context->heap[context->globalVariables[k].i];
 				const char *text;
 				size_t bytes;
-				ScriptHeapEntryToString(entry, &text, &bytes);
+				ScriptHeapEntryToString(context, entry, &text, &bytes);
 				uint32_t variableDataLength = bytes;
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
