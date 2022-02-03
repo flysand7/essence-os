@@ -165,8 +165,9 @@
 	if (context->heapEntriesAllocated <= _index ## stackIndex) return -1; \
 	HeapEntry *_entry ## stackIndex = &context->heap[_index ## stackIndex]; \
 	if (_entry ## stackIndex->type != T_EOF && _entry ## stackIndex->type != T_STR) return -1; \
-	const char *textVariable = _entry ## stackIndex->type == T_STR ? _entry ## stackIndex->text : ""; \
-	size_t bytesVariable = _entry ## stackIndex->type == T_STR ? _entry ## stackIndex->bytes : 0;
+	const char *textVariable; \
+	size_t bytesVariable; \
+	ScriptHeapEntryToString(_entry ## stackIndex, &textVariable, &bytesVariable);
 #define STACK_POP_STRING(textVariable, bytesVariable) \
 	STACK_READ_STRING(textVariable, bytesVariable, 1); \
 	context->c->stackPointer--;
@@ -3148,6 +3149,18 @@ void ScriptPrintNode(Node *node, int indent) {
 	}
 }
 
+void ScriptHeapEntryToString(HeapEntry *entry, const char **text, size_t *bytes) {
+	if (entry->type == T_STR) {
+		*text = entry->text;
+		*bytes = entry->bytes;
+	} else if (entry->type == T_EOF) {
+		*text = "";
+		*bytes = 0;
+	} else {
+		Assert(false);
+	}
+}
+
 int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *context) {
 	// TODO Things to verify if loading untrusted scripts -- is this a feature we will need?
 	// 	Checking we don't go off the end of the function body.
@@ -3256,13 +3269,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			char temp[30];
 
 			if (command == T_INTERPOLATE_STR) {
-				if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
-				uint64_t index2 = context->c->stack[context->c->stackPointer - 2].i;
-				if (context->heapEntriesAllocated <= index2) return -1;
-				HeapEntry *entry2 = &context->heap[index2];
-				if (entry2->type != T_EOF && entry2->type != T_STR) return -1;
-				text2 = entry2->type == T_STR ? entry2->text : "";
-				bytes2 = entry2->type == T_STR ? entry2->bytes : 0;
+				STACK_READ_STRING(entryText2, entryBytes2, 2);
+				text2 = entryText2, bytes2 = entryBytes2;
 			} else if (command == T_INTERPOLATE_BOOL) {
 				text2 = context->c->stack[context->c->stackPointer - 2].i ? "true" : "false";
 				bytes2 = context->c->stack[context->c->stackPointer - 2].i ? 4 : 5;
@@ -3591,12 +3599,14 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			uint64_t index = context->c->stack[context->c->stackPointer - 1].i;
 			if (context->heapEntriesAllocated <= index) return -1;
 			HeapEntry *entry = &context->heap[index];
-			int64_t length;
-			if (entry->type == T_EOF) length = 0;
-			else if (entry->type == T_STR) length = entry->bytes;
-			else if (entry->type == T_LIST) length = entry->length;
-			else return -1;
-			context->c->stack[context->c->stackPointer - 1].i = length;
+
+			if (entry->type == T_LIST) {
+				context->c->stack[context->c->stackPointer - 1].i = entry->length;
+			} else {
+				STACK_READ_STRING(stringText, stringBytes, 1);
+				context->c->stack[context->c->stackPointer - 1].i = stringBytes;
+			}
+
 			context->c->stackIsManaged[context->c->stackPointer - 1] = false;
 		} else if (command == T_INDEX) {
 			if (context->c->stackPointer < 2) return -1;
@@ -5110,10 +5120,13 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 
 			if (scope->entries[j]->expressionType->type == T_STR) {
 				HeapEntry *entry = &context->heap[context->globalVariables[k].i];
-				uint32_t variableDataLength = entry->type == T_STR ? entry->bytes : 0;
+				const char *text;
+				size_t bytes;
+				ScriptHeapEntryToString(entry, &text, &bytes);
+				uint32_t variableDataLength = bytes;
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
 				fwrite(scope->entries[j]->token.text, 1, variableNameLength, f);
-				if (entry->bytes) fwrite(entry->text, 1, variableDataLength, f);
+				if (bytes) fwrite(text, 1, variableDataLength, f);
 			} else if (scope->entries[j]->expressionType->type == T_INT) {
 				uint32_t variableDataLength = sizeof(int64_t);
 				fwrite(&variableDataLength, 1, sizeof(uint32_t), f);
