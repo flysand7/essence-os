@@ -450,6 +450,22 @@ char baseModuleSource[] = {
 	"int SystemGetProcessorCount() #extcall;"
 	"bool SystemRunningAsAdministrator() #extcall;"
 	"str SystemGetHostName() #extcall;"
+	"int RandomInt(int min, int max) #extcall;"
+
+	"str UUIDGenerate() {"
+	"	str hexChars = \"0123456789abcdef\";"
+	"	str result;"
+	"	for int i = 0; i <  8; i += 1 { result += hexChars[RandomInt(0, 15)]; }"
+	"	result += \"-\";"
+	"	for int i = 0; i <  4; i += 1 { result += hexChars[RandomInt(0, 15)]; }"
+	"	result += \"-4\";"
+	"	for int i = 0; i <  3; i += 1 { result += hexChars[RandomInt(0, 15)]; }"
+	"	result += \"-\" + hexChars[RandomInt(8, 11)];"
+	"	for int i = 0; i <  3; i += 1 { result += hexChars[RandomInt(0, 15)]; }"
+	"	result += \"-\";"
+	"	for int i = 0; i < 12; i += 1 { result += hexChars[RandomInt(0, 15)]; }"
+	"	return result;"
+	"}"
 
 	// File system access:
 
@@ -464,6 +480,7 @@ char baseModuleSource[] = {
 	"str FileReadAll(str path) #extcall;" // TODO Returning an error?
 	"bool FileWriteAll(str path, str x) #extcall;" // TODO Returning an error?
 	"bool FileCopy(str source, str destination) #extcall;"
+	"int FileGetSize(str path) #extcall;" // Returns -1 on error. TODO Returning an error code.
 
 	// Persistent variables:
 
@@ -509,8 +526,10 @@ int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *contex
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue);
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue);
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue);
+int ExternalFileGetSize(ExecutionContext *context, Value *returnValue);
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue);
 int ExternalPersistWrite(ExecutionContext *context, Value *returnValue);
+int ExternalRandomInt(ExecutionContext *context, Value *returnValue);
 
 ExternalFunction externalFunctions[] = {
 	{ .cName = "PrintStdErr", .callback = ExternalPrintStdErr },
@@ -540,8 +559,10 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "FileReadAll", .callback = ExternalFileReadAll },
 	{ .cName = "FileWriteAll", .callback = ExternalFileWriteAll },
 	{ .cName = "FileCopy", .callback = ExternalFileCopy },
+	{ .cName = "FileGetSize", .callback = ExternalFileGetSize },
 	{ .cName = "PersistRead", .callback = ExternalPersistRead },
 	{ .cName = "PersistWrite", .callback = ExternalPersistWrite },
+	{ .cName = "RandomInt", .callback = ExternalRandomInt },
 };
 
 // --------------------------------- Tokenization and parsing.
@@ -5080,6 +5101,23 @@ int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 	return 3;
 }
 
+int ExternalFileGetSize(ExecutionContext *context, Value *returnValue) {
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = -1;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
+	if (!temporary) return 2;
+	FILE *file = fopen(temporary, "rb");
+
+	if (file) {
+		fseek(file, 0, SEEK_END);
+		returnValue->i = ftell(file);
+		fclose(file);
+	}
+
+	free(temporary);
+	return 2;
+}
+
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
@@ -5313,6 +5351,16 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 	return 3;
 }
 
+int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
+	if (context->c->stackPointer < 2) return -1;
+	int64_t min = context->c->stack[context->c->stackPointer - 1].i;
+	int64_t max = context->c->stack[context->c->stackPointer - 2].i;
+	if (max < min) { PrintError4(context, 0, "RandomInt() called with maximum limit (%ld) less than the minimum limit (%ld).\n", max, min); return 0; }
+	returnValue->i = rand() % (max - min + 1) + min;
+	context->c->stackPointer -= 2;
+	return 2;
+}
+
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	(void) context;
 	while (sem_wait(&externalCoroutineSemaphore) == -1);
@@ -5518,6 +5566,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Usage: %s <engine options...> <path to script> <script options...>\n", argv[0]);
 		return 1;
 	}
+
+	srand(time(NULL));
 
 	sem_init(&externalCoroutineSemaphore, 0, 0);
 

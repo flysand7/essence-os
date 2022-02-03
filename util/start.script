@@ -56,6 +56,17 @@ void Start() {
 	PrintStdErrHighlight("\n");
 }
 
+void GenerateOVF() {
+	str[] template = StringSplitByCharacter(FileReadAll("util/automation/template.ovf"), "$", true);
+	assert template:len() == 5;
+	str uuid1 = UUIDGenerate();
+	str uuid2 = UUIDGenerate();
+	int driveSize = FileGetSize("bin/drive");
+	assert driveSize > 0;
+	str result = template[0] + "%driveSize%" + template[1] + uuid1 + template[2] + uuid2 + template[3] + uuid1 + template[4];
+	assert FileWriteAll("bin/ova/Essence.ovf", result);
+}
+
 void AutomationBuild() {
 	// TODO:
 	// Copy the source onto the drive for self hosting.
@@ -104,7 +115,7 @@ void AutomationBuild() {
 	// Create a virtual machine file.
 	assert SystemShellExecute("qemu-img convert -f raw bin/drive -O vmdk -o adapter_type=lsilogic,subformat=streamOptimized,compat6 "
 			+ "bin/ova/Essence-disk001.vmdk");
-	assert SystemShellExecute("python util/automation/genovf.py > bin/ova/Essence.ovf"); // TODO Replace.
+	GenerateOVF();
 	assert SystemShellExecuteWithWorkingDirectory("bin/ova", "tar -cf Essence.ova Essence.ovf Essence-disk001.vmdk");
 
 	// Copy licenses.
@@ -115,7 +126,7 @@ void AutomationBuild() {
 	assert FileCopy("util/stb_truetype.h", "Essence/Licenses/stb_truetype.h");
 	assert FileCopy("res/Fonts/Hack License.md", "Essence/Licenses/Hack License.md");
 	assert FileCopy("res/Fonts/Inter License.txt", "Essence/Licenses/Inter License.txt");
-	assert FileCopy("res/Fonts/Atkinson Hyperlegible License.txt", "License.txt Essence/Licenses/Atkinson Hyperlegible License.txt");
+	assert FileCopy("res/Fonts/Atkinson Hyperlegible License.txt", "Essence/Licenses/Atkinson Hyperlegible License.txt");
 	assert FileCopy("res/Fonts/OpenDyslexic License.txt", "Essence/Licenses/OpenDyslexic License.txt");
 	assert FileCopy("res/elementary Icons License.txt", "Essence/Licenses/elementary Icons License.txt");
 	assert FileCopy("res/Sample Images/Licenses.txt", "Essence/Licenses/Sample Images.txt");
