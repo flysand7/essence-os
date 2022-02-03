@@ -394,8 +394,11 @@ void PortGCC() {
 
 		// Build libstdc++.
 		// TODO Waiting on GCC 11.3 to do this for the port. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100017.
-		assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-target-libstdc++-v3 -j %processorCount%");
-		assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-target-libstdc++-v3");
+		// TODO Work out why this sometimes hangs on Darwin.
+		if SystemGetHostName() != "Darwin" {
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-target-libstdc++-v3 -j %processorCount%");
+			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make install-target-libstdc++-v3");
+		}
 	}
 	
 	// Copy license files.
