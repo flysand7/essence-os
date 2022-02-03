@@ -3,7 +3,7 @@
 str options #option;
 str target #option;
 
-void Start() {
+void Setup() {
 	SystemShellEnableLogging(false);
 
 	assert PathCreateLeadingDirectories("bin/dependency_files");
@@ -42,7 +42,120 @@ void Start() {
 
 	assert SystemShellExecute("gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D%target% "
 			+ "-Wall -Wextra -Wno-missing-field-initializers");
-	SystemShellExecute("bin/build %options%");
+}
 
+void Start() {
+	Setup();
+	SystemShellExecute("bin/build %options%");
 	PrintStdErrHighlight("\n");
+}
+
+void AutomationBuild() {
+	// TODO:
+	// Copy the source onto the drive for self hosting.
+	// Producing installer images (including for real hardware).
+
+	Setup();
+
+	// Create directories.
+	assert PathCreateLeadingDirectories("bin/ova");
+	assert PathCreateLeadingDirectories("root/Demo Content");
+	assert PathCreateLeadingDirectories("root/API Samples");
+	assert PathCreateLeadingDirectories("Essence/Licenses");
+
+	// Setup the config files.
+	assert FileWriteAll("bin/build_config.ini", "accepted_license=1\n"
+			+ "automated_build=1\n");
+	assert FileWriteAll("bin/config.ini", "Flag.DEBUG_BUILD=0\n"
+			+ "Flag.ENABLE_POSIX_SUBSYSTEM=1\n"
+			+ "General.Wallpaper=0:/Demo Content/Abstract.jpg\n"
+			+ "General.window_color=5\n");
+
+	// Setup toolchain, build the system and ports.
+	assert SystemShellExecute("bin/build get-toolchain");
+	assert SystemShellExecute("bin/build build-optimised");
+	assert SystemShellExecute("bin/build build-optional-ports > /dev/null");
+
+	// Copy a few sample files.
+	assert SystemShellExecute("cp -r res/Sample\\ Images/* root/Demo\\ Content/"); // TODO Replace.
+	assert SystemShellExecute("cp -r help root/Demo\\ Content/"); // TODO Replace.
+	assert FileCopy("bin/noodle.rom", "root/Demo Content/Noodle.uxn");
+	assert FileCopy("res/A Study in Scarlet.txt", "root/Demo Content/A Study in Scarlet.txt");
+	assert FileCopy("res/Theme Source.dat", "root/Demo Content/Theme.designer");
+	assert FileCopy("res/Flip.bochsrc", "root/Demo Content/Flip.bochsrc");
+	assert FileCopy("res/Flip.img", "root/Demo Content/Flip.img");
+	assert FileCopy("res/Teapot.obj", "root/Demo Content/Teapot.obj");
+	assert FileCopy("res/Fonts/Atkinson Hyperlegible Regular.ttf", "root/Demo Content/Atkinson Hyperlegible Regular.ttf");
+
+	// Copy API samples.
+	assert SystemShellExecute("python util/automation/genapisamples.py"); // TODO Replace.
+
+	// Enable extra applications and build them.
+	assert FileWriteAll("bin/extra_applications.ini", "util/designer2.ini\n"
+			+ "util/build_core.ini\n"
+			+ "ports/uxn/emulator.ini\n"
+			+ "ports/bochs/bochs.ini\n"
+			+ "ports/mesa/obj_viewer.ini\n");
+	assert SystemShellExecute("bin/build build-optimised");
+
+	// Create a virtual machine file.
+	assert SystemShellExecute("qemu-img convert -f raw bin/drive -O vmdk -o adapter_type=lsilogic,subformat=streamOptimized,compat6 "
+			+ "bin/ova/Essence-disk001.vmdk");
+	assert SystemShellExecute("python util/automation/genovf.py > bin/ova/Essence.ovf"); // TODO Replace.
+	assert SystemShellExecuteWithWorkingDirectory("bin/ova", "tar -cf Essence.ova Essence.ovf Essence-disk001.vmdk");
+
+	// Copy licenses.
+	assert FileCopy("LICENSE.md", "Essence/Licenses/Essence License.txt");
+	assert FileCopy("util/nanosvg.h", "Essence/Licenses/nanosvg.h");
+	assert FileCopy("util/hsluv.h Essence/Licenses/hsluv.h");
+	assert FileCopy("util/stb_ds.h Essence/Licenses/stb_ds.h");
+	assert FileCopy("util/stb_truetype.h Essence/Licenses/stb_truetype.h");
+	assert FileCopy("res/Fonts/Hack License.md", "Essence/Licenses/Hack License.md");
+	assert FileCopy("res/Fonts/Inter License.txt", "Essence/Licenses/Inter License.txt");
+	assert FileCopy("res/Fonts/Atkinson Hyperlegible", "License.txt Essence/Licenses/Atkinson Hyperlegible License.txt");
+	assert FileCopy("res/Fonts/OpenDyslexic License.txt", "Essence/Licenses/OpenDyslexic License.txt");
+	assert FileCopy("res/elementary Icons License.txt", "Essence/Licenses/elementary Icons License.txt");
+	assert FileCopy("res/Sample Images/Licenses.txt", "Essence/Licenses/Sample Images.txt");
+	assert FileCopy("res/Keyboard Layouts/License.txt", "Essence/Licenses/Keyboard Layouts.txt");
+	assert FileCopy("ports/acpica/licensing.txt", "Essence/Licenses/ACPICA.txt");
+	assert FileCopy("ports/bochs/COPYING", "Essence/Licenses/Bochs.txt");
+	assert FileCopy("ports/efitoolkit/LICENSE", "Essence/Licenses/EFI.txt");
+	assert FileCopy("ports/freetype/FTL.TXT", "Essence/Licenses/FreeType.txt");
+	assert FileCopy("ports/harfbuzz/LICENSE", "Essence/Licenses/HarfBuzz.txt");
+	assert FileCopy("ports/md4c/LICENSE.md", "Essence/Licenses/Md4c.txt");
+	assert FileCopy("ports/musl/COPYRIGHT", "Essence/Licenses/Musl.txt");
+	assert FileCopy("ports/uxn/LICENSE", "Essence/Licenses/Uxn.txt");
+	assert FileCopy("bin/BusyBox License.txt", "Essence/Licenses/BusyBox.txt");
+	assert FileCopy("bin/Mesa License.html", "Essence/Licenses/Mesa.html");
+	assert FileCopy("bin/Nasm License.txt", "Essence/Licenses/Nasm.txt");
+	assert FileCopy("bin/GCC License.txt", "Essence/Licenses/GCC.txt");
+	assert FileCopy("bin/Binutils License.txt", "Essence/Licenses/Binutils.txt");
+	assert FileCopy("bin/GMP License.txt", "Essence/Licenses/GMP.txt");
+	assert FileCopy("bin/MPFR License.txt", "Essence/Licenses/GMPF.txt");
+	assert FileCopy("bin/MPC License.txt", "Essence/Licenses/MPC.txt");
+	assert FileCopy("bin/FFmpeg License/COPYING.GPLv2", "Essence/Licenses/FFmpeg GPLv2.txt");
+	assert FileCopy("bin/FFmpeg License/COPYING.GPLv3", "Essence/Licenses/FFmpeg GPLv3.txt");
+	assert FileCopy("bin/FFmpeg License/COPYING.LGPLv2.1", "Essence/Licenses/FFmpeg LGPLv2.1.txt");
+	assert FileCopy("bin/FFmpeg License/COPYING.LGPLv3", "Essence/Licenses/FFmpeg LGPLv3.txt");
+	assert FileCopy("bin/FFmpeg License/LICENSE.md", "Essence/Licenses/FFmpeg.md");
+
+	// Compress the result.
+	str commit = StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15);
+	assert PathMove("bin/ova/Essence.ova", "Essence/Essence.ova");
+	assert PathMove("bin/drive", "Essence/drive");
+	assert FileWriteAll("Essence/commit.txt", commit);
+	assert FileWriteAll("bin/commit.txt", commit);
+	assert SystemShellExecute("tar -cJf ../Essence.tar.xz Essence/");
+
+	// Compress the debug info.
+	PathDeleteRecursively("cross");
+	PathDeleteRecursively("Essence");
+	PathDeleteRecursively("bin/ova");
+	PathDeleteRecursively("bin/cache");
+	PathDeleteRecursively("bin/freetype");
+	PathDeleteRecursively("bin/harfbuzz");
+	PathDeleteRecursively("bin/musl");
+	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
+	PathDeleteRecursively(".git");
+	assert SystemShellExecuteWithWorkingDirectory("..", "tar -cJf debug_info.tar.xz essence");
 }

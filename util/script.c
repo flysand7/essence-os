@@ -5,6 +5,7 @@
 // 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
 // 	- Enums, bitsets.
 // 	- Resolving type identifiers when structs or function pointers contain references to other structs or function pointers.
+// 	- Check that the start function has the correct signature.
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -360,6 +361,8 @@ Node globalExpressionTypeIntList = { .type = T_LIST, .firstChild = &globalExpres
 
 // Global variables:
 char *scriptSourceDirectory;
+char *startFunction = "Start";
+size_t startFunctionBytes = 5;
 char **options;
 bool *optionsMatched;
 size_t optionCount;
@@ -4446,12 +4449,12 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 	}
 
 	Node n;
-	n.token.textBytes = 5;
-	n.token.text = "Start";
+	n.token.textBytes = startFunctionBytes;
+	n.token.text = startFunction;
 	intptr_t startIndex = ScopeLookupIndex(&n, mainModule->rootNode->scope, true, false);
 
 	if (startIndex == -1) {
-		PrintError3("The script does not have a 'Start' function.\n");
+		PrintError3("The script does not have a start function '%.*s'.\n", startFunctionBytes, startFunction);
 		return 1;
 	}
 
@@ -5512,34 +5515,45 @@ void *FileLoad(const char *path, size_t *length) {
 
 int main(int argc, char **argv) {
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s <path to script> <script options...>\n", argv[0]);
+		fprintf(stderr, "Usage: %s <engine options...> <path to script> <script options...>\n", argv[0]);
 		return 1;
 	}
 
 	sem_init(&externalCoroutineSemaphore, 0, 0);
 
-	options = argv + 2;
-	optionCount = argc - 2;
-	optionsMatched = (bool *) calloc(argc - 2, sizeof(bool));
+	char *scriptPath = NULL;
 
-	scriptSourceDirectory = (char *) malloc(strlen(argv[1]) + 2);
-	strcpy(scriptSourceDirectory, argv[1]);
+	for (int i = 1; i < argc; i++) {
+		if (argv[i][0] != '-') {
+			scriptPath = argv[i];
+			options = argv + i + 1;
+			optionCount = argc - i - 1;
+			optionsMatched = (bool *) calloc(argc, sizeof(bool));
+			break;
+		} else if (0 == memcmp(argv[i], "--start=", 8)) {
+			startFunction = argv[i] + 8;
+			startFunctionBytes = strlen(argv[i]) - 8;
+		}
+	}
+
+	scriptSourceDirectory = (char *) malloc(strlen(scriptPath) + 2);
+	strcpy(scriptSourceDirectory, scriptPath);
 	char *lastSlash = strrchr(scriptSourceDirectory, '/');
 	if (lastSlash) *lastSlash = 0;
 	else strcpy(scriptSourceDirectory, ".");
 
 	Tokenizer tokenizer = { 0 };
 	ImportData importData = { 0 };
-	importData.path = argv[1];
-	importData.pathBytes = strlen(argv[1]);
-	importData.fileData = FileLoad(argv[1], &tokenizer.inputBytes);
+	importData.path = scriptPath;
+	importData.pathBytes = strlen(scriptPath);
+	importData.fileData = FileLoad(scriptPath, &tokenizer.inputBytes);
 	importData.fileDataBytes = tokenizer.inputBytes;
 	tokenizer.module = &importData;
 	tokenizer.line = 1;
 	tokenizer.input = importData.fileData;
 
 	if (!tokenizer.input) {
-		fprintf(stderr, "Error: Could not load the input file '%s'.\n", argv[1]);
+		fprintf(stderr, "Error: Could not load the input file '%s'.\n", scriptPath);
 		return 1;
 	}
 
