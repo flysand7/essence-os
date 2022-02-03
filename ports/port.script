@@ -614,10 +614,6 @@ void Start() {
 		assert targetName      != "";
 		assert toolchainPrefix != "";
 
-		if portName == "all" {
-			PrintStdErrHighlight("Building port: '%portName%'\n");
-		}
-
 		// PrintStdErrHighlight("Target name: '%targetName%'\n");
 		// PrintStdErrHighlight("Toolchain prefix: '%toolchainPrefix%'\n");
 		// PrintStdErrHighlight("Processors to use for compilation: '%processorCount%'\n");
@@ -625,6 +621,10 @@ void Start() {
 
 		for int i = 0; i < portNames:len(); i += 1 {
 			if portNames[i] == portName || portName == "all" {
+				if portName == "all" {
+					PrintStdErrHighlight("Building port: '%portNames[i]%'\n");
+				}
+
 				portCallbacks[i]();
 			}
 		}
