@@ -83,7 +83,7 @@ void AutomationBuild() {
 	// Setup the config file.
 	assert FileWriteAll("bin/config.ini", "Flag.DEBUG_BUILD=0\n"
 			+ "Flag.ENABLE_POSIX_SUBSYSTEM=1\n"
-			+ "General.Wallpaper=0:/Demo Content/Abstract.jpg\n"
+			+ "General.wallpaper=0:/Demo Content/Abstract.jpg\n"
 			+ "General.window_color=5\n");
 
 	// Setup toolchain, build the system and ports.
