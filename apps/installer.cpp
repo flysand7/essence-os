@@ -2,6 +2,8 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
+// TODO Update to use the new mount point APIs.
+
 #define ES_PRIVATE_APIS
 #define INSTALLER
 

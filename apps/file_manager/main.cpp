@@ -99,6 +99,7 @@ struct HistoryEntry {
 struct Drive {
 	char *prefix;
 	size_t prefixBytes;
+	EsObjectID deviceID;
 	EsVolumeInformation information;
 };
 
@@ -424,14 +425,16 @@ void DriveRefreshFolders(bool removed, const char *prefix, size_t prefixBytes) {
 	foldersToRefresh.Free();
 }
 
-void DriveRemove(const char *prefix, size_t prefixBytes) {
-	if (!prefixBytes || prefix[0] == '|') return;
+void DriveRemove(EsObjectID deviceID) {
+	char *prefix = nullptr;
+	size_t prefixBytes = 0;
 	EsMutexAcquire(&drivesMutex);
 	bool found = false;
 
 	for (uintptr_t index = 0; index < drives.Length(); index++) {
-		if (0 == EsStringCompareRaw(prefix, prefixBytes, drives[index].prefix, drives[index].prefixBytes)) {
-			EsHeapFree(drives[index].prefix);
+		if (drives[index].deviceID == deviceID) {
+			prefix = drives[index].prefix;
+			prefixBytes = drives[index].prefixBytes;
 			drives.Delete(index);
 			found = true;
 
@@ -447,17 +450,25 @@ void DriveRemove(const char *prefix, size_t prefixBytes) {
 	EsAssert(found);
 	EsMutexRelease(&drivesMutex);
 	DriveRefreshFolders(true, prefix, prefixBytes);
+	EsHeapFree(prefix);
 }
 
-void DriveAdd(const char *prefix, size_t prefixBytes) {
-	if (!prefixBytes || prefix[0] == '|') return;
-
+void DriveAdd(EsHandle deviceHandle, EsObjectID deviceID) {
+	// TODO Proper prefix allocation algorithm for drives.
+	static int nextPrefix = 1;
+	char prefix[16];
+	bool isBootFileSystem = EsDeviceControl(deviceHandle, ES_DEVICE_CONTROL_FS_IS_BOOT, 0, nullptr) == 1;
+	size_t prefixBytes = EsStringFormat(prefix, sizeof(prefix), "%fd:", ES_STRING_FORMAT_SIMPLE, isBootFileSystem ? 0 : nextPrefix);
+	if (!isBootFileSystem) nextPrefix++;
+	
 	EsMutexAcquire(&drivesMutex);
 
 	Drive drive = {};
 	drive.prefix = (char *) EsHeapAllocate(prefixBytes, false);
 	EsMemoryCopy(drive.prefix, prefix, prefixBytes);
 	drive.prefixBytes = prefixBytes;
+	drive.deviceID = deviceID;
+	EsMountPointAdd(prefix, prefixBytes, deviceHandle);
 	EsMountPointGetVolumeInformation(prefix, prefixBytes, &drive.information);
 	drives.Add(drive);
 
@@ -528,8 +539,8 @@ void _start() {
 
 	// Enumerate drives.
 
-	EsMountPointEnumerate([] (const char *prefix, size_t prefixBytes, EsGeneric) {
-		DriveAdd(prefix, prefixBytes);
+	EsDeviceEnumerate([] (EsMessageDevice device, EsGeneric) {
+		if (device.type == ES_DEVICE_FILE_SYSTEM) DriveAdd(device.handle, device.id);
 	}, 0);
 
 	// Process messages.
@@ -585,10 +596,10 @@ void _start() {
 			loadedFolders.Free();
 			thumbnailCache.Free();
 #endif
-		} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
-			DriveAdd(message->registerFileSystem.mountPoint->prefix, message->registerFileSystem.mountPoint->prefixBytes);
-		} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
-			DriveRemove(message->unregisterFileSystem.mountPoint->prefix, message->unregisterFileSystem.mountPoint->prefixBytes);
+		} else if (message->type == ES_MSG_DEVICE_CONNECTED && message->device.type == ES_DEVICE_FILE_SYSTEM) {
+			DriveAdd(message->device.handle, message->device.id);
+		} else if (message->type == ES_MSG_DEVICE_DISCONNECTED && message->device.type == ES_DEVICE_FILE_SYSTEM) {
+			DriveRemove(message->device.id);
 		} else if (message->type == ES_MSG_FILE_MANAGER_FILE_MODIFIED) {
 			char *_path = (char *) EsHeapAllocate(message->user.context2.u, false);
 			EsConstantBufferRead(message->user.context1.u, _path); 

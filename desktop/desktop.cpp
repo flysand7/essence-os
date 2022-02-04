@@ -655,6 +655,10 @@ int CursorLocatorMessage(EsElement *element, EsMessage *message) {
 }
 
 int ProcessGlobalKeyboardShortcuts(EsElement *, EsMessage *message) {
+	if (!desktop.setupDesktopUIComplete) {
+		return 0;
+	}
+
 	if (message->type == ES_MSG_KEY_DOWN) {
 		bool ctrlOnly = message->keyboard.modifiers == ES_MODIFIER_CTRL;
 		uint32_t scancode = ScancodeMapToLabel(message->keyboard.scancode);
@@ -1866,7 +1870,8 @@ bool ApplicationInstanceStart(_EsApplicationStartupInformation *startupInformati
 			arguments.permissions |= ES_PERMISSION_PROCESS_OPEN;
 			arguments.permissions |= ES_PERMISSION_POSIX_SUBSYSTEM;
 
-			MountPoint root = *NodeFindMountPoint(EsLiteral("0:"));
+			EsMountPoint root;
+			EsAssert(NodeFindMountPoint(EsLiteral("0:"), &root, false));
 			root.prefixBytes = EsStringFormat(root.prefix, sizeof(root.prefix), "|POSIX:");
 			initialMountPoints.Add(root);
 
@@ -1879,26 +1884,20 @@ bool ApplicationInstanceStart(_EsApplicationStartupInformation *startupInformati
 		}
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
-			// We will inform the process of new and removed mount points on the message thread,
-			// in response to ES_MSG_REGISTER_FILE_SYSTEM and ES_MSG_UNREGISTER_FILE_SYSTEM.
-			EsMessageMutexCheck();
-
-			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-				initialMountPoints.Add(api.mountPoints[i]);
-				handleDuplicateList.Add(api.mountPoints[i].base);
-				handleModeDuplicateList.Add(0);
-			}
-
 			arguments.permissions |= ES_PERMISSION_GET_VOLUME_INFORMATION;
-		} else {
-			MountPoint fonts = *NodeFindMountPoint(EsLiteral("|Fonts:"));
+		} 
+
+		{
+			EsMountPoint fonts;
+			EsAssert(NodeFindMountPoint(EsLiteral("|Fonts:"), &fonts, false));
 			initialMountPoints.Add(fonts);
 			handleDuplicateList.Add(fonts.base);
 			handleModeDuplicateList.Add(2 /* prevent write */);
 		}
 
-		if (application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
-			for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
+		for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
+			if ((application->permissions & APPLICATION_PERMISSION_ALL_DEVICES)
+					|| ((application->permissions & APPLICATION_PERMISSION_ALL_FILES) && api.connectedDevices[i].type == ES_DEVICE_FILE_SYSTEM)) {
 				initialDevices.Add(api.connectedDevices[i]);
 				handleDuplicateList.Add(api.connectedDevices[i].handle);
 				handleModeDuplicateList.Add(0);
@@ -3153,24 +3152,18 @@ void DesktopSendMessage(EsMessage *message) {
 		EmbeddedWindowDestroyed(message->embeddedWindowDestroyedID);
 	} else if (message->type == ES_MSG_APPLICATION_CRASH) {
 		ApplicationInstanceCrashed(message);
-	} else if (message->type == ES_MSG_REGISTER_FILE_SYSTEM) {
-		EsHandle rootDirectory = message->registerFileSystem.rootDirectory;
-
-		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
-			ApplicationProcess *process = desktop.allApplicationProcesses[i];
-
-			if (process->application && (process->application->permissions & APPLICATION_PERMISSION_ALL_FILES)) {
-				message->registerFileSystem.rootDirectory = EsSyscall(ES_SYSCALL_HANDLE_SHARE, rootDirectory, process->handle, 0, 0);
-				EsMessagePostRemote(process->handle, message);
-			}
-		}
 	} else if (message->type == ES_MSG_DEVICE_CONNECTED) {
 		EsHandle handle = message->device.handle;
 
+		EsPrint("Desktop received ES_MSG_DEVICE_CONNECTED with ID %d and type %z.\n", 
+				message->device.id, EnumLookupNameFromValue(enumStrings_EsDeviceType, message->device.type));
+
 		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
 			ApplicationProcess *process = desktop.allApplicationProcesses[i];
+			if (!process->application) continue;
 
-			if (process->application && (process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES)) {
+			if ((process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES)
+					|| ((process->application->permissions & APPLICATION_PERMISSION_ALL_FILES) && message->device.type == ES_DEVICE_FILE_SYSTEM)) {
 				message->device.handle = EsSyscall(ES_SYSCALL_HANDLE_SHARE, handle, process->handle, 0, 0);
 				EsMessagePostRemote(process->handle, message);
 			}
@@ -3193,26 +3186,22 @@ void DesktopSendMessage(EsMessage *message) {
 			} else {
 				// The screen resolution will be correctly queried in DesktopSetup.
 			}
+		} else if (message->device.type == ES_DEVICE_FILE_SYSTEM) {
+			if (EsDeviceControl(message->device.handle, ES_DEVICE_CONTROL_FS_IS_BOOT, 0, 0) == 1) {
+				// Mount the boot file system at "0:".
+				MountPointAdd("0:", 2, message->device.handle, false);
+				api.foundBootFileSystem = true;
+			}
 		}
-	} else if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM || message->type == ES_MSG_DEVICE_DISCONNECTED) {
+	} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
 		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
 			ApplicationProcess *process = desktop.allApplicationProcesses[i];
+			if (!process->application) continue;
 
-			if (!process->application) {
-				continue;
+			if ((process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES)
+					|| ((process->application->permissions & APPLICATION_PERMISSION_ALL_FILES) && message->device.type == ES_DEVICE_FILE_SYSTEM)) {
+				EsMessagePostRemote(process->handle, message);
 			}
-
-			if (message->type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
-				if (~process->application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
-					continue;
-				}
-			} else if (message->type == ES_MSG_DEVICE_DISCONNECTED) {
-				if (~process->application->permissions & APPLICATION_PERMISSION_ALL_DEVICES) {
-					continue;
-				}
-			}
-
-			EsMessagePostRemote(process->handle, message);
 		}
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		ProcessGlobalKeyboardShortcuts(nullptr, message);

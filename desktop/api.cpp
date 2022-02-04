@@ -87,11 +87,6 @@ struct ThreadLocalStorage {
 	uint64_t timerAdjustTicks;
 };
 
-struct MountPoint : EsMountPoint {
-	EsVolumeInformation information;
-	bool removing;
-};
-
 struct Timer {
 	EsTimer id;
 	double afterMs;
@@ -193,7 +188,8 @@ struct {
 
 	EsHandle desktopRequestPipe, desktopResponsePipe;
 
-	Array<MountPoint> mountPoints;
+	EsMutex mountPointsMutex;
+	Array<EsMountPoint> mountPoints2;
 	Array<EsMessageDevice> connectedDevices;
 	bool foundBootFileSystem;
 	EsProcessStartupInformation *startupInformation;
@@ -245,7 +241,8 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr);
 char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
 int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
-MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
+bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken);
+EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, bool addedByApplication);
 EsWindow *WindowFromWindowID(EsObjectID id);
 void POSIXCleanup();
 extern "C" void _init();
@@ -276,49 +273,101 @@ uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uint
 }
 #endif
 
-MountPoint *NodeAddMountPoint(const char *prefix, size_t prefixBytes, EsHandle base, bool queryInformation) {
-	MountPoint mountPoint = {};
-	EsAssert(prefixBytes < sizeof(mountPoint.prefix));
-	EsMemoryCopy(mountPoint.prefix, prefix, prefixBytes);
-	mountPoint.base = base;
-	mountPoint.prefixBytes = prefixBytes;
+EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, bool addedByApplication) {
+	EsMutexAcquire(&api.mountPointsMutex);
+	bool duplicate = NodeFindMountPoint(prefix, prefixBytes, nullptr, true);
+	EsError error = ES_SUCCESS;
 
-	if (queryInformation) {
-		EsSyscall(ES_SYSCALL_VOLUME_GET_INFORMATION, base, (uintptr_t) &mountPoint.information, 0, 0);
-	}
+	if (duplicate) {
+		error = ES_ERROR_MOUNT_POINT_ALREADY_EXISTS;
+	} else {
+		EsMountPoint mountPoint = {};
+		EsAssert(prefixBytes < sizeof(mountPoint.prefix));
+		EsMemoryCopy(mountPoint.prefix, prefix, prefixBytes);
+		mountPoint.base = EsSyscall(ES_SYSCALL_HANDLE_SHARE, base, ES_CURRENT_PROCESS, 0, 0);
+		mountPoint.prefixBytes = prefixBytes;
+		mountPoint.addedByApplication = addedByApplication;
 
-	return api.mountPoints.Add(mountPoint);
-}
-
-MountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes) {
-	for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-		MountPoint *mountPoint = &api.mountPoints[i];
-
-		if (prefixBytes >= mountPoint->prefixBytes 
-				&& 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)
-				&& !mountPoint->removing) {
-			return mountPoint;
+		if (ES_CHECK_ERROR(mountPoint.base)) {
+			error = ES_ERROR_INSUFFICIENT_RESOURCES;
+		} else {
+			if (!api.mountPoints2.Add(mountPoint)) {
+				EsHandleClose(mountPoint.base);
+				error = ES_ERROR_INSUFFICIENT_RESOURCES;
+			}
 		}
 	}
 
-	return nullptr;
+	EsMutexRelease(&api.mountPointsMutex);
+	return error;
+}
+
+EsError EsMountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base) {
+	return MountPointAdd(prefix, prefixBytes, base, true);
+}
+
+bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken) {
+	if (!mutexTaken) EsMutexAcquire(&api.mountPointsMutex);
+	bool found = false;
+
+	for (uintptr_t i = 0; i < api.mountPoints2.Length(); i++) {
+		EsMountPoint *mountPoint = &api.mountPoints2[i];
+
+		if (prefixBytes >= mountPoint->prefixBytes && 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
+			// Only permanent mount points can be used retrieved with NodeFindMountPoint when mutexTaken = false,
+			// because mount points added by the application can be removed as soon as we release the mutex,
+			// and the base handle would be closed.
+			EsAssert(mutexTaken || !mountPoint->addedByApplication);
+			if (result) EsMemoryCopy(result, mountPoint, sizeof(EsMountPoint));
+			found = true;
+			break;
+		}
+	}
+
+	if (!mutexTaken) EsMutexRelease(&api.mountPointsMutex);
+	return found;
+}
+
+bool EsMountPointRemove(const char *prefix, size_t prefixBytes) {
+	EsMutexAcquire(&api.mountPointsMutex);
+	bool found = false;
+
+	for (uintptr_t i = 0; i < api.mountPoints2.Length(); i++) {
+		EsMountPoint *mountPoint = &api.mountPoints2[i];
+
+		if (prefixBytes >= mountPoint->prefixBytes && 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
+			EsAssert(mountPoint->addedByApplication);
+			EsHandleClose(mountPoint->base);
+			api.mountPoints2.Delete(i);
+			found = true;
+			break;
+		}
+	}
+
+	EsMutexRelease(&api.mountPointsMutex);
+	return found;
 }
 
 bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information) {
-	MountPoint *mountPoint = NodeFindMountPoint(prefix, prefixBytes);
-	if (!mountPoint) return false;
-	EsSyscall(ES_SYSCALL_VOLUME_GET_INFORMATION, mountPoint->base, (uintptr_t) &mountPoint->information, 0, 0);
-	EsMemoryCopy(information, &mountPoint->information, sizeof(EsVolumeInformation));
-	return true;
-}
+	EsMutexAcquire(&api.mountPointsMutex);
+	EsMountPoint mountPoint;
+	bool found = NodeFindMountPoint(prefix, prefixBytes, &mountPoint, true);
 
-void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context) {
-	EsMessageMutexCheck();
-	
-	for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-		MountPoint *mountPoint = &api.mountPoints[i];
-		callback(mountPoint->prefix, mountPoint->prefixBytes, context);
+	if (found) {
+		_EsNodeInformation node;
+		node.handle = mountPoint.base;
+		EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) "/", 1, ES_NODE_DIRECTORY, (uintptr_t) &node);
+
+		if (error == ES_SUCCESS) {
+			EsSyscall(ES_SYSCALL_VOLUME_GET_INFORMATION, node.handle, (uintptr_t) information, 0, 0);
+			EsHandleClose(node.handle);
+		} else {
+			EsMemoryZero(information, sizeof(EsVolumeInformation));
+		}
 	}
+
+	EsMutexRelease(&api.mountPointsMutex);
+	return found;
 }
 
 void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) {
@@ -330,17 +379,24 @@ void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) 
 }
 
 EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node) {
-	EsMountPoint *mountPoint = NodeFindMountPoint(path, pathBytes);
+	// TODO I really don't like having to acquire a mutex to open a node.
+	// 	This could be replaced with a writer lock!
+	// 	(...but we don't have writer locks in userland yet.)
+	EsMutexAcquire(&api.mountPointsMutex);
 
-	if (!mountPoint) {
-		return ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME;
+	EsMountPoint mountPoint;
+	bool found = NodeFindMountPoint(path, pathBytes, &mountPoint, true);
+	EsError error = ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME;
+
+	if (found) {
+		node->handle = mountPoint.base;
+		path += mountPoint.prefixBytes;
+		pathBytes -= mountPoint.prefixBytes;
+		error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, flags, (uintptr_t) node);
 	}
 
-	node->handle = mountPoint->base;
-	path += mountPoint->prefixBytes;
-	pathBytes -= mountPoint->prefixBytes;
-
-	return EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, flags, (uintptr_t) node);
+	EsMutexRelease(&api.mountPointsMutex);
+	return error;
 }
 
 EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {
@@ -1069,7 +1125,7 @@ EsMessage *EsMessageReceive() {
 				FreeUnusedStyles(true /* include permanent styles */);
 				theming.loadedStyles.Free();
 				SystemConfigurationUnload();
-				api.mountPoints.Free();
+				api.mountPoints2.Free();
 				api.postBox.Free();
 				api.timers.Free();
 				gui.animatingElements.Free();
@@ -1088,13 +1144,6 @@ EsMessage *EsMessageReceive() {
 				EsPrint("ES_MSG_APPLICATION_EXIT - Heap allocation count: %d (%d from malloc).\n", heap.allocationsCount, mallocCount);
 #endif
 				EsProcessTerminateCurrent();
-			}
-		} else if (message.message.type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
-			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {
-					EsHandleClose(api.mountPoints[i].base);
-					api.mountPoints.Delete(i);
-				}
 			}
 		}
 
@@ -1290,49 +1339,6 @@ EsMessage *EsMessageReceive() {
 				}
 
 				return &message.message;
-			}
-		} else if (type == ES_MSG_REGISTER_FILE_SYSTEM) {
-			EsMessageRegisterFileSystem *m = &message.message.registerFileSystem;
-
-			int64_t index = 1; // TODO This is incorrect!
-
-			while (true) {
-				bool seen = false;
-
-				for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-					if (index == EsIntegerParse(api.mountPoints[i].prefix, api.mountPoints[i].prefixBytes)) {
-						seen = true;
-						break;
-					}
-				}
-
-				if (seen) {
-					index++;
-				} else {
-					break;
-				}
-			}
-
-			bool isBootFileSystem = m->isBootFileSystem;
-			char prefix[16];
-			size_t prefixBytes = EsStringFormat(prefix, sizeof(prefix), "%fd:", ES_STRING_FORMAT_SIMPLE, isBootFileSystem ? 0 : index);
-
-			m->mountPoint = NodeAddMountPoint(prefix, prefixBytes, m->rootDirectory, true);
-
-			if (isBootFileSystem) {
-				api.foundBootFileSystem = true;
-			}
-
-			if (m->mountPoint) {
-				return &message.message;
-			}
-		} else if (type == ES_MSG_UNREGISTER_FILE_SYSTEM) {
-			for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
-				if (api.mountPoints[i].information.id == message.message.unregisterFileSystem.id) {
-					message.message.unregisterFileSystem.mountPoint = &api.mountPoints[i];
-					api.mountPoints[i].removing = true;
-					return &message.message;
-				}
 			}
 		} else if (type == ES_MSG_DEVICE_CONNECTED) {
 			api.connectedDevices.Add(message.message.device);
@@ -1561,7 +1567,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		path = EsSystemConfigurationReadString(EsLiteral("paths"), EsLiteral("fonts"));
 		NodeOpen(path, EsCStringLength(path), ES_NODE_DIRECTORY, &node);
-		NodeAddMountPoint(EsLiteral("|Fonts:"), node.handle, false);
+		MountPointAdd(EsLiteral("|Fonts:"), node.handle, false);
 		EsHeapFree(path);
 
 		SettingsLoadDefaults();
@@ -1586,7 +1592,7 @@ extern "C" void _start(EsProcessStartupInformation *_startupInformation) {
 
 		for (uintptr_t i = 0; i < header->initialMountPointCount; i++) {
 			const EsMountPoint *mountPoint = (const EsMountPoint *) EsBufferRead(&buffer, sizeof(EsMountPoint));
-			NodeAddMountPoint(mountPoint->prefix, mountPoint->prefixBytes, mountPoint->base, true);
+			MountPointAdd(mountPoint->prefix, mountPoint->prefixBytes, mountPoint->base, false);
 		}
 
 		for (uintptr_t i = 0; i < header->initialDeviceCount; i++) {

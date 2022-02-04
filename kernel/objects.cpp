@@ -190,7 +190,7 @@ bool OpenHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 		} break;
 
 		case KERNEL_OBJECT_DEVICE: {
-			KDeviceOpenHandle((KDevice *) object);
+			KDeviceOpenHandle((KDevice *) object, flags);
 		} break;
 
 		default: {
@@ -351,7 +351,7 @@ void CloseHandleToObject(void *object, KernelObjectType type, uint32_t flags) {
 		} break;
 
 		case KERNEL_OBJECT_DEVICE: {
-			KDeviceCloseHandle((KDevice *) object);
+			KDeviceCloseHandle((KDevice *) object, flags);
 		} break;
 
 		default: {

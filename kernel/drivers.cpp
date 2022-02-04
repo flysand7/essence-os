@@ -80,14 +80,17 @@ void KDeviceDestroy(KDevice *device) {
 	KMutexRelease(&deviceTreeMutex);
 }
 
-void KDeviceOpenHandle(KDevice *device) {
+void KDeviceOpenHandle(KDevice *device, uint32_t handleFlags) {
+	if (device->trackHandle && (handleFlags & K_DEVICE_HANDLE_TRACKED)) device->trackHandle(device, true);
 	KMutexAcquire(&deviceTreeMutex);
 	if (!device->handles) KernelPanic("KDeviceOpenHandle - Device %s has no handles.\n", device);
 	device->handles++;
 	KMutexRelease(&deviceTreeMutex);
 }
 
-void KDeviceCloseHandle(KDevice *device) {
+void KDeviceCloseHandle(KDevice *device, uint32_t handleFlags) {
+	if (device->trackHandle && (handleFlags & K_DEVICE_HANDLE_TRACKED)) device->trackHandle(device, false);
+		
 	KMutexAcquire(&deviceTreeMutex);
 
 	if (!device->handles) KernelPanic("KDeviceCloseHandle - Device %s has no handles.\n", device);
@@ -131,7 +134,7 @@ void DeviceRemovedRecurse(KDevice *device) {
 	}
 }
 
-void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type) {
+void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type, uint32_t handleFlags) {
 	KMutexAcquire(&deviceTreeMutex);
 
 	if (device->flags & K_DEVICE_VISIBLE_TO_USER) {
@@ -143,14 +146,14 @@ void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type) {
 
 	KMutexRelease(&deviceTreeMutex);
 
-	KDeviceOpenHandle(device);
+	KDeviceOpenHandle(device, handleFlags);
 
 	_EsMessageWithObject m;
 	EsMemoryZero(&m, sizeof(m));
 	m.message.type = ES_MSG_DEVICE_CONNECTED;
 	m.message.device.id = device->objectID;
 	m.message.device.type = type;
-	m.message.device.handle = DesktopOpenHandle(device, 0, KERNEL_OBJECT_DEVICE);
+	m.message.device.handle = DesktopOpenHandle(device, handleFlags, KERNEL_OBJECT_DEVICE);
 
 	if (m.message.device.handle) {
 		if (!DesktopSendMessage(&m)) {

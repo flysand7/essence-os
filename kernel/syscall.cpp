@@ -651,18 +651,37 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 	_EsNodeInformation information;
 	SYSCALL_READ(&information, argument3, sizeof(_EsNodeInformation));
 
-	SYSCALL_HANDLE_2(information.handle, KERNEL_OBJECT_NODE, _directory);
-	KNode *directory = (KNode *) _directory.object; 
+	SYSCALL_HANDLE_2(information.handle, (KernelObjectType) (KERNEL_OBJECT_NODE | KERNEL_OBJECT_DEVICE), _directory);
+
+	KNode *directory = nullptr;
+	uint64_t directoryFlags = 0;
+
+	if (_directory.type == KERNEL_OBJECT_DEVICE) {
+		KDevice *device = (KDevice *) _directory.object;
+
+		if (device->type == ES_DEVICE_FILE_SYSTEM) {
+			KFileSystem *fileSystem = (KFileSystem *) device;
+			directory = fileSystem->rootDirectory;
+			directoryFlags = _ES_NODE_DIRECTORY_WRITE;
+		} else {
+			SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+		}
+	} else if (_directory.type == KERNEL_OBJECT_NODE) {
+		directory = (KNode *) _directory.object; 
+		directoryFlags = _directory.flags;
+	} else {
+		EsAssert(false);
+	}
 
 	if (directory->directoryEntry->type != ES_NODE_DIRECTORY) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 	}
 
-	if ((~_directory.flags & _ES_NODE_DIRECTORY_WRITE) && needWritePermission) {
+	if ((~directoryFlags & _ES_NODE_DIRECTORY_WRITE) && needWritePermission) {
 		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 
-	if (~_directory.flags & _ES_NODE_DIRECTORY_WRITE) {
+	if (~directoryFlags & _ES_NODE_DIRECTORY_WRITE) {
 		flags |= _ES_NODE_NO_WRITE_BASE;
 	}
 
@@ -1601,6 +1620,14 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DEVICE_CONTROL) {
 			SYSCALL_WRITE(dp, &components, sizeof(EsDateComponents));
 			SYSCALL_WRITE(dq, &linear, sizeof(uint64_t));
 			SYSCALL_RETURN(error, false);
+		} else {
+			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
+		}
+	} else if (device->type == ES_DEVICE_FILE_SYSTEM) {
+		KFileSystem *fileSystem = (KFileSystem *) device;
+
+		if (type == ES_DEVICE_CONTROL_FS_IS_BOOT) {
+			SYSCALL_RETURN(fileSystem->isBootFileSystem ? 1 : 0, false);
 		} else {
 			SYSCALL_RETURN(ES_FATAL_ERROR_UNKNOWN_SYSCALL, true);
 		}

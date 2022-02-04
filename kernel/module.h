@@ -495,10 +495,13 @@ struct KDevice {
 	EsObjectID objectID;
 
 	// These callbacks are called with the deviceTreeMutex locked, and are all optional.
-	void (*shutdown)(KDevice *device);  // Called when the computer is about to shutdown.
-	void (*dumpState)(KDevice *device); // Dump the entire state of the device for debugging.
-	void (*removed)(KDevice *device);   // Called when the device is removed. Called after the children are informed.
-	void (*destroy)(KDevice *device);   // Called just before the device is destroyed.
+	void (*shutdown)(KDevice *device);                 // Called when the computer is about to shutdown.
+	void (*dumpState)(KDevice *device);                // Dump the entire state of the device for debugging.
+	void (*removed)(KDevice *device);                  // Called when the device is removed. Called after the children are informed.
+	void (*destroy)(KDevice *device);                  // Called just before the device is destroyed.
+	void (*trackHandle)(KDevice *device, bool opened); // Called when a handle to the device with K_DEVICE_HANDLE_TRACKED is opened/closed.
+							     
+#define K_DEVICE_HANDLE_TRACKED (1 << 0)
 };
 
 struct KDriver {
@@ -524,11 +527,11 @@ void KDeviceAttachAll(KDevice *parentDevice, const char *cParentDriver);
 bool KDeviceAttachByName(KDevice *parentDevice, const char *cName);
 
 KDevice *KDeviceCreate(const char *cDebugName, KDevice *parent, size_t bytes /* must be at least the size of a KDevice */);
-void KDeviceOpenHandle(KDevice *device);
+void KDeviceOpenHandle(KDevice *device, uint32_t handleFlags = ES_FLAGS_DEFAULT);
 void KDeviceDestroy(KDevice *device); // Call if initialisation of the device failed. Otherwise use KDeviceCloseHandle.
-void KDeviceCloseHandle(KDevice *device); // The device creator is responsible for one handle after the creating it. The device is destroyed once all handles are closed.
+void KDeviceCloseHandle(KDevice *device, uint32_t handleFlags = ES_FLAGS_DEFAULT); // The device creator is responsible for one handle after the creating it. The device is destroyed once all handles are closed.
 void KDeviceRemoved(KDevice *device); // Call when a child device is removed. Must be called only once!
-void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type); // Send a message to Desktop to inform it the device was connected.
+void KDeviceSendConnectedMessage(KDevice *device, EsDeviceType type, uint32_t handleFlags = ES_FLAGS_DEFAULT); // Send a message to Desktop to inform it the device was connected.
 
 #include <bin/generated_code/kernel_config.h>
 

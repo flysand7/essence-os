@@ -14,7 +14,7 @@
 extern "C" void *ProcessorTLSRead(uintptr_t offset);
 extern "C" void ProcessorTLSWrite(uintptr_t offset, void *value);
 extern ptrdiff_t tlsStorageOffset;
-EsMountPoint *NodeFindMountPoint(const char *prefix, size_t prefixBytes);
+bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken);
 EsProcessStartupInformation *ProcessGetStartupInformation();
 
 #define _POSIX_SOURCE
@@ -50,6 +50,7 @@ struct ChildProcess {
 char *workingDirectory;
 Array<ChildProcess> childProcesses;
 Array<void *> _argv;
+EsHandle posixMountPointBase;
 
 #ifdef ES_ARCH_X86_64
 Elf64_Phdr *tlsHeader;
@@ -165,6 +166,14 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 		// EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
 	}
 
+	if (posixMountPointBase) {
+		// It doesn't matter if multiple threads try to do this at the same time,
+		// they'll all get the same result.
+		EsMountPoint mountPoint;
+		EsAssert(NodeFindMountPoint(EsLiteral("|POSIX:"), &mountPoint, false));
+		posixMountPointBase = mountPoint.base;
+	}
+
 	long returnValue = 0;
 	_EsPOSIXSyscall syscall = { n, a1, a2, a3, a4, a5, a6 };
 
@@ -212,7 +221,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			size_t pathBytes;
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
 			syscall.arguments[0] = (long) path;
-			syscall.arguments[4] = (long) NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
+			syscall.arguments[4] = (long) posixMountPointBase;
 			syscall.arguments[6] = (long) pathBytes;
 			returnValue = EsSyscall(ES_SYSCALL_POSIX, (uintptr_t) &syscall, 0, 0, 0);
 			// EsPrint("SYS_open '%s' with handle %d\n", pathBytes, path, returnValue);
@@ -306,7 +315,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 
 		case SYS_unlink: {
 			_EsNodeInformation node;
-			node.handle = NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
+			node.handle = posixMountPointBase;
 			size_t pathBytes;
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
 			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, (uintptr_t) &node);
@@ -326,7 +335,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 
 		case SYS_truncate: {
 			_EsNodeInformation node;
-			node.handle = NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
+			node.handle = posixMountPointBase;
 			size_t pathBytes;
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, false);
 			EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, (uintptr_t) &node);
@@ -404,7 +413,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			syscall.arguments[1] = (long) pathBytes;
 			syscall.arguments[2] = (long) newEnvironment;
 			syscall.arguments[3] = (long) environmentSize;
-			syscall.arguments[4] = (long) NodeFindMountPoint(EsLiteral("|POSIX:"))->base;
+			syscall.arguments[4] = (long) posixMountPointBase;
 
 			returnValue = EsSyscall(ES_SYSCALL_POSIX, (uintptr_t) &syscall, 0, 0, 0);
 		} break;

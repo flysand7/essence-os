@@ -1881,38 +1881,22 @@ void FSRegisterBootFileSystem(KFileSystem *fileSystem, EsUniqueIdentifier identi
 	FSRegisterFileSystem(fileSystem); 
 }
 
-void FSFileSystemDeviceRemoved(KDevice *device) {
+void FSTrackUserFileSystemHandle(KDevice *device, bool opened) {
 	KFileSystem *fileSystem = (KFileSystem *) device;
-	_EsMessageWithObject m;
-	EsMemoryZero(&m, sizeof(m));
-	m.message.type = ES_MSG_UNREGISTER_FILE_SYSTEM;
-	m.message.unregisterFileSystem.id = fileSystem->objectID;
-	DesktopSendMessage(&m);
+	if (opened) FSNodeOpenHandle(fileSystem->rootDirectory, ES_FLAGS_DEFAULT, FS_NODE_OPEN_HANDLE_STANDARD);
+	else FSNodeCloseHandle(fileSystem->rootDirectory, ES_FLAGS_DEFAULT);
 }
 
 void FSRegisterFileSystem(KFileSystem *fileSystem) {
-	fileSystem->removed = FSFileSystemDeviceRemoved;
-		
+	fileSystem->trackHandle = FSTrackUserFileSystemHandle;
 	MMObjectCacheRegister(&fileSystem->cachedDirectoryEntries, FSTrimCachedDirectoryEntry, 
 			sizeof(FSDirectoryEntry) + 16 /* approximate average name bytes */ + fileSystem->directoryEntryDataBytes);
 	MMObjectCacheRegister(&fileSystem->cachedNodes, FSTrimCachedNode,
 			sizeof(FSFile) + fileSystem->nodeDataBytes);
 	fileSystem->rootDirectory->directoryEntry->directoryChildren = fileSystem->rootDirectoryInitialChildren;
 	FSNodeOpenHandle(fileSystem->rootDirectory, ES_FLAGS_DEFAULT, fileSystem->isBootFileSystem ? FS_NODE_OPEN_HANDLE_STANDARD : FS_NODE_OPEN_HANDLE_FIRST);
-
-	_EsMessageWithObject m;
-	EsMemoryZero(&m, sizeof(m));
-	m.message.type = ES_MSG_REGISTER_FILE_SYSTEM;
-	m.message.registerFileSystem.isBootFileSystem = fileSystem->isBootFileSystem;
-	m.message.registerFileSystem.rootDirectory = DesktopOpenHandle(fileSystem->rootDirectory, _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
-
-	if (m.message.registerFileSystem.rootDirectory) {
-		if (!DesktopSendMessage(&m)) {
-			DesktopCloseHandle(m.message.registerFileSystem.rootDirectory); // This will check that the handle is still valid.
-		}
-	}
-
-	KDeviceSendConnectedMessage(fileSystem, ES_DEVICE_FILE_SYSTEM);
+	KDeviceSendConnectedMessage(fileSystem, ES_DEVICE_FILE_SYSTEM, K_DEVICE_HANDLE_TRACKED);
+	FSNodeCloseHandle(fileSystem->rootDirectory, ES_FLAGS_DEFAULT);
 }
 
 void FSRegisterBlockDevice(KBlockDevice *device) {

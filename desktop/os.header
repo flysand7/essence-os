@@ -337,6 +337,7 @@ define ES_ERROR_CANCELLED			(-73)
 define ES_ERROR_BLOCK_ACCESS_INVALID		(-74)
 define ES_ERROR_DEVICE_REMOVED			(-75)
 define ES_ERROR_TOO_MANY_FILES_WITH_NAME	(-76)
+define ES_ERROR_MOUNT_POINT_ALREADY_EXISTS      (-77)
 
 define ES_INVALID_HANDLE 		((EsHandle) (0))
 define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
@@ -1047,8 +1048,6 @@ enum EsMessageType {
 	ES_MSG_INSTANCE_CREATE			= 0x6002
 	ES_MSG_DEVICE_CONNECTED			= 0x6003
 	ES_MSG_DEVICE_DISCONNECTED		= 0x6004
-	ES_MSG_REGISTER_FILE_SYSTEM		= 0x6005
-	ES_MSG_UNREGISTER_FILE_SYSTEM		= 0x6006
 
 	// Instance messages:
 	ES_MSG_INSTANCE_OPEN			= 0x6800
@@ -1176,6 +1175,8 @@ enum EsDeviceControlType {
 	ES_DEVICE_CONTROL_BLOCK_DETECT_FS       = 0x1004 // Detect file systems. All existing file systems must have been unmounted.
 
 	ES_DEVICE_CONTROL_CLOCK_READ            = 0x2001
+
+	ES_DEVICE_CONTROL_FS_IS_BOOT            = 0x3001
 }
 
 function_pointer int EsElementCallback(struct EsElement *element, struct EsMessage *message);
@@ -1296,12 +1297,6 @@ struct EsSnapshotProcesses {
 	size_t count;
 	EsSnapshotProcessesItem processes[];
 }
-
-struct EsMountPoint {
-	char prefix[16];
-	size_t prefixBytes;
-	EsHandle base;
-};
 
 struct EsProcessCreateData {
 	EsHandle systemData;
@@ -1799,20 +1794,9 @@ struct EsMessageTabOperation {
 	EsError error;
 };
 
-struct EsMessageRegisterFileSystem {
-	EsHandle rootDirectory;
-	bool isBootFileSystem;
-	EsMountPoint *mountPoint;
-};
-
-struct EsMessageUnregisterFileSystem {
-	EsObjectID id;
-	EsMountPoint *mountPoint;
-};
-
 struct EsMessageDevice {
 	EsObjectID id;
-	EsHandle handle;
+	EsHandle handle; // Not set in ES_MSG_DEVICE_DISCONNECTED. This handle is owned by the system, and is closed on receiving the disconnected message within EsMessageReceive.
 	EsDeviceType type;
 };
 
@@ -1888,8 +1872,6 @@ struct EsMessage {
 		EsMessageEyedrop eyedrop;
 		EsMessageCreateInstance createInstance;
 		EsMessageTabOperation tabOperation;
-		EsMessageRegisterFileSystem registerFileSystem;
-		EsMessageUnregisterFileSystem unregisterFileSystem;
 		EsMessageDevice device;
 		EsObjectID embeddedWindowDestroyedID;
 	};
@@ -1972,6 +1954,13 @@ struct EsListViewEnumString {
 	STRING string;
 };
 
+private struct EsMountPoint {
+	char prefix[16];
+	size_t prefixBytes;
+	uintptr_t base;
+	bool addedByApplication;
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -1980,7 +1969,6 @@ function_pointer int EsCRTComparisonCallback(const void *left, const void *right
 function_pointer void EsTimerCallback(EsGeneric argument);
 function_pointer void EsMenuCallback(EsMenu *menu, EsGeneric context); 
 function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
-function_pointer void EsMountPointEnumerationCallback(const char *prefix, size_t prefixBytes, EsGeneric context);
 function_pointer void EsDeviceEnumerationCallback(EsMessageDevice device, EsGeneric context);
 function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsListViewIndex index);
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
@@ -2058,7 +2046,8 @@ function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flag
 
 // These calls require permission_all_files.
 function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
-function void EsMountPointEnumerate(EsMountPointEnumerationCallback callback, EsGeneric context);
+function EsError EsMountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base); // The system maintains a duplicate of the base handle.
+function bool EsMountPointRemove(const char *prefix, size_t prefixBytes); // Returns false if the mount point does not exist. You can only remove mount points you added with EsMountPointAdd.
 function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
 function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
