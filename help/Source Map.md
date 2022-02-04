@@ -50,9 +50,10 @@ This file contains a list and description of the files and folders in the source
 	- `prefix.h` The prefix for the C/C++ API header. Contains various macros and things.
 	- `crt1.c` Implementation of `_start` for executables running under the POSIX subsystem. Calls into the C standard library which will call `main`.
 	- `crtglue.c` Redirection of POSIX system calls into `posix.cpp`.
-	- `api.cpp` The main file of the desktop, including initialisation, work queues, user tasks, instances, undo stack management, command management, mount point management, and message processing.
+	- `api.cpp` The main file of the desktop, including initialisation, work queues, user tasks, instances, undo stack management, command management, and message processing.
 	- `api_tests.cpp` Tests for the API. Called by the build system command `run-tests`.
 	- `desktop.cpp` The desktop environment, including container windows, the task bar, the wallpaper, device management, and global initilisation.
+	- `files.cpp` Contains userland implementation of file IO, including mount points, file stores, etc.
 	- `gui.cpp` The user interface. Contains core functionality and various elements. More complicated elements are split off into their own files.
 	- `inspector.cpp` The debug inspector for the user interface.
 	- `list_view.cpp` The list view UI element.
@@ -112,6 +113,7 @@ This file contains a list and description of the files and folders in the source
 	- `windows.cpp` The window manager.
 	- `config.ini` A list of components and drivers available to the kernel. Drivers can specify a parent driver or module which will load them if a device they manage is enumerated.
 - `ports/` Ported application, including dependencies.
+	- `ports/port.script` The script used to build the ports.
 - `res/` Resources, such as fonts and images.
 	- `Fonts/` Fonts. Licenses are contained in this folder.
 	- `Keyboard Layouts/` Keyboard layouts. Contains a license file, and `extract_keymaps.c` which can be used to generate the keyboard layout files here from an X11 system.
@@ -144,7 +146,7 @@ This file contains a list and description of the files and folders in the source
 	- `linker/` Contains linker scripts.
 	- `w32/` The experimental W32 backend for the Essence desktop.
 	- `x11/` The experimental X11 backend for the Essence desktop.
-	- `automation/` Scripts for automating builds.
+	- `automation/` Helper files for automating builds.
 	- `build_common.h` Common definitions shared between `build.c` and `build_core.c`.
 	- `luigi.h` [A single-header cross platform GUI library](https://github.com/nakst/luigi).
 	- `build.c` The main build system prompt, which manages dependencies, the toolchain, build configurations, and launching emulators. It is accessed by the developer by running the `start.sh` script at the root of the source tree. The developer can then issue commands to build and test the operating system and other utilities.
@@ -160,4 +162,7 @@ This file contains a list and description of the files and folders in the source
 	- `uefi_compile.sh` Compiles the UEFI boot loader.
 	- `uefi_to_device.sh` Formats a real device to use the UEFI boot loader.
 	- `api_table.ini` A list of all the functions exposed by the API, and their corresponding ordinals. Managed by `header_generator.c`.
-	- `test.txt` A file containing a few traps that might be mangled by source control or compression utilities. Verified by `start.sh` to ensure that the source is as we'd expect.
+	- `test.txt` A file containing a few traps that might be mangled by source control or compression utilities. Verified by `start.script` to ensure that the source is as we'd expect.
+	- `script.c` The scripting engine. Executes ".script" files.
+	- `get_source.script` A script to download and extract source packages.
+	- `start.script` A script to setup the build environment. Hopefully one day this'll replace `build.c`.
