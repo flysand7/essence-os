@@ -470,10 +470,12 @@ char baseModuleSource[] = {
 	// File system access:
 
 	"bool PathExists(str x) #extcall;"
+	"bool PathIsFile(str source) #extcall;"
+	"bool PathIsDirectory(str source) #extcall;"
+	"bool PathIsLink(str source) #extcall;"
 	"bool PathCreateDirectory(str x) #extcall;" // TODO Replace the return value with a enum.
 	"bool PathCreateLeadingDirectories(str x) #extcall;"
 	"bool PathDelete(str x) #extcall;" // TODO Replace the return value with a enum.
-	"bool PathDeleteRecursively(str x) #extcall;"
 	"bool PathMove(str source, str destination) #extcall;"
 	"str PathGetDefaultPrefix() #extcall;"
 	"bool PathSetDefaultPrefixToScriptSourceDirectory() #extcall;"
@@ -481,7 +483,59 @@ char baseModuleSource[] = {
 	"bool FileWriteAll(str path, str x) #extcall;" // TODO Returning an error?
 	"bool FileCopy(str source, str destination) #extcall;"
 	"int FileGetSize(str path) #extcall;" // Returns -1 on error. TODO Returning an error code.
+					      
+	"bool _DirectoryInternalStartIteration(str path) #extcall;"
+	"str _DirectoryInternalNextIteration() #extcall;"
+	"void _DirectoryInternalEndIteration() #extcall;"
+	"bool _DirectoryInternalEnumerateChildren(str path, str prefix, str[] result, bool recurse) {"
+	"	if !_DirectoryInternalStartIteration(path) { return false; }"
+	"	str child = _DirectoryInternalNextIteration();"
+	"	int start = result:len();"
+	"	while child != \"\" { result:add(child); child = _DirectoryInternalNextIteration(); }"
+	"	_DirectoryInternalEndIteration();"
+	"	int end = result:len();"
+	"	if recurse {"
+	"		for int i = start; i < end; i += 1 {"
+	"			str actual = path + \"/\" + result[i];"
+	"			if PathIsDirectory(actual) {"
+	"				_DirectoryInternalEnumerateChildren(actual, prefix + result[i] + \"/\", result, true);"
+	"			}"
+	"		}"
+	"	}"
+	"	for int i = start; i < end; i += 1 {"
+	"		result[i] = prefix + result[i];"
+	"	}"
+	"	return true;"
+	"}"
+	"str[] DirectoryEnumerateChildren(str path) {" // TODO Returning an error code.
+	"	str[] result = new str[];"
+	"	if _DirectoryInternalEnumerateChildren(path, \"\", result, false) { return result; }"
+	"	return null;"
+	"}"
+	"str[] DirectoryEnumerateChildrenRecursively(str path) {" // TODO Returning an error code.
+	"	str[] result = new str[];"
+	"	if _DirectoryInternalEnumerateChildren(path, \"\", result, true) { return result; }"
+	"	return null;"
+	"}"
 
+	"bool PathDeleteRecursively(str path) {"
+	"	str[] all = DirectoryEnumerateChildrenRecursively(path);"
+	"	if all == null { return false; }"
+	"	for int i = 0; i < all:len(); i += 1 {"
+	"		str p = path + \"/\" + all[i];"
+	"		if PathIsFile(p) || PathIsLink(p) {"
+	"			PathDelete(p);"
+	"		}"
+	"	}"
+	"	for int i = all:len(); i > 0; i -= 1 {"
+	"		str p = path + \"/\" + all[i - 1];"
+	"		if PathIsDirectory(p) {"
+	"			PathDelete(p);"
+	"		}"
+	"	}"
+	"	return PathDelete(path);"
+	"}"
+					      
 	// Persistent variables:
 
 	"bool PersistRead(str path) #extcall;"
@@ -518,8 +572,10 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue);
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue);
-int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue);
 int ExternalPathExists(ExecutionContext *context, Value *returnValue);
+int ExternalPathIsFile(ExecutionContext *context, Value *returnValue);
+int ExternalPathIsDirectory(ExecutionContext *context, Value *returnValue);
+int ExternalPathIsLink(ExecutionContext *context, Value *returnValue);
 int ExternalPathMove(ExecutionContext *context, Value *returnValue);
 int ExternalPathGetDefaultPrefix(ExecutionContext *context, Value *returnValue);
 int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *context, Value *returnValue);
@@ -530,6 +586,9 @@ int ExternalFileGetSize(ExecutionContext *context, Value *returnValue);
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue);
 int ExternalPersistWrite(ExecutionContext *context, Value *returnValue);
 int ExternalRandomInt(ExecutionContext *context, Value *returnValue);
+int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue);
+int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue);
+int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue);
 
 ExternalFunction externalFunctions[] = {
 	{ .cName = "PrintStdErr", .callback = ExternalPrintStdErr },
@@ -549,10 +608,12 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "SystemRunningAsAdministrator", .callback = ExternalSystemRunningAsAdministrator },
 	{ .cName = "SystemGetHostName", .callback = ExternalSystemGetHostName },
 	{ .cName = "PathExists", .callback = ExternalPathExists },
+	{ .cName = "PathIsFile", .callback = ExternalPathIsFile },
+	{ .cName = "PathIsDirectory", .callback = ExternalPathIsDirectory },
+	{ .cName = "PathIsLink", .callback = ExternalPathIsLink },
 	{ .cName = "PathCreateDirectory", .callback = ExternalPathCreateDirectory },
 	{ .cName = "PathCreateLeadingDirectories", .callback = ExternalPathCreateLeadingDirectories },
 	{ .cName = "PathDelete", .callback = ExternalPathDelete },
-	{ .cName = "PathDeleteRecursively", .callback = ExternalPathDeleteRecursively },
 	{ .cName = "PathMove", .callback = ExternalPathMove },
 	{ .cName = "PathGetDefaultPrefix", .callback = ExternalPathGetDefaultPrefix },
 	{ .cName = "PathSetDefaultPrefixToScriptSourceDirectory", .callback = ExternalPathSetDefaultPrefixToScriptSourceDirectory },
@@ -563,6 +624,9 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "PersistRead", .callback = ExternalPersistRead },
 	{ .cName = "PersistWrite", .callback = ExternalPersistWrite },
 	{ .cName = "RandomInt", .callback = ExternalRandomInt },
+	{ .cName = "_DirectoryInternalStartIteration", .callback = External_DirectoryInternalStartIteration },
+	{ .cName = "_DirectoryInternalNextIteration", .callback = External_DirectoryInternalNextIteration },
+	{ .cName = "_DirectoryInternalEndIteration", .callback = External_DirectoryInternalEndIteration },
 };
 
 // --------------------------------- Tokenization and parsing.
@@ -1903,9 +1967,9 @@ bool ASTMatching(Node *left, Node *right) {
 		return true;
 	} else if (!left || !right) {
 		return false;
-	} else if (left->type == T_NULL && right->type == T_STRUCT) {
+	} else if (left->type == T_NULL && (right->type == T_STRUCT || right->type == T_LIST)) {
 		return true;
-	} else if (right->type == T_NULL && left->type == T_STRUCT) {
+	} else if (right->type == T_NULL && (left->type == T_STRUCT || left->type == T_LIST)) {
 		return true;
 	} else if (left->type != right->type) {
 		return false;
@@ -2064,7 +2128,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeBool)) {
+					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeBool)
+					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_LIST)) {
 				PrintError2(tokenizer, node, "This operator expects either integers, floats, strings or booleans.\n");
 				return false;
 			}
@@ -4592,6 +4657,8 @@ CoroutineState *externalCoroutineUnblockedList;
 
 bool systemShellLoggingEnabled = true;
 
+DIR *directoryIterator;
+
 char *StringZeroTerminate(const char *text, size_t bytes) {
 	char *buffer = malloc(bytes + 1);
 	if (!buffer) return NULL;
@@ -4930,7 +4997,9 @@ int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	returnValue->i = unlink(temporary) == 0;
+	struct stat s = { 0 };
+	bool isDirectory = lstat(temporary, &s) == 0 && S_ISDIR(s.st_mode);
+	returnValue->i = isDirectory ? (rmdir(temporary) == 0) : (unlink(temporary) == 0);
 	free(temporary);
 	return 2;
 }
@@ -4948,56 +5017,41 @@ int ExternalPathExists(ExecutionContext *context, Value *returnValue) {
 	return 2;
 }
 
-bool PathDeleteRecursively(const char *path) {
-#ifdef _WIN32
-#pragma message ("PathDeleteRecursively unimplemented")
-	return false;
-#else
-	struct stat s = {};
-
-	if (lstat(path, &s)) {
-		return true;
-	}
-
-	if (S_ISDIR(s.st_mode)) {
-		DIR *directory = opendir(path);
-
-		if (!directory) {
-			return false;
-		}
-
-		struct dirent *entry;
-
-		while ((entry = readdir(directory))) {
-			if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
-				continue;
-			}
-
-			char *child = (char *) malloc(strlen(path) + strlen(entry->d_name) + 2);
-			sprintf(child, "%s/%s", path, entry->d_name);
-			bool result = PathDeleteRecursively(child);
-			free(child);
-			if (!result) return result;
-		}
-
-		closedir(directory);
-		return 0 == rmdir(path);
-	} else if (S_ISREG(s.st_mode) || S_ISLNK(s.st_mode)) {
-		return 0 == unlink(path);
-	} else {
-		return false;
-	}
-#endif
-}
-
-int ExternalPathDeleteRecursively(ExecutionContext *context, Value *returnValue) {
+int ExternalPathIsFile(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
 	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 2;
-	returnValue->i = PathDeleteRecursively(temporary);
+	struct stat s = { 0 };
+	returnValue->i = lstat(temporary, &s) == 0 && S_ISREG(s.st_mode);
+	free(temporary);
+	return 2;
+}
+
+int ExternalPathIsDirectory(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = 0;
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
+	if (!temporary) return 2;
+	struct stat s = { 0 };
+	returnValue->i = lstat(temporary, &s) == 0 && S_ISDIR(s.st_mode);
+	free(temporary);
+	return 2;
+}
+
+int ExternalPathIsLink(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = 0;
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
+	if (!temporary) return 2;
+	struct stat s = { 0 };
+	returnValue->i = lstat(temporary, &s) == 0 && S_ISLNK(s.st_mode);
 	free(temporary);
 	return 2;
 }
@@ -5082,6 +5136,43 @@ int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *retur
 	free(temporary);
 	free(temporary2);
 	return 2;
+}
+
+int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue) {
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = 0;
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
+	if (!temporary) return 2;
+	if (directoryIterator) return 2;
+	directoryIterator = opendir(temporary);
+	free(temporary);
+	returnValue->i = directoryIterator != NULL;
+	return 2;
+}
+
+int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	(void) returnValue;
+	if (!directoryIterator) return 0;
+	closedir(directoryIterator);
+	directoryIterator = NULL;
+	return 1;
+}
+
+int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	if (!directoryIterator) return 0;
+	struct dirent *entry = readdir(directoryIterator);
+	while (entry && (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, ".."))) entry = readdir(directoryIterator);
+	if (!entry) { returnValue->i = 0; return 3; }
+	uintptr_t index = HeapAllocate(context);
+	context->heap[index].type = T_STR;
+	context->heap[index].bytes = strlen(entry->d_name);
+	context->heap[index].text = malloc(context->heap[index].bytes + 1);
+	strcpy(context->heap[index].text, entry->d_name);
+	returnValue->i = index;
+	return 3;
 }
 
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
