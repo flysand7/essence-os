@@ -5,7 +5,6 @@
 // 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
 // 	- Enums, bitsets.
 // 	- Resolving type identifiers when structs or function pointers contain references to other structs or function pointers.
-// 	- Check that the start function has the correct signature.
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -4559,6 +4558,20 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 		return 1;
 	}
 
+	Node mainFunctionArguments = { 0 };
+	mainFunctionArguments.type = T_ARGUMENTS;
+	Node mainFunctionReturn = { 0 };
+	mainFunctionReturn.type = T_VOID;
+	Node mainFunctionType = { 0 };
+	mainFunctionType.type = T_FUNCPTR;
+	mainFunctionType.firstChild = &mainFunctionArguments;
+	mainFunctionArguments.sibling = &mainFunctionReturn;
+
+	if (!ASTMatching(&mainFunctionType, mainModule->rootNode->scope->entries[ScopeLookupIndex(&n, mainModule->rootNode->scope, false, true)]->expressionType)) {
+		PrintError3("The start function '%.*s' should take no arguments and return 'void'.\n", startFunctionBytes, startFunction);
+		return 1;
+	}
+
 	ImportData *module = importedModules;
 
 	while (module) {
@@ -4568,6 +4581,11 @@ int ScriptExecute(ExecutionContext *context, ImportData *mainModule) {
 		intptr_t index = ScopeLookupIndex(&n, module->rootNode->scope, true, false);
 
 		if (index != -1) {
+			if (!ASTMatching(&mainFunctionType, module->rootNode->scope->entries[ScopeLookupIndex(&n, module->rootNode->scope, false, true)]->expressionType)) {
+				PrintError3("The 'Initialise' function in the module '%s' should take no arguments and return 'void'.\n", module->path);
+				return 1;
+			}
+
 			int result = ScriptExecuteFunction(context->heap[context->globalVariables[index + module->globalVariableOffset].i].lambdaID, context);
 
 			if (result == 0) {
