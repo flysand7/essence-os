@@ -15,6 +15,7 @@ extern "C" void *ProcessorTLSRead(uintptr_t offset);
 extern "C" void ProcessorTLSWrite(uintptr_t offset, void *value);
 extern ptrdiff_t tlsStorageOffset;
 bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken);
+EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
 EsProcessStartupInformation *ProcessGetStartupInformation();
 
 #define _POSIX_SOURCE
@@ -51,6 +52,7 @@ char *workingDirectory;
 Array<ChildProcess> childProcesses;
 Array<void *> _argv;
 EsHandle posixMountPointBase;
+EsMutex posixMountPointBaseMutex;
 
 #ifdef ES_ARCH_X86_64
 Elf64_Phdr *tlsHeader;
@@ -163,15 +165,19 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 #endif
 
 	if ((uintptr_t) n < sizeof(syscallNames) / sizeof(syscallNames[0])) {
-		// EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
+		EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
 	}
 
-	if (posixMountPointBase) {
-		// It doesn't matter if multiple threads try to do this at the same time,
-		// they'll all get the same result.
-		EsMountPoint mountPoint;
-		EsAssert(NodeFindMountPoint(EsLiteral("|POSIX:"), &mountPoint, false));
-		posixMountPointBase = mountPoint.base;
+	if (!posixMountPointBase) {
+		EsMutexAcquire(&posixMountPointBaseMutex);
+
+		if (!posixMountPointBase) {
+			_EsNodeInformation node;
+			EsAssert(ES_SUCCESS == NodeOpen(EsLiteral("|POSIX:/"), ES_NODE_DIRECTORY | _ES_NODE_DIRECTORY_WRITE, &node));
+			posixMountPointBase = node.handle;
+		}
+
+		EsMutexRelease(&posixMountPointBaseMutex);
 	}
 
 	long returnValue = 0;

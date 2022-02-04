@@ -189,7 +189,7 @@ struct {
 	EsHandle desktopRequestPipe, desktopResponsePipe;
 
 	EsMutex mountPointsMutex;
-	Array<EsMountPoint> mountPoints2;
+	Array<EsMountPoint> mountPoints;
 	Array<EsMessageDevice> connectedDevices;
 	bool foundBootFileSystem;
 	EsProcessStartupInformation *startupInformation;
@@ -256,6 +256,7 @@ extern "C" void _init();
 #include "inspector.cpp"
 #include "desktop.cpp"
 #include "settings.cpp"
+#include "files.cpp"
 
 const void *const apiTable[] = {
 #include <bin/generated_code/api_array.h>
@@ -273,130 +274,12 @@ uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uint
 }
 #endif
 
-EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, bool addedByApplication) {
-	EsMutexAcquire(&api.mountPointsMutex);
-	bool duplicate = NodeFindMountPoint(prefix, prefixBytes, nullptr, true);
-	EsError error = ES_SUCCESS;
-
-	if (duplicate) {
-		error = ES_ERROR_MOUNT_POINT_ALREADY_EXISTS;
-	} else {
-		EsMountPoint mountPoint = {};
-		EsAssert(prefixBytes < sizeof(mountPoint.prefix));
-		EsMemoryCopy(mountPoint.prefix, prefix, prefixBytes);
-		mountPoint.base = EsSyscall(ES_SYSCALL_HANDLE_SHARE, base, ES_CURRENT_PROCESS, 0, 0);
-		mountPoint.prefixBytes = prefixBytes;
-		mountPoint.addedByApplication = addedByApplication;
-
-		if (ES_CHECK_ERROR(mountPoint.base)) {
-			error = ES_ERROR_INSUFFICIENT_RESOURCES;
-		} else {
-			if (!api.mountPoints2.Add(mountPoint)) {
-				EsHandleClose(mountPoint.base);
-				error = ES_ERROR_INSUFFICIENT_RESOURCES;
-			}
-		}
-	}
-
-	EsMutexRelease(&api.mountPointsMutex);
-	return error;
-}
-
-EsError EsMountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base) {
-	return MountPointAdd(prefix, prefixBytes, base, true);
-}
-
-bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken) {
-	if (!mutexTaken) EsMutexAcquire(&api.mountPointsMutex);
-	bool found = false;
-
-	for (uintptr_t i = 0; i < api.mountPoints2.Length(); i++) {
-		EsMountPoint *mountPoint = &api.mountPoints2[i];
-
-		if (prefixBytes >= mountPoint->prefixBytes && 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
-			// Only permanent mount points can be used retrieved with NodeFindMountPoint when mutexTaken = false,
-			// because mount points added by the application can be removed as soon as we release the mutex,
-			// and the base handle would be closed.
-			EsAssert(mutexTaken || !mountPoint->addedByApplication);
-			if (result) EsMemoryCopy(result, mountPoint, sizeof(EsMountPoint));
-			found = true;
-			break;
-		}
-	}
-
-	if (!mutexTaken) EsMutexRelease(&api.mountPointsMutex);
-	return found;
-}
-
-bool EsMountPointRemove(const char *prefix, size_t prefixBytes) {
-	EsMutexAcquire(&api.mountPointsMutex);
-	bool found = false;
-
-	for (uintptr_t i = 0; i < api.mountPoints2.Length(); i++) {
-		EsMountPoint *mountPoint = &api.mountPoints2[i];
-
-		if (prefixBytes >= mountPoint->prefixBytes && 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
-			EsAssert(mountPoint->addedByApplication);
-			EsHandleClose(mountPoint->base);
-			api.mountPoints2.Delete(i);
-			found = true;
-			break;
-		}
-	}
-
-	EsMutexRelease(&api.mountPointsMutex);
-	return found;
-}
-
-bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information) {
-	EsMutexAcquire(&api.mountPointsMutex);
-	EsMountPoint mountPoint;
-	bool found = NodeFindMountPoint(prefix, prefixBytes, &mountPoint, true);
-
-	if (found) {
-		_EsNodeInformation node;
-		node.handle = mountPoint.base;
-		EsError error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) "/", 1, ES_NODE_DIRECTORY, (uintptr_t) &node);
-
-		if (error == ES_SUCCESS) {
-			EsSyscall(ES_SYSCALL_VOLUME_GET_INFORMATION, node.handle, (uintptr_t) information, 0, 0);
-			EsHandleClose(node.handle);
-		} else {
-			EsMemoryZero(information, sizeof(EsVolumeInformation));
-		}
-	}
-
-	EsMutexRelease(&api.mountPointsMutex);
-	return found;
-}
-
 void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) {
 	EsMessageMutexCheck();
 
 	for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
 		callback(api.connectedDevices[i], context);
 	}
-}
-
-EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node) {
-	// TODO I really don't like having to acquire a mutex to open a node.
-	// 	This could be replaced with a writer lock!
-	// 	(...but we don't have writer locks in userland yet.)
-	EsMutexAcquire(&api.mountPointsMutex);
-
-	EsMountPoint mountPoint;
-	bool found = NodeFindMountPoint(path, pathBytes, &mountPoint, true);
-	EsError error = ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME;
-
-	if (found) {
-		node->handle = mountPoint.base;
-		path += mountPoint.prefixBytes;
-		pathBytes -= mountPoint.prefixBytes;
-		error = EsSyscall(ES_SYSCALL_NODE_OPEN, (uintptr_t) path, pathBytes, flags, (uintptr_t) node);
-	}
-
-	EsMutexRelease(&api.mountPointsMutex);
-	return error;
 }
 
 EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {
@@ -653,41 +536,6 @@ int EsMessageSend(EsElement *element, EsMessage *message) {
 	return response;
 }
 
-void _EsPathAnnouncePathMoved(const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes) {
-	if (oldPathBytes == -1) oldPathBytes = EsCStringLength(oldPath);
-	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
-	size_t bufferBytes = 1 + sizeof(uintptr_t) * 2 + oldPathBytes + newPathBytes;
-	char *buffer = (char *) EsHeapAllocate(bufferBytes, false);
-
-	if (buffer) {
-		buffer[0] = DESKTOP_MSG_ANNOUNCE_PATH_MOVED;
-		EsMemoryCopy(buffer + 1, &oldPathBytes, sizeof(uintptr_t));
-		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t), &newPathBytes, sizeof(uintptr_t));
-		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2, oldPath, oldPathBytes);
-		EsMemoryCopy(buffer + 1 + sizeof(uintptr_t) * 2 + oldPathBytes, newPath, newPathBytes);
-		MessageDesktop(buffer, bufferBytes);
-		EsHeapFree(buffer);
-	}
-}
-
-void EsOpenDocumentQueryInformation(const char *path, ptrdiff_t pathBytes, EsOpenDocumentInformation *information) {
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
-
-	if (buffer) {
-		buffer[0] = DESKTOP_MSG_QUERY_OPEN_DOCUMENT;
-		EsMemoryCopy(buffer + 1, path, pathBytes);
-		EsBuffer response = { .out = (uint8_t *) information, .bytes = sizeof(EsOpenDocumentInformation) };
-		MessageDesktop(buffer, pathBytes + 1, ES_INVALID_HANDLE, &response);
-		EsHeapFree(buffer);
-	}
-}
-
-void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) {
-	uint8_t m = DESKTOP_MSG_LIST_OPEN_DOCUMENTS;
-	MessageDesktop(&m, 1, ES_INVALID_HANDLE, outputBuffer);
-}
-
 void EsApplicationRunTemporary(const char *path, ptrdiff_t pathBytes) {
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
 	char *buffer = (char *) EsHeapAllocate(pathBytes + 1, false);
@@ -796,62 +644,6 @@ void InstanceClose(EsInstance *instance) {
 	if (apiInstance->startupInformation->filePathBytes) {
 		EsElementFocus(button);
 	}
-}
-
-void FileStoreCloseHandle(EsFileStore *fileStore) {
-	EsMessageMutexCheck(); // TODO Remove this limitation?
-	EsAssert(fileStore->handles < 0x80000000);
-
-	if (--fileStore->handles) {
-		return;
-	}
-
-	if (fileStore->type == FILE_STORE_HANDLE) {
-		if (fileStore->handle) {
-			EsHandleClose(fileStore->handle);
-		}
-	} else if (fileStore->type == FILE_STORE_PATH || fileStore->type == FILE_STORE_EMBEDDED_FILE) {
-		// The path is stored after the file store allocation.
-	}
-
-	EsHeapFree(fileStore);
-}
-
-EsFileStore *FileStoreCreateFromPath(const char *path, size_t pathBytes) {
-	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + pathBytes, false);
-	if (!fileStore) return nullptr;
-	EsMemoryZero(fileStore, sizeof(EsFileStore));
-	fileStore->type = FILE_STORE_PATH;
-	fileStore->handles = 1;
-	fileStore->error = ES_SUCCESS;
-	fileStore->path = (char *) (fileStore + 1);
-	fileStore->pathBytes = pathBytes;
-	EsMemoryCopy(fileStore->path, path, pathBytes);
-	return fileStore;
-}
-
-EsFileStore *FileStoreCreateFromHandle(EsHandle handle) {
-	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore), true);
-	if (!fileStore) return nullptr;
-	fileStore->type = FILE_STORE_HANDLE;
-	fileStore->handles = 1;
-	fileStore->error = ES_SUCCESS;
-	fileStore->handle = handle;
-	return fileStore;
-}
-
-EsFileStore *FileStoreCreateFromEmbeddedFile(const EsBundle *bundle, const char *name, size_t nameBytes) {
-	EsFileStore *fileStore = (EsFileStore *) EsHeapAllocate(sizeof(EsFileStore) + nameBytes, false);
-	if (!fileStore) return nullptr;
-	EsMemoryZero(fileStore, sizeof(EsFileStore));
-	fileStore->type = FILE_STORE_EMBEDDED_FILE;
-	fileStore->handles = 1;
-	fileStore->error = ES_SUCCESS;
-	fileStore->path = (char *) (fileStore + 1);
-	fileStore->pathBytes = nameBytes;
-	fileStore->bundle = bundle;
-	EsMemoryCopy(fileStore->path, name, nameBytes);
-	return fileStore;
 }
 
 void InstanceCreateFileStore(APIInstance *instance, EsHandle handle) {
@@ -1125,7 +917,7 @@ EsMessage *EsMessageReceive() {
 				FreeUnusedStyles(true /* include permanent styles */);
 				theming.loadedStyles.Free();
 				SystemConfigurationUnload();
-				api.mountPoints2.Free();
+				api.mountPoints.Free();
 				api.postBox.Free();
 				api.timers.Free();
 				gui.animatingElements.Free();
@@ -1923,46 +1715,6 @@ void EsInstanceSetActiveUndoManager(EsInstance *_instance, EsUndoManager *manage
 
 	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_UNDO), !manager->undoStack.Length());
 	EsCommandSetDisabled(EsCommandByID(manager->instance, ES_COMMAND_REDO), !manager->redoStack.Length());
-}
-
-const void *EsBundleFind(const EsBundle *bundle, const char *_name, ptrdiff_t nameBytes, size_t *byteCount) {
-	if (!bundle) {
-		bundle = &bundleDefault;
-	}
-
-	if (nameBytes == -1) {
-		nameBytes = EsCStringLength(_name);
-	}
-
-	if (bundle->bytes != -1) {
-		if ((size_t) bundle->bytes < sizeof(BundleHeader) 
-				|| (size_t) (bundle->bytes - sizeof(BundleHeader)) / sizeof(BundleFile) < bundle->base->fileCount
-				|| bundle->base->signature != BUNDLE_SIGNATURE || bundle->base->version != 1) {
-			return nullptr;
-		}
-	}
-
-	const BundleHeader *header = bundle->base;
-	const BundleFile *files = (const BundleFile *) (header + 1);
-	uint64_t name = CalculateCRC64(_name, nameBytes, 0);
-
-	for (uintptr_t i = 0; i < header->fileCount; i++) {
-		if (files[i].nameCRC64 == name) {
-			if (byteCount) {
-				*byteCount = files[i].bytes;
-			}
-
-			if (bundle->bytes != -1) {
-				if (files[i].offset >= (size_t) bundle->bytes || files[i].bytes > (size_t) (bundle->bytes - files[i].offset)) {
-					return nullptr;
-				}
-			}
-
-			return (const uint8_t *) header + files[i].offset;
-		}
-	}
-
-	return nullptr;
 }
 
 struct EsUserTask {

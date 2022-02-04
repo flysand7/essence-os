@@ -199,11 +199,7 @@ void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error)
 	EsFileOffset size = EsFileGetSize(handle);
 	if (fileSize) *fileSize = size;
 
-#ifdef KERNEL
-	void *buffer = EsHeapAllocate(size + 1, false, K_PAGED);
-#else
 	void *buffer = EsHeapAllocate(size + 1, false);
-#endif
 
 	if (!buffer) {
 		if (error) *error = ES_ERROR_INSUFFICIENT_RESOURCES;
@@ -215,11 +211,7 @@ void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error)
 	uintptr_t result = EsFileReadSync(handle, 0, size, buffer);
 
 	if (size != result) {
-#ifdef KERNEL
-		EsHeapFree(buffer, size + 1, K_PAGED);
-#else
 		EsHeapFree(buffer);
-#endif
 		buffer = nullptr;
 		if (error) *error = (EsError) result;
 	}
@@ -314,133 +306,6 @@ void *EsMemoryMapObject(EsHandle sharedMemoryRegion, uintptr_t offset, size_t si
 	}
 }
 
-EsFileInformation EsFileOpen(const char *path, ptrdiff_t pathLength, uint32_t flags) {
-	if (pathLength == -1) {
-		pathLength = EsCStringLength(path);
-	}
-
-	_EsNodeInformation node;
-	EsError result = NodeOpen(path, pathLength, flags, &node);
-
-	if (result == ES_SUCCESS && node.type == ES_NODE_DIRECTORY && (~flags & ES_NODE_DIRECTORY /* for internal use only */)) {
-		result = ES_ERROR_INCORRECT_NODE_TYPE;
-		EsHandleClose(node.handle);
-	}
-
-	EsFileInformation information = {};
-
-	if (result == ES_SUCCESS) {
-		information.handle = node.handle;
-		information.size = node.fileSize;
-	}
-
-	information.error = result;
-	return information;
-}
-
-size_t EsFileReadSync(EsHandle handle, EsFileOffset offset, size_t size, void *buffer) {
-	intptr_t result = EsSyscall(ES_SYSCALL_FILE_READ_SYNC, handle, offset, size, (uintptr_t) buffer);
-	return result;
-}
-
-size_t EsFileWriteSync(EsHandle handle, EsFileOffset offset, size_t size, const void *buffer) {
-	intptr_t result = EsSyscall(ES_SYSCALL_FILE_WRITE_SYNC, handle, offset, size, (uintptr_t) buffer);
-	return result;
-}
-
-EsFileOffset EsFileGetSize(EsHandle handle) {
-	return EsSyscall(ES_SYSCALL_FILE_GET_SIZE, handle, 0, 0, 0);
-}
-
-EsError EsFileResize(EsHandle handle, EsFileOffset newSize) {
-	return EsSyscall(ES_SYSCALL_FILE_RESIZE, handle, newSize, 0, 0);
-}
-
-void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) {
-	if (file->error != ES_SUCCESS) return nullptr;
-
-	if (file->type == FILE_STORE_HANDLE) {
-		return EsFileReadAllFromHandle(file->handle, fileSize, &file->error);
-	} else if (file->type == FILE_STORE_PATH) {
-		return EsFileReadAll(file->path, file->pathBytes, fileSize, &file->error);
-	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
-		size_t _fileSize;
-		const void *data = EsBundleFind(file->bundle, file->path, file->pathBytes, &_fileSize);
-		void *copy = EsHeapAllocate(_fileSize, false);
-		if (!copy) return nullptr;
-		if (fileSize) *fileSize = _fileSize;
-		EsMemoryCopy(copy, data, _fileSize);
-		return copy;
-	} else {
-		EsAssert(false);
-		return nullptr;
-	}
-}
-
-bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes) {
-	if (file->error == ES_SUCCESS) {
-		if (file->type == FILE_STORE_HANDLE) {
-			file->error = EsFileWriteAllFromHandle(file->handle, data, dataBytes);
-		} else if (file->type == FILE_STORE_PATH) {
-			file->error = EsFileWriteAll(file->path, file->pathBytes, data, dataBytes);
-		} else {
-			EsAssert(false);
-		}
-	}
-
-	return file->error == ES_SUCCESS;
-}
-
-bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes) {
-	if (file->error == ES_SUCCESS) {
-		if (file->type == FILE_STORE_HANDLE) {
-			EsError error = EsFileWriteSync(file->handle, EsFileGetSize(file->handle), dataBytes, data);
-			if (ES_CHECK_ERROR(error)) file->error = error;
-		} else {
-			EsAssert(false);
-		}
-	}
-
-	return file->error == ES_SUCCESS;
-}
-
-EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file) {
-	if (file->type == FILE_STORE_HANDLE) {
-		return EsFileGetSize(file->handle);
-	} else if (file->type == FILE_STORE_PATH) {
-		EsDirectoryChild information;
-
-		if (EsPathQueryInformation(file->path, file->pathBytes, &information)) {
-			return file->pathBytes;
-		} else {
-			return -1;
-		}
-	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
-		size_t size;
-		EsBundleFind(file->bundle, file->path, file->pathBytes, &size);
-		return size;
-	} else {
-		EsAssert(false);
-		return 0;
-	}
-}
-
-void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) {
-	if (file->type == FILE_STORE_HANDLE) {
-		EsFileOffsetDifference size = EsFileStoreGetSize(file);
-		if (size == -1) return nullptr;
-		*fileSize = size;
-		return EsMemoryMapObject(file->handle, 0, size, flags); 
-	} else if (file->type == FILE_STORE_PATH) {
-		return EsFileMap(file->path, file->pathBytes, fileSize, flags);
-	} else if (file->type == FILE_STORE_EMBEDDED_FILE) {
-		return (void *) EsBundleFind(file->bundle, file->path, file->pathBytes, fileSize);
-	} else {
-		EsAssert(false);
-		return nullptr;
-	}
-}
-
 uintptr_t EsWait(EsHandle *handles, size_t count, uintptr_t timeoutMs) {
 	return EsSyscall(ES_SYSCALL_WAIT, (uintptr_t) handles, count, timeoutMs, 0);
 }
@@ -465,49 +330,6 @@ EsObjectID EsProcessGetID(EsHandle process) {
 	return id;
 }
 
-ptrdiff_t EsDirectoryEnumerateChildrenFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
-	if (!size) return 0;
-	return EsSyscall(ES_SYSCALL_DIRECTORY_ENUMERATE, directory, (uintptr_t) buffer, size, 0);
-}
-
-#ifndef KERNEL
-ptrdiff_t EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, EsDirectoryChild **buffer) {
-	*buffer = nullptr;
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-
-	_EsNodeInformation node;
-	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_NODE_DIRECTORY, &node);
-	if (error != ES_SUCCESS) return error;
-
-	if (node.directoryChildren == ES_DIRECTORY_CHILDREN_UNKNOWN) {
-		node.directoryChildren = 4194304 / sizeof(EsDirectoryChild); // TODO Grow the buffer until all entries fit.
-	}
-
-	if (node.directoryChildren == 0) {
-		// Empty directory.
-		*buffer = nullptr;
-		return 0;
-	}
-
-	*buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
-	ptrdiff_t result;
-
-	if (*buffer) {
-		result = EsDirectoryEnumerateChildrenFromHandle(node.handle, *buffer, node.directoryChildren);
-
-		if (ES_CHECK_ERROR(result)) { 
-			EsHeapFree(*buffer); 
-			*buffer = nullptr; 
-		}
-	} else {
-		result = ES_ERROR_INSUFFICIENT_RESOURCES;
-	}
-
-	EsHandleClose(node.handle);
-	return result;
-}
-#endif
-
 void EsBatch(EsBatchCall *calls, size_t count) {
 #if 0
 	for (uintptr_t i = 0; i < count; i++) {
@@ -517,106 +339,6 @@ void EsBatch(EsBatchCall *calls, size_t count) {
 #endif
 
 	EsSyscall(ES_SYSCALL_BATCH, (uintptr_t) calls, count, 0, 0);
-}
-
-EsError EsPathDelete(const char *path, ptrdiff_t pathBytes) {
-	_EsNodeInformation node;
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_FILE_WRITE, &node);
-	if (ES_CHECK_ERROR(error)) return error;
-	error = EsSyscall(ES_SYSCALL_NODE_DELETE, node.handle, 0, 0, 0);
-	EsHandleClose(node.handle);
-	return error;
-}
-
-EsError EsFileDelete(EsHandle handle) {
-	return EsSyscall(ES_SYSCALL_NODE_DELETE, handle, 0, 0, 0);
-}
-
-void *EsFileMap(const char *path, ptrdiff_t pathBytes, size_t *fileSize, uint32_t flags) {
-	EsFileInformation information = EsFileOpen(path, pathBytes, 
-			ES_NODE_FAIL_IF_NOT_FOUND | ((flags & ES_MEMORY_MAP_OBJECT_READ_WRITE) ? ES_FILE_WRITE : ES_FILE_READ));
-
-	if (ES_CHECK_ERROR(information.error)) {
-		return nullptr;
-	}
-
-	void *base = EsMemoryMapObject(information.handle, 0, information.size, flags); 
-	EsHandleClose(information.handle);
-	if (fileSize) *fileSize = information.size;
-	return base;
-}
-
-EsError EsPathMove(const char *oldPath, ptrdiff_t oldPathBytes, const char *newPath, ptrdiff_t newPathBytes, uint32_t flags) {
-	if (oldPathBytes == -1) oldPathBytes = EsCStringLength(oldPath);
-	if (newPathBytes == -1) newPathBytes = EsCStringLength(newPath);
-
-	if (newPathBytes && newPath[newPathBytes - 1] == '/') {
-		newPathBytes--;
-	}
-
-	_EsNodeInformation node = {};
-	_EsNodeInformation directory = {};
-	EsError error;
-
-	error = NodeOpen(oldPath, oldPathBytes, ES_NODE_FAIL_IF_NOT_FOUND, &node);
-	if (error != ES_SUCCESS) return error;
-
-	uintptr_t s = 0;
-	for (intptr_t i = 0; i < newPathBytes; i++) if (newPath[i] == '/') s = i + 1;
-	error = NodeOpen(newPath, s, ES_NODE_DIRECTORY | ES_NODE_FAIL_IF_NOT_FOUND, &directory);
-	if (error != ES_SUCCESS) { EsHandleClose(node.handle); return error; }
-
-	error = EsSyscall(ES_SYSCALL_NODE_MOVE, node.handle, directory.handle, (uintptr_t) newPath + s, newPathBytes - s);
-
-	if (error == ES_ERROR_VOLUME_MISMATCH && (flags & ES_PATH_MOVE_ALLOW_COPY_AND_DELETE) && (node.type == ES_NODE_FILE)) {
-		// The paths are on different file systems, so we cannot directly move the file.
-		// Instead we need to copy the file to the new path, and then delete the old file.
-		// TODO Does it matter that this isn't atomic?
-		error = EsFileCopy(oldPath, oldPathBytes, newPath, newPathBytes);
-		if (error == ES_SUCCESS) error = EsPathDelete(oldPath, oldPathBytes);
-	}
-
-	EsHandleClose(node.handle);
-	EsHandleClose(directory.handle);
-	return error;
-}
-
-bool EsPathExists(const char *path, ptrdiff_t pathBytes, EsNodeType *type) {
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	_EsNodeInformation node = {};
-	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND, &node);
-	if (error != ES_SUCCESS) return false;
-	EsHandleClose(node.handle);
-	if (type) *type = node.type;
-	return true;
-}
-
-bool EsPathQueryInformation(const char *path, ptrdiff_t pathBytes, EsDirectoryChild *information) {
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	_EsNodeInformation node = {};
-	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND, &node);
-	if (error != ES_SUCCESS) return false;
-	EsHandleClose(node.handle);
-	information->type = node.type;
-	information->fileSize = node.fileSize;
-	information->directoryChildren = node.directoryChildren;
-	return true;
-}
-
-EsError EsPathCreate(const char *path, ptrdiff_t pathBytes, EsNodeType type, bool createLeadingDirectories) {
-	if (pathBytes == -1) pathBytes = EsCStringLength(path);
-	_EsNodeInformation node = {};
-	EsError error = NodeOpen(path, pathBytes, 
-			ES_NODE_FAIL_IF_FOUND | type | (createLeadingDirectories ? ES_NODE_CREATE_DIRECTORIES : 0), 
-			&node);
-	if (error != ES_SUCCESS) return error;
-	EsHandleClose(node.handle);
-	return ES_SUCCESS;
-}
-
-EsError EsFileControl(EsHandle file, uint32_t flags) {
-	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, flags, 0, 0);
 }
 
 void EsConstantBufferRead(EsHandle buffer, void *output) {
@@ -644,7 +366,6 @@ EsHandle EsProcessOpen(uint64_t pid) {
 	return EsSyscall(ES_SYSCALL_PROCESS_OPEN, pid, 0, 0, 0);
 }
 
-#ifndef KERNEL
 EsHandle EsConstantBufferShare(EsHandle constantBuffer, EsHandle targetProcess) {
 	return EsSyscall(ES_SYSCALL_HANDLE_SHARE, constantBuffer, targetProcess, 0, 0);
 }
@@ -656,7 +377,6 @@ EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle tar
 size_t EsConstantBufferGetSize(EsHandle buffer) {
 	return EsSyscall(ES_SYSCALL_CONSTANT_BUFFER_READ, buffer, 0, 0, 0);
 }
-#endif
 
 EsError EsAddressResolve(const char *domain, ptrdiff_t domainBytes, uint32_t flags, EsAddress *address) {
 	return EsSyscall(ES_SYSCALL_DOMAIN_NAME_RESOLVE, (uintptr_t) domain, domainBytes, (uintptr_t) address, flags);
