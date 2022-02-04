@@ -91,8 +91,8 @@ void AutomationBuild() {
 	assert SystemShellExecute("bin/build build-optional-ports > /dev/null");
 
 	// Copy a few sample files.
-	assert SystemShellExecute("cp -r res/Sample\\ Images/* root/Demo\\ Content/"); // TODO Replace.
-	assert SystemShellExecute("cp -r help root/Demo\\ Content/"); // TODO Replace.
+	assert PathCopyRecursively("res/Sample Images", "root/Demo Content");
+	assert PathCopyRecursively("help", "root/Demo Content/Documentation");
 	assert FileCopy("bin/noodle.rom", "root/Demo Content/Noodle.uxn");
 	assert FileCopy("res/A Study in Scarlet.txt", "root/Demo Content/A Study in Scarlet.txt");
 	assert FileCopy("res/Theme Source.dat", "root/Demo Content/Theme.designer");

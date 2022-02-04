@@ -535,6 +535,21 @@ char baseModuleSource[] = {
 	"	}"
 	"	return PathDelete(path);"
 	"}"
+	"bool PathCopyRecursively(str source, str destination) {"
+	"	str[] all = DirectoryEnumerateChildrenRecursively(source);"
+	"	if all == null { return false; }"
+	"	if !PathCreateDirectory(destination) { return false; }"
+	"	for int i = 0; i < all:len(); i += 1 {"
+	"		str sourceItem = source + \"/\" + all[i];"
+	"		str destinationItem = destination + \"/\" + all[i];"
+	"		if PathIsDirectory(sourceItem) {"
+	"			PathCreateDirectory(destinationItem);"
+	"		} else {"
+	"			if !FileCopy(sourceItem, destinationItem) { return false; }"
+	"		}"
+	"	}"
+	"	return true;"
+	"}"
 					      
 	// Persistent variables:
 

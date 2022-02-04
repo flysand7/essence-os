@@ -1,5 +1,4 @@
-// TODO Replace calls to cp.
-// TODO Parallel builds.
+// TODO Replace the remaining few calls to sed/cp.
 
 #import "util/get_source.script" get_source;
 
@@ -150,8 +149,8 @@ void PortMesa() {
 	assert FileCopy("bin/build-mesa/subprojects/expat-2.2.5/libexpat.a", "root/Applications/POSIX/lib/libexpat.a");
 	assert FileCopy("bin/build-mesa/subprojects/zlib-1.2.11/libz.a", "root/Applications/POSIX/lib/libz.a");
 	assert FileCopy("bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a", "root/Applications/POSIX/lib/libOSMesa.a");
-	assert SystemShellExecute("cp -r bin/source/include/GL root/Applications/POSIX/include");
-	assert SystemShellExecute("cp -r bin/source/include/KHR root/Applications/POSIX/include");
+	assert PathCopyRecursively("bin/source/include/GL", "root/Applications/POSIX/GL");
+	assert PathCopyRecursively("bin/source/include/KHR", "root/Applications/POSIX/KHR");
 	assert FileCopy("bin/source/docs/license.html", "bin/Mesa License.html");
 
 	PathDeleteRecursively("bin/source");
@@ -434,8 +433,8 @@ void PortFreeType() {
 	}
 
 	if !PathExists("root/Applications/POSIX/include/ft2build.h") {
-		assert SystemShellExecute("cp -p bin/freetype/include/ft2build.h root/Applications/POSIX/include");
-		assert SystemShellExecute("cp -p -r bin/freetype/include/freetype root/Applications/POSIX/include");
+		assert FileCopy("bin/freetype/include/ft2build.h", "root/Applications/POSIX/include/ft2build.h");
+		assert PathCopyRecursively("bin/freetype/include/freetype", "root/Applications/POSIX/include/freetype");
 	}
 
 	if !PathExists("bin/freetype/libfreetype_%targetName%.a") {
@@ -486,7 +485,7 @@ void PortHarfBuzz() {
 
 	if !PathExists("root/Applications/POSIX/include/harfbuzz") {
 		assert PathCreateLeadingDirectories("root/Applications/POSIX/include/harfbuzz");
-		assert SystemShellExecute("cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz");
+		assert SystemShellExecute("cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz"); // TODO Replace.
 	}
 
 	if !PathExists("bin/harfbuzz/libharfbuzz_%targetName%.a") {
@@ -567,14 +566,14 @@ void PortMusl() {
 		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libpthread.a");
 		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/librt.a");
 
-		assert SystemShellExecute("cp -p -r bin/musl/include/* root/Applications/POSIX/include/");
-		assert SystemShellExecute("cp -p -r bin/musl/arch/generic/* root/Applications/POSIX/include/");
-		assert SystemShellExecute("cp -p -r ports/musl/obj_bits_%targetName%/* root/Applications/POSIX/include/");
+		assert PathCopyRecursively("bin/musl/include", "root/Applications/POSIX/include");
+		assert PathCopyRecursively("bin/musl/arch/generic", "root/Applications/POSIX/include");
+		assert PathCopyRecursively("ports/musl/obj_bits_%targetName%", "root/Applications/POSIX/include");
 
 		if targetName == "x86_64" {
-			assert SystemShellExecute("cp -p -r bin/musl/arch/x86_64/* root/Applications/POSIX/include/");
+			assert PathCopyRecursively("bin/musl/arch/x86_64", "root/Applications/POSIX/include");
 		} else if targetName == "x86_32" {
-			assert SystemShellExecute("cp -p -r bin/musl/arch/i386/* root/Applications/POSIX/include/");
+			assert PathCopyRecursively("bin/musl/arch/i386", "root/Applications/POSIX/include");
 		} else {
 			assert false;
 		}
