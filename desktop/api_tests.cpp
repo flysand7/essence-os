@@ -1229,7 +1229,7 @@ bool RestartTest() {
 	index++;
 	if (ES_SUCCESS != EsFileWriteAll(EsLiteral("|Settings:/restart_test.txt"), &index, sizeof(uint32_t))) return false;
 	EsPrint("Restart %d...\n", index);
-	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_RESTART, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_SHUTDOWN, ES_SHUTDOWN_ACTION_RESTART, 0, 0, 0);
 	while (EsMessageReceive());
 	return false;
 }
@@ -1345,7 +1345,7 @@ void RunTests() {
 		}
 	}
 
-	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_POWER_OFF, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_SHUTDOWN, ES_SHUTDOWN_ACTION_POWER_OFF, 0, 0, 0);
 	EsProcessTerminateCurrent();
 }
 

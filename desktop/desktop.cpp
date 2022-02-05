@@ -1418,11 +1418,11 @@ void ShutdownModalCreate() {
 	// Setup command callbacks when the buttons are pressed.
 
 	EsButtonOnCommand(shutdownButton, [] (EsInstance *, EsElement *, EsCommand *) {
-		Shutdown(SHUTDOWN_ACTION_POWER_OFF);
+		Shutdown(ES_SHUTDOWN_ACTION_POWER_OFF);
 	});
 
 	EsButtonOnCommand(restartButton, [] (EsInstance *, EsElement *, EsCommand *) {
-		Shutdown(SHUTDOWN_ACTION_RESTART);
+		Shutdown(ES_SHUTDOWN_ACTION_RESTART);
 	});
 
 	EsButtonOnCommand(cancelButton, [] (EsInstance *, EsElement *element, EsCommand *) {

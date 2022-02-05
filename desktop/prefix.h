@@ -378,9 +378,6 @@ struct SystemStartupDataHeader {
 #define CURSOR_SPEED(x) ((x) >> 16)
 #define CURSOR_TRAILS(x) (((x) >> 13) & 7)
 
-#define SHUTDOWN_ACTION_POWER_OFF (1)
-#define SHUTDOWN_ACTION_RESTART (2)
-
 #ifdef __cplusplus
 extern "C" const void *EsBufferRead(struct EsBuffer *buffer, size_t readBytes);
 extern "C" const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);

@@ -779,6 +779,9 @@ define ES_LIST_VIEW_CHOOSE_ITEM_ENTER        (2)
 define ES_LIST_VIEW_CHOOSE_ITEM_DOUBLE_CLICK (3)
 define ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK (4)
 
+define ES_SHUTDOWN_ACTION_POWER_OFF (1)
+define ES_SHUTDOWN_ACTION_RESTART (2)
+
 include desktop/icons.header
 
 enum EsFatalError {
@@ -1984,6 +1987,7 @@ function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize);
 function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
 function EsError EsHandleClose(EsHandle handle); 
 function void EsSystemShowShutdownDialog();
+function void EsSystemShutdown(uint32_t action);
 
 function void EsPOSIXInitialise(int *argc, char ***argv); 
 function long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long a6); 

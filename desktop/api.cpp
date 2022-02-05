@@ -553,6 +553,10 @@ void EsSystemShowShutdownDialog() {
 	MessageDesktop(&message, 1);
 }
 
+void EsSystemShutdown(uint32_t action) {
+	EsSyscall(ES_SYSCALL_SHUTDOWN, action, 0, 0, 0);
+}
+
 void EsSystemConfigurationReadFileTypes(EsBuffer *buffer) {
 	uint8_t m = DESKTOP_MSG_FILE_TYPES_GET;
 	MessageDesktop(&m, 1, ES_INVALID_HANDLE, buffer);

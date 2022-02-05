@@ -948,11 +948,11 @@ void ButtonInstallOptions(EsInstance *, EsElement *, EsCommand *) {
 }
 
 void ButtonShutdown(EsInstance *, EsElement *, EsCommand *) {
-	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_POWER_OFF, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_SHUTDOWN, ES_SHUTDOWN_ACTION_POWER_OFF, 0, 0, 0);
 }
 
 void ButtonRestart(EsInstance *, EsElement *, EsCommand *) {
-	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_RESTART, 0, 0, 0);
+	EsSyscall(ES_SYSCALL_SHUTDOWN, ES_SHUTDOWN_ACTION_RESTART, 0, 0, 0);
 }
 
 void ButtonInstall(EsInstance *, EsElement *, EsCommand *) {

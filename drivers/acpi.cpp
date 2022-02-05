@@ -329,7 +329,7 @@ CPULocalStorage *KGetCPULocal(uintptr_t index) {
 #include "acpica.cpp"
 #else
 void ArchShutdown() {
-	if (shutdownAction == SHUTDOWN_ACTION_RESTART) ProcessorReset();
+	if (shutdownAction == ES_SHUTDOWN_ACTION_RESTART) ProcessorReset();
 	StartDebugOutput();
 	EsPrint("\nIt's now safe to turn off your computer.\n");
 	ProcessorDisableInterrupts();
