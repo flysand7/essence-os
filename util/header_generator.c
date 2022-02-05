@@ -4,7 +4,6 @@ File output, outputAPIArray, outputSyscallArray, outputDependencies, outputEnumS
 char *buffer;
 int position;
 
-#define DEST_OS "root/Applications/POSIX/include/essence.h"
 #define DEST_API_ARRAY "bin/generated_code/api_array.h"
 #define DEST_SYSCALL_ARRAY "bin/generated_code/syscall_array.h"
 #define DEST_ENUM_STRINGS_ARRAY "bin/generated_code/enum_strings_array.h"
@@ -1204,11 +1203,12 @@ int HeaderGeneratorMain(int argc, char **argv) {
 	if (argc == 3) {
 		language = argv[1];
 		output = FileOpen(argv[2], 'w');
-	} else if (argc == 1) {
-		output = FileOpen(DEST_OS, 'w');
-		outputAPIArray = FileOpen(DEST_API_ARRAY, 'w');
-		outputSyscallArray = FileOpen(DEST_SYSCALL_ARRAY, 'w');
-		outputEnumStringsArray = FileOpen(DEST_ENUM_STRINGS_ARRAY, 'w');
+
+		if (0 == strcmp(argv[1], "system")) {
+			outputAPIArray = FileOpen(DEST_API_ARRAY, 'w');
+			outputSyscallArray = FileOpen(DEST_SYSCALL_ARRAY, 'w');
+			outputEnumStringsArray = FileOpen(DEST_ENUM_STRINGS_ARRAY, 'w');
+		}
 	} else {
 		Log("Usage: %s <language> <path-to-output-file>\n", argv[0]);
 		return 1;
@@ -1309,7 +1309,7 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		}
 	}
 
-	if (0 == strcmp(language, "c")) {
+	if (0 == strcmp(language, "c") || 0 == strcmp(language, "system")) {
 		OutputC(&root);
 	} else if (0 == strcmp(language, "odin")) {
 		OutputOdin(&root);

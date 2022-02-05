@@ -164,7 +164,7 @@ bool BuildAPIDependencies() {
 	LoadOptions();
 
 	if (CheckDependencies("API Header")) {
-		CallSystem("bin/build_core headers");
+		CallSystem("bin/build_core headers system root/Applications/POSIX/include/essence.h");
 		ParseDependencies("bin/dependency_files/api_header.d", "API Header", false);
 	}
 

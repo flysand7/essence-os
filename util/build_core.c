@@ -215,7 +215,7 @@ const char *toolchainConvertSVG = "/Applications/POSIX/bin/render_svg";
 const char *toolchainLinkerScripts = "/Applications/POSIX/lib";
 const char *toolchainCRTObjects = "/Applications/POSIX/lib";
 const char *toolchainCompilerObjects = "/Applications/POSIX/lib/gcc/x86_64-essence/" GCC_VERSION;
-const char *target = "x86_64"; // TODO Don't hardcode the target.
+const char *target = "x86_64"; // TODO Don't hard code the target.
 
 char *executeEnvironment[3] = {
 	(char *) "PATH=/Applications/POSIX/bin",

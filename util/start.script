@@ -67,6 +67,18 @@ void GenerateOVF() {
 	assert FileWriteAll("bin/ova/Essence.ovf", result);
 }
 
+void DeleteUnneededDirectoriesForDebugInfo() {
+	PathDeleteRecursively("cross");
+	PathDeleteRecursively("Essence");
+	PathDeleteRecursively("bin/ova");
+	PathDeleteRecursively("bin/cache");
+	PathDeleteRecursively("bin/freetype");
+	PathDeleteRecursively("bin/harfbuzz");
+	PathDeleteRecursively("bin/musl");
+	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
+	PathDeleteRecursively(".git");
+}
+
 void AutomationBuild() {
 	// TODO:
 	// Copy the source onto the drive for self hosting.
@@ -160,15 +172,7 @@ void AutomationBuild() {
 	assert SystemShellExecute("tar -cJf ../Essence.tar.xz Essence/");
 
 	// Compress the debug info.
-	PathDeleteRecursively("cross");
-	PathDeleteRecursively("Essence");
-	PathDeleteRecursively("bin/ova");
-	PathDeleteRecursively("bin/cache");
-	PathDeleteRecursively("bin/freetype");
-	PathDeleteRecursively("bin/harfbuzz");
-	PathDeleteRecursively("bin/musl");
-	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
-	PathDeleteRecursively(".git");
+	DeleteUnneededDirectoriesForDebugInfo();
 	assert SystemShellExecuteWithWorkingDirectory("..", "tar -cJf debug_info.tar.xz essence");
 }
 
@@ -201,12 +205,6 @@ void AutomationRunTests() {
 	assert SystemShellExecute("bin/build build");
 	assert SystemShellExecute("bin/build build-port busybox");
 	assert SystemShellExecute("bin/build run-tests");
-	PathDeleteRecursively("cross");
-	PathDeleteRecursively("bin/cache");
-	PathDeleteRecursively("bin/freetype");
-	PathDeleteRecursively("bin/harfbuzz");
-	PathDeleteRecursively("bin/musl");
-	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
-	PathDeleteRecursively("bin/drive");
-	PathDeleteRecursively(".git");
+	DeleteUnneededDirectoriesForDebugInfo();
+	PathDelete("bin/drive");
 }

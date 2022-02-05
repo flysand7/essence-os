@@ -14,6 +14,10 @@ str crossDirectory;
 str rootDirectory;
 str compilerPath;
 
+str posixDestDir;
+str posixPrefix;
+str posixRoot;
+
 // GCC port only:
 bool buildCross #option;
 bool runningMakefiles #persist;
@@ -40,13 +44,13 @@ void PortFFmpeg() {
 
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", 
 			"../source/configure --disable-all --enable-cross-compile --disable-pthreads "
-			+ "--cc=%toolchainPrefix%-gcc --cxx=%toolchainPrefix%-g++ --prefix=/Applications/POSIX "
+			+ "--cc=%toolchainPrefix%-gcc --cxx=%toolchainPrefix%-g++ --prefix=%posixPrefix% "
 			+ "--enable-avcodec --enable-avformat --enable-swscale --enable-decoder=h264 --enable-parser=h264 "
 			+ "--enable-decoder=aac --enable-parser=aac --enable-demuxer=mov --enable-protocol=file ");
 	// --disable-optimizations
 
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make -j %processorCount%");
-	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make DESTDIR=%rootDirectory% install");
+	assert SystemShellExecuteWithWorkingDirectory("bin/build-ffmpeg", "make DESTDIR=%posixDestDir% install");
 
 	assert FileCopy("bin/source/LICENSE.md", "bin/FFmpeg License/LICENSE.md");
 	assert FileCopy("bin/source/COPYING.GPLv2", "bin/FFmpeg License/COPYING.GPLv2");
@@ -76,9 +80,9 @@ void PortNasm() {
 	str version = "2.15.05";
 	get_source.Get("https://www.nasm.us/pub/nasm/releasebuilds/%version%/nasm-%version%.tar.xz", "nasm-%version%",
 			"3caf6729c1073bf96629b57cee31eeb54f4f8129b01902c73428836550b30a3f");
-	assert SystemShellExecuteWithWorkingDirectory("bin/source", "./configure --host=%toolchainPrefix% CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ --prefix=/Applications/POSIX");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "./configure --host=%toolchainPrefix% CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ --prefix=%posixPrefix%");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
-	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make install DESTDIR=%rootDirectory%");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make install DESTDIR=%posixDestDir%");
 	assert FileCopy("bin/source/LICENSE", "bin/Nasm License.txt");
 	PathDeleteRecursively("bin/source");
 }
@@ -100,10 +104,10 @@ void PortBochs() {
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", 
 			"./configure --with-essence CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ "
 			+ "CFLAGS=\" -O2 -D_GNU_SOURCE \" CXXFLAGS=\" -O2 -D_GNU_SOURCE \" "
-			+ "--host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" --exec-prefix=\"/Applications/POSIX\" "
+			+ "--host=%toolchainPrefix% --prefix=\"%posixPrefix%\" --exec-prefix=\"%posixPrefix%\" "
 			+ "--enable-cpu-level=6 --enable-x86-64 --enable-all-optimizations");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
-	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make DESTDIR=%rootDirectory% install");
+	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make DESTDIR=%posixDestDir% install");
 	PathDeleteRecursively("bin/source");
 }
 
@@ -117,10 +121,11 @@ void PortBusybox() {
 	get_source.Get("https://www.busybox.net/downloads/busybox-%version%.tar.bz2", "busybox-%version%",
 			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
 	str[] config = StringSplitByCharacter(FileReadAll("ports/busybox/config"), "\n", true);
+	config:insert("CONFIG_BUSYBOX_EXEC_PATH=\"%posixPrefix%/bin/busybox\"", 34);
 	config:insert("CONFIG_SYSROOT=\"%rootDirectory%\"", 51);
 	assert FileWriteAll("bin/source/.config", StringJoin(config, "\n", false));
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
-	assert FileCopy("bin/source/busybox", "%rootDirectory%/Applications/POSIX/bin/busybox");
+	assert FileCopy("bin/source/busybox", "%posixRoot%/bin/busybox");
 	assert FileCopy("bin/source/LICENSE", "bin/BusyBox License.txt");
 
 	PathDeleteRecursively("bin/source");
@@ -147,11 +152,11 @@ void PortMesa() {
 			+ "-Dosmesa=gallium -Ddefault_library=static -Dllvm=false");
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "ninja -C ../build-mesa -j %processorCount%");
 
-	assert FileCopy("bin/build-mesa/subprojects/expat-2.2.5/libexpat.a", "root/Applications/POSIX/lib/libexpat.a");
-	assert FileCopy("bin/build-mesa/subprojects/zlib-1.2.11/libz.a", "root/Applications/POSIX/lib/libz.a");
-	assert FileCopy("bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a", "root/Applications/POSIX/lib/libOSMesa.a");
-	assert PathCopyRecursively("bin/source/include/GL", "root/Applications/POSIX/include/GL");
-	assert PathCopyRecursively("bin/source/include/KHR", "root/Applications/POSIX/include/KHR");
+	assert FileCopy("bin/build-mesa/subprojects/expat-2.2.5/libexpat.a", "%posixRoot%/lib/libexpat.a");
+	assert FileCopy("bin/build-mesa/subprojects/zlib-1.2.11/libz.a", "%posixRoot%/lib/libz.a");
+	assert FileCopy("bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a", "%posixRoot%/lib/libOSMesa.a");
+	assert PathCopyRecursively("bin/source/include/GL", "%posixRoot%/include/GL");
+	assert PathCopyRecursively("bin/source/include/KHR", "%posixRoot%/include/KHR");
 	assert FileCopy("bin/source/docs/license.html", "bin/Mesa License.html");
 
 	PathDeleteRecursively("bin/source");
@@ -219,7 +224,7 @@ void PortGCC() {
 		assert SystemShellExecute("gcc %libraryPath% -lmpfr bin/test.c -o bin/test"); // If this fails, install mpfr/libmpfr/libmpfr-dev.
 		assert SystemShellExecute("gcc %libraryPath% -lgmp  bin/test.c -o bin/test"); // If this fails, install gmp/libgmp/libgmp-dev.
 	} else {
-		destDir = "DESTDIR=%rootDirectory%";
+		destDir = "DESTDIR=%posixDestDir%";
 	}
 
 	// Ask the user if they want to resume an incomplete build.
@@ -333,19 +338,19 @@ void PortGCC() {
 		// Build libraries.
 		if !buildCross {
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", 
-					"../gmp-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					"../gmp-src/configure --host=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
 					+ "--without-readline CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make -j %processorCount%");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gmp", "make %destDir% install");
 
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", 
-					"../mpfr-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					"../mpfr-src/configure --host=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make -j %processorCount%");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpfr", "make %destDir% install");
 
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", 
-					"../mpc-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
+					"../mpc-src/configure --host=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make -j %processorCount%");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-mpc", "make %destDir% install");
@@ -354,13 +359,13 @@ void PortGCC() {
 		// Run configure for Binutils and GCC.
 		if !buildCross {
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", 
-					"../binutils-src/configure --host=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
-					+ "--with-local-prefix=\"/Applications/POSIX/local\" --with-build-sysroot=%rootDirectory% "
+					"../binutils-src/configure --host=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
+					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%rootDirectory% "
 					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", 
-					"../gcc-src/configure --host=%toolchainPrefix% --target=%toolchainPrefix% --prefix=\"/Applications/POSIX\" "
-					+ "--with-local-prefix=\"/Applications/POSIX/local\" --with-build-sysroot=%rootDirectory% "
+					"../gcc-src/configure --host=%toolchainPrefix% --target=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
+					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%rootDirectory% "
 					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
 					+ "--enable-languages=c,c++ "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ LD=%toolchainPrefix%-ld");
@@ -433,9 +438,9 @@ void PortFreeType() {
 		assert FileCopy("ports/freetype/patch-modules.cfg", "bin/freetype/modules.cfg");
 	}
 
-	if !PathExists("root/Applications/POSIX/include/ft2build.h") {
-		assert FileCopy("bin/freetype/include/ft2build.h", "root/Applications/POSIX/include/ft2build.h");
-		assert PathCopyRecursively("bin/freetype/include/freetype", "root/Applications/POSIX/include/freetype");
+	if !PathExists("%posixRoot%/include/ft2build.h") {
+		assert FileCopy("bin/freetype/include/ft2build.h", "%posixRoot%/include/ft2build.h");
+		assert PathCopyRecursively("bin/freetype/include/freetype", "%posixRoot%/include/freetype");
 	}
 
 	if !PathExists("bin/freetype/libfreetype_%targetName%.a") {
@@ -448,7 +453,7 @@ void PortFreeType() {
 		} else if targetName == "x86_32" {
 			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
 					"./configure --without-zlib --without-bzip2 --without-png --without-harfbuzz "
-					+ "CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3 -I../../root/Applications/POSIX/include\" "
+					+ "CFLAGS=\"-g -ffreestanding -Wno-unused-function -O3 -I%posixRoot%/include\" "
 					+ "LDFLAGS=\"-nostdlib -lgcc\" CC=%toolchainPrefix%-gcc --host=%toolchainPrefix%");
 			assert SystemShellExecuteWithWorkingDirectory("bin/freetype", 
 					"sed -i '/define FT_USE_AUTOCONF_SIZEOF_TYPES/d' builds/unix/ftconfig.h");
@@ -460,7 +465,7 @@ void PortFreeType() {
 		assert FileCopy("bin/freetype/objs/.libs/libfreetype.a", "bin/freetype/libfreetype_%targetName%.a");
 	}
 
-	assert FileCopy("bin/freetype/libfreetype_%targetName%.a", "root/Applications/POSIX/lib/libfreetype.a");
+	assert FileCopy("bin/freetype/libfreetype_%targetName%.a", "%posixRoot%/lib/libfreetype.a");
 }
 
 void PortHarfBuzz() {
@@ -484,9 +489,9 @@ void PortHarfBuzz() {
 		}
 	}
 
-	if !PathExists("root/Applications/POSIX/include/harfbuzz") {
-		assert PathCreateLeadingDirectories("root/Applications/POSIX/include/harfbuzz");
-		assert PathCopyFilteredInto("bin/harfbuzz/src", ["*.h"], -1, "root/Applications/POSIX/include/harfbuzz");
+	if !PathExists("%posixRoot%/include/harfbuzz") {
+		assert PathCreateLeadingDirectories("%posixRoot%/include/harfbuzz");
+		assert PathCopyFilteredInto("bin/harfbuzz/src", ["*.h"], -1, "%posixRoot%/include/harfbuzz");
 	}
 
 	if !PathExists("bin/harfbuzz/libharfbuzz_%targetName%.a") {
@@ -512,7 +517,7 @@ void PortHarfBuzz() {
 			if tasks:len() == processorCount { tasks:find_and_delete(await tasks); }
 			str command = "%toolchainPrefix%-gcc -c %sources[i]%.cc -o %sources[i]%.o "
 				+ "-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-exceptions -fno-threadsafe-statics "
-				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I../../../root/Applications/POSIX/include";
+				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I%posixRoot%/include";
 			tasks:add(SystemShellExecuteWithWorkingDirectory:curry("bin/harfbuzz/src"):curry(command):assert():async());
 			link += sources[i] + ".o ";
 		}
@@ -523,7 +528,7 @@ void PortHarfBuzz() {
 		assert FileCopy("bin/harfbuzz/src/libharfbuzz.a", "bin/harfbuzz/libharfbuzz_%targetName%.a");
 	}
 
-	assert FileCopy("bin/harfbuzz/libharfbuzz_%targetName%.a", "root/Applications/POSIX/lib/libharfbuzz.a");
+	assert FileCopy("bin/harfbuzz/libharfbuzz_%targetName%.a", "%posixRoot%/lib/libharfbuzz.a");
 }
 
 void PortMusl() {
@@ -554,27 +559,27 @@ void PortMusl() {
 		install = true;
 	}
 
-	if !PathExists("root/Applications/POSIX/include/stdio.h") {
+	if !PathExists("%posixRoot%/include/stdio.h") {
 		install = true;
 	}
 
 	if install {
-		assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
-		assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
+		assert PathCreateLeadingDirectories("%posixRoot%/lib");
+		assert PathCreateLeadingDirectories("%posixRoot%/include");
 
-		assert FileCopy("ports/musl/libc.a", "root/Applications/POSIX/lib/libc.a");
-		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libm.a");
-		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/libpthread.a");
-		assert FileCopy("ports/musl/empty.a", "root/Applications/POSIX/lib/librt.a");
+		assert FileCopy("ports/musl/libc.a", "%posixRoot%/lib/libc.a");
+		assert FileCopy("ports/musl/empty.a", "%posixRoot%/lib/libm.a");
+		assert FileCopy("ports/musl/empty.a", "%posixRoot%/lib/libpthread.a");
+		assert FileCopy("ports/musl/empty.a", "%posixRoot%/lib/librt.a");
 
-		assert PathCopyRecursively("bin/musl/include", "root/Applications/POSIX/include");
-		assert PathCopyRecursively("bin/musl/arch/generic", "root/Applications/POSIX/include");
-		assert PathCopyRecursively("ports/musl/obj_bits_%targetName%", "root/Applications/POSIX/include");
+		assert PathCopyRecursively("bin/musl/include", "%posixRoot%/include");
+		assert PathCopyRecursively("bin/musl/arch/generic", "%posixRoot%/include");
+		assert PathCopyRecursively("ports/musl/obj_bits_%targetName%", "%posixRoot%/include");
 
 		if targetName == "x86_64" {
-			assert PathCopyRecursively("bin/musl/arch/x86_64", "root/Applications/POSIX/include");
+			assert PathCopyRecursively("bin/musl/arch/x86_64", "%posixRoot%/include");
 		} else if targetName == "x86_32" {
-			assert PathCopyRecursively("bin/musl/arch/i386", "root/Applications/POSIX/include");
+			assert PathCopyRecursively("bin/musl/arch/i386", "%posixRoot%/include");
 		} else {
 			assert false;
 		}
@@ -589,17 +594,21 @@ void Start() {
 		if processorCount > 16 processorCount = 16;
 	}
 
-	// Create folders.
-	assert PathCreateLeadingDirectories("bin");
-	assert PathCreateLeadingDirectories("root/Essence");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/bin");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/include");
-	assert PathCreateLeadingDirectories("root/Applications/POSIX/lib");
-
 	sourceTree = PathGetDefaultPrefix();
 	crossDirectory = sourceTree + "/cross";
 	rootDirectory = sourceTree + "/root";
 	compilerPath = crossDirectory + "/bin";
+
+	posixDestDir = rootDirectory;
+	posixPrefix = "/Applications/POSIX";
+	posixRoot = rootDirectory + posixPrefix;
+
+	// Create folders.
+	assert PathCreateLeadingDirectories("bin");
+	assert PathCreateLeadingDirectories("%rootDirectory%/Essence");
+	assert PathCreateLeadingDirectories("%posixRoot%/bin");
+	assert PathCreateLeadingDirectories("%posixRoot%/include");
+	assert PathCreateLeadingDirectories("%posixRoot%/lib");
 
 	str[] portNames = [ "ffmpeg", "uxn", "nasm", "bochs", "busybox", "mesa", "gcc", "freetype", "harfbuzz", "musl" ];
 	PortCallback[] portCallbacks = [ PortFFmpeg, PortUxn, PortNasm, PortBochs, PortBusybox, PortMesa, PortGCC, PortFreeType, PortHarfBuzz, PortMusl ];
