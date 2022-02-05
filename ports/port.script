@@ -1,4 +1,4 @@
-// TODO Replace the remaining few calls to sed/cp.
+// TODO Replace the remaining few calls to sed.
 
 #import "util/get_source.script" get_source;
 
@@ -485,7 +485,7 @@ void PortHarfBuzz() {
 
 	if !PathExists("root/Applications/POSIX/include/harfbuzz") {
 		assert PathCreateLeadingDirectories("root/Applications/POSIX/include/harfbuzz");
-		assert SystemShellExecute("cp -p bin/harfbuzz/src/*.h root/Applications/POSIX/include/harfbuzz"); // TODO Replace.
+		assert PathCopyFilteredInto("bin/harfbuzz/src", ["*.h"], -1, "root/Applications/POSIX/include/harfbuzz");
 	}
 
 	if !PathExists("bin/harfbuzz/libharfbuzz_%targetName%.a") {

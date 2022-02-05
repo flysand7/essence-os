@@ -165,7 +165,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 #endif
 
 	if ((uintptr_t) n < sizeof(syscallNames) / sizeof(syscallNames[0])) {
-		EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
+		// EsPrint(":: %z %x %x %x\n", syscallNames[n], a1, a2, a3);
 	}
 
 	if (!posixMountPointBase) {
