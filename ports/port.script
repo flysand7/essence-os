@@ -1,4 +1,5 @@
 // TODO Replace the remaining few calls to sed.
+//	e.g. FileReplaceLines, FileDeleteLine, FileInsertLine
 
 #import "util/get_source.script" get_source;
 

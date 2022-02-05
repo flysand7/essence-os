@@ -594,14 +594,14 @@ bool OldTests2018() {
 	CHECK(testStruct.b == 2);
 	CHECK(testVariable == 3);
 
-	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("0:")));
+	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("|Settings:")));
 
 	for (int count = 16; count < 100; count += 30) {
 		EsHandle handles[100];
 
 		for (int i = 0; i < count; i++) {
 			char buffer[256];
-			size_t length = EsStringFormat(buffer, 256, "0:/TestFolder/%d", i);
+			size_t length = EsStringFormat(buffer, 256, "|Settings:/TestFolder/%d", i);
 			EsFileInformation node = EsFileOpen(buffer, length, ES_NODE_CREATE_DIRECTORIES | ES_NODE_FAIL_IF_FOUND | ES_FILE_WRITE);
 			CHECK(node.error == ES_SUCCESS);
 			handles[i] = node.handle;
@@ -617,28 +617,28 @@ bool OldTests2018() {
 	}
 
 	{
-		EsFileWriteAll(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("hello"));
-		EsFileWriteAll(EsLiteral("0:/b.txt"), EsLiteral("world"));
-		CHECK(EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
-		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
-		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
-		CHECK(!EsPathExists(EsLiteral("0:/a.txt")));
-		CHECK(ES_SUCCESS == EsPathMove(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
-		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
-		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
-		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
-		CHECK(EsPathExists(EsLiteral("0:/a.txt")));
-		CHECK(ES_ERROR_FILE_DOES_NOT_EXIST == EsPathMove(EsLiteral("0:/TestFolder/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
-		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("0:/a.txt"), EsLiteral("0:/b.txt"), ES_FLAGS_DEFAULT));
-		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("0:/a.txt"), EsLiteral("0:/a.txt"), ES_FLAGS_DEFAULT));
-		CHECK(ES_ERROR_VOLUME_MISMATCH == EsPathMove(EsLiteral("0:/"), EsLiteral("0:/TestFolder/TargetWithinSource"), ES_FLAGS_DEFAULT));
-		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/a.txt")));
-		CHECK(EsPathExists(EsLiteral("0:/b.txt")));
-		CHECK(!EsPathExists(EsLiteral("0:/TestFolder/b.txt")));
-		CHECK(EsPathExists(EsLiteral("0:/a.txt")));
+		EsFileWriteAll(EsLiteral("|Settings:/TestFolder/a.txt"), EsLiteral("hello"));
+		EsFileWriteAll(EsLiteral("|Settings:/b.txt"), EsLiteral("world"));
+		CHECK(EsPathExists(EsLiteral("|Settings:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("|Settings:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/a.txt")));
+		CHECK(ES_SUCCESS == EsPathMove(EsLiteral("|Settings:/TestFolder/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("|Settings:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/b.txt")));
+		CHECK(EsPathExists(EsLiteral("|Settings:/a.txt")));
+		CHECK(ES_ERROR_FILE_DOES_NOT_EXIST == EsPathMove(EsLiteral("|Settings:/TestFolder/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/b.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_TARGET_WITHIN_SOURCE == EsPathMove(EsLiteral("|Settings:/"), EsLiteral("|Settings:/TestFolder/TargetWithinSource"), ES_FLAGS_DEFAULT));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/a.txt")));
+		CHECK(EsPathExists(EsLiteral("|Settings:/b.txt")));
+		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/b.txt")));
+		CHECK(EsPathExists(EsLiteral("|Settings:/a.txt")));
 	}
 
-	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("0:")));
+	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("|Settings:")));
 
 	{
 		void *a = EsCRTmalloc(0x100000);
@@ -664,7 +664,7 @@ bool OldTests2018() {
 	}
 
 	{
-		EsFileInformation node = EsFileOpen(EsLiteral("0:/ResizeFileTest.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
+		EsFileInformation node = EsFileOpen(EsLiteral("|Settings:/ResizeFileTest.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
 		CHECK(node.error == ES_SUCCESS);
 
 		// TODO Failing large file resizes.
@@ -712,7 +712,7 @@ bool OldTests2018() {
 	}
 
 	{
-		EsFileInformation node = EsFileOpen(EsLiteral("0:/MapFile.txt"), ES_FILE_WRITE_SHARED);
+		EsFileInformation node = EsFileOpen(EsLiteral("|Settings:/MapFile.txt"), ES_FILE_WRITE_SHARED);
 		CHECK(node.error == ES_SUCCESS);
 		EsFileResize(node.handle, 1048576);
 		uint32_t *buffer = (uint32_t *) EsHeapAllocate(1048576, false);
@@ -720,7 +720,7 @@ bool OldTests2018() {
 		EsFileWriteSync(node.handle, 0, 1048576, buffer);
 		EsFileReadSync(node.handle, 0, 1048576, buffer);
 		for (uintptr_t i = 0; i < 262144; i++) CHECK(buffer[i] == i);
-		EsFileInformation node2 = EsFileOpen(EsLiteral("0:/MapFile.txt"), ES_FILE_READ_SHARED);
+		EsFileInformation node2 = EsFileOpen(EsLiteral("|Settings:/MapFile.txt"), ES_FILE_READ_SHARED);
 		CHECK(node.error == ES_SUCCESS);
 		uint32_t *pointer = (uint32_t *) EsMemoryMapObject(node2.handle, 0, ES_MEMORY_MAP_OBJECT_ALL, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 		CHECK(pointer);
@@ -740,7 +740,7 @@ bool OldTests2018() {
 	}
 
 	{
-		const char *path = "0:/OS/new_dir/test2.txt";
+		const char *path = "|Settings:/OS/new_dir/test2.txt";
 		EsFileInformation node = EsFileOpen(path, EsCStringLength(path), ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
 		CHECK(node.error == ES_SUCCESS);
 		CHECK(ES_SUCCESS == EsFileResize(node.handle, 8));
@@ -1199,14 +1199,14 @@ bool POSIXSubsystemTest() {
 	const char *executable = "/Applications/POSIX/bin/busybox";
 	const char *argv[] = { "busybox", "sh", "test.sh", NULL, };
 
-	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("echo hello")); 
+	EsFileWriteAll(EsLiteral("|POSIX:/test.sh"), EsLiteral("echo hello")); 
 	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "hello\n"));
-	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("echo world")); 
+	EsFileWriteAll(EsLiteral("|POSIX:/test.sh"), EsLiteral("echo world")); 
 	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "world\n"));
-	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("find . | grep Kernel.esx")); 
+	EsFileWriteAll(EsLiteral("|POSIX:/test.sh"), EsLiteral("find . | grep Kernel.esx")); 
 	CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, "./Essence/Kernel.esx\n"));
 
-	EsFileWriteAll(EsLiteral("0:/test.sh"), EsLiteral("exit")); 
+	EsFileWriteAll(EsLiteral("|POSIX:/test.sh"), EsLiteral("exit")); 
 
 	for (uintptr_t i = 0; i < 1000; i++) {
 		CHECK(POSIXSubsystemRunCommandAndCheckOutput(executeEnvironment, argv, executable, ""));
@@ -1219,7 +1219,7 @@ bool POSIXSubsystemTest() {
 
 bool RestartTest() {
 	size_t fileSize;
-	uint32_t *fileData = (uint32_t *) EsFileReadAll(EsLiteral("0:/restart_test.txt"), &fileSize);
+	uint32_t *fileData = (uint32_t *) EsFileReadAll(EsLiteral("|Settings:/restart_test.txt"), &fileSize);
 	uint32_t index = fileSize == sizeof(uint32_t) ? *fileData : 0;
 #ifdef DEBUG_BUILD
 	if (index == 30) return true;
@@ -1227,7 +1227,7 @@ bool RestartTest() {
 	if (index == 200) return true;
 #endif
 	index++;
-	if (ES_SUCCESS != EsFileWriteAll(EsLiteral("0:/restart_test.txt"), &index, sizeof(uint32_t))) return false;
+	if (ES_SUCCESS != EsFileWriteAll(EsLiteral("|Settings:/restart_test.txt"), &index, sizeof(uint32_t))) return false;
 	EsPrint("Restart %d...\n", index);
 	EsSyscall(ES_SYSCALL_SHUTDOWN, SHUTDOWN_ACTION_RESTART, 0, 0, 0);
 	while (EsMessageReceive());
@@ -1261,7 +1261,7 @@ bool ResizeFileTest() {
 		}
 	}
 
-	EsFileInformation file = EsFileOpen(EsLiteral("0:/resize.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
+	EsFileInformation file = EsFileOpen(EsLiteral("|Settings:/resize.txt"), ES_FILE_WRITE | ES_NODE_FAIL_IF_FOUND);
 	CHECK(file.error == ES_SUCCESS);
 
 	for (uintptr_t i = 0; i < sizeCount; i++) {
