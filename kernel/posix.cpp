@@ -241,7 +241,7 @@ namespace POSIX {
 				const char *devZero = "/dev/zero";
 				const char *devNull = "/dev/null";
 
-				EsPrint("Open: %s, %x\n", pathLength, path, flags);
+				// EsPrint("Open: %s, %x\n", pathLength, path, flags);
 
 				if ((EsCStringLength(devZero) == pathLength && 0 == EsMemoryCompare(path, devZero, pathLength))) {
 					file->type = POSIX_FILE_ZERO;
@@ -533,7 +533,7 @@ namespace POSIX {
 
 				// Start the process.
 
-				if (!ProcessStart(process, path, syscall.arguments[1])) {
+				if (!ProcessStart(process, path, syscall.arguments[1], (KNode *) syscall.arguments[4])) {
 					EsHeapFree(path, 0, K_FIXED);
 					return -ENOMEM;
 				}

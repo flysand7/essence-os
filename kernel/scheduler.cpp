@@ -876,9 +876,9 @@ bool ProcessStartWithNode(Process *process, KNode *node) {
 	return true;
 }
 
-bool ProcessStart(Process *process, char *imagePath, size_t imagePathLength) {
+bool ProcessStart(Process *process, char *imagePath, size_t imagePathLength, KNode *baseDirectory = nullptr) {
 	uint64_t flags = ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND;
-	KNodeInformation node = FSNodeOpen(imagePath, imagePathLength, flags);
+	KNodeInformation node = FSNodeOpen(imagePath, imagePathLength, flags, baseDirectory);
 	bool result = false;
 
 	if (!ES_CHECK_ERROR(node.error)) {
