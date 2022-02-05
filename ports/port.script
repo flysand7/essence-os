@@ -149,8 +149,8 @@ void PortMesa() {
 	assert FileCopy("bin/build-mesa/subprojects/expat-2.2.5/libexpat.a", "root/Applications/POSIX/lib/libexpat.a");
 	assert FileCopy("bin/build-mesa/subprojects/zlib-1.2.11/libz.a", "root/Applications/POSIX/lib/libz.a");
 	assert FileCopy("bin/build-mesa/src/gallium/targets/osmesa/libOSMesa.a", "root/Applications/POSIX/lib/libOSMesa.a");
-	assert PathCopyRecursively("bin/source/include/GL", "root/Applications/POSIX/GL");
-	assert PathCopyRecursively("bin/source/include/KHR", "root/Applications/POSIX/KHR");
+	assert PathCopyRecursively("bin/source/include/GL", "root/Applications/POSIX/include/GL");
+	assert PathCopyRecursively("bin/source/include/KHR", "root/Applications/POSIX/include/KHR");
 	assert FileCopy("bin/source/docs/license.html", "bin/Mesa License.html");
 
 	PathDeleteRecursively("bin/source");
