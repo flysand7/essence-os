@@ -957,11 +957,11 @@ void OutputOdin(Entry *root) {
 			FilePrintFormat(output, "}\n");
 		} else if (entry->type == ENTRY_API_TYPE) {
 			bool hasParent = 0 != strcmp(entry->apiType.parent, "none");
-			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), hasParent ? TrimPrefix(entry->apiType.parent) : "rawptr");
+			FilePrintFormat(output, "%s :: #type %s;\n", TrimPrefix(entry->name), hasParent ? TrimPrefix(entry->apiType.parent) : "rawptr");
 		} else if (entry->type == ENTRY_FUNCTION) {
 			OutputOdinFunction(entry, root);
 		} else if (entry->type == ENTRY_TYPE_NAME) {
-			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), TrimPrefix(OdinReplaceTypes(entry->oldTypeName, true)));
+			FilePrintFormat(output, "%s :: #type %s;\n", TrimPrefix(entry->name), TrimPrefix(OdinReplaceTypes(entry->oldTypeName, true)));
 		}
 	}
 }
