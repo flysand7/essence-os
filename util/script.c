@@ -174,6 +174,17 @@
 	STACK_READ_STRING(textVariable1, bytesVariable1, 1); \
 	STACK_READ_STRING(textVariable2, bytesVariable2, 2); \
 	context->c->stackPointer -= 2;
+#define RETURN_STRING_COPY(_text, _bytes) \
+	returnValue->i = HeapAllocate(context); \
+	context->heap[returnValue->i].type = T_STR; \
+	context->heap[returnValue->i].bytes = _bytes; \
+	context->heap[returnValue->i].text = (char *) AllocateResize(NULL, context->heap[returnValue->i].bytes); \
+	MemoryCopy(context->heap[returnValue->i].text, _text, context->heap[returnValue->i].bytes);
+#define RETURN_STRING_NO_COPY(_text, _bytes) \
+	returnValue->i = HeapAllocate(context); \
+	context->heap[returnValue->i].type = T_STR; \
+	context->heap[returnValue->i].bytes = _bytes; \
+	context->heap[returnValue->i].text = _text;
 
 typedef struct Token {
 	struct ImportData *module;
@@ -361,8 +372,7 @@ Node globalExpressionTypeStr = { .type = T_STR };
 Node globalExpressionTypeIntList = { .type = T_LIST, .firstChild = &globalExpressionTypeInt };
 
 // Global variables:
-char *scriptSourceDirectory;
-char *startFunction = "Start";
+const char *startFunction = "Start";
 size_t startFunctionBytes = 5;
 char **options;
 bool *optionsMatched;
@@ -380,8 +390,10 @@ uintptr_t HeapAllocate(ExecutionContext *context);
 
 // --------------------------------- Platform layer definitions.
 
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
 #include <assert.h>
 #define Assert assert
+#endif
 
 void *AllocateFixed(size_t bytes);
 void *AllocateResize(void *old, size_t bytes);
@@ -409,7 +421,6 @@ char baseModuleSource[] = {
 
 	// String operations:
 
-	"str StringTrim(str x) #extcall;"
 	"str StringSlice(str x, int start, int end) #extcall;"
 	"int CharacterToByte(str x) #extcall;"
 	"bool StringContains(str haystack, str needle) {"
@@ -419,6 +430,13 @@ char baseModuleSource[] = {
 	"		if match { return true; }"
 	"	}"
 	"	return false;"
+	"}"
+	"str StringTrim(str string) {"
+	"	int start = 0;"
+	"	int end = string:len();"
+	"	while start != end && (string[start] == \" \" || string[start] == \"\\t\" || string[start] == \"\\r\" || string[start] == \"\\n\") { start += 1; }"
+	"	while start != end && (string[end - 1] == \" \" || string[end - 1] == \"\\t\" || string[end - 1] == \"\\r\" || string[end - 1] == \"\\n\") { end -= 1; }"
+	"	return StringSlice(string, start, end);"
 	"}"
 	"str[] StringSplitByCharacter(str string, str character, bool includeEmptyString) {"
 	"	str[] list = new str[];"
@@ -475,7 +493,6 @@ char baseModuleSource[] = {
 	"bool PathIsDirectory(str source) #extcall;"
 	"bool PathIsLink(str source) #extcall;"
 	"bool PathCreateDirectory(str x) #extcall;" // TODO Replace the return value with a enum.
-	"bool PathCreateLeadingDirectories(str x) #extcall;"
 	"bool PathDelete(str x) #extcall;" // TODO Replace the return value with a enum.
 	"bool PathMove(str source, str destination) #extcall;"
 	"str PathGetDefaultPrefix() #extcall;"
@@ -624,6 +641,14 @@ char baseModuleSource[] = {
 	"	}"
 	"	return \"\";"
 	"}"
+	"bool PathCreateLeadingDirectories(str path) {"
+	"	for int i = 0; i < path:len(); i += 1 {"
+	"		if path[i] == \"/\" {"
+	"			PathCreateDirectory(StringSlice(path, 0, i));"
+	"		}"
+	"	}"
+	"	return PathCreateDirectory(path);"
+	"}"
 
 	// Persistent variables:
 
@@ -646,7 +671,6 @@ int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue);
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue);
 int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue);
-int ExternalStringTrim(ExecutionContext *context, Value *returnValue);
 int ExternalStringSlice(ExecutionContext *context, Value *returnValue);
 int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue);
@@ -659,7 +683,6 @@ int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *retur
 int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue);
-int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue);
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue);
 int ExternalPathExists(ExecutionContext *context, Value *returnValue);
 int ExternalPathIsFile(ExecutionContext *context, Value *returnValue);
@@ -674,7 +697,7 @@ int ExternalFileCopy(ExecutionContext *context, Value *returnValue);
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue);
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue);
 int ExternalPersistWrite(ExecutionContext *context, Value *returnValue);
-int ExternalRandomInt(ExecutionContext *context, Value *returnValue);
+int ExternalRandomInt(ExecutionContext *context, Value *returnValue); // TODO This shouldn't be in the platform layer.
 int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue);
 int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue);
 int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue);
@@ -684,7 +707,6 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "PrintStdErrWarning", .callback = ExternalPrintStdErrWarning },
 	{ .cName = "PrintStdErrHighlight", .callback = ExternalPrintStdErrHighlight },
 	{ .cName = "ConsoleGetLine", .callback = ExternalConsoleGetLine },
-	{ .cName = "StringTrim", .callback = ExternalStringTrim },
 	{ .cName = "StringSlice", .callback = ExternalStringSlice },
 	{ .cName = "CharacterToByte", .callback = ExternalCharacterToByte },
 	{ .cName = "SystemShellExecute", .callback = ExternalSystemShellExecute },
@@ -701,7 +723,6 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "PathIsDirectory", .callback = ExternalPathIsDirectory },
 	{ .cName = "PathIsLink", .callback = ExternalPathIsLink },
 	{ .cName = "PathCreateDirectory", .callback = ExternalPathCreateDirectory },
-	{ .cName = "PathCreateLeadingDirectories", .callback = ExternalPathCreateLeadingDirectories },
 	{ .cName = "PathDelete", .callback = ExternalPathDelete },
 	{ .cName = "PathMove", .callback = ExternalPathMove },
 	{ .cName = "PathGetDefaultPrefix", .callback = ExternalPathGetDefaultPrefix },
@@ -904,10 +925,11 @@ Token TokenNext(Tokenizer *tokenizer) {
 				} else if (tokenizer->input[i] == '\\') {
 					if (i + 1 == tokenizer->inputBytes 
 							|| (tokenizer->input[i + 1] != 'n' && tokenizer->input[i + 1] != 't' 
+								&& tokenizer->input[i + 1] != 'r' 
 								&& tokenizer->input[i + 1] != '%' 
 								&& tokenizer->input[i + 1] != '"' && tokenizer->input[i + 1] != '\\')) {
 						PrintError(tokenizer, "String contains unrecognized escape sequence '\\%c'. "
-								"Possibilities are: '\\\\', '\\%%', '\\n', '\\t' and '\\\"'\n", tokenizer->input[i + 1]);
+								"Possibilities are: '\\\\', '\\%%', '\\n', '\\r', '\\t' and '\\\"'\n", tokenizer->input[i + 1]);
 						tokenizer->error = true;
 						break;
 					} else {
@@ -1063,7 +1085,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 		size_t rawBytes = string->token.textBytes;
 
 		// It's impossible for size of the string to increase.
-		char *output = AllocateFixed(rawBytes);
+		char *output = (char *) AllocateFixed(rawBytes);
 		size_t outputPosition = 0;
 
 		string->token.text = output;
@@ -1078,6 +1100,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 				Assert(outputPosition != rawBytes);
 				if (c == '\\') c = '\\';
 				else if (c == 'n') c = '\n';
+				else if (c == 'r') c = '\r';
 				else if (c == 't') c = '\t';
 				else if (c == '%') c = '%';
 				else if (c == '"') c = '"';
@@ -1222,7 +1245,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 			operation->firstChild = node;
 			node->sibling = ParseExpression(tokenizer, false, TokenLookupPrecedence(token.type));
 			if (!node->sibling) return NULL;
-			Node *nodeCopy = AllocateFixed(sizeof(Node));
+			Node *nodeCopy = (Node *) AllocateFixed(sizeof(Node));
 			*nodeCopy = *node;
 			node = operation;
 			operation = (Node *) AllocateFixed(sizeof(Node));
@@ -1875,7 +1898,7 @@ bool ScopeAddEntry(Tokenizer *tokenizer, Scope *scope, Node *node) {
 
 void ASTFreeScopes(Node *node) {
 	if (node && node->scope) {
-		node->scope->entries = AllocateResize(node->scope->entries, 0);
+		node->scope->entries = (Node **) AllocateResize(node->scope->entries, 0);
 
 		Node *child = node->firstChild;
 
@@ -1984,7 +2007,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 				return false;
 			}
 
-			node->importData = AllocateFixed(sizeof(ImportData));
+			node->importData = (ImportData *) AllocateFixed(sizeof(ImportData));
 			node->importData->fileDataBytes = t.inputBytes;
 			node->importData->fileData = fileData;
 			node->importData->path = path;
@@ -2011,7 +2034,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 			}
 
 			t.module = node->importData;
-			t.input = fileData;
+			t.input = (const char *) fileData;
 			t.line = 1;
 
 			if (!ScriptLoad(t, context, node->importData)) {
@@ -3138,8 +3161,8 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 
 	context->functionData->globalVariableOffset = context->globalVariableCount;
 	context->globalVariableCount += root->scope->variableEntryCount;
-	context->globalVariables = AllocateResize(context->globalVariables, sizeof(Value) * context->globalVariableCount);
-	context->globalVariableIsManaged = AllocateResize(context->globalVariableIsManaged, sizeof(Value) * context->globalVariableCount);
+	context->globalVariables = (Value *) AllocateResize(context->globalVariables, sizeof(Value) * context->globalVariableCount);
+	context->globalVariableIsManaged = (bool *) AllocateResize(context->globalVariableIsManaged, sizeof(Value) * context->globalVariableCount);
 
 	for (uintptr_t i = 0; i < root->scope->variableEntryCount; i++) {
 		context->globalVariables[context->functionData->globalVariableOffset + i].i = 0;
@@ -3363,6 +3386,7 @@ size_t ScriptHeapEntryGetStringBytes(HeapEntry *entry) {
 		return entry->concatBytes;
 	} else {
 		Assert(false);
+		return 0;
 	}
 }
 
@@ -3407,7 +3431,7 @@ void ScriptHeapEntryConcatConvertToString(ExecutionContext *context, HeapEntry *
 	Assert(entry->concatBytes == part1Bytes + part2Bytes);
 	entry->type = T_STR;
 	entry->bytes = part1Bytes + part2Bytes;
-	entry->text = AllocateResize(NULL, entry->bytes);
+	entry->text = (char *) AllocateResize(NULL, entry->bytes);
 	ScriptHeapEntryConcatConvertToStringWrite(context, part1, entry->text);
 	ScriptHeapEntryConcatConvertToStringWrite(context, part2, entry->text + part1Bytes);
 }
@@ -3447,8 +3471,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (context->c->localVariableCount + newVariableCount > context->c->localVariablesAllocated) {
 				// TODO Handling memory errors here.
 				context->c->localVariablesAllocated = context->c->localVariableCount + newVariableCount;
-				context->c->localVariables = AllocateResize(context->c->localVariables, context->c->localVariablesAllocated * sizeof(Value)); 
-				context->c->localVariableIsManaged = AllocateResize(context->c->localVariableIsManaged, context->c->localVariablesAllocated * sizeof(bool)); 
+				context->c->localVariables = (Value *) AllocateResize(context->c->localVariables, context->c->localVariablesAllocated * sizeof(Value)); 
+				context->c->localVariableIsManaged = (bool *) AllocateResize(context->c->localVariableIsManaged, context->c->localVariablesAllocated * sizeof(bool)); 
 			}
 
 			MemoryCopy(context->c->localVariableIsManaged + context->c->localVariableCount, functionData + instructionPointer, newVariableCount);
@@ -4083,7 +4107,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->heap[index].allocated = newLength;
 
 			// TODO Handling out of memory errors.
-			context->heap[index].list = AllocateResize(context->heap[index].list, newLength * sizeof(Value));
+			context->heap[index].list = (Value *) AllocateResize(context->heap[index].list, newLength * sizeof(Value));
 
 			for (uintptr_t i = oldLength; i < (size_t) newLength; i++) {
 				context->heap[index].list[i].i = 0;
@@ -4118,7 +4142,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (entry->length > entry->allocated) {
 				// TODO Handling out of memory errors.
 				entry->allocated = entry->allocated ? entry->allocated * 2 : 4;
-				entry->list = AllocateResize(entry->list, entry->allocated * sizeof(Value));
+				entry->list = (Value *) AllocateResize(entry->list, entry->allocated * sizeof(Value));
 				Assert(entry->length <= entry->allocated);
 			}
 
@@ -4154,7 +4178,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (entry->length > entry->allocated) {
 				// TODO Handling out of memory errors.
 				entry->allocated = entry->allocated ? entry->allocated * 2 : 4;
-				entry->list = AllocateResize(entry->list, entry->allocated * sizeof(Value));
+				entry->list = (Value *) AllocateResize(entry->list, entry->allocated * sizeof(Value));
 				Assert(entry->length <= entry->allocated);
 			}
 
@@ -4191,7 +4215,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (entry->type != T_LIST) return -1;
 
 			context->heap[index].length = context->heap[index].allocated = 0;
-			context->heap[index].list = AllocateResize(context->heap[index].list, 0);
+			context->heap[index].list = (Value *) AllocateResize(context->heap[index].list, 0);
 			context->c->stackPointer--;
 		} else if (command == T_OP_FIND_AND_DELETE) {
 			if (context->c->stackPointer < 2) return -1;
@@ -4545,7 +4569,7 @@ bool ScriptParseOptions(ExecutionContext *context) {
 			uintptr_t heapIndex = HeapAllocate(context);
 			context->heap[heapIndex].type = T_STR;
 			context->heap[heapIndex].bytes = optionLength - equalsPosition - 1;
-			context->heap[heapIndex].text = AllocateResize(NULL, context->heap[heapIndex].bytes);
+			context->heap[heapIndex].text = (char *) AllocateResize(NULL, context->heap[heapIndex].bytes);
 			context->globalVariables[index].i = heapIndex;
 			MemoryCopy(context->heap[heapIndex].text, options[i] + equalsPosition + 1, context->heap[heapIndex].bytes);
 		} else if (node->expressionType->type == T_INT) {
@@ -4746,7 +4770,136 @@ void ScriptFree(ExecutionContext *context) {
 	AllocateResize(context->scriptPersistFile, 0);
 }
 
+// --------------------------------- Helpers.
+
+void LineNumberLookup(ExecutionContext *context, uint32_t instructionPointer, LineNumber *output) {
+	for (uintptr_t i = 0; i < context->functionData->lineNumberCount; i++) {
+		if (context->functionData->lineNumbers[i].instructionPointer == instructionPointer) {
+			*output = context->functionData->lineNumbers[i];
+			return;
+		}
+	}
+}
+
+void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix) {
+	LineNumber lineNumber = { 0 };
+	LineNumberLookup(context, instructionPointer, &lineNumber);
+
+	if (lineNumber.importData) {
+		PrintDebug("%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
+				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
+	}
+
+	uintptr_t btp = c->backTracePointer;
+	uintptr_t minimum = c->startedByAsync ? 1 : 0;
+
+	while (btp > minimum) {
+		BackTraceItem *link = &c->backTrace[--btp];
+		LineNumberLookup(context, link->instructionPointer - 1, &lineNumber);
+		PrintDebug("%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path ? lineNumber.importData->path : "??", 
+				lineNumber.lineNumber, lineNumber.function ? "in" : "",
+				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
+	}
+}
+
+void PrintLine(ImportData *importData, uintptr_t line) {
+	if (!importData) {
+		return;
+	}
+	
+	uintptr_t position = 0;
+
+	for (uintptr_t i = 1; i < line; i++) {
+		while (position < importData->fileDataBytes) {
+			if (((char *) importData->fileData)[position] == '\n') {
+				position++;
+				break;
+			}
+
+			position++;
+		}
+	}
+
+	uintptr_t length = 0;
+
+	for (uintptr_t i = position; i < importData->fileDataBytes; i++) {
+		if (((char *) importData->fileData)[i] == '\n') {
+			length = i - position;
+			break;
+		}
+	}
+
+	PrintDebug(">> %.*s\n", (int) length, &((char *) importData->fileData)[position]);
+}
+
+int ScriptExecuteFromPath(char *scriptPath, size_t scriptPathBytes) {
+	Tokenizer tokenizer = { 0 };
+	ImportData importData = { 0 };
+	importData.path = scriptPath;
+	importData.pathBytes = scriptPathBytes;
+	importData.fileData = FileLoad(scriptPath, &tokenizer.inputBytes);
+	importData.fileDataBytes = tokenizer.inputBytes;
+	tokenizer.module = &importData;
+	tokenizer.line = 1;
+	tokenizer.input = (const char *) importData.fileData;
+
+	if (!tokenizer.input) {
+		PrintDebug("Error: Could not load the input file '%s'.\n", scriptPath);
+		return 1;
+	}
+
+	FunctionBuilder builder = { 0 };
+	ExecutionContext context = { 0 };
+	context.functionData = &builder;
+	context.mainModule = &importData;
+
+	context.heapEntriesAllocated = 2;
+	context.heap = (HeapEntry *) AllocateResize(NULL, sizeof(HeapEntry) * context.heapEntriesAllocated);
+	context.heap[0].type = T_EOF;
+	context.heap[1].type = T_ERROR;
+	context.heap[1].nextUnusedEntry = 0;
+	context.heapFirstUnusedEntry = 1;
+	context.c = (CoroutineState *) AllocateResize(0, sizeof(CoroutineState));
+	CoroutineState empty = { 0 };
+	*context.c = empty;
+	context.c->stackEntriesAllocated = sizeof(context.c->stack) / sizeof(context.c->stack[0]);
+	context.c->previousCoroutineLink = &context.allCoroutines;
+	context.allCoroutines = context.c;
+
+	int result = ScriptLoad(tokenizer, &context, &importData) ? ScriptExecute(&context, &importData) : 1;
+	ScriptFree(&context);
+	return result;
+}
+
+int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->stackPointer < 3) return -1;
+	STACK_POP_STRING(string, bytes);
+	uint64_t start = context->c->stack[--context->c->stackPointer].i;
+	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
+	uint64_t end = context->c->stack[--context->c->stackPointer].i;
+	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
+
+	if (start > bytes || end > bytes || end < start) {
+		PrintError4(context, 0, "The slice range (%ld..%ld) is invalid for the string of length %ld.\n",
+				start, end, bytes);
+		return 0;
+	}
+
+	RETURN_STRING_COPY(string + start, end - start);
+	return 3;
+}
+
+int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	STACK_POP_STRING(entryText, entryBytes);
+	returnValue->i = entryBytes ? entryText[0] : -1;
+	return 2;
+}
+
 // --------------------------------- Platform layer.
+
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
 
 #ifdef _WIN32
 #include <direct.h>
@@ -4781,6 +4934,8 @@ CoroutineState *externalCoroutineUnblockedList;
 
 bool systemShellLoggingEnabled = true;
 
+char *scriptSourceDirectory;
+
 DIR *directoryIterator;
 
 char *StringZeroTerminate(const char *text, size_t bytes) {
@@ -4789,77 +4944,6 @@ char *StringZeroTerminate(const char *text, size_t bytes) {
 	memcpy(buffer, text, bytes);
 	buffer[bytes] = 0;
 	return buffer;
-}
-
-int ExternalStringTrim(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	STACK_POP_STRING(entryText, entryBytes);
-	if (entryBytes == 0) { returnValue->i = 0; return 3; }
-
-	uintptr_t start = 0, end = entryBytes;
-
-	while (start != end) {
-		if (entryText[start] == ' ' || entryText[start] == '\t' || entryText[start] == '\r' || entryText[start] == '\n') {
-			start++;
-		} else {
-			break;
-		}
-	}
-
-	while (start != end) {
-		if (entryText[end - 1] == ' ' || entryText[end - 1] == '\t' || entryText[end - 1] == '\r' || entryText[end - 1] == '\n') {
-			end--;
-		} else {
-			break;
-		}
-	}
-
-	char *buffer = AllocateResize(NULL, end - start);
-	MemoryCopy(buffer, entryText + start, end - start);
-
-	// TODO Handling allocation failures.
-	uintptr_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = end - start;
-	context->heap[index].text = buffer;
-	returnValue->i = index;
-
-	return 3;
-}
-
-int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	if (context->c->stackPointer < 3) return -1;
-	STACK_POP_STRING(string, bytes);
-	uint64_t start = context->c->stack[--context->c->stackPointer].i;
-	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	uint64_t end = context->c->stack[--context->c->stackPointer].i;
-	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
-
-	if (start > bytes || end > bytes || end < start) {
-		PrintError4(context, 0, "The slice range (%ld..%ld) is invalid for the string of length %ld.\n",
-				start, end, bytes);
-		return 0;
-	}
-
-	char *buffer = AllocateResize(NULL, end - start);
-	MemoryCopy(buffer, string + start, end - start);
-
-	// TODO Handling allocation failures.
-	uintptr_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = end - start;
-	context->heap[index].text = buffer;
-	returnValue->i = index;
-
-	return 3;
-}
-
-int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	STACK_POP_STRING(entryText, entryBytes);
-	returnValue->i = entryBytes ? entryText[0] : -1;
-	return 2;
 }
 
 void ExternalCoroutineDone(CoroutineState *coroutine) {
@@ -5016,11 +5100,7 @@ int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
 			buffer = (char *) realloc(buffer, position); // Shrink to match the size exactly.
 			pclose(f);
 
-			uintptr_t index = HeapAllocate(context);
-			context->heap[index].type = T_STR;
-			context->heap[index].bytes = position;
-			context->heap[index].text = buffer;
-			returnValue->i = index;
+			RETURN_STRING_NO_COPY(buffer, position);
 		} else {
 			returnValue->i = 0;
 		}
@@ -5082,32 +5162,6 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 #pragma message ("ExternalPathCreateDirectory unimplemented")
 #else
 	returnValue->i = 1;
-	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
-#endif
-	free(temporary);
-	return 2;
-}
-
-int ExternalPathCreateLeadingDirectories(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	STACK_POP_STRING(entryText, entryBytes);
-	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
-	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
-#ifdef _WIN32
-#pragma message ("ExternalPathCreateLeadingDirectories unimplemented")
-#else
-	returnValue->i = 1;
-
-	for (uintptr_t i = 1; i < entryBytes; i++) {
-		if (temporary[i] == '/') {
-			temporary[i] = 0;
-			mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-			temporary[i] = '/';
-		}
-	}
-
 	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
 #endif
 	free(temporary);
@@ -5235,15 +5289,7 @@ int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *retur
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
 	char *data = getenv(temporary);
-	size_t length = data ? strlen(data) : 0;
-	char *copy = (char *) malloc(length + 1);
-	if (length) strcpy(copy, data);
-	else *copy = 0;
-	uintptr_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = length;
-	context->heap[index].text = copy;
-	returnValue->i = index;
+	RETURN_STRING_COPY(data, data ? strlen(data) : 0);
 	free(temporary);
 	return 3;
 }
@@ -5290,12 +5336,7 @@ int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *re
 	struct dirent *entry = readdir(directoryIterator);
 	while (entry && (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, ".."))) entry = readdir(directoryIterator);
 	if (!entry) { returnValue->i = 0; return 3; }
-	uintptr_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = strlen(entry->d_name);
-	context->heap[index].text = malloc(context->heap[index].bytes + 1);
-	strcpy(context->heap[index].text, entry->d_name);
-	returnValue->i = index;
+	RETURN_STRING_COPY(entry->d_name, strlen(entry->d_name));
 	return 3;
 }
 
@@ -5307,11 +5348,7 @@ int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 	if (!temporary) return 3;
 	size_t length = 0;
 	void *data = FileLoad(temporary, &length);
-	uintptr_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = length;
-	context->heap[index].text = data;
-	returnValue->i = index;
+	RETURN_STRING_NO_COPY(data, length);
 	free(temporary);
 	return 3;
 }
@@ -5360,11 +5397,7 @@ int ExternalPathGetDefaultPrefix(ExecutionContext *context, Value *returnValue) 
 		return 0;
 	}
 
-	uint64_t index = HeapAllocate(context);
-	context->heap[index].type = T_STR;
-	context->heap[index].bytes = strlen(data);
-	context->heap[index].text = realloc(data, strlen(data) + 1);
-	returnValue->i = index;
+	RETURN_STRING_NO_COPY(realloc(data, strlen(data) + 1), strlen(data));
 	return 3;
 }
 
@@ -5558,11 +5591,7 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 	uname(&buffer);
 	name = buffer.sysname;
 #endif
-	returnValue->i = HeapAllocate(context);
-	context->heap[returnValue->i].type = T_STR;
-	context->heap[returnValue->i].bytes = strlen(name);
-	context->heap[returnValue->i].text = AllocateResize(NULL, context->heap[returnValue->i].bytes);
-	memcpy(context->heap[returnValue->i].text, name, context->heap[returnValue->i].bytes);
+	RETURN_STRING_COPY(name, strlen(name));
 	return 3;
 }
 
@@ -5661,36 +5690,6 @@ void PrintDebug(const char *format, ...) {
 	va_end(arguments);
 }
 
-void PrintLine(ImportData *importData, uintptr_t line) {
-	if (!importData) {
-		return;
-	}
-	
-	uintptr_t position = 0;
-
-	for (uintptr_t i = 1; i < line; i++) {
-		while (position < importData->fileDataBytes) {
-			if (((char *) importData->fileData)[position] == '\n') {
-				position++;
-				break;
-			}
-
-			position++;
-		}
-	}
-
-	uintptr_t length = 0;
-
-	for (uintptr_t i = position; i < importData->fileDataBytes; i++) {
-		if (((char *) importData->fileData)[i] == '\n') {
-			length = i - position;
-			break;
-		}
-	}
-
-	fprintf(stderr, ">> %.*s\n", (int) length, &((char *) importData->fileData)[position]);
-}
-
 void PrintError(Tokenizer *tokenizer, const char *format, ...) {
 	fprintf(stderr, "\033[0;33mError on line %d of '%s':\033[0m\n", (int) tokenizer->line, tokenizer->module->path);
 	va_list arguments;
@@ -5715,36 +5714,6 @@ void PrintError3(const char *format, ...) {
 	va_start(arguments, format);
 	vfprintf(stderr, format, arguments);
 	va_end(arguments);
-}
-
-void LineNumberLookup(ExecutionContext *context, uint32_t instructionPointer, LineNumber *output) {
-	for (uintptr_t i = 0; i < context->functionData->lineNumberCount; i++) {
-		if (context->functionData->lineNumbers[i].instructionPointer == instructionPointer) {
-			*output = context->functionData->lineNumbers[i];
-			return;
-		}
-	}
-}
-
-void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix) {
-	LineNumber lineNumber = { 0 };
-	LineNumberLookup(context, instructionPointer, &lineNumber);
-
-	if (lineNumber.importData) {
-		fprintf(stderr, "%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path, lineNumber.lineNumber, lineNumber.function ? "in" : "",
-				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
-	}
-
-	uintptr_t btp = c->backTracePointer;
-	uintptr_t minimum = c->startedByAsync ? 1 : 0;
-
-	while (btp > minimum) {
-		BackTraceItem *link = &c->backTrace[--btp];
-		LineNumberLookup(context, link->instructionPointer - 1, &lineNumber);
-		fprintf(stderr, "%s\t%s:%d %s %.*s\n", prefix, lineNumber.importData->path ? lineNumber.importData->path : "??", 
-				lineNumber.lineNumber, lineNumber.function ? "in" : "",
-				lineNumber.function ? (int) lineNumber.function->textBytes : 0, lineNumber.function ? lineNumber.function->text : "");
-	}
 }
 
 void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const char *format, ...) {
@@ -5807,41 +5776,7 @@ int main(int argc, char **argv) {
 	if (lastSlash) *lastSlash = 0;
 	else strcpy(scriptSourceDirectory, ".");
 
-	Tokenizer tokenizer = { 0 };
-	ImportData importData = { 0 };
-	importData.path = scriptPath;
-	importData.pathBytes = strlen(scriptPath);
-	importData.fileData = FileLoad(scriptPath, &tokenizer.inputBytes);
-	importData.fileDataBytes = tokenizer.inputBytes;
-	tokenizer.module = &importData;
-	tokenizer.line = 1;
-	tokenizer.input = importData.fileData;
-
-	if (!tokenizer.input) {
-		fprintf(stderr, "Error: Could not load the input file '%s'.\n", scriptPath);
-		return 1;
-	}
-
-	FunctionBuilder builder = { 0 };
-	ExecutionContext context = { 0 };
-	context.functionData = &builder;
-	context.mainModule = &importData;
-
-	context.heapEntriesAllocated = 2;
-	context.heap = (HeapEntry *) AllocateResize(NULL, sizeof(HeapEntry) * context.heapEntriesAllocated);
-	context.heap[0].type = T_EOF;
-	context.heap[1].type = T_ERROR;
-	context.heap[1].nextUnusedEntry = 0;
-	context.heapFirstUnusedEntry = 1;
-	context.c = (CoroutineState *) AllocateResize(0, sizeof(CoroutineState));
-	CoroutineState empty = { 0 };
-	*context.c = empty;
-	context.c->stackEntriesAllocated = sizeof(context.c->stack) / sizeof(context.c->stack[0]);
-	context.c->previousCoroutineLink = &context.allCoroutines;
-	context.allCoroutines = context.c;
-
-	int result = ScriptLoad(tokenizer, &context, &importData) ? ScriptExecute(&context, &importData) : 1;
-	ScriptFree(&context);
+	int result = ScriptExecuteFromPath(scriptPath, strlen(scriptPath));
 
 	while (fixedAllocationBlocks) {
 		void *block = fixedAllocationBlocks;
@@ -5854,3 +5789,5 @@ int main(int argc, char **argv) {
 
 	return result;
 }
+
+#endif
