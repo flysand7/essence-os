@@ -1976,13 +1976,11 @@ void _start() {
 			EsCommandSetEnabled(&commandBuild, true);
 			EsCommandSetEnabled(&commandLaunch, true);
 
-			EsTextboxMoveCaretRelative(textboxLog, ES_TEXTBOX_MOVE_CARET_ALL);
-
 			if (message->type == MSG_BUILD_FAILED) {
-				EsTextboxInsert(textboxLog, INTERFACE_STRING(BuildCoreBuildFailed), false);
+				EsTextboxAppend(textboxLog, INTERFACE_STRING(BuildCoreBuildFailed), false);
 				EsElementFocus(buttonBuild, ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT);
 			} else {
-				EsTextboxInsert(textboxLog, INTERFACE_STRING(BuildCoreBuildSuccess), false);
+				EsTextboxAppend(textboxLog, INTERFACE_STRING(BuildCoreBuildSuccess), false);
 				EsElementFocus(buttonLaunch, ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT);
 			}
 
@@ -1990,9 +1988,7 @@ void _start() {
 			_EsPathAnnouncePathMoved(NULL, 0, workingDirectory, workingDirectoryBytes);
 		} else if (message->type == MSG_LOG) {
 			char *copy = message->user.context1.p;
-			EsTextboxMoveCaretRelative(textboxLog, ES_TEXTBOX_MOVE_CARET_ALL);
-			EsTextboxInsert(textboxLog, copy, -1, false);
-			EsTextboxEnsureCaretVisible(textboxLog, false);
+			EsTextboxAppend(textboxLog, copy, -1, false);
 			EsHeapFree(copy, 0, NULL);
 		}
 	}

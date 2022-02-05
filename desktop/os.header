@@ -2499,6 +2499,7 @@ function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public pro
 function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
+function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
 function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT); // Result will be zero-terminated; free with EsHeapFree.
 function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags = ES_FLAGS_DEFAULT); 
 function size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line = 0);

@@ -232,20 +232,20 @@ void PortGCC() {
 
 	if !resumeBuild {
 		if buildCross {
-			assert PathDeleteRecursively("cross");
+			PathDeleteRecursively("cross");
 		}
 
 		// Cleanup.
-		assert PathDeleteRecursively("bin/build-binutils");
-		assert PathDeleteRecursively("bin/build-gcc");
-		assert PathDeleteRecursively("bin/build-mpfr");
-		assert PathDeleteRecursively("bin/build-mpc");
-		assert PathDeleteRecursively("bin/build-gmp");
-		assert PathDeleteRecursively("bin/binutils-src");
-		assert PathDeleteRecursively("bin/gcc-src");
-		assert PathDeleteRecursively("bin/mpfr-src");
-		assert PathDeleteRecursively("bin/mpc-src");
-		assert PathDeleteRecursively("bin/gmp-src");
+		PathDeleteRecursively("bin/build-binutils");
+		PathDeleteRecursively("bin/build-gcc");
+		PathDeleteRecursively("bin/build-mpfr");
+		PathDeleteRecursively("bin/build-mpc");
+		PathDeleteRecursively("bin/build-gmp");
+		PathDeleteRecursively("bin/binutils-src");
+		PathDeleteRecursively("bin/gcc-src");
+		PathDeleteRecursively("bin/mpfr-src");
+		PathDeleteRecursively("bin/mpc-src");
+		PathDeleteRecursively("bin/gmp-src");
 
 		// Create folders.
 		assert PathCreateDirectory("bin/build-binutils");
@@ -409,16 +409,16 @@ void PortGCC() {
 
 	// Cleanup.
 	runningMakefiles = false;
-	assert PathDeleteRecursively("bin/build-binutils");
-	assert PathDeleteRecursively("bin/build-gcc");
-	assert PathDeleteRecursively("bin/build-mpc");
-	assert PathDeleteRecursively("bin/build-mpfr");
-	assert PathDeleteRecursively("bin/build-gmp");
-	assert PathDeleteRecursively("bin/binutils-src");
-	assert PathDeleteRecursively("bin/gcc-src");
-	assert PathDeleteRecursively("bin/mpc-src");
-	assert PathDeleteRecursively("bin/mpfr-src");
-	assert PathDeleteRecursively("bin/gmp-src");
+	PathDeleteRecursively("bin/build-binutils");
+	PathDeleteRecursively("bin/build-gcc");
+	PathDeleteRecursively("bin/build-mpc");
+	PathDeleteRecursively("bin/build-mpfr");
+	PathDeleteRecursively("bin/build-gmp");
+	PathDeleteRecursively("bin/binutils-src");
+	PathDeleteRecursively("bin/gcc-src");
+	PathDeleteRecursively("bin/mpc-src");
+	PathDeleteRecursively("bin/mpfr-src");
+	PathDeleteRecursively("bin/gmp-src");
 	PrintStdErrHighlight("Build succeeded.\n");
 }
 

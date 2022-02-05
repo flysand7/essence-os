@@ -3123,10 +3123,10 @@ bool /* returns false on fatal error */ DesktopSyscall(EsObjectID windowID, Appl
 }
 
 void EmbeddedWindowDestroyed(EsObjectID id) {
-	EsMenuCloseAll(); // The tab will be destroyed, but menus might be keeping pointers to it.
 	ApplicationInstance *instance = ApplicationInstanceFindByWindowID(id, true /* remove if found */);
 	if (!instance) return;
 
+	EsMenuCloseAll(); // The tab will be destroyed, but menus might be keeping pointers to it.
 	EsHandleClose(instance->embeddedWindowHandle);
 
 	ApplicationInstanceCleanup(instance);

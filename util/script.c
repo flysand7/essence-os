@@ -2,9 +2,9 @@
 // 	- Other list operations: insert_many, delete, delete_many, delete_last.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
-// 	- Other operators: remainder, bitwise shifts, unary minus, bitwise AND/OR/XOR/NOT, ternary.
+// 	- Other operators: remainder, bitwise shifts, bitwise AND/OR/XOR/NOT, ternary.
 // 	- Enums, bitsets.
-// 	- Resolving type identifiers when structs or function pointers contain references to other structs or function pointers.
+// 	- Named optional arguments with default values.
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -44,30 +44,31 @@
 #define T_MINUS               (41)
 #define T_ASTERISK            (42)
 #define T_SLASH               (43)
-#define T_LEFT_ROUND          (44)
-#define T_RIGHT_ROUND         (45)
-#define T_LEFT_SQUARE         (46)
-#define T_RIGHT_SQUARE        (47)
-#define T_LEFT_FANCY          (48)
-#define T_RIGHT_FANCY         (49)
-#define T_COMMA               (50)
-#define T_EQUALS              (51)
-#define T_SEMICOLON           (52)
-#define T_GREATER_THAN        (53)
-#define T_LESS_THAN           (54)
-#define T_GT_OR_EQUAL         (55)
-#define T_LT_OR_EQUAL         (56)
-#define T_DOUBLE_EQUALS       (57)
-#define T_NOT_EQUALS          (58)
-#define T_LOGICAL_AND         (59)
-#define T_LOGICAL_OR          (60)
-#define T_ADD_EQUALS          (61)
-#define T_MINUS_EQUALS        (62)
-#define T_ASTERISK_EQUALS     (63)
-#define T_SLASH_EQUALS        (64)
-#define T_DOT                 (65)
-#define T_COLON               (66)
-#define T_LOGICAL_NOT         (67)
+#define T_NEGATE              (44)
+#define T_LEFT_ROUND          (45)
+#define T_RIGHT_ROUND         (46)
+#define T_LEFT_SQUARE         (47)
+#define T_RIGHT_SQUARE        (48)
+#define T_LEFT_FANCY          (49)
+#define T_RIGHT_FANCY         (50)
+#define T_COMMA               (51)
+#define T_EQUALS              (52)
+#define T_SEMICOLON           (53)
+#define T_GREATER_THAN        (54)
+#define T_LESS_THAN           (55)
+#define T_GT_OR_EQUAL         (56)
+#define T_LT_OR_EQUAL         (57)
+#define T_DOUBLE_EQUALS       (58)
+#define T_NOT_EQUALS          (59)
+#define T_LOGICAL_AND         (60)
+#define T_LOGICAL_OR          (61)
+#define T_ADD_EQUALS          (62)
+#define T_MINUS_EQUALS        (63)
+#define T_ASTERISK_EQUALS     (64)
+#define T_SLASH_EQUALS        (65)
+#define T_DOT                 (66)
+#define T_COLON               (67)
+#define T_LOGICAL_NOT         (68)
 
 #define T_ROOT                (80)
 #define T_FUNCBODY            (81)
@@ -102,17 +103,18 @@
 #define T_FLOAT_MINUS         (121)
 #define T_FLOAT_ASTERISK      (122)
 #define T_FLOAT_SLASH         (123)
-#define T_FLOAT_GREATER_THAN  (124)
-#define T_FLOAT_LESS_THAN     (125)
-#define T_FLOAT_GT_OR_EQUAL   (126)
-#define T_FLOAT_LT_OR_EQUAL   (127)
-#define T_FLOAT_DOUBLE_EQUALS (128)
-#define T_FLOAT_NOT_EQUALS    (129)
-#define T_STR_DOUBLE_EQUALS   (130)
-#define T_STR_NOT_EQUALS      (131)
-#define T_EQUALS_DOT          (132)
-#define T_EQUALS_LIST         (133)
-#define T_INDEX_LIST          (134)
+#define T_FLOAT_NEGATE        (124)
+#define T_FLOAT_GREATER_THAN  (125)
+#define T_FLOAT_LESS_THAN     (126)
+#define T_FLOAT_GT_OR_EQUAL   (127)
+#define T_FLOAT_LT_OR_EQUAL   (128)
+#define T_FLOAT_DOUBLE_EQUALS (129)
+#define T_FLOAT_NOT_EQUALS    (130)
+#define T_STR_DOUBLE_EQUALS   (131)
+#define T_STR_NOT_EQUALS      (132)
+#define T_EQUALS_DOT          (133)
+#define T_EQUALS_LIST         (134)
+#define T_INDEX_LIST          (135)
 
 #define T_OP_RESIZE           (140)
 #define T_OP_ADD              (141)
@@ -664,6 +666,7 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_ASTERISK)        return 60;
 	if (t == T_SLASH)           return 60;
 	if (t == T_LOGICAL_NOT)     return 70;
+	if (t == T_NEGATE)          return 70;
 	if (t == T_DOT)             return 80;
 	if (t == T_COLON)           return 80;
 	if (t == T_AWAIT)           return 90;
@@ -1032,9 +1035,9 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 	} else if (node->token.type == T_NUMERIC_LITERAL
 			|| node->token.type == T_TRUE || node->token.type == T_FALSE || node->token.type == T_NULL) {
 		node->type = node->token.type;
-	} else if (node->token.type == T_LOGICAL_NOT) {
-		node->type = node->token.type;
-		node->firstChild = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->token.type));
+	} else if (node->token.type == T_LOGICAL_NOT || node->token.type == T_MINUS) {
+		node->type = node->token.type == T_MINUS ? T_NEGATE : T_LOGICAL_NOT;
+		node->firstChild = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->type));
 	} else if (node->token.type == T_LEFT_ROUND) {
 		node = ParseExpression(tokenizer, false, 0);
 		if (!node) return NULL;
@@ -1086,7 +1089,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 		node->firstChild = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->token.type));
 	} else {
 		PrintError2(tokenizer, node, "Expected an expression. "
-				"Expressions can start with a variable identifier, a string literal, a number, 'len', 'new', '!', '[' or '('.\n");
+				"Expressions can start with a variable identifier, a string literal, a number, 'await', 'new', '-', '!', '[' or '('.\n");
 		return NULL;
 	}
 
@@ -1846,7 +1849,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 		}
 	}
 
-	if (node->type != T_STRUCT) {
+	{
 		child = node->firstChild;
 
 		while (child) {
@@ -2143,8 +2146,9 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeBool)
-					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_LIST)) {
-				PrintError2(tokenizer, node, "This operator expects either integers, floats, strings or booleans.\n");
+					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_LIST)
+					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_STRUCT)) {
+				PrintError2(tokenizer, node, "These types cannot be compared.\n");
 				return false;
 			}
 		} else {
@@ -2439,6 +2443,14 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		node->expressionType = &globalExpressionTypeBool;
+	} else if (node->type == T_NEGATE) {
+		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
+				&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)) {
+			PrintError2(tokenizer, node, "Expected a int or float for the unary negate '-' operator.\n");
+			return false;
+		}
+
+		node->expressionType = node->firstChild->expressionType;
 	} else if (node->type == T_LIST_LITERAL) {
 		if (!node->firstChild) {
 			// TODO Support empty list literals?
@@ -2908,7 +2920,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 	} else if (node->type == T_ASSERT || node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT) {
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
-	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH) {
+	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH || node->type == T_NEGATE) {
 		uint8_t b = node->expressionType->type == T_FLOAT ? node->type - T_ADD + T_FLOAT_ADD 
 			: node->expressionType->type == T_STR ? T_CONCAT : node->type;
 		FunctionBuilderAddLineNumber(builder, node);
@@ -3710,6 +3722,9 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].f / context->c->stack[context->c->stackPointer - 1].f;
 			context->c->stackPointer--;
+		} else if (command == T_NEGATE) {
+			if (context->c->stackPointer < 1) return -1;
+			context->c->stack[context->c->stackPointer - 1].i = -context->c->stack[context->c->stackPointer - 1].i;
 		} else if (command == T_FLOAT_ADD) {
 			if (context->c->stackPointer < 2) return -1;
 			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f + context->c->stack[context->c->stackPointer - 1].f;
@@ -3726,6 +3741,9 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (context->c->stackPointer < 2) return -1;
 			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f / context->c->stack[context->c->stackPointer - 1].f;
 			context->c->stackPointer--;
+		} else if (command == T_FLOAT_NEGATE) {
+			if (context->c->stackPointer < 1) return -1;
+			context->c->stack[context->c->stackPointer - 1].f = -context->c->stack[context->c->stackPointer - 1].f;
 		} else if (command == T_LESS_THAN) {
 			if (context->c->stackPointer < 2) return -1;
 			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i < context->c->stack[context->c->stackPointer - 1].i;

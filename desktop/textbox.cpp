@@ -1196,6 +1196,15 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			&& textbox->carets[1].byte >= 0 && textbox->carets[1].byte <= textbox->lines[textbox->carets[1].line].lengthBytes);
 }
 
+void EsTextboxAppend(EsTextbox *textbox, const char *string, ptrdiff_t stringBytes, bool sendUpdatedMessage) {
+	TextboxCaret oldCarets[2];
+	oldCarets[0] = textbox->carets[0];
+	oldCarets[1] = textbox->carets[1];
+	EsTextboxMoveCaretRelative(textbox, ES_TEXTBOX_MOVE_CARET_ALL);
+	EsTextboxInsert(textbox, string, stringBytes, sendUpdatedMessage);
+	EsTextboxSetSelection(textbox, oldCarets[0].line, oldCarets[0].byte, oldCarets[1].line, oldCarets[1].byte);
+}
+
 char *EsTextboxGetContents(EsTextbox *textbox, size_t *_bytes, uint32_t flags) {
 	EsMessageMutexCheck();
 
