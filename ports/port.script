@@ -122,7 +122,7 @@ void PortBusybox() {
 			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
 	str[] config = StringSplitByCharacter(FileReadAll("ports/busybox/config"), "\n", true);
 	config:insert("CONFIG_BUSYBOX_EXEC_PATH=\"%posixPrefix%/bin/busybox\"", 34);
-	config:insert("CONFIG_SYSROOT=\"%rootDirectory%\"", 51);
+	config:insert("CONFIG_SYSROOT=\"%posixDestDir%\"", 51);
 	assert FileWriteAll("bin/source/.config", StringJoin(config, "\n", false));
 	assert SystemShellExecuteWithWorkingDirectory("bin/source", "make -j %processorCount%");
 	assert FileCopy("bin/source/busybox", "%posixRoot%/bin/busybox");
@@ -137,7 +137,7 @@ void PortMesa() {
 
 	assert FileWriteAll("bin/meson_cross.txt", 
 			"[binaries]\nc = '%toolchainPrefix%-gcc'\ncpp = '%toolchainPrefix%-g++'\nar = '%toolchainPrefix%-ar'\nstrip = '%toolchainPrefix%-strip'\n"
-			+ "[properties]\nsys_root = '%rootDirectory%'\nc_args = ['-D_POSIX_SOURCE']\ncpp_args = ['-D_POSIX_SOURCE']\n"
+			+ "[properties]\nsys_root = '%posixDestDir%'\nc_args = ['-D_POSIX_SOURCE']\ncpp_args = ['-D_POSIX_SOURCE']\n"
 			+ "[host_machine]\nsystem = 'essence'\ncpu_family = '%targetName%'\ncpu = 'generic'\nendian = 'little'\n");
 
 	assert FileCopy("ports/mesa/changes/include_c11_threads_posix.h", "bin/source/include/c11/threads_posix.h");
@@ -360,22 +360,22 @@ void PortGCC() {
 		if !buildCross {
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", 
 					"../binutils-src/configure --host=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
-					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%rootDirectory% "
+					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%posixDestDir% "
 					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", 
 					"../gcc-src/configure --host=%toolchainPrefix% --target=%toolchainPrefix% --prefix=\"%posixPrefix%\" "
-					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%rootDirectory% "
+					+ "--with-local-prefix=\"%posixPrefix%/local\" --with-build-sysroot=%posixDestDir% "
 					+ "--without-isl --disable-nls --disable-werror --without-target-bdw-gc "
 					+ "--enable-languages=c,c++ "
 					+ "CC=%toolchainPrefix%-gcc CXX=%toolchainPrefix%-g++ LD=%toolchainPrefix%-ld");
 		} else {
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", 
 					"../binutils-src/configure --target=%toolchainPrefix% --prefix=\"%crossDirectory%\" "
-					+ "--with-sysroot=\"%rootDirectory%\" --disable-nls --disable-werror");
+					+ "--with-sysroot=\"%posixDestDir%\" --disable-nls --disable-werror");
 			assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", 
 					"../gcc-src/configure --target=%toolchainPrefix% --prefix=\"%crossDirectory%\" "
-					+ "--enable-languages=c,c++ --with-sysroot=\"%rootDirectory%\" --disable-nls"); 
+					+ "--enable-languages=c,c++ --with-sysroot=\"%posixDestDir%\" --disable-nls"); 
 			// Add --without-headers for a x86_64-elf build.
 		}
 	}
@@ -601,7 +601,7 @@ void Start() {
 
 	posixDestDir = rootDirectory;
 	posixPrefix = "/Applications/POSIX";
-	posixRoot = rootDirectory + posixPrefix;
+	posixRoot = posixDestDir + posixPrefix;
 
 	// Create folders.
 	assert PathCreateLeadingDirectories("bin");
