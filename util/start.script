@@ -193,7 +193,9 @@ void AutomationBuildMinimal() {
 
 void AutomationRunTests() {
 	Setup(true);
-	assert FileWriteAll("bin/build_config.ini", "accepted_license=1\n");
+	str[] oldBuildConfig = StringSplitByCharacter(FileReadAll("bin/build_config.ini"), "\n", true);
+	for int i = 0; i < oldBuildConfig:len(); i += 1 { if oldBuildConfig[i] == "automated_build=1" { oldBuildConfig[i] = "automated_build=0"; } }
+	assert FileWriteAll("bin/build_config.ini", StringJoin(oldBuildConfig, "\n", false));
 	assert FileWriteAll("bin/config.ini", "Flag.ENABLE_POSIX_SUBSYSTEM=1\n");
 	assert FileWriteAll("bin/extra_applications.ini", "desktop/api_tests.ini\n");
 	assert SystemShellExecute("bin/build build");
