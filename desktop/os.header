@@ -18,6 +18,7 @@ opaque_type EsListDisplay      EsElement;
 opaque_type EsCanvasPane       EsElement;
 opaque_type EsSlider           EsElement;
 opaque_type EsScrollView       EsElement;
+opaque_type EsSpacer           EsElement;
 opaque_type EsTextPlan         none;
 opaque_type EsPaintTarget      none;
 opaque_type EsUndoManager      none;
@@ -2533,7 +2534,7 @@ function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdat
 // Panels, spacers and splitters.
 
 function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function EsElement *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, int width = 0, int height = 0);
+function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, int width = 0, int height = 0);
 function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 
@@ -2545,6 +2546,8 @@ function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransiti
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
 
 function EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel);
+
+function void EsSpacerChangeStyle(EsSpacer *spacer, const EsStyle *newStyle);
 
 // Static displays.
 

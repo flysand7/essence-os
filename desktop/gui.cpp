@@ -3513,7 +3513,7 @@ int ProcessSpacerMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsElement *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style, int width, int height) {
+EsSpacer *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style, int width, int height) {
 	EsSpacer *spacer = (EsSpacer *) EsHeapAllocate(sizeof(EsSpacer), true);
 	if (!spacer) return nullptr;
 	spacer->Initialise(panel, flags, ProcessSpacerMessage, style);
@@ -3521,6 +3521,12 @@ EsElement *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style
 	spacer->width = width == -1 ? 4 : width;
 	spacer->height = height == -1 ? 4 : height;
 	return spacer;
+}
+
+void EsSpacerChangeStyle(EsSpacer *spacer, const EsStyle *style) {
+	EsMessageMutexCheck();
+	EsAssert(spacer->messageClass == ProcessSpacerMessage);
+	spacer->SetStyle(style);
 }
 
 EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {

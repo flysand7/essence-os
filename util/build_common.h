@@ -104,11 +104,10 @@ bool CheckDependencies(const char *applicationName) {
 	}
 
 	for (int i = 0; !needsRebuild && i < arrlen(dependencies.files); i++) {
-		struct stat s;
-
-		// printf("%s, %s\n", applicationName, dependencies.files[i]);
+		struct stat s = { 0 };
 
 		if (stat(dependencies.files[i], &s) || s.st_mtime > dependencies.timeStamp) {
+			// printf("%s, %s, %ld, %ld\n", applicationName, dependencies.files[i], s.st_mtime, dependencies.timeStamp);
 			needsRebuild = true;
 			break;
 		}
@@ -171,6 +170,7 @@ void ParseDependencies(const char *dependencyFile, const char *applicationName, 
 	struct stat s;
 
 	if (stat(dependencyFile, &s) == 0) {
+		// printf("%s %ld %ld\n", applicationName, buildStartTimeStamp, s.st_mtime);
 		list.timeStamp = s.st_mtime;
 		if (buildStartTimeStamp < s.st_mtime) list.timeStamp = buildStartTimeStamp;
 		list.optimised = _optimisationsEnabled;

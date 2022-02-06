@@ -1190,7 +1190,9 @@ void OutputZig(Entry *root) {
 }
 
 int HeaderGeneratorMain(int argc, char **argv) {
-	if (argc < 2) {
+	bool system = argc == 3 && 0 == strcmp(argv[1], "system");
+
+	if (system) {
 		outputDependencies = FileOpen(DEST_DEPENDENCIES ".tmp", 'w');
 		FilePrintFormat(outputDependencies, ": \n");
 	}
@@ -1204,7 +1206,7 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		language = argv[1];
 		output = FileOpen(argv[2], 'w');
 
-		if (0 == strcmp(argv[1], "system")) {
+		if (system) {
 			outputAPIArray = FileOpen(DEST_API_ARRAY, 'w');
 			outputSyscallArray = FileOpen(DEST_SYSCALL_ARRAY, 'w');
 			outputEnumStringsArray = FileOpen(DEST_ENUM_STRINGS_ARRAY, 'w');
@@ -1319,7 +1321,7 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		Log("Unsupported language '%s'.\nLanguage must be one of: 'c', 'odin'.\n", language);
 	}
 
-	if (argc < 2) {
+	if (system) {
 		rename(DEST_DEPENDENCIES ".tmp", DEST_DEPENDENCIES);
 	}
 
