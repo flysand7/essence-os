@@ -1,6 +1,8 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
 
+// TODO Resizing the window after calling DirectoryEnumerateChildrenRecursively() is slow.
+
 struct Instance : EsInstance {
 	EsThreadInformation scriptThread;
 	char *inputText;
@@ -15,6 +17,8 @@ struct Instance : EsInstance {
 	char *outputLineBuffer;
 	size_t outputLineBufferBytes;
 	size_t outputLineBufferAllocated;
+	bool anyOutput;
+	bool gotREPLResult;
 };
 
 void AddPrompt(Instance *instance);
@@ -164,6 +168,14 @@ int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
 
 int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) {
 	return ExternalPrintStdErr(context, returnValue);
+}
+
+int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->stackPointer < 1) return -1;
+	int64_t ms = context->c->stack[--context->c->stackPointer].i;
+	if (ms > 0) EsSleep(ms); 
+	return 1;
 }
 
 int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
@@ -335,6 +347,10 @@ EXTERNAL_STUB(ExternalSystemSetEnvironmentVariable);
 // --------------------------------- User interface.
 
 #define COLOR_BACKGROUND (0xFFFDFDFD)
+#define COLOR_ROW_ODD (0xFFF4F4F4)
+#define COLOR_OUTPUT_DECORATION_IN_PROGRESS (0xFFFF7F00)
+#define COLOR_OUTPUT_DECORATION_SUCCESS (0xFF3070FF)
+#define COLOR_OUTPUT_DECORATION_FAILURE (0xFFFF3040)
 #define COLOR_TEXT_MAIN (0xFF010102)
 #define COLOR_TEXT_LIGHT (0xFF606062)
 #define TEXT_SIZE_DEFAULT (14)
@@ -383,6 +399,31 @@ const EsStyle styleOutputParagraph = {
 		.textSize = TEXT_SIZE_OUTPUT,
 		.fontFamily = ES_FONT_SANS,
 		.fontWeight = 4,
+	},
+};
+
+const EsStyle styleOutputParagraphStrong = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT
+			| ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_TEXT_ALIGN | ES_THEME_METRICS_TEXT_COLOR,
+		.textColor = COLOR_TEXT_MAIN,
+		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_WRAP | ES_TEXT_V_TOP,
+		.textSize = TEXT_SIZE_OUTPUT,
+		.fontFamily = ES_FONT_SANS,
+		.fontWeight = 6,
+	},
+};
+
+const EsStyle styleOutputParagraphItalic = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT | ES_THEME_METRICS_IS_ITALIC
+			| ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_TEXT_ALIGN | ES_THEME_METRICS_TEXT_COLOR,
+		.textColor = COLOR_TEXT_MAIN,
+		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_WRAP | ES_TEXT_V_TOP,
+		.textSize = TEXT_SIZE_OUTPUT,
+		.fontFamily = ES_FONT_SANS,
+		.fontWeight = 4,
+		.isItalic = true,
 	},
 };
 
@@ -454,7 +495,7 @@ const EsStyle styleOutputDecorationInProgress = {
 
 	.appearance = {
 		.enabled = true,
-		.backgroundColor = 0xFFFF7F00,
+		.backgroundColor = COLOR_OUTPUT_DECORATION_IN_PROGRESS,
 	},
 };
 
@@ -466,7 +507,7 @@ const EsStyle styleOutputDecorationSuccess = {
 
 	.appearance = {
 		.enabled = true,
-		.backgroundColor = 0xFF3070FF,
+		.backgroundColor = COLOR_OUTPUT_DECORATION_SUCCESS,
 	},
 };
 
@@ -478,14 +519,120 @@ const EsStyle styleOutputDecorationFailure = {
 
 	.appearance = {
 		.enabled = true,
-		.backgroundColor = 0xFFFF3040,
+		.backgroundColor = COLOR_OUTPUT_DECORATION_FAILURE,
 	},
 };
+
+const EsStyle styleListRowEven = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS,
+		.insets = ES_RECT_1(3),
+	},
+
+	.appearance = {
+		.enabled = true,
+		.backgroundColor = COLOR_BACKGROUND,
+	},
+};
+
+const EsStyle styleListRowOdd = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS,
+		.insets = ES_RECT_1(3),
+	},
+
+	.appearance = {
+		.enabled = true,
+		.backgroundColor = COLOR_ROW_ODD,
+	},
+};
+
+void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
+	// TODO Truncating/scrolling/collapsing/saving/copying output.
+	// TODO Letting scripts register custom views for structs.
+
+	size_t bytes;
+
+	if (type->type == T_INT) {
+		char *buffer = EsStringAllocateAndFormat(&bytes, "(int) %d", value.i);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_BOOL) {
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", value.i ? "true" : "false");
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_FLOAT) {
+		char *buffer = EsStringAllocateAndFormat(&bytes, "(float) %F", value.f);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_STR) {
+		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		const char *valueText;
+		size_t valueBytes;
+		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
+		char *buffer = EsStringAllocateAndFormat(&bytes, "\"%s\"", valueBytes, valueText);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_LIST) {
+		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK);
+		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		EsAssert(entry->type == T_LIST);
+
+		if (!entry->length) {
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+					EsLiteral("Empty list.\n"));
+		}
+
+		for (uintptr_t i = 0; i < entry->length; i++) {
+			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowOdd : &styleListRowEven);
+			AddREPLResult(context, item, type->firstChild, entry->list[i]);
+		}
+	} else if (type->type == T_FUNCPTR) {
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+				EsLiteral("Function pointer.\n"));
+	} else if (type->type == T_STRUCT) {
+		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK);
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%s:", type->token.textBytes, type->token.text);
+		EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleOutputParagraph, buffer, bytes);
+		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		EsAssert(entry->type == T_STRUCT);
+		uintptr_t i = 0;
+
+		Node *field = type->firstChild;
+
+		while (field) {
+			EsAssert(i != entry->fieldCount);
+			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowEven : &styleListRowOdd);
+			AddREPLResult(context, item, field->firstChild, entry->fields[i]);
+			field = field->sibling;
+			i++;
+		}
+	} else if (type->type == T_NULL) {
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else {
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+				EsLiteral("The type of the result was not recognized.\n"));
+	}
+}
+
+void ExternalPassREPLResult(ExecutionContext *context, Value value) {
+	Instance *instance = scriptInstance;
+
+	if (instance->gotREPLResult) return;
+	if (instance->outputLineBufferBytes) AddOutput(instance, EsLiteral("\n"));
+
+	instance->anyOutput = true;
+	instance->gotREPLResult = true;
+
+	EsMessageMutexAcquire();
+	AddREPLResult(context, instance->outputPanel, context->functionData->replResultType, value);
+	EsMessageMutexRelease();
+}
 
 void ScriptThread(EsGeneric _instance) {
 	Instance *instance = (Instance *) _instance.p;
 	scriptInstance = instance;
-	int result = ScriptExecuteFromFile(EsLiteral("in"), instance->inputText, instance->inputBytes);
+	int result = ScriptExecuteFromFile(EsLiteral("in"), instance->inputText, instance->inputBytes, true);
 	instance->inputText = nullptr;
 	
 	if (instance->outputLineBufferBytes) {
@@ -493,6 +640,14 @@ void ScriptThread(EsGeneric _instance) {
 	}
 
 	EsMessageMutexAcquire();
+
+	if (!instance->anyOutput) {
+		EsElementDestroy(EsElementGetLayoutParent(instance->outputPanel));
+	} else {
+		instance->anyOutput = false;
+	}
+
+	instance->gotREPLResult = false;
 
 	if (result == 0) {
 		EsSpacerChangeStyle(instance->outputDecoration, &styleOutputDecorationSuccess);
@@ -525,16 +680,8 @@ void EnterCommand(Instance *instance) {
 	instance->outputDecoration = EsSpacerCreate(outputPanelWrapper, ES_CELL_V_FILL, &styleOutputDecorationInProgress);
 	instance->outputPanel = EsPanelCreate(outputPanelWrapper, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, &styleOutputPanel);
 
-	const char *inputPrefix = "void Start() {\n";
-	const char *inputSuffix = "\n}";
-	char *script = (char *) EsHeapAllocate(dataBytes + EsCStringLength(inputPrefix) + EsCStringLength(inputSuffix), false);
-	EsMemoryCopy(script, inputPrefix, EsCStringLength(inputPrefix));
-	EsMemoryCopy(script + EsCStringLength(inputPrefix), data, dataBytes);
-	EsMemoryCopy(script + EsCStringLength(inputPrefix) + dataBytes, inputSuffix, EsCStringLength(inputSuffix));
-	EsHeapFree(data);
-
-	instance->inputText = script;
-	instance->inputBytes = dataBytes + EsCStringLength(inputPrefix) + EsCStringLength(inputSuffix);
+	instance->inputText = data;
+	instance->inputBytes = dataBytes;
 	EsAssert(ES_SUCCESS == EsThreadCreate(ScriptThread, &instance->scriptThread, instance)); 
 	EsHandleClose(instance->scriptThread.handle);
 }
@@ -551,6 +698,8 @@ int InputTextboxMessage(EsElement *element, EsMessage *message) {
 }
 
 void AddOutput(Instance *instance, const char *text, size_t textBytes) {
+	instance->anyOutput = true;
+
 	for (uintptr_t i = 0; i < textBytes; i++) {
 		if (text[i] == '\n') {
 			EsMessageMutexAcquire();

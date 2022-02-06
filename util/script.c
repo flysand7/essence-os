@@ -85,6 +85,7 @@
 #define T_LIST                (92)
 #define T_IMPORT_PATH         (93)
 #define T_LIST_LITERAL        (94)
+#define T_REPL_RESULT         (95)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -250,6 +251,7 @@ typedef struct FunctionBuilder {
 	bool isPersistentVariable, isDotAssignment, isListAssignment;
 	uintptr_t globalVariableOffset;
 	struct ImportData *importData; // Only valid during script loading.
+	Node *replResultType;
 } FunctionBuilder;
 
 typedef struct BackTraceItem {
@@ -381,10 +383,10 @@ ImportData *importedModules;
 ImportData **importedModulesLink = &importedModules;
 
 // Forward declarations:
-Node *ParseBlock(Tokenizer *tokenizer);
+Node *ParseBlock(Tokenizer *tokenizer, bool replMode);
 Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t precedence);
 void ScriptPrintNode(Node *node, int indent);
-bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData);
+bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData, bool replMode);
 void ScriptFreeCoroutine(CoroutineState *c);
 uintptr_t HeapAllocate(ExecutionContext *context);
 
@@ -409,6 +411,7 @@ void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const c
 void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, CoroutineState *c, const char *prefix);
 void *FileLoad(const char *path, size_t *length);
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context);
+void ExternalPassREPLResult(ExecutionContext *context, Value value);
 
 // --------------------------------- Base module.
 
@@ -469,6 +472,7 @@ char baseModuleSource[] = {
 	"int SystemGetProcessorCount() #extcall;"
 	"bool SystemRunningAsAdministrator() #extcall;"
 	"str SystemGetHostName() #extcall;"
+	"void SystemSleepMs(int ms) #extcall;"
 	"int RandomInt(int min, int max) #extcall;"
 
 	"str UUIDGenerate() {"
@@ -682,6 +686,7 @@ int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *retur
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue);
 int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue);
 int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue);
+int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue);
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue);
 int ExternalPathExists(ExecutionContext *context, Value *returnValue);
@@ -718,6 +723,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "SystemSetEnvironmentVariable", .callback = ExternalSystemSetEnvironmentVariable },
 	{ .cName = "SystemRunningAsAdministrator", .callback = ExternalSystemRunningAsAdministrator },
 	{ .cName = "SystemGetHostName", .callback = ExternalSystemGetHostName },
+	{ .cName = "SystemSleepMs", .callback = ExternalSystemSleepMs },
 	{ .cName = "PathExists", .callback = ExternalPathExists },
 	{ .cName = "PathIsFile", .callback = ExternalPathIsFile },
 	{ .cName = "PathIsDirectory", .callback = ExternalPathIsDirectory },
@@ -976,7 +982,10 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid) {
 		node->type = node->token.type;
 
 		if (!allowVoid && node->type == T_VOID) {
-			PrintError2(tokenizer, node, "The 'void' type is not allowed here.\n");
+			if (!maybe) {
+				PrintError2(tokenizer, node, "The 'void' type is not allowed here.\n");
+			}
+
 			return NULL;
 		}
 
@@ -1049,6 +1058,8 @@ Node *ParseCall(Tokenizer *tokenizer, Node *function) {
 		if (token.type == T_RIGHT_ROUND) {
 			TokenNext(tokenizer);
 			break;
+		} else if (token.type == T_ERROR) {
+			return NULL;
 		}
 
 		if (arguments->firstChild) {
@@ -1291,7 +1302,7 @@ Node *ParseIf(Tokenizer *tokenizer) {
 
 	if (token.type == T_LEFT_FANCY) {
 		TokenNext(tokenizer);
-		node->firstChild->sibling = ParseBlock(tokenizer);
+		node->firstChild->sibling = ParseBlock(tokenizer, false);
 		if (!node->firstChild->sibling) return NULL;
 	} else {
 		Node *wrapper = (Node *) AllocateFixed(sizeof(Node));
@@ -1319,7 +1330,7 @@ Node *ParseIf(Tokenizer *tokenizer) {
 			if (!node->firstChild->sibling->sibling) return NULL;
 		} else if (token.type == T_LEFT_FANCY) {
 			TokenNext(tokenizer);
-			node->firstChild->sibling->sibling = ParseBlock(tokenizer);
+			node->firstChild->sibling->sibling = ParseBlock(tokenizer, false);
 			if (!node->firstChild->sibling->sibling) return NULL;
 		} else {
 			node->firstChild->sibling->sibling = ParseExpression(tokenizer, true, 0);
@@ -1337,7 +1348,7 @@ Node *ParseIf(Tokenizer *tokenizer) {
 	return node;
 }
 
-Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer) {
+Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) {
 	Tokenizer copy = *tokenizer;
 	bool isVariableDeclaration = false;
 
@@ -1356,6 +1367,12 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer) {
 	*tokenizer = copy;
 
 	if (isVariableDeclaration) {
+		// TODO Variable support in replMode.
+		if (replMode) {
+			PrintError(tokenizer, "Variables are not yet supported in the console.\n");
+			return NULL;
+		}
+
 		Node *declaration = (Node *) AllocateFixed(sizeof(Node));
 		declaration->type = T_DECLARE;
 		declaration->firstChild = ParseType(tokenizer, false, false);
@@ -1381,6 +1398,19 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer) {
 		Node *expression = ParseExpression(tokenizer, true, 0);
 		if (!expression) return NULL;
 
+		if (replMode) {
+			Token end = TokenPeek(tokenizer);
+
+			if (end.type == T_ERROR) {
+				return NULL;
+			} else if (end.type == T_EOF) {
+				Node *replResult = (Node *) AllocateFixed(sizeof(Node));
+				replResult->type = T_REPL_RESULT;
+				replResult->firstChild = expression;
+				return replResult;
+			}
+		}
+
 		Token semicolon = TokenNext(tokenizer);
 
 		if (semicolon.type != T_SEMICOLON) {
@@ -1392,7 +1422,7 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer) {
 	}
 }
 
-Node *ParseBlock(Tokenizer *tokenizer) {
+Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 	Node *node = (Node *) AllocateFixed(sizeof(Node));
 	Node **link = &node->firstChild;
 	node->type = T_BLOCK;
@@ -1404,7 +1434,7 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 
 		if (token.type == T_ERROR) {
 			return NULL;
-		} else if (token.type == T_RIGHT_FANCY) {
+		} else if (token.type == (replMode ? T_EOF : T_RIGHT_FANCY)) {
 			TokenNext(tokenizer);
 			return node;
 		} else if (token.type == T_IF) {
@@ -1426,7 +1456,7 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 			}
 
 			if (token.type == T_LEFT_FANCY) {
-				node->firstChild->sibling = ParseBlock(tokenizer);
+				node->firstChild->sibling = ParseBlock(tokenizer, false);
 				if (!node->firstChild->sibling) return NULL;
 			} else {
 				node->firstChild->sibling = (Node *) AllocateFixed(sizeof(Node));
@@ -1441,7 +1471,7 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
 			node->type = T_FOR;
 			node->token = TokenNext(tokenizer);
-			node->firstChild = ParseVariableDeclarationOrExpression(tokenizer);
+			node->firstChild = ParseVariableDeclarationOrExpression(tokenizer, false);
 			if (!node->firstChild) return NULL;
 			node->firstChild->sibling = ParseExpression(tokenizer, false, 0);
 			if (!node->firstChild->sibling) return NULL;
@@ -1464,7 +1494,7 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 			}
 
 			if (token.type == T_LEFT_FANCY) {
-				node->firstChild->sibling->sibling->sibling = ParseBlock(tokenizer);
+				node->firstChild->sibling->sibling->sibling = ParseBlock(tokenizer, false);
 				if (!node->firstChild->sibling->sibling->sibling) return NULL;
 			} else {
 				node->firstChild->sibling->sibling->sibling = (Node *) AllocateFixed(sizeof(Node));
@@ -1480,6 +1510,12 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 			*link = wrapper;
 			link = &wrapper->sibling;
 		} else if (token.type == T_RETURN || token.type == T_ASSERT) {
+			if (replMode) {
+				PrintError2(tokenizer, node, "%s statements cannot be used in the console.\n", 
+						token.type == T_RETURN ? "Return" : "Assert");
+				return NULL;
+			}
+
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
 			node->type = token.type;
 			node->token = TokenNext(tokenizer);
@@ -1499,12 +1535,12 @@ Node *ParseBlock(Tokenizer *tokenizer) {
 			}
 		} else if (token.type == T_LEFT_FANCY) {
 			TokenNext(tokenizer);
-			Node *block = ParseBlock(tokenizer);
+			Node *block = ParseBlock(tokenizer, false);
 			if (!block) return NULL;
 			*link = block;
 			link = &block->sibling;
 		} else {
-			Node *node = ParseVariableDeclarationOrExpression(tokenizer);
+			Node *node = ParseVariableDeclarationOrExpression(tokenizer, replMode);
 			if (!node) return NULL;
 			*link = node;
 			link = &node->sibling;
@@ -1595,7 +1631,7 @@ Node *ParseGlobalVariableOrFunctionDefinition(Tokenizer *tokenizer, bool allowGl
 				Node *body = (Node *) AllocateFixed(sizeof(Node));
 				body->type = T_FUNCBODY;
 				functionPointerType->sibling = body;
-				body->firstChild = ParseBlock(tokenizer);
+				body->firstChild = ParseBlock(tokenizer, false);
 
 				if (!body->firstChild) {
 					return NULL;
@@ -1641,6 +1677,51 @@ Node *ParseGlobalVariableOrFunctionDefinition(Tokenizer *tokenizer, bool allowGl
 	}
 
 	return node;
+}
+
+Node *ParseRootREPL(Tokenizer *tokenizer) {
+	Node *root = (Node *) AllocateFixed(sizeof(Node));
+	root->type = T_ROOT;
+	Node **link = &root->firstChild;
+
+	Node *node = (Node *) AllocateFixed(sizeof(Node));
+	node->type = T_IMPORT;
+	node->token.type = T_INLINE;
+	node->token.text = "#inline";
+	node->token.textBytes = 7;
+	node->firstChild = (Node *) AllocateFixed(sizeof(Node));
+	node->firstChild->type = T_IMPORT_PATH;
+	node->firstChild->token.type = T_STRING_LITERAL;
+	node->firstChild->token.text = "__base_module__";
+	node->firstChild->token.textBytes = 15;
+	*link = node;
+	link = &node->sibling;
+
+	Node *function = (Node *) AllocateFixed(sizeof(Node));
+	*link = function;
+	link = &function->sibling;
+	function->type = T_FUNCTION;
+	function->token.text = startFunction;
+	function->token.textBytes = startFunctionBytes;
+	Node *functionPointerType = (Node *) AllocateFixed(sizeof(Node));
+	function->firstChild = functionPointerType;
+	functionPointerType->type = T_FUNCPTR;
+	Node *functionArguments = (Node *) AllocateFixed(sizeof(Node));
+	functionPointerType->firstChild = functionArguments;
+	functionArguments->type = T_ARGUMENTS;
+	Node *functionReturnType = (Node *) AllocateFixed(sizeof(Node));
+	functionArguments->sibling = functionReturnType;
+	functionReturnType->type = T_VOID;
+	Node *functionBody = (Node *) AllocateFixed(sizeof(Node));
+	functionPointerType->sibling = functionBody;
+	functionBody->type = T_FUNCBODY;
+	functionBody->firstChild = ParseBlock(tokenizer, true);
+
+	if (!functionBody->firstChild) {
+		return NULL;
+	}
+
+	return root;
 }
 
 Node *ParseRoot(Tokenizer *tokenizer) {
@@ -2037,7 +2118,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 			t.input = (const char *) fileData;
 			t.line = 1;
 
-			if (!ScriptLoad(t, context, node->importData)) {
+			if (!ScriptLoad(t, context, node->importData, false)) {
 				return false;
 			}
 		}
@@ -2121,6 +2202,19 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 		child = child->sibling;
 	}
 
+	if (node->type == T_FUNCPTR) {
+		Node *type = node->firstChild->sibling;
+
+		if (type->type == T_IDENTIFIER) {
+			Node *lookup = ScopeLookup(tokenizer, type, false);
+			if (!lookup) return false;
+			Node *copy = (Node *) AllocateFixed(sizeof(Node));
+			*copy = *lookup;
+			copy->sibling = NULL;
+			node->firstChild->sibling = copy;
+		}
+	}
+
 	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST) {
 		Node *type = node->firstChild;
 
@@ -2169,7 +2263,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			|| node->type == T_BOOL || node->type == T_VOID || node->type == T_IDENTIFIER
 			|| node->type == T_ARGUMENTS || node->type == T_ARGUMENT
 			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT || node->type == T_IMPORT_PATH
-			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION) {
+			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION
+			|| node->type == T_REPL_RESULT) {
 	} else if (node->type == T_NUMERIC_LITERAL) {
 		size_t dotCount = 0;
 
@@ -3148,6 +3243,17 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		Value v;
 		v.i = node->type == T_TRUE ? 1 : 0;
 		FunctionBuilderAppend(builder, &v, sizeof(v));
+	} else if (node->type == T_REPL_RESULT) {
+		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeVoid)) {
+			FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
+		}
+
+		if (builder->replResultType) {
+			PrintError2(tokenizer, node, "Multiple REPL results are not allowed.\n");
+			return false;
+		}
+
+		builder->replResultType = node->firstChild->expressionType;
 	} else {
 		PrintDebug("FunctionBuilderRecurse %d\n", node->type);
 		Assert(false);
@@ -4442,6 +4548,9 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				instructionPointer = 1; // There is a T_AWAIT command at address 1.
 				goto callCommand;
 			}
+		} else if (command == T_REPL_RESULT) {
+			if (context->c->stackPointer < 1) return -1;
+			ExternalPassREPLResult(context, context->c->stack[--context->c->stackPointer]);
 		} else if (command == T_END_FUNCTION || command == T_EXTCALL) {
 			if (command == T_EXTCALL) {
 				uint16_t index = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -4620,11 +4729,11 @@ bool ScriptParseOptions(ExecutionContext *context) {
 	return true;
 }
 
-bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData) {
+bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData, bool replMode) {
 	Node *previousRootNode = context->rootNode;
 	ImportData *previousImportData = context->functionData->importData;
 
-	context->rootNode = ParseRoot(&tokenizer); 
+	context->rootNode = replMode ? ParseRootREPL(&tokenizer) : ParseRoot(&tokenizer); 
 	context->functionData->importData = tokenizer.module;
 
 	uint8_t b = 0; // Make sure no function can start at 0.
@@ -4834,7 +4943,7 @@ void PrintLine(ImportData *importData, uintptr_t line) {
 	PrintDebug(">> %.*s\n", (int) length, &((char *) importData->fileData)[position]);
 }
 
-int ScriptExecuteFromFile(char *scriptPath, size_t scriptPathBytes, char *fileData, size_t fileDataBytes) {
+int ScriptExecuteFromFile(char *scriptPath, size_t scriptPathBytes, char *fileData, size_t fileDataBytes, bool replMode) {
 	Tokenizer tokenizer = { 0 };
 	ImportData importData = { 0 };
 	importData.path = scriptPath;
@@ -4864,7 +4973,7 @@ int ScriptExecuteFromFile(char *scriptPath, size_t scriptPathBytes, char *fileDa
 	context.c->previousCoroutineLink = &context.allCoroutines;
 	context.allCoroutines = context.c;
 
-	int result = ScriptLoad(tokenizer, &context, &importData) ? ScriptExecute(&context, &importData) : 1;
+	int result = ScriptLoad(tokenizer, &context, &importData, replMode) ? ScriptExecute(&context, &importData) : 1;
 	ScriptFree(&context);
 
 	importedModules = NULL;
@@ -5606,6 +5715,37 @@ int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
 	return 2;
 }
 
+void *SystemSleepThread(void *_coroutine) {
+	CoroutineState *coroutine = (CoroutineState *) _coroutine;
+	struct timespec sleepTime;
+	uint64_t x = 1000000 * coroutine->externalCoroutineData.i;
+	sleepTime.tv_sec = x / 1000000000;
+	sleepTime.tv_nsec = x % 1000000000;
+	nanosleep(&sleepTime, NULL);
+	ExternalCoroutineDone(coroutine);
+	return NULL;
+}
+
+int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->externalCoroutine) return 1;
+	if (context->c->stackPointer < 1) return -1;
+	context->c->externalCoroutineData = context->c->stack[--context->c->stackPointer];
+#ifdef __linux__
+	pthread_t thread;
+	pthread_create(&thread, NULL, SystemSleepThread, context->c);
+	pthread_detach(thread);
+	return 4;
+#else
+	struct timespec sleepTime;
+	uint64_t x = 1000000 * coroutine->externalCoroutineData.i;
+	sleepTime.tv_sec = x / 1000000000;
+	sleepTime.tv_nsec = x % 1000000000;
+	nanosleep(&sleepTime, NULL);
+	return 1;
+#endif
+}
+
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	(void) context;
 	while (sem_wait(&externalCoroutineSemaphore) == -1);
@@ -5616,6 +5756,12 @@ CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	unblocked->nextExternalCoroutine = NULL;
 	pthread_mutex_unlock(&externalCoroutineMutex);
 	return unblocked;
+}
+
+void ExternalPassREPLResult(ExecutionContext *context, Value value) {
+	(void) context;
+	(void) value;
+	Assert(false);
 }
 
 void *AllocateFixed(size_t bytes) {
@@ -5785,7 +5931,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	int result = ScriptExecuteFromFile(scriptPath, strlen(scriptPath), data, dataBytes);
+	int result = ScriptExecuteFromFile(scriptPath, strlen(scriptPath), data, dataBytes, false);
 
 	while (fixedAllocationBlocks) {
 		void *block = fixedAllocationBlocks;
