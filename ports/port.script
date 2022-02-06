@@ -112,6 +112,10 @@ void PortBochs() {
 }
 
 void PortBusybox() {
+	if PathExists("%posixRoot%/bin/busybox") {
+		return;
+	}
+	
 	str version = "1.33.1";
 
 	if SystemGetHostName() == "Darwin" {

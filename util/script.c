@@ -3448,6 +3448,8 @@ void ScriptHeapEntryToString(ExecutionContext *context, HeapEntry *entry, const 
 		ScriptHeapEntryToString(context, entry, text, bytes);
 	} else {
 		Assert(false);
+		*text = "";
+		*bytes = 0;
 	}
 }
 
@@ -4822,8 +4824,8 @@ void PrintLine(ImportData *importData, uintptr_t line) {
 
 	uintptr_t length = 0;
 
-	for (uintptr_t i = position; i < importData->fileDataBytes; i++) {
-		if (((char *) importData->fileData)[i] == '\n') {
+	for (uintptr_t i = position; i <= importData->fileDataBytes; i++) {
+		if (i == importData->fileDataBytes || ((char *) importData->fileData)[i] == '\n') {
 			length = i - position;
 			break;
 		}
@@ -4832,21 +4834,17 @@ void PrintLine(ImportData *importData, uintptr_t line) {
 	PrintDebug(">> %.*s\n", (int) length, &((char *) importData->fileData)[position]);
 }
 
-int ScriptExecuteFromPath(char *scriptPath, size_t scriptPathBytes) {
+int ScriptExecuteFromFile(char *scriptPath, size_t scriptPathBytes, char *fileData, size_t fileDataBytes) {
 	Tokenizer tokenizer = { 0 };
 	ImportData importData = { 0 };
 	importData.path = scriptPath;
 	importData.pathBytes = scriptPathBytes;
-	importData.fileData = FileLoad(scriptPath, &tokenizer.inputBytes);
-	importData.fileDataBytes = tokenizer.inputBytes;
+	importData.fileData = fileData;
+	importData.fileDataBytes = fileDataBytes;
 	tokenizer.module = &importData;
 	tokenizer.line = 1;
-	tokenizer.input = (const char *) importData.fileData;
-
-	if (!tokenizer.input) {
-		PrintDebug("Error: Could not load the input file '%s'.\n", scriptPath);
-		return 1;
-	}
+	tokenizer.input = fileData;
+	tokenizer.inputBytes = fileDataBytes;
 
 	FunctionBuilder builder = { 0 };
 	ExecutionContext context = { 0 };
@@ -4868,6 +4866,10 @@ int ScriptExecuteFromPath(char *scriptPath, size_t scriptPathBytes) {
 
 	int result = ScriptLoad(tokenizer, &context, &importData) ? ScriptExecute(&context, &importData) : 1;
 	ScriptFree(&context);
+
+	importedModules = NULL;
+	importedModulesLink = &importedModules;
+
 	return result;
 }
 
@@ -5250,7 +5252,6 @@ int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
 	if (entryBytes == 0 || entry2Bytes == 0) return 2;
@@ -5776,7 +5777,15 @@ int main(int argc, char **argv) {
 	if (lastSlash) *lastSlash = 0;
 	else strcpy(scriptSourceDirectory, ".");
 
-	int result = ScriptExecuteFromPath(scriptPath, strlen(scriptPath));
+	size_t dataBytes;
+	void *data = FileLoad(scriptPath, &dataBytes);
+
+	if (!data) {
+		PrintDebug("Error: Could not load the input file '%s'.\n", scriptPath);
+		return 1;
+	}
+
+	int result = ScriptExecuteFromFile(scriptPath, strlen(scriptPath), data, dataBytes);
 
 	while (fixedAllocationBlocks) {
 		void *block = fixedAllocationBlocks;

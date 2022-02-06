@@ -178,6 +178,10 @@ bool BuildAPIDependencies() {
 		if (CallSystem("bin/script ports/port.script portName=harfbuzz targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
 	}
 
+	if (IsOptionEnabled("Flag.ENABLE_POSIX_SUBSYSTEM")) {
+		if (CallSystem("bin/script ports/port.script portName=busybox targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX)) return false;
+	}
+
 	if (CallSystem("cp -p kernel/module.h root/Applications/POSIX/include")) return false;
 
 	return true;
