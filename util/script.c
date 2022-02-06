@@ -5,6 +5,7 @@
 // 	- Other operators: remainder, bitwise shifts, bitwise AND/OR/XOR/NOT, ternary.
 // 	- Enums, bitsets.
 // 	- Named optional arguments with default values.
+// 	- Accessing structs and functypes from inline modules.
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -1680,6 +1681,8 @@ Node *ParseGlobalVariableOrFunctionDefinition(Tokenizer *tokenizer, bool allowGl
 }
 
 Node *ParseRootREPL(Tokenizer *tokenizer) {
+	// TODO Importing modules.
+
 	Node *root = (Node *) AllocateFixed(sizeof(Node));
 	root->type = T_ROOT;
 	Node **link = &root->firstChild;

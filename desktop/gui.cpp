@@ -382,6 +382,8 @@ struct EsPanel : EsElement {
 	uint16_t bandCount[2];
 	EsPanelBand *bands[2];
 	uintptr_t tableIndex;
+	uint8_t *tableMemoryBase;
+	Array<EsPanelBandDecorator> bandDecorators;
 
 	// TODO This names overlap with fields in EsElement, they should probably be renamed.
 	uint16_t transitionType;
@@ -1985,18 +1987,23 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 
 	size_t childCount = panel->GetChildCount();
 
+	EsHeapFree(panel->tableMemoryBase);
+	panel->tableMemoryBase = nullptr;
+
 	uint8_t *memoryBase = (uint8_t *) EsHeapAllocate(sizeof(int) * childCount * 2 + sizeof(EsPanelBand) * (panel->bandCount[0] + panel->bandCount[1]), true), *memory = memoryBase;
 
 	if (!memoryBase) {
 		return;
 	}
 
+	// NOTE These must be contiguous at come at the start of memoryBase, so that the band decorators can look up band positions.
+	EsPanelBand *calculatedProperties[2]; 
+	calculatedProperties[0] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[0];
+	calculatedProperties[1] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[1];
+
 	int *calculatedSize[2];
 	calculatedSize[0] = (int *) memory; memory += sizeof(int) * childCount;
 	calculatedSize[1] = (int *) memory; memory += sizeof(int) * childCount;
-	EsPanelBand *calculatedProperties[2];
-	calculatedProperties[0] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[0];
-	calculatedProperties[1] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[1];
 
 	for (int axis = 0; axis < 2; axis++) {
 		if (panel->bands[axis]) {
@@ -2243,7 +2250,7 @@ void LayoutTable(EsPanel *panel, EsMessage *message) {
 		EsPrint("\t%d/%d\n", out[0], out[1]);
 	}
 
-	EsHeapFree(memoryBase);
+	panel->tableMemoryBase = memoryBase;
 }
 
 int LayoutStackDeterminePerPush(EsPanel *panel, int available, int secondary) {
@@ -3128,6 +3135,9 @@ void PanelTableSetChildCell(EsPanel *panel, EsElement *child) {
 	}
 
 	child->tableCell = cell;
+
+	EsHeapFree(panel->tableMemoryBase);
+	panel->tableMemoryBase = nullptr;
 }
 
 int ProcessPanelMessage(EsElement *element, EsMessage *message) {
@@ -3164,6 +3174,28 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 			}
 		} else {
 			LayoutStack(panel, message);
+		}
+	} else if (message->type == ES_MSG_PAINT) {
+		uint8_t *memory = panel->tableMemoryBase;
+		EsRectangle client = EsPainterBoundsClient(message->painter); 
+
+		if (memory) {
+			EsPanelBand *calculatedProperties[2]; 
+			calculatedProperties[0] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[0];
+			calculatedProperties[1] = (EsPanelBand *) memory; memory += sizeof(EsPanelBand) * panel->bandCount[1];
+
+			for (uintptr_t i = 0; i < panel->bandDecorators.Length(); i++) {
+				EsPanelBandDecorator decorator = panel->bandDecorators[i];
+
+				for (uintptr_t j = decorator.index; j < panel->bandCount[decorator.axis]; j += decorator.repeatEvery) {
+					EsRectangle bounds;
+					if (decorator.axis) bounds = ES_RECT_4(client.l, client.r, client.t + calculatedProperties[1][j].maximumSize, client.t + calculatedProperties[1][j].maximumSize + calculatedProperties[1][j].preferredSize);
+					else bounds = ES_RECT_4(client.l + calculatedProperties[0][j].maximumSize, client.l + calculatedProperties[0][j].maximumSize + calculatedProperties[0][j].preferredSize, client.t, client.b);
+					EsDrawRectangle(message->painter, bounds, decorator.appearance->backgroundColor, 
+							decorator.appearance->borderColor, decorator.appearance->borderSize);
+					if (!decorator.repeatEvery) break;
+				}
+			}
 		}
 	} else if (message->type == ES_MSG_PAINT_CHILDREN) {
 		if ((panel->flags & ES_PANEL_SWITCHER) && panel->transitionType != ES_TRANSITION_NONE) {
@@ -3316,7 +3348,11 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 		if ((panel->flags & ES_PANEL_TABLE)) {
 			EsHeapFree(panel->bands[0]);
 			EsHeapFree(panel->bands[1]);
+			EsHeapFree(panel->tableMemoryBase);
 		}
+
+		panel->bandDecorators.Free();
+		panel->movementItems.Free();
 	} else if (message->type == ES_MSG_KEY_DOWN) {
 		if (!(panel->flags & (ES_PANEL_TABLE | ES_PANEL_SWITCHER))
 				&& panel->window->focused && panel->window->focused->parent == panel) {
@@ -3567,6 +3603,8 @@ void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount, const 
 	panel->bands[1] = rows ? (EsPanelBand *) EsHeapAllocate(rowCount * sizeof(EsPanelBand), false) : nullptr;
 	if (columns && panel->bands[0]) EsMemoryCopy(panel->bands[0], columns, columnCount * sizeof(EsPanelBand));
 	if (rows && panel->bands[1]) EsMemoryCopy(panel->bands[1], rows, rowCount * sizeof(EsPanelBand));
+	EsHeapFree(panel->tableMemoryBase);
+	panel->tableMemoryBase = nullptr;
 }
 
 void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column, const EsPanelBand *row) {
@@ -3591,6 +3629,9 @@ void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column, const EsPanel
 }
 
 void EsPanelTableSetChildCells(EsPanel *panel) {
+	EsMessageMutexCheck();
+	EsAssert(panel->flags & ES_PANEL_TABLE);
+
 	// The number of columns/rows should have been set by the time this function is called.
 	EsAssert(panel->bandCount[0] || panel->bandCount[1]);
 
@@ -3602,6 +3643,16 @@ void EsPanelTableSetChildCells(EsPanel *panel) {
 		if (child->flags & ES_ELEMENT_NON_CLIENT) continue;
 		PanelTableSetChildCell(panel, child);
 	}
+
+	EsHeapFree(panel->tableMemoryBase);
+	panel->tableMemoryBase = nullptr;
+}
+
+void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator) {
+	EsMessageMutexCheck();
+	EsAssert(panel->flags & ES_PANEL_TABLE);
+	EsAssert(decorator.axis == 0 || decorator.axis == 1);
+	panel->bandDecorators.Add(decorator);
 }
 
 void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags, float timeMultiplier) {

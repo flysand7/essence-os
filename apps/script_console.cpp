@@ -2,6 +2,8 @@
 #include <essence.h>
 
 // TODO Resizing the window after calling DirectoryEnumerateChildrenRecursively() is slow.
+// TODO UTF-8 validation of outputted strings.
+// TODO Check for heap allocation leaks.
 
 struct Instance : EsInstance {
 	EsThreadInformation scriptThread;
@@ -348,6 +350,7 @@ EXTERNAL_STUB(ExternalSystemSetEnvironmentVariable);
 
 #define COLOR_BACKGROUND (0xFFFDFDFD)
 #define COLOR_ROW_ODD (0xFFF4F4F4)
+#define COLOR_ROW_HEADER_LINE (0xFFCCCCCC)
 #define COLOR_OUTPUT_DECORATION_IN_PROGRESS (0xFFFF7F00)
 #define COLOR_OUTPUT_DECORATION_SUCCESS (0xFF3070FF)
 #define COLOR_OUTPUT_DECORATION_FAILURE (0xFFFF3040)
@@ -523,16 +526,30 @@ const EsStyle styleOutputDecorationFailure = {
 	},
 };
 
+const EsThemeAppearance styleAppearanceRowHeader = {
+	.enabled = true,
+	.backgroundColor = COLOR_BACKGROUND,
+	.borderColor = COLOR_ROW_HEADER_LINE,
+	.borderSize = ES_RECT_4(0, 0, 0, 1),
+};
+
+const EsThemeAppearance styleAppearanceRowEven = {
+	.enabled = true,
+	.backgroundColor = COLOR_BACKGROUND,
+};
+
+const EsThemeAppearance styleAppearanceRowOdd = {
+	.enabled = true,
+	.backgroundColor = COLOR_ROW_ODD,
+};
+
 const EsStyle styleListRowEven = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_INSETS,
 		.insets = ES_RECT_1(3),
 	},
 
-	.appearance = {
-		.enabled = true,
-		.backgroundColor = COLOR_BACKGROUND,
-	},
+	.appearance = styleAppearanceRowEven,
 };
 
 const EsStyle styleListRowOdd = {
@@ -541,10 +558,7 @@ const EsStyle styleListRowOdd = {
 		.insets = ES_RECT_1(3),
 	},
 
-	.appearance = {
-		.enabled = true,
-		.backgroundColor = COLOR_ROW_ODD,
-	},
+	.appearance = styleAppearanceRowOdd,
 };
 
 void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
@@ -554,13 +568,16 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 	size_t bytes;
 
 	if (type->type == T_INT) {
-		char *buffer = EsStringAllocateAndFormat(&bytes, "(int) %d", value.i);
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%d", value.i);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
 	} else if (type->type == T_BOOL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", value.i ? "true" : "false");
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_NULL) {
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
 	} else if (type->type == T_FLOAT) {
-		char *buffer = EsStringAllocateAndFormat(&bytes, "(float) %F", value.f);
+		char *buffer = EsStringAllocateAndFormat(&bytes, "%F", value.f);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
 	} else if (type->type == T_STR) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
@@ -570,7 +587,48 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
 		char *buffer = EsStringAllocateAndFormat(&bytes, "\"%s\"", valueBytes, valueText);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
+		// TODO Row styling.
+
+		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *listEntry = &context->heap[value.i];
+		EsAssert(listEntry->type == T_LIST);
+		if (!listEntry->length) goto normalList;
+		EsAssert(context->heapEntriesAllocated > (uint64_t) listEntry->list[0].i);
+		EsAssert(context->heap[listEntry->list[0].i].type == T_STRUCT);
+
+		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE);
+		EsPanelSetBands(table, context->heap[listEntry->list[0].i].fieldCount);
+		EsPanelTableAddBandDecorator(table, { .index = 0, .repeatEvery = 0, .axis = 1, .appearance = &styleAppearanceRowHeader });
+		EsPanelTableAddBandDecorator(table, { .index = 1, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowEven });
+		EsPanelTableAddBandDecorator(table, { .index = 2, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowOdd });
+
+		{
+			Node *field = type->firstChild->firstChild;
+
+			while (field) {
+				EsTextDisplayCreate(table, ES_CELL_H_FILL, &styleOutputParagraph, field->token.text, field->token.textBytes);
+				field = field->sibling;
+			}
+		}
+
+		for (uintptr_t i = 0; i < listEntry->length; i++) {
+			EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+			HeapEntry *itemEntry = &context->heap[listEntry->list[i].i];
+			EsAssert(itemEntry->type == T_STRUCT);
+			EsAssert(itemEntry->fieldCount == context->heap[listEntry->list[0].i].fieldCount);
+			Node *field = type->firstChild->firstChild;
+			uintptr_t j = 0;
+
+			while (field) {
+				EsAssert(j != itemEntry->fieldCount);
+				AddREPLResult(context, table, field->firstChild, itemEntry->fields[j]);
+				field = field->sibling;
+				j++;
+			}
+		}
 	} else if (type->type == T_LIST) {
+		normalList:;
 		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK);
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
@@ -585,13 +643,8 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowOdd : &styleListRowEven);
 			AddREPLResult(context, item, type->firstChild, entry->list[i]);
 		}
-	} else if (type->type == T_FUNCPTR) {
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
-				EsLiteral("Function pointer.\n"));
 	} else if (type->type == T_STRUCT) {
 		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK);
-		char *buffer = EsStringAllocateAndFormat(&bytes, "%s:", type->token.textBytes, type->token.text);
-		EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleOutputParagraph, buffer, bytes);
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
 		EsAssert(entry->type == T_STRUCT);
@@ -601,14 +654,14 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 		while (field) {
 			EsAssert(i != entry->fieldCount);
-			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowEven : &styleListRowOdd);
+			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowOdd : &styleListRowEven);
 			AddREPLResult(context, item, field->firstChild, entry->fields[i]);
 			field = field->sibling;
 			i++;
 		}
-	} else if (type->type == T_NULL) {
-		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+	} else if (type->type == T_FUNCPTR) {
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+				EsLiteral("Function pointer.\n"));
 	} else {
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
 				EsLiteral("The type of the result was not recognized.\n"));

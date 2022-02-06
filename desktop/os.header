@@ -1965,6 +1965,12 @@ private struct EsMountPoint {
 	bool addedByApplication;
 };
 
+struct EsPanelBandDecorator {
+	uintptr_t index, repeatEvery;
+	uint8_t axis; // 0 for columns, 1 for rows.
+	const EsThemeAppearance *appearance; // Pointer must remain valid.
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -2541,6 +2547,7 @@ function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES
 function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL);
 function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
+function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator);
 
 function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
