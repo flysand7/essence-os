@@ -562,6 +562,7 @@ const EsStyle styleListRowOdd = {
 };
 
 void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
+	// TODO Improve styling.
 	// TODO Truncating/scrolling/collapsing/saving/copying output.
 	// TODO Letting scripts register custom views for structs.
 
@@ -588,8 +589,6 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		char *buffer = EsStringAllocateAndFormat(&bytes, "\"%s\"", valueBytes, valueText);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
-		// TODO Row styling.
-
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *listEntry = &context->heap[value.i];
 		EsAssert(listEntry->type == T_LIST);
