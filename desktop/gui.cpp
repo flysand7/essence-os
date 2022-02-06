@@ -3189,8 +3189,19 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 
 				for (uintptr_t j = decorator.index; j < panel->bandCount[decorator.axis]; j += decorator.repeatEvery) {
 					EsRectangle bounds;
-					if (decorator.axis) bounds = ES_RECT_4(client.l, client.r, client.t + calculatedProperties[1][j].maximumSize, client.t + calculatedProperties[1][j].maximumSize + calculatedProperties[1][j].preferredSize);
-					else bounds = ES_RECT_4(client.l + calculatedProperties[0][j].maximumSize, client.l + calculatedProperties[0][j].maximumSize + calculatedProperties[0][j].preferredSize, client.t, client.b);
+
+					if (decorator.axis) {
+						bounds.l = client.l + panel->style->insets.l;
+						bounds.r = client.r - panel->style->insets.r;
+						bounds.t = client.t + calculatedProperties[1][j].maximumSize;
+						bounds.b = client.t + calculatedProperties[1][j].maximumSize + calculatedProperties[1][j].preferredSize;
+					} else {
+						bounds.l = client.l + calculatedProperties[0][j].maximumSize;
+						bounds.r = client.l + calculatedProperties[0][j].maximumSize + calculatedProperties[0][j].preferredSize;
+						bounds.t = client.t + panel->style->insets.t;
+						bounds.b = client.b - panel->style->insets.b;
+					}
+
 					EsDrawRectangle(message->painter, bounds, decorator.appearance->backgroundColor, 
 							decorator.appearance->borderColor, decorator.appearance->borderSize);
 					if (!decorator.repeatEvery) break;

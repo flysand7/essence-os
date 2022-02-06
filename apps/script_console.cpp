@@ -356,8 +356,9 @@ EXTERNAL_STUB(ExternalSystemSetEnvironmentVariable);
 #define COLOR_OUTPUT_DECORATION_FAILURE (0xFFFF3040)
 #define COLOR_TEXT_MAIN (0xFF010102)
 #define COLOR_TEXT_LIGHT (0xFF606062)
-#define TEXT_SIZE_DEFAULT (14)
+#define TEXT_SIZE_DEFAULT (13)
 #define TEXT_SIZE_OUTPUT (12)
+#define TEXT_SIZE_SMALL (11)
 
 const EsStyle styleBackground = {
 	.appearance = {
@@ -405,6 +406,18 @@ const EsStyle styleOutputParagraph = {
 	},
 };
 
+const EsStyle styleOutputData = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT
+			| ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_TEXT_ALIGN | ES_THEME_METRICS_TEXT_COLOR,
+		.textColor = COLOR_TEXT_MAIN,
+		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_ELLIPSIS | ES_TEXT_V_TOP,
+		.textSize = TEXT_SIZE_OUTPUT,
+		.fontFamily = ES_FONT_SANS,
+		.fontWeight = 4,
+	},
+};
+
 const EsStyle styleOutputParagraphStrong = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT
@@ -412,6 +425,19 @@ const EsStyle styleOutputParagraphStrong = {
 		.textColor = COLOR_TEXT_MAIN,
 		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_WRAP | ES_TEXT_V_TOP,
 		.textSize = TEXT_SIZE_OUTPUT,
+		.fontFamily = ES_FONT_SANS,
+		.fontWeight = 6,
+	},
+};
+
+const EsStyle styleRowHeaderText = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT | ES_THEME_METRICS_INSETS
+			| ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_TEXT_ALIGN | ES_THEME_METRICS_TEXT_COLOR,
+		.insets = ES_RECT_4(0, 0, 0, 2),
+		.textColor = COLOR_TEXT_MAIN,
+		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_WRAP | ES_TEXT_V_TOP,
+		.textSize = TEXT_SIZE_SMALL,
 		.fontFamily = ES_FONT_SANS,
 		.fontWeight = 6,
 	},
@@ -543,6 +569,13 @@ const EsThemeAppearance styleAppearanceRowOdd = {
 	.backgroundColor = COLOR_ROW_ODD,
 };
 
+const EsStyle styleTableCell = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS,
+		.insets = ES_RECT_1(3),
+	},
+};
+
 const EsStyle styleListRowEven = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_INSETS,
@@ -561,8 +594,14 @@ const EsStyle styleListRowOdd = {
 	.appearance = styleAppearanceRowOdd,
 };
 
+const EsStyle styleTable = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_CLIP_ENABLED,
+		.clipEnabled = true,
+	},
+};
+
 void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
-	// TODO Improve styling.
 	// TODO Truncating/scrolling/collapsing/saving/copying output.
 	// TODO Letting scripts register custom views for structs.
 
@@ -570,16 +609,16 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 	if (type->type == T_INT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%d", value.i);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_BOOL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", value.i ? "true" : "false");
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_NULL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_FLOAT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%F", value.f);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_STR) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
@@ -587,7 +626,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		size_t valueBytes;
 		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
 		char *buffer = EsStringAllocateAndFormat(&bytes, "\"%s\"", valueBytes, valueText);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphStrong, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *listEntry = &context->heap[value.i];
@@ -596,7 +635,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		EsAssert(context->heapEntriesAllocated > (uint64_t) listEntry->list[0].i);
 		EsAssert(context->heap[listEntry->list[0].i].type == T_STRUCT);
 
-		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE);
+		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE | ES_PANEL_H_SCROLL_AUTO, &styleTable);
 		EsPanelSetBands(table, context->heap[listEntry->list[0].i].fieldCount);
 		EsPanelTableAddBandDecorator(table, { .index = 0, .repeatEvery = 0, .axis = 1, .appearance = &styleAppearanceRowHeader });
 		EsPanelTableAddBandDecorator(table, { .index = 1, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowEven });
@@ -606,7 +645,8 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 			Node *field = type->firstChild->firstChild;
 
 			while (field) {
-				EsTextDisplayCreate(table, ES_CELL_H_FILL, &styleOutputParagraph, field->token.text, field->token.textBytes);
+				EsTextDisplayCreate(table, ES_CELL_H_CENTER | ES_CELL_V_CENTER, 
+						&styleRowHeaderText, field->token.text, field->token.textBytes);
 				field = field->sibling;
 			}
 		}
@@ -621,14 +661,15 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 			while (field) {
 				EsAssert(j != itemEntry->fieldCount);
-				AddREPLResult(context, table, field->firstChild, itemEntry->fields[j]);
+				AddREPLResult(context, EsPanelCreate(table, ES_CELL_H_CENTER | ES_CELL_V_TOP, &styleTableCell), 
+						field->firstChild, itemEntry->fields[j]);
 				field = field->sibling;
 				j++;
 			}
 		}
 	} else if (type->type == T_LIST) {
 		normalList:;
-		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK);
+		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK, &styleTable);
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
 		EsAssert(entry->type == T_LIST);
