@@ -933,6 +933,7 @@ EsMessage *EsMessageReceive() {
 				EsAssert(!api.workQueue.Length());
 				api.workThreads.Free();
 				api.workQueue.Free();
+				api.connectedDevices.Free();
 #ifdef ENABLE_POSIX_SUBSYSTEM
 				POSIXCleanup();
 #endif

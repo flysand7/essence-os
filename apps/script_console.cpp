@@ -2,8 +2,6 @@
 #include <essence.h>
 #include <shared/array.cpp>
 
-// TODO Check for heap allocation leaks.
-
 struct Instance : EsInstance {
 	EsCommand commandClearOutput;
 
@@ -622,15 +620,19 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 	if (type->type == T_INT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%d", value.i);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsHeapFree(buffer);
 	} else if (type->type == T_BOOL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", value.i ? "true" : "false");
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsHeapFree(buffer);
 	} else if (type->type == T_NULL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsHeapFree(buffer);
 	} else if (type->type == T_FLOAT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%F", value.f);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsHeapFree(buffer);
 	} else if (type->type == T_STR) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
@@ -756,6 +758,16 @@ void ScriptThread(EsGeneric _instance) {
 	if (instance->outputLineBufferBytes) {
 		AddOutput(instance, EsLiteral("\n"));
 	}
+
+	while (fixedAllocationBlocks) {
+		void *block = fixedAllocationBlocks;
+		fixedAllocationBlocks = (void **) *fixedAllocationBlocks;
+		EsHeapFree(block);
+	}
+
+	fixedAllocationCurrentBlock = nullptr;
+	fixedAllocationCurrentPosition = 0;
+	fixedAllocationCurrentSize = 0;
 
 	EsMessageMutexAcquire();
 

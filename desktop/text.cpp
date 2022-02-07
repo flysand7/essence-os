@@ -691,6 +691,8 @@ bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) {
 }
 
 EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store) {
+	// TODO Locking.
+
 	FontInitialise();
 	EsAssert(store->handles);
 	FontDatabaseEntry *entry = nullptr;
