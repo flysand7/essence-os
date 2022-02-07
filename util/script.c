@@ -417,6 +417,11 @@ void ExternalPassREPLResult(ExecutionContext *context, Value value);
 // --------------------------------- Base module.
 
 char baseModuleSource[] = {
+	// TODO Temporary.
+	"struct DirectoryChild { str name; bool isDirectory; int size; };"
+	"DirectoryChild[] Dir() { str[] names = DirectoryEnumerateChildren(\"0:\"); DirectoryChild[] result = new DirectoryChild[]; result:resize(names:len()); for int i = 0; i < names:len(); i += 1 { result[i] = new DirectoryChild; result[i].name = names[i]; result[i].isDirectory = PathIsDirectory(\"0:/\"+names[i]); result[i].size = FileGetSize(\"0:/\"+names[i]); } return result;}"
+	"str[] OpenDocumentEnumerate() #extcall;"
+
 	// Logging:
 
 	"void PrintStdErr(str x) #extcall;"
@@ -707,6 +712,7 @@ int ExternalRandomInt(ExecutionContext *context, Value *returnValue); // TODO Th
 int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue);
 int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue);
 int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue);
+int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue);
 
 ExternalFunction externalFunctions[] = {
 	{ .cName = "PrintStdErr", .callback = ExternalPrintStdErr },
@@ -744,6 +750,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "_DirectoryInternalStartIteration", .callback = External_DirectoryInternalStartIteration },
 	{ .cName = "_DirectoryInternalNextIteration", .callback = External_DirectoryInternalNextIteration },
 	{ .cName = "_DirectoryInternalEndIteration", .callback = External_DirectoryInternalEndIteration },
+	{ .cName = "OpenDocumentEnumerate", .callback = ExternalOpenDocumentEnumerate },
 };
 
 // --------------------------------- Tokenization and parsing.
@@ -5747,6 +5754,12 @@ int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
 	nanosleep(&sleepTime, NULL);
 	return 1;
 #endif
+}
+
+int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	returnValue->i = 0;
+	return 3;
 }
 
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {

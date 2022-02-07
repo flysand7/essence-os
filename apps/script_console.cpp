@@ -329,6 +329,37 @@ int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *re
 	return 3;
 }
 
+int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue) {
+	EsBuffer buffer = { .canGrow = true };
+	_EsOpenDocumentEnumerate(&buffer);
+
+	size_t count = 0;
+	EsBufferReadInto(&buffer, &count, sizeof(size_t));
+
+	uintptr_t index = HeapAllocate(context);
+	context->heap[index].type = T_LIST;
+	context->heap[index].internalValuesAreManaged = true;
+	context->heap[index].length = count;
+	context->heap[index].list = (Value *) EsHeapAllocate(sizeof(Value) * count, false);
+
+	for (uintptr_t i = 0; i < count; i++) {
+		size_t pathBytes = 0;
+		EsBufferReadInto(&buffer, &pathBytes, sizeof(size_t));
+		char *path = (char *) EsHeapAllocate(pathBytes, false);
+		EsBufferReadInto(&buffer, path, pathBytes);
+		context->heap[index].list[i].i = HeapAllocate(context);
+		context->heap[context->heap[index].list[i].i].type = T_STR;
+		context->heap[context->heap[index].list[i].i].bytes = pathBytes;
+		context->heap[context->heap[index].list[i].i].text = path;
+	}
+
+	EsHeapFree(buffer.out);
+	EsAssert(!buffer.error);
+	returnValue->i = index;
+
+	return 3;
+}
+
 #define EXTERNAL_STUB(name) int name(ExecutionContext *, Value *) { EsPrint("Unimplemented " #name "\n"); EsAssert(false); return -1; }
 
 // TODO What to do with these?

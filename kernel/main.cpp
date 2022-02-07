@@ -22,6 +22,7 @@ void KernelInitialise() {
 }
 
 void KernelMain(uintptr_t) {
+	EsPrint("Test");
 	desktopProcess = ProcessSpawn(PROCESS_DESKTOP);			// Spawn the desktop process.
 	DriversInitialise();						// Load the root device.
 	ProcessStart(desktopProcess, EsLiteral(K_DESKTOP_EXECUTABLE));	// Start the desktop process.

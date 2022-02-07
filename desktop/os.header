@@ -2056,9 +2056,9 @@ function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Return
 function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags);
 
 // These calls require permission_all_files.
-function bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information); // Returns false if the mount point does not exist.
-function EsError EsMountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base); // The system maintains a duplicate of the base handle.
-function bool EsMountPointRemove(const char *prefix, size_t prefixBytes); // Returns false if the mount point does not exist. You can only remove mount points you added with EsMountPointAdd.
+function bool EsMountPointGetVolumeInformation(STRING prefix, EsVolumeInformation *information); // Returns false if the mount point does not exist.
+function EsError EsMountPointAdd(STRING prefix, EsHandle base); // The system maintains a duplicate of the base handle.
+function bool EsMountPointRemove(STRING prefix); // Returns false if the mount point does not exist. You can only remove mount points you added with EsMountPointAdd.
 function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
 function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
@@ -2132,8 +2132,8 @@ function void EsAssertionFailure(EsCString cFile, int line);
 
 function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
 
-function_not_in_kernel void EsPanic(EsCString format, ...); 
-function_not_in_kernel void EsPrint(EsCString format, ...);
+function void EsPanic(EsCString format, ...); 
+function void EsPrint(EsCString format, ...);
 function void EsPrintDirect(STRING string); 
 function void EsPrintHelloWorld(); 
 
@@ -2281,7 +2281,7 @@ function const char *EsStringFormatTemporary(EsCString format, ...);  // Not thr
 function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments); 
 function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...); // Return false if buffer filled.
 function bool EsStringFormatAppendV(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, va_list arguments); 
-function bool EsUTF8IsValid(const char *input, ptrdiff_t bytes); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
+function bool EsUTF8IsValid(STRING input); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
 
 function double EsDoubleParse(STRING string, char **endptr); 
 function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.

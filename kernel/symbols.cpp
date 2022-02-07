@@ -7,7 +7,7 @@
 
 extern "C" void KernelInitialise();
 extern "C" int EsStringCompareRaw(const char *s1, size_t b1, const char *s2, size_t b2);
-void EsPrint(const char *format, ...);
+extern "C" void EsPrint(const char *format, ...);
 
 struct ExportedKernelFunction {
 	void *address;

@@ -295,8 +295,8 @@ EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, boo
 	return error;
 }
 
-EsError EsMountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base) {
-	return MountPointAdd(prefix, prefixBytes, base, true);
+EsError EsMountPointAdd(const char *prefix, ptrdiff_t prefixBytes, EsHandle base) {
+	return MountPointAdd(prefix, prefixBytes == -1 ? EsCStringLength(prefix) : prefixBytes, base, true);
 }
 
 bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken) {
@@ -321,14 +321,19 @@ bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *re
 	return found;
 }
 
-bool EsMountPointRemove(const char *prefix, size_t prefixBytes) {
+bool EsMountPointRemove(const char *prefix, ptrdiff_t prefixBytes) {
+	if (prefixBytes == -1) {
+		prefixBytes = EsCStringLength(prefix);
+	}
+
 	EsMutexAcquire(&api.mountPointsMutex);
 	bool found = false;
 
 	for (uintptr_t i = 0; i < api.mountPoints.Length(); i++) {
 		EsMountPoint *mountPoint = &api.mountPoints[i];
 
-		if (prefixBytes >= mountPoint->prefixBytes && 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
+		if ((uintptr_t) prefixBytes >= mountPoint->prefixBytes 
+				&& 0 == EsMemoryCompare(prefix, mountPoint->prefix, mountPoint->prefixBytes)) {
 			EsAssert(mountPoint->addedByApplication);
 			EsHandleClose(mountPoint->base);
 			api.mountPoints.Delete(i);
@@ -341,7 +346,11 @@ bool EsMountPointRemove(const char *prefix, size_t prefixBytes) {
 	return found;
 }
 
-bool EsMountPointGetVolumeInformation(const char *prefix, size_t prefixBytes, EsVolumeInformation *information) {
+bool EsMountPointGetVolumeInformation(const char *prefix, ptrdiff_t prefixBytes, EsVolumeInformation *information) {
+	if (prefixBytes == -1) {
+		prefixBytes = EsCStringLength(prefix);
+	}
+
 	EsMutexAcquire(&api.mountPointsMutex);
 	EsMountPoint mountPoint;
 	bool found = NodeFindMountPoint(prefix, prefixBytes, &mountPoint, true);
