@@ -1,14 +1,18 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
+#include <shared/array.cpp>
 
 // TODO Check for heap allocation leaks.
 
 struct Instance : EsInstance {
+	EsCommand commandClearOutput;
+
 	EsThreadInformation scriptThread;
 	char *inputText;
 	size_t inputBytes;
 
 	EsPanel *root;
+	EsElement *defaultPrefixDisplay;
 	EsPanel *inputRow;
 	EsPanel *outputPanel;
 	EsSpacer *outputDecoration;
@@ -19,6 +23,8 @@ struct Instance : EsInstance {
 	size_t outputLineBufferAllocated;
 	bool anyOutput;
 	bool gotREPLResult;
+
+	Array<EsElement *> outputElements;
 };
 
 void AddPrompt(Instance *instance);
@@ -755,6 +761,7 @@ void ScriptThread(EsGeneric _instance) {
 
 	if (!instance->anyOutput) {
 		EsElementDestroy(EsElementGetLayoutParent(instance->outputPanel));
+		instance->outputPanel = nullptr;
 	} else {
 		instance->anyOutput = false;
 	}
@@ -767,7 +774,7 @@ void ScriptThread(EsGeneric _instance) {
 		EsSpacerChangeStyle(instance->outputDecoration, &styleOutputDecorationFailure);
 	}
 
-	EsSpacerCreate(instance->root, ES_CELL_H_FILL, &styleInterCommandSpacer);
+	instance->outputElements.Add(EsSpacerCreate(instance->root, ES_CELL_H_FILL, &styleInterCommandSpacer));
 	AddPrompt(instance);
 
 	EsMessageMutexRelease();
@@ -776,15 +783,19 @@ void ScriptThread(EsGeneric _instance) {
 void EnterCommand(Instance *instance) {
 	EsAssert(instance->inputTextbox);
 	EsAssert(instance->inputRow);
+	EsAssert(instance->defaultPrefixDisplay);
 	size_t dataBytes;
 	char *data = EsTextboxGetContents(instance->inputTextbox, &dataBytes, ES_FLAGS_DEFAULT);
 	EsElementDestroy(instance->inputRow);
+	instance->outputElements.Add(instance->defaultPrefixDisplay);
 	instance->inputTextbox = nullptr;
 	instance->inputRow = nullptr;
+	instance->defaultPrefixDisplay = nullptr;
 
 	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, &styleInputRow);
 	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, &stylePromptText, "\u2661");
 	EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, &styleCommandLogText, data, dataBytes);
+	instance->outputElements.Add(commandLogRow);
 
 	EsAssert(!instance->outputPanel);
 	EsAssert(!instance->outputDecoration);
@@ -839,12 +850,17 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 }
 
 void AddPrompt(Instance *instance) {
+	if (instance->outputPanel) {
+		instance->outputElements.Add(EsElementGetLayoutParent(instance->outputPanel));
+	}
+
 	EsAssert(!instance->inputTextbox);
 	EsAssert(!instance->inputRow);
+	EsAssert(!instance->defaultPrefixDisplay);
 	instance->outputPanel = nullptr;
 	instance->outputDecoration = nullptr;
 
-	EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, &stylePathDefaultPrefixDisplay, "Essence HD (0:)");
+	instance->defaultPrefixDisplay = EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, &stylePathDefaultPrefixDisplay, "Essence HD (0:)");
 	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, &styleInputRow);
 	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, &stylePromptText, "\u2665");
 	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, &styleInputTextbox);
@@ -853,10 +869,19 @@ void AddPrompt(Instance *instance) {
 	EsElementFocus(instance->inputTextbox, ES_ELEMENT_FOCUS_ENSURE_VISIBLE);
 }
 
+void CommandClearOutput(Instance *instance, EsElement *, EsCommand *) {
+	for (uintptr_t i = 0; i < instance->outputElements.Length(); i++) {
+		EsElementDestroy(instance->outputElements[i]);
+	}
+
+	instance->outputElements.Free();
+}
+
 int InstanceCallback(Instance *instance, EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_DESTROY) {
 		// TODO Stopping the script thread.
 		EsHeapFree(instance->outputLineBuffer);
+		instance->outputElements.Free();
 	}
 
 	return 0;
@@ -879,11 +904,16 @@ void _start() {
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			Instance *instance = EsInstanceCreate(message, "Script Console", -1);
 			instance->callback = InstanceCallback;
+			EsCommandRegister(&instance->commandClearOutput, instance, EsLiteral("Clear output"), CommandClearOutput, 
+					1 /* stableID */, "Ctrl+Shift+L", true /* enabled */);
 			EsWindowSetIcon(instance->window, ES_ICON_UTILITIES_TERMINAL);
 			EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
 			EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleBackground);
 			instance->root = EsPanelCreate(background, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, &styleRoot);
 			AddPrompt(instance);
+			EsElement *toolbar = EsWindowGetToolbar(instance->window);
+			EsCommandAddButton(&instance->commandClearOutput, 
+					EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, ES_NULL, EsLiteral("Clear output")));
 		}
 	}
 }
