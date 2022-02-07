@@ -1,8 +1,6 @@
 #define ES_INSTANCE_TYPE Instance
 #include <essence.h>
 
-// TODO Resizing the window after calling DirectoryEnumerateChildrenRecursively() is slow.
-// TODO UTF-8 validation of outputted strings.
 // TODO Check for heap allocation leaks.
 
 struct Instance : EsInstance {
@@ -633,8 +631,21 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		const char *valueText;
 		size_t valueBytes;
 		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
-		char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+
+		uint64_t pngSignature = 0x0A1A0A0D474E5089;
+		uint32_t jpgSignature = 0xE0FFD8FF;
+
+		if ((valueBytes > sizeof(pngSignature) && 0 == EsMemoryCompare(&pngSignature, valueText, sizeof(pngSignature)))
+				|| (valueBytes > sizeof(jpgSignature) && 0 == EsMemoryCompare(&jpgSignature, valueText, sizeof(jpgSignature)))) {
+			EsImageDisplay *display = EsImageDisplayCreate(parent, ES_CELL_H_FILL);
+			EsImageDisplayLoadFromMemory(display, valueText, valueBytes);
+		} else if (EsUTF8IsValid(valueText, valueBytes)) {
+			char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+			EsHeapFree(buffer);
+		} else {
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, EsLiteral("Binary data string.\n"));
+		}
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *listEntry = &context->heap[value.i];
@@ -803,10 +814,17 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 
 	for (uintptr_t i = 0; i < textBytes; i++) {
 		if (text[i] == '\n') {
-			EsMessageMutexAcquire();
-			EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, &styleOutputParagraph, 
-					instance->outputLineBuffer, instance->outputLineBufferBytes);
-			EsMessageMutexRelease();
+			if (EsUTF8IsValid(instance->outputLineBuffer, instance->outputLineBufferBytes)) {
+				EsMessageMutexAcquire();
+				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, &styleOutputParagraph, 
+						instance->outputLineBuffer, instance->outputLineBufferBytes);
+				EsMessageMutexRelease();
+			} else {
+				EsMessageMutexAcquire();
+				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+						EsLiteral("Encoding error.\n"));
+				EsMessageMutexRelease();
+			}
 			instance->outputLineBufferBytes = 0;
 		} else {
 			if (instance->outputLineBufferBytes == instance->outputLineBufferAllocated) {

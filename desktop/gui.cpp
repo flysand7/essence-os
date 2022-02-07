@@ -4041,15 +4041,22 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_GET_WIDTH || message->type == ES_MSG_GET_HEIGHT) {
 		if (!display->measurementCache.Get(message, &display->state)) {
-			if (display->plan) EsTextPlanDestroy(display->plan);
-			display->properties.flags = display->style->textAlign | ((display->flags & ES_TEXT_DISPLAY_PREFORMATTED) ? 0 : ES_TEXT_PLAN_TRIM_SPACES);
 			EsRectangle insets = EsElementGetInsets(element);
-			display->planWidth = message->type == ES_MSG_GET_HEIGHT && message->measure.width 
-				? (message->measure.width - insets.l - insets.r) : 0;
-			display->planHeight = 0;
-			display->plan = EsTextPlanCreate(element, &display->properties, 
-					ES_RECT_4(0, display->planWidth, 0, 0), 
-					display->contents, display->textRuns, display->textRunCount);
+
+			if ((~display->style->textAlign & ES_TEXT_WRAP) && display->plan) {
+				// The text is not wrapped, so the input bounds cannot change the measured size.
+				// Therefore there is no need to recreate the plan.
+				// TODO Double-check that this is correct.
+			} else {
+				if (display->plan) EsTextPlanDestroy(display->plan);
+				display->properties.flags = display->style->textAlign | ((display->flags & ES_TEXT_DISPLAY_PREFORMATTED) ? 0 : ES_TEXT_PLAN_TRIM_SPACES);
+				display->planWidth = message->type == ES_MSG_GET_HEIGHT && message->measure.width 
+					? (message->measure.width - insets.l - insets.r) : 0;
+				display->planHeight = 0;
+				display->plan = EsTextPlanCreate(element, &display->properties, 
+						ES_RECT_4(0, display->planWidth, 0, 0), 
+						display->contents, display->textRuns, display->textRunCount);
+			}
 
 			if (!display->plan) {
 				message->measure.width = message->measure.height = 0;
