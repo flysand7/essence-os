@@ -5741,7 +5741,7 @@ int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
 	return 4;
 #else
 	struct timespec sleepTime;
-	uint64_t x = 1000000 * coroutine->externalCoroutineData.i;
+	uint64_t x = 1000000 * context->c->externalCoroutineData.i;
 	sleepTime.tv_sec = x / 1000000000;
 	sleepTime.tv_nsec = x % 1000000000;
 	nanosleep(&sleepTime, NULL);

@@ -596,6 +596,14 @@ const EsStyle styleListRowOdd = {
 
 const EsStyle styleTable = {
 	.metrics = {
+		.mask = ES_THEME_METRICS_CLIP_ENABLED | ES_THEME_METRICS_GAP_MAJOR,
+		.clipEnabled = true,
+		.gapMajor = 6,
+	},
+};
+
+const EsStyle styleList = {
+	.metrics = {
 		.mask = ES_THEME_METRICS_CLIP_ENABLED,
 		.clipEnabled = true,
 	},
@@ -625,7 +633,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		const char *valueText;
 		size_t valueBytes;
 		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
-		char *buffer = EsStringAllocateAndFormat(&bytes, "\"%s\"", valueBytes, valueText);
+		char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);
 		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
@@ -669,7 +677,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		}
 	} else if (type->type == T_LIST) {
 		normalList:;
-		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK, &styleTable);
+		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK, &styleList);
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
 		EsAssert(entry->type == T_LIST);
