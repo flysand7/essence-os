@@ -585,7 +585,7 @@ void FontInitialise() {
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
-		EsSystemConfigurationGroup *g = &api.systemConfigurationGroups[i];
+		SystemConfigurationGroup *g = &api.systemConfigurationGroups[i];
 
 		if (0 == EsStringCompareRaw(g->sectionClass, g->sectionClassBytes, EsLiteral("font"))) {
 			if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral(fontManagement.sansName))) {
@@ -611,7 +611,7 @@ void FontInitialise() {
 			entry.id = fontManagement.database.Length();
 
 			for (uintptr_t i = 0; i < g->itemCount; i++) {
-				EsSystemConfigurationItem *item = g->items + i;
+				SystemConfigurationItem *item = g->items + i;
 
 				if (0 == EsStringCompareRaw(item->key, item->keyBytes, EsLiteral("category"))) {
 					entry.categoryBytes = MinimumInteger(item->valueBytes, sizeof(entry.category));

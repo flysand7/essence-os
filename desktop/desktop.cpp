@@ -2463,7 +2463,7 @@ void ConfigurationLoadApplications() {
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		// Load information about installed applications.
 
-		EsSystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
+		SystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
 
 		if (0 != EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("application"))) {
 			continue;
@@ -2523,7 +2523,7 @@ void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *se
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
-		EsSystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
+		SystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
 
 		if ((sectionClass && EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, sectionClass, -1))
 				|| (section && EsStringCompareRaw(group->section, group->sectionBytes, section, -1))) {
@@ -2537,7 +2537,7 @@ void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *se
 		EsBufferWrite(pipe, buffer, bytes);
 
 		for (uintptr_t i = 0; i < group->itemCount; i++) {
-			EsSystemConfigurationItem *item = group->items + i;
+			SystemConfigurationItem *item = group->items + i;
 
 			if ((!item->keyBytes || item->key[0] == ';') && !includeComments) {
 				continue;

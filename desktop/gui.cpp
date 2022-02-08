@@ -3202,8 +3202,8 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 						bounds.b = client.b - panel->style->insets.b;
 					}
 
-					EsDrawRectangle(message->painter, bounds, decorator.appearance->backgroundColor, 
-							decorator.appearance->borderColor, decorator.appearance->borderSize);
+					EsDrawRectangle(message->painter, bounds, decorator.appearance.backgroundColor, 
+							decorator.appearance.borderColor, decorator.appearance.borderSize);
 					if (!decorator.repeatEvery) break;
 				}
 			}

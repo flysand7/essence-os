@@ -104,6 +104,18 @@ struct EsBundle {
 	ptrdiff_t bytes;
 };
 
+struct SystemConfigurationItem {
+	char *key, *value;
+	size_t keyBytes, valueBytes;
+};
+
+struct SystemConfigurationGroup {
+	char *section, *sectionClass;
+	size_t sectionBytes, sectionClassBytes;
+	SystemConfigurationItem *items;
+	size_t itemCount;
+};
+
 const EsBundle bundleDefault = {
 	.base = (const BundleHeader *) BUNDLE_FILE_MAP_ADDRESS,
 	.bytes = -1,
@@ -183,7 +195,7 @@ struct APIInstance {
 };
 
 struct {
-	Array<EsSystemConfigurationGroup> systemConfigurationGroups;
+	Array<SystemConfigurationGroup> systemConfigurationGroups;
 	EsMutex systemConfigurationMutex;
 
 	EsHandle desktopRequestPipe, desktopResponsePipe;
@@ -236,11 +248,11 @@ EsFileStore *FileStoreCreateFromHandle(EsHandle handle);
 void FileStoreCloseHandle(EsFileStore *fileStore);
 EsError NodeOpen(const char *path, size_t pathBytes, uint32_t flags, _EsNodeInformation *node);
 const char *EnumLookupNameFromValue(const EnumString *array, int value);
-EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false);
-EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false);
+SystemConfigurationItem *SystemConfigurationGetItem(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded = false);
+SystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded = false);
 uint8_t *ApplicationStartupInformationToBuffer(const _EsApplicationStartupInformation *information, size_t *dataBytes = nullptr);
-char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
-int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
+char *SystemConfigurationGroupReadString(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes = nullptr);
+int64_t SystemConfigurationGroupReadInteger(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue = 0);
 bool NodeFindMountPoint(const char *prefix, size_t prefixBytes, EsMountPoint *result, bool mutexTaken);
 EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, bool addedByApplication);
 EsWindow *WindowFromWindowID(EsObjectID id);
@@ -284,7 +296,7 @@ EsMessageDevice *EsDeviceEnumerate(size_t *count) {
 	return result;
 }
 
-EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {
+SystemConfigurationItem *SystemConfigurationGetItem(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {
 	if (keyBytes == -1) keyBytes = EsCStringLength(key);
 
 	for (uintptr_t i = 0; i < group->itemCount; i++) {
@@ -294,14 +306,14 @@ EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup
 	}
 
 	if (createIfNeeded) {
-		EsSystemConfigurationItem item = {};
+		SystemConfigurationItem item = {};
 		item.key = (char *) EsHeapAllocate(keyBytes, false);
 		if (!item.key) return nullptr;
 		item.keyBytes = keyBytes;
 		EsMemoryCopy(item.key, key, keyBytes);
 
-		Array<EsSystemConfigurationItem> items = { group->items };
-		EsSystemConfigurationItem *_item = items.Add(item);
+		Array<SystemConfigurationItem> items = { group->items };
+		SystemConfigurationItem *_item = items.Add(item);
 		group->items = items.array;
 
 		if (_item) {
@@ -315,7 +327,7 @@ EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup
 	return nullptr;
 }
 
-EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded) {
+SystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdiff_t sectionBytes, bool createIfNeeded) {
 	if (sectionBytes == -1) sectionBytes = EsCStringLength(section);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
@@ -326,12 +338,12 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	}
 
 	if (createIfNeeded) {
-		EsSystemConfigurationGroup group = {};
+		SystemConfigurationGroup group = {};
 		group.section = (char *) EsHeapAllocate(sectionBytes, false);
 		if (!group.section) return nullptr;
 		group.sectionBytes = sectionBytes;
 		EsMemoryCopy(group.section, section, sectionBytes);
-		EsSystemConfigurationGroup *_group = api.systemConfigurationGroups.Add(group);
+		SystemConfigurationGroup *_group = api.systemConfigurationGroups.Add(group);
 
 		if (_group) {
 			return _group;
@@ -343,8 +355,8 @@ EsSystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptr
 	return nullptr;
 }
 
-char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
+char *SystemConfigurationGroupReadString(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
+	SystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	if (valueBytes) *valueBytes = item->valueBytes;
 	char *copy = (char *) EsHeapAllocate(item->valueBytes + 1, false);
@@ -354,8 +366,8 @@ char *SystemConfigurationGroupReadString(EsSystemConfigurationGroup *group, cons
 	return copy;
 }
 
-int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
+int64_t SystemConfigurationGroupReadInteger(SystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
+	SystemConfigurationItem *item = SystemConfigurationGetItem(group, key, keyBytes);
 	if (!item) return defaultValue;
 	return EsIntegerParse(item->value, item->valueBytes); 
 }
@@ -363,7 +375,7 @@ int64_t SystemConfigurationGroupReadInteger(EsSystemConfigurationGroup *group, c
 char *EsSystemConfigurationReadString(const char *section, ptrdiff_t sectionBytes, const char *key, ptrdiff_t keyBytes, size_t *valueBytes) {
 	EsMutexAcquire(&api.systemConfigurationMutex);
 	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
+	SystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) { if (valueBytes) *valueBytes = 0; return nullptr; }
 	return SystemConfigurationGroupReadString(group, key, keyBytes, valueBytes);
 }
@@ -371,7 +383,7 @@ char *EsSystemConfigurationReadString(const char *section, ptrdiff_t sectionByte
 int64_t EsSystemConfigurationReadInteger(const char *section, ptrdiff_t sectionBytes, const char *key, ptrdiff_t keyBytes, int64_t defaultValue) {
 	EsMutexAcquire(&api.systemConfigurationMutex);
 	EsDefer(EsMutexRelease(&api.systemConfigurationMutex));
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
+	SystemConfigurationGroup *group = SystemConfigurationGetGroup(section, sectionBytes);
 	if (!group) return defaultValue;
 	return SystemConfigurationGroupReadInteger(group, key, keyBytes, defaultValue);
 }
@@ -386,7 +398,7 @@ void SystemConfigurationUnload() {
 		EsHeapFree(api.systemConfigurationGroups[i].section);
 		EsHeapFree(api.systemConfigurationGroups[i].sectionClass);
 
-		Array<EsSystemConfigurationItem> items = { api.systemConfigurationGroups[i].items };
+		Array<SystemConfigurationItem> items = { api.systemConfigurationGroups[i].items };
 		items.Free();
 	}
 
@@ -400,11 +412,11 @@ void SystemConfigurationLoad(const char *file, size_t fileBytes) {
 	s.buffer = (char *) file;
 	s.bytes = fileBytes;
 
-	EsSystemConfigurationGroup *group = nullptr;
+	SystemConfigurationGroup *group = nullptr;
 
 	while (EsINIParse(&s)) {
 		if (!s.keyBytes) {
-			EsSystemConfigurationGroup _group = {};
+			SystemConfigurationGroup _group = {};
 			api.systemConfigurationGroups.Add(_group);
 			group = &api.systemConfigurationGroups.Last();
 			group->section = (char *) EsHeapAllocate(s.sectionBytes, false);
@@ -412,13 +424,13 @@ void SystemConfigurationLoad(const char *file, size_t fileBytes) {
 			group->sectionClass = (char *) EsHeapAllocate(s.sectionClassBytes, false);
 			EsMemoryCopy(group->sectionClass, s.sectionClass, (group->sectionClassBytes = s.sectionClassBytes));
 		} else if (group) {
-			EsSystemConfigurationItem item = {};
+			SystemConfigurationItem item = {};
 			item.key = (char *) EsHeapAllocate(s.keyBytes, false);
 			EsMemoryCopy(item.key, s.key, (item.keyBytes = s.keyBytes));
 			item.value = (char *) EsHeapAllocate(s.valueBytes + 1, false);
 			item.value[s.valueBytes] = 0;
 			EsMemoryCopy(item.value, s.value, (item.valueBytes = s.valueBytes));
-			Array<EsSystemConfigurationItem> items = { group->items };
+			Array<SystemConfigurationItem> items = { group->items };
 			items.Add(item);
 			group->items = items.array;
 			group->itemCount++;

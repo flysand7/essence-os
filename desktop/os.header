@@ -1193,7 +1193,7 @@ struct EsBuffer {
 	void *context;
 	EsFileStore *fileStore;
 	bool error, canGrow;
-};
+} @opaque();
 
 struct EsElementPublic {
 	EsElementCallback messageUser;
@@ -1205,36 +1205,36 @@ struct EsElementPublic {
 	EsWindow *window;
 	ES_INSTANCE_TYPE *instance;
 	uint64_t flags; // Bits 0-31: specific to the type of element; bits 32-63: common to all elements.
-};
+} @opaque();
 
 private struct EsBatchCall {
 	EsSyscallType index; 
 	bool stopBatchIfError;
 	union { uintptr_t argument0, returnValue; };
 	uintptr_t argument1, argument2, argument3;
-}
+};
 
 struct EsThreadInformation {
 	EsHandle handle;
 	EsObjectID tid;
-}
+};
 
 struct EsProcessInformation {
 	EsHandle handle;
 	uintptr_t pid;
 	EsThreadInformation mainThread;
-}
+};
 
 struct EsUniqueIdentifier {
 	// Don't mess with this structure, it's used in filesystems.
 	uint8_t d[16];
-}
+};
 
 struct EsFileInformation {
 	EsHandle handle; 
 	EsFileOffset size;
 	EsError error;
-}
+};
 
 struct EsDirectoryChild {
 	char name[ES_MAX_DIRECTORY_CHILD_NAME_LENGTH];
@@ -1242,66 +1242,66 @@ struct EsDirectoryChild {
 	EsNodeType type;
 	EsFileOffsetDifference fileSize; // -1 if unsupported.
 	EsFileOffsetDifference directoryChildren; // ES_DIRECTORY_CHILDREN_UNKNOWN if unsupported.
-}
+};
 
 struct EsPoint {
 	int32_t x;
 	int32_t y;
-}
+};
 
 struct EsRectangle {
 	int32_t l; // Inclusive.
 	int32_t r; // Exclusive.
 	int32_t t; // Inclusive.
 	int32_t b; // Exclusive.
-}
+};
 
 struct EsSpinlock {
 	volatile uint8_t state;
-}
+};
 
 struct EsMutex {
 	EsHandle event;
 	EsSpinlock spinlock;
 	volatile uint8_t state;
 	volatile uint32_t queued;
-}
+};
 
 struct EsCrashReason {
 	EsFatalError errorCode;
 	int32_t duringSystemCall;
-}
+};
 
 struct EsProcessState {
 	EsCrashReason crashReason;
 	EsObjectID id;
 	uint8_t executableState;
 	uint8_t flags;
-}
+};
 
 struct EsPainter {
 	EsRectangle clip;
 	int32_t offsetX, offsetY, width, height;
 	void *style;
 	EsPaintTarget *target;
-}
+} @opaque();
 
 struct EsDebuggerMessage {
 	EsHandle process;
 	EsCrashReason reason;
-}
+};
 
 struct EsSnapshotProcessesItem {
 	int64_t pid, memoryUsage, cpuTimeSlices, idleTimeSlices, handleCount, threadCount;
 	char name[ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH];
 	uint8_t nameBytes;
 	bool isKernel;
-}
+};
 
 struct EsSnapshotProcesses {
 	size_t count;
 	EsSnapshotProcessesItem processes[];
-}
+};
 
 struct EsProcessCreateData {
 	EsHandle systemData;
@@ -1329,7 +1329,7 @@ struct EsProcessCreationArguments {
 	EsProcessCreateData data;
 	uint32_t flags;
 	uint64_t permissions;
-};
+} @array_in(handles, handleCount) @array_in(handleModes, handleCount);
 
 struct EsInstance {
 	// Read-only variables.
@@ -1339,12 +1339,12 @@ struct EsInstance {
 
 	// Read-write.
 	EsInstanceCallback callback;
-};
+} @opaque();
 
 struct EsPanelBand {
 	int preferredSize, minimumSize, maximumSize;
 	int push, pull; // Similar to flex-grow and flex-shrink from CSS.
-}
+};
 
 struct EsThemeMetrics {
 	uint64_t mask;
@@ -1380,7 +1380,7 @@ struct EsFont {
 	EsFontFamily family;
 	uint8_t weight;
 	uint8_t flags;
-}
+};
 
 struct EsTextStyle {
 	// TODO Indicating RTL/vertical writing modes.
@@ -1434,7 +1434,7 @@ struct EsCommand {
 	EsCString cKeyboardShortcut;
 	EsGeneric data;
 	STRING title;
-};
+} @opaque();
 
 struct EsApplicationStartupRequest {
 	int64_t id;
@@ -1456,19 +1456,7 @@ private struct _EsApplicationStartupInformation {
 struct EsINIState {
 	char *buffer, *sectionClass, *section, *key, *value;
 	size_t bytes, sectionClassBytes, sectionBytes, keyBytes, valueBytes;
-};
-
-struct EsSystemConfigurationItem {
-	char *key, *value;
-	size_t keyBytes, valueBytes;
-};
-
-struct EsSystemConfigurationGroup {
-	char *section, *sectionClass;
-	size_t sectionBytes, sectionClassBytes;
-	EsSystemConfigurationItem *items;
-	size_t itemCount;
-};
+} @opaque();
 
 struct EsAnalogInput {
 	uint8_t x, y, z;
@@ -1502,7 +1490,7 @@ struct EsAddress {
 
 		uint8_t d[20];
 	};
-};
+} @opaque();
 
 struct EsConnection {
 	EsAddress address;
@@ -1521,7 +1509,7 @@ struct EsConnection {
 	uintptr_t sendWritePointer;
 
 	EsHandle handle;
-};
+} @opaque();
 
 struct EsFileMenuSettings {
 };
@@ -1682,7 +1670,7 @@ struct EsMessageGetItemData {
 		int64_t i;
 		double d;
 	};
-};
+} @opaque();
 
 struct EsMessageGetIndent {
 	EsListViewIndex group;
@@ -1797,7 +1785,7 @@ struct EsMessageTabOperation {
 	EsHandle handle;
 	union { size_t bytes; bool isSource; };
 	EsError error;
-};
+} @opaque();
 
 struct EsMessageDevice {
 	EsObjectID id;
@@ -1880,7 +1868,7 @@ struct EsMessage {
 		EsMessageDevice device;
 		EsObjectID embeddedWindowDestroyedID;
 	};
-}
+} @opaque();
 
 private struct _EsMessageWithObject {
 	void *object;
@@ -1969,7 +1957,7 @@ private struct EsMountPoint {
 struct EsPanelBandDecorator {
 	uintptr_t index, repeatEvery;
 	uint8_t axis; // 0 for columns, 1 for rows.
-	const EsThemeAppearance *appearance; // Pointer must remain valid.
+	EsThemeAppearance appearance;
 };
 
 struct EsCornerRadii {
@@ -1999,7 +1987,7 @@ function_pointer void EsWorkCallback(EsGeneric context);
 function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request) @in(request); // The instance is optional, used only for ES_APPLICATION_STARTUP_IN_SAME_CONTAINER.
 function void EsApplicationRunTemporary(STRING path);
 function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize) @out(bufferSize); 
-function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING) @todo(); 
+function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
 function EsError EsHandleClose(EsHandle handle); 
 function void EsSystemShowShutdownDialog();
 function void EsSystemShutdown(uint32_t action);
@@ -2018,14 +2006,14 @@ function uintptr_t EsSystemGetOptimalWorkQueueThreadCount();
 
 function int64_t EsSystemConfigurationReadInteger(STRING section, STRING key, int64_t defaultValue = 0);
 function char *EsSystemConfigurationReadString(STRING section, STRING key, size_t *valueBytes = ES_NULL) @out(valueBytes) @heap_buffer_out(return, valueBytes*); // Free with EsHeapFree.
-function void EsSystemConfigurationReadFileTypes(EsBuffer *buffer) @opaque(buffer); // Read the "file_type" sections of the system configuration INI to the buffer.
+function void EsSystemConfigurationReadFileTypes(EsBuffer *buffer); // Read the "file_type" sections of the system configuration INI to the buffer.
 
 // INI files.
 
-function bool EsINIParse(EsINIState *s) @todo();
-function bool EsINIPeek(EsINIState *s) @todo();
-function size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes) @todo();
-function void EsINIZeroTerminate(EsINIState *s) @todo();
+function bool EsINIParse(EsINIState *s);
+function bool EsINIPeek(EsINIState *s);
+function size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes) @native();
+function void EsINIZeroTerminate(EsINIState *s);
 
 // File systems.
 
@@ -2069,7 +2057,7 @@ function EsError EsMountPointAdd(STRING prefix, EsHandle base); // The system ma
 function bool EsMountPointRemove(STRING prefix); // Returns false if the mount point does not exist. You can only remove mount points you added with EsMountPointAdd.
 function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information) @out(information);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
-function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) @opaque(outputBuffer);
+function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
 
 function EsMessageDevice *EsDeviceEnumerate(size_t *count) @out(count) @heap_array_out(return, count*); // This must be done with the message mutex acquired. As soon as EsMessageReceived is next called, or the message mutex is released, then the handles in this array are invalid.
 function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq) @native();
@@ -2096,15 +2084,15 @@ function bool EsWorkIsExiting();
 // Memory.
 
 function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) @native();
-function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) @buffer_out(destination, readBytes) @opaque(buffer);
+function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) @buffer_out(destination, readBytes);
 function const void *EsBufferReadMany(EsBuffer *buffer, size_t a, size_t b) @native();
-function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue) @opaque(buffer);
-function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) @buffer_in(source, writeBytes) @opaque(buffer) @todo();
-function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value) @opaque(buffer);
-function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value) @opaque(buffer); // Changes byte order if big endian.
+function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue);
+function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) @buffer_in(source, writeBytes) @todo();
+function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value);
+function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value); // Changes byte order if big endian.
 function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...) @native(); // Appends.
 function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments) @native(); // Appends.
-function void EsBufferFlushToFileStore(EsBuffer *buffer) @opaque(buffer);
+function void EsBufferFlushToFileStore(EsBuffer *buffer);
 
 function EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess) @buffer_in(data, dataBytes); 
 function void EsConstantBufferRead(EsHandle constantBuffer, void *output) @todo();
@@ -2174,30 +2162,30 @@ function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v) 
 function uint32_t EsColorParse(STRING string);
 function uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress);
 
-function void EsDrawBitmap(EsPainter *painter, EsRectangle region, const uint32_t *bits, uintptr_t stride, uint16_t mode) @opaque(painter) @matrix_in(bits, region, stride); // OR mode with alpha.
-function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, const uint32_t *bits, uintptr_t stride, uint16_t alpha) @opaque(painter) @matrix_in(bits, sourceRegion, stride); // Set alpha to 0xFFFF if source is opaque.
-function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor) @opaque(painter);
-function void EsDrawClear(EsPainter *painter, EsRectangle bounds) @opaque(painter);
-function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties);
-function void EsDrawInvert(EsPainter *painter, EsRectangle bounds) @opaque(painter);
-function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags) @opaque(painter) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
-function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize) @opaque(painter);
-function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, EsCornerRadii cornerRadii) @opaque(painter);
-function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color) @opaque(painter);
-function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha) @opaque(painter); 
-function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsRectangle *clip = ES_NULL, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties) @in(clip); 
-function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter);
-function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsStyleID style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter); // The style must be one of the ES_STYLE_TEXT_... styles.
-function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties); 
-function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes) @opaque(painter) @buffer_in(data, dataBytes);
+function void EsDrawBitmap(EsPainter *painter, EsRectangle region, const uint32_t *bits, uintptr_t stride, uint16_t mode) @matrix_in(bits, region, stride); // OR mode with alpha.
+function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, const uint32_t *bits, uintptr_t stride, uint16_t alpha) @matrix_in(bits, sourceRegion, stride); // Set alpha to 0xFFFF if source is opaque.
+function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor);
+function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
+function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties);
+function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
+function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
+function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
+function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, EsCornerRadii cornerRadii);
+function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
+function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
+function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsRectangle *clip = ES_NULL, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties) @in(clip); 
+function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsStyleID style, uint32_t flags = ES_FLAGS_DEFAULT); // The style must be one of the ES_STYLE_TEXT_... styles.
+function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties); 
+function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
 
 function uint32_t EsIconIDFromString(STRING string = BLANK_STRING);
 function uint32_t EsIconIDFromDriveType(uint8_t driveType);
 
 function uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *width, uint32_t *height, int imageChannels) @out(width) @out(height) @buffer_in(file, fileSize) @heap_matrix_out(return, width*, height*);
 
-function EsRectangle EsPainterBoundsClient(EsPainter *painter) @opaque(painter); 
-function EsRectangle EsPainterBoundsInset(EsPainter *painter) @opaque(painter); 
+function EsRectangle EsPainterBoundsClient(EsPainter *painter); 
+function EsRectangle EsPainterBoundsInset(EsPainter *painter); 
 
 function void EsPaintTargetClear(EsPaintTarget *target);
 function void EsPaintTargetEndDirectAccess(EsPaintTarget *target);
@@ -2226,13 +2214,13 @@ function EsStyleID EsStyleIntern(const EsStyle *style) @in(style); // Once a sty
 
 // Networking.
 
-function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address) @todo();
-function void EsConnectionClose(EsConnection *connection) @todo();
-function void EsConnectionNotify(EsConnection *connection) @todo();
-function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags) @todo();
-function void EsConnectionPoll(EsConnection *connection) @todo();
-function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead) @buffer_out(buffer, bufferBytes) @out(bytesRead) @todo(); // Returns the number of bytes copied into the buffer.
-function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes) @todo(); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
+function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address);
+function void EsConnectionClose(EsConnection *connection);
+function void EsConnectionNotify(EsConnection *connection);
+function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags);
+function void EsConnectionPoll(EsConnection *connection);
+function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead) @buffer_out(buffer, bufferBytes) @out(bytesRead); // Returns the number of bytes copied into the buffer.
+function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes) @buffer_in(data, dataBytes); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
 
 // Input.
 
@@ -2391,12 +2379,12 @@ function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
 
 // Instances and commands.
 
-function void EsCommandAddButton(EsCommand *command, EsButton *button) @opaque(command);
-function EsCommand *EsCommandByID(ES_INSTANCE_TYPE *instance, uint32_t stableID) @opaque(return);
-function EsCommand *EsCommandRegister(EsCommand *command, ES_INSTANCE_TYPE *instance, STRING title, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false) @opaque(return) @opaque(command) @todo(); // IDs >= 0xF0000000 reserved by the system.
-function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback) @opaque(command) @todo();
-function void EsCommandSetDisabled(EsCommand *command, bool disabled) @opaque(command);
-function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage) @opaque(command);
+function void EsCommandAddButton(EsCommand *command, EsButton *button);
+function EsCommand *EsCommandByID(ES_INSTANCE_TYPE *instance, uint32_t stableID);
+function EsCommand *EsCommandRegister(EsCommand *command, ES_INSTANCE_TYPE *instance, STRING title, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false) @todo(); // IDs >= 0xF0000000 reserved by the system.
+function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback) @todo();
+function void EsCommandSetDisabled(EsCommand *command, bool disabled);
+function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
 
 function void EsInstanceOpenReference(ES_INSTANCE_TYPE *_instance);
 function void EsInstanceCloseReference(ES_INSTANCE_TYPE *_instance); // Sends ES_MSG_INSTANCE_DESTROY when all references closed.
@@ -2419,14 +2407,14 @@ function size_t EsMessageGetInputText(EsMessage *message, char *buffer) @todo();
 function void EsMessageMutexAcquire(); 
 function void EsMessageMutexCheck();
 function void EsMessageMutexRelease(); 
-function EsError EsMessagePost(EsElement *target, EsMessage *message) @todo(); 
-function EsError EsMessagePostRemote(EsHandle process, EsMessage *message) @todo(); 
-function int EsMessageSend(EsElement *object, EsMessage *message) @todo();
-function EsMessage *EsMessageReceive() @todo();
+function EsError EsMessagePost(EsElement *target, EsMessage *message); 
+function EsError EsMessagePostRemote(EsHandle process, EsMessage *message); 
+function int EsMessageSend(EsElement *object, EsMessage *message);
+function EsMessage *EsMessageReceive();
 
 // User interface elements.
 
-function void EsElementDraw(EsElement *element, EsPainter *painter) @opaque(painter); // Actually draw an element onto a painter.
+function void EsElementDraw(EsElement *element, EsPainter *painter); // Actually draw an element onto a painter.
 function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
 function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
@@ -2435,7 +2423,7 @@ function bool EsElementIsHidden(EsElement *element);
 function void EsElementSetCallback(EsElement *element, EsElementCallback callback) @todo();
 function void EsElementGetSize(EsElement *element, int *width, int *height) @out(width) @out(height);
 function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL) @in(region); // Mark an element to be repainted. If region is null, then the whole element is repainted.
-function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border) @todo(); // Minimal repaint for ES_MSG_SCROLL_X/Y.
+function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border); // Minimal repaint for ES_MSG_SCROLL_X/Y.
 function void EsElementRelayout(EsElement *element);
 function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
 function EsRectangle EsElementGetInsets(EsElement *element); 
@@ -2460,7 +2448,7 @@ function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = 
 function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
-function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) @todo(); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
+function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
 function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
 function void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool sendMovedMessage = true);
 function void EsScrollViewRefresh(EsScrollView *view);
@@ -2483,7 +2471,7 @@ function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsE
 function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
 function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL) @todo();
-function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command) @opaque(command);
+function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command);
 function void EsMenuAddSeparator(EsMenu *menu);
 function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
 function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
@@ -2555,7 +2543,7 @@ function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES
 function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL) @array_in(columns, columnCount) @array_in(rows, rowCount);
 function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL) @in(column) @in(row); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
-function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator) @todo();
+function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator);
 
 function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
@@ -2572,7 +2560,7 @@ function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height);
 function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) @buffer_in(buffer, bufferBytes);
-function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds) @opaque(painter);
+function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds);
 
 function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);

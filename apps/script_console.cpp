@@ -695,9 +695,9 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleTable));
 		EsPanelSetBands(table, context->heap[listEntry->list[0].i].fieldCount);
-		EsPanelTableAddBandDecorator(table, { .index = 0, .repeatEvery = 0, .axis = 1, .appearance = &styleAppearanceRowHeader });
-		EsPanelTableAddBandDecorator(table, { .index = 1, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowEven });
-		EsPanelTableAddBandDecorator(table, { .index = 2, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowOdd });
+		EsPanelTableAddBandDecorator(table, { .index = 0, .repeatEvery = 0, .axis = 1, .appearance = styleAppearanceRowHeader });
+		EsPanelTableAddBandDecorator(table, { .index = 1, .repeatEvery = 2, .axis = 1, .appearance = styleAppearanceRowEven });
+		EsPanelTableAddBandDecorator(table, { .index = 2, .repeatEvery = 2, .axis = 1, .appearance = styleAppearanceRowOdd });
 
 		{
 			Node *field = type->firstChild->firstChild;

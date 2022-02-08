@@ -295,6 +295,54 @@ Entry ParseRecord(bool isUnion) {
 	return entry;
 }
 
+void ParseAnnotationsUntilSemicolon(Entry *entry) {
+	while (true) {
+		Token token = NextToken();
+
+		if (token.type == TOKEN_SEMICOLON) {
+			break;
+		} else if (token.type == TOKEN_ANNOTATE) {
+			Entry annotation = { 0 };
+			token = NextToken();
+			assert(token.type == TOKEN_IDENTIFIER);
+			annotation.name = TokenToString(token);
+			token = NextToken();
+			assert(token.type == TOKEN_LEFT_PAREN);
+			bool needComma = false;
+			Entry child = { 0 };
+			child.name = malloc(256);
+			child.name[0] = 0;
+
+			while (true) {
+				token = NextToken();
+
+				if (token.type == TOKEN_RIGHT_PAREN) {
+					if (child.name[0]) arrput(annotation.children, child);
+					break;
+				} else if (token.type == TOKEN_COMMA) {
+					if (child.name[0]) arrput(annotation.children, child);
+					child.name = malloc(256);
+					child.name[0] = 0;
+					assert(needComma);
+					needComma = false;
+				} else if (token.type == TOKEN_IDENTIFIER) {
+					strcat(child.name, TokenToString(token));
+					needComma = true;
+				} else if (token.type == TOKEN_ASTERISK) {
+					strcat(child.name, "*");
+					needComma = true;
+				} else {
+					assert(false);
+				}
+			}
+
+			arrput(entry->annotations, annotation);
+		} else {
+			assert(false);
+		}
+	}
+}
+
 void ParseFile(Entry *root, const char *name) {
 	if (outputDependencies.ready) {
 		FilePrintFormat(outputDependencies, "%s\n", name);
@@ -368,6 +416,7 @@ void ParseFile(Entry *root, const char *name) {
 			Entry entry = ParseRecord(false);
 			entry.isPrivate = isPrivate;
 			entry.name = TokenToString(structName);
+			ParseAnnotationsUntilSemicolon(&entry);
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_FUNCTION || token.type == TOKEN_FUNCTION_NOT_IN_KERNEL 
 				|| token.type == TOKEN_FUNCTION_POINTER) {
@@ -391,52 +440,7 @@ void ParseFile(Entry *root, const char *name) {
 				firstVariable = false;
 			}
 
-			while (true) {
-				token = NextToken();
-
-				if (token.type == TOKEN_SEMICOLON) {
-					break;
-				} else if (token.type == TOKEN_ANNOTATE) {
-					Entry annotation = { 0 };
-					token = NextToken();
-					assert(token.type == TOKEN_IDENTIFIER);
-					annotation.name = TokenToString(token);
-					token = NextToken();
-					assert(token.type == TOKEN_LEFT_PAREN);
-					bool needComma = false;
-					Entry child = { 0 };
-					child.name = malloc(256);
-					child.name[0] = 0;
-
-					while (true) {
-						token = NextToken();
-
-						if (token.type == TOKEN_RIGHT_PAREN) {
-							if (child.name[0]) arrput(annotation.children, child);
-							break;
-						} else if (token.type == TOKEN_COMMA) {
-							if (child.name[0]) arrput(annotation.children, child);
-							child.name = malloc(256);
-							child.name[0] = 0;
-							assert(needComma);
-							needComma = false;
-						} else if (token.type == TOKEN_IDENTIFIER) {
-							strcat(child.name, TokenToString(token));
-							needComma = true;
-						} else if (token.type == TOKEN_ASTERISK) {
-							strcat(child.name, "*");
-							needComma = true;
-						} else {
-							assert(false);
-						}
-					}
-
-					arrput(entry.annotations, annotation);
-				} else {
-					assert(false);
-				}
-			}
-
+			ParseAnnotationsUntilSemicolon(&entry);
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_API_TYPE) {
 			Token name = NextToken(), parent = NextToken();
@@ -1235,15 +1239,242 @@ void OutputZig(Entry *root) {
 	}
 }
 
+int AnalysisResolve(Entry *root, Entry e, Entry **unresolved, Entry *resolved, Entry *annotations) {
+	assert(e.type == ENTRY_VARIABLE);
+
+	if (e.variable.pointer == 0 && (0 == strcmp(e.variable.type, "uint64_t")
+			|| 0 == strcmp(e.variable.type, "int64_t")
+			|| 0 == strcmp(e.variable.type, "uint32_t")
+			|| 0 == strcmp(e.variable.type, "int32_t")
+			|| 0 == strcmp(e.variable.type, "uint16_t")
+			|| 0 == strcmp(e.variable.type, "int16_t")
+			|| 0 == strcmp(e.variable.type, "uint8_t")
+			|| 0 == strcmp(e.variable.type, "int8_t")
+			|| 0 == strcmp(e.variable.type, "char")
+			|| 0 == strcmp(e.variable.type, "size_t")
+			|| 0 == strcmp(e.variable.type, "intptr_t")
+			|| 0 == strcmp(e.variable.type, "uintptr_t")
+			|| 0 == strcmp(e.variable.type, "ptrdiff_t")
+			|| 0 == strcmp(e.variable.type, "unsigned")
+			|| 0 == strcmp(e.variable.type, "int")
+			|| 0 == strcmp(e.variable.type, "long")
+			|| 0 == strcmp(e.variable.type, "double")
+			|| 0 == strcmp(e.variable.type, "float")
+			|| 0 == strcmp(e.variable.type, "void")
+			|| 0 == strcmp(e.variable.type, "bool")
+			|| 0 == strcmp(e.variable.type, "EsCString")
+			|| 0 == strcmp(e.variable.type, "EsGeneric")
+			|| 0 == strcmp(e.variable.type, "STRING"))) {
+		return 1;
+	}
+
+	if (e.variable.pointer == 1 && !e.variable.isConst && (0 == strcmp(e.variable.type, "ES_INSTANCE_TYPE"))) {
+		return 1;
+	}
+
+	for (int k = 0; k < arrlen(root->children); k++) {
+		if (!root->children[k].name) continue;
+		if (strcmp(e.variable.type, root->children[k].name)) continue;
+
+		if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
+			return 1;
+		} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
+			return 1;
+		} else if (root->children[k].type == ENTRY_API_TYPE && e.variable.pointer == 1) {
+			return 1;
+		} else if (root->children[k].type == ENTRY_STRUCT) {
+			bool selfOpaque = false;
+
+			for (int i = 0; i < arrlen(root->children[k].annotations); i++) {
+				if (0 == strcmp(root->children[k].annotations[i].name, "opaque")) {
+					selfOpaque = true;
+				}
+			}
+
+			if (selfOpaque && e.variable.pointer == 1) {
+				return 1;
+			} else if (!selfOpaque && e.variable.pointer == 0) {
+				for (int i = 0; i < arrlen(root->children[k].children); i++) {
+					Entry f = root->children[k].children[i];
+					assert(f.type == ENTRY_VARIABLE);
+					char *old = f.name;
+					f.name = malloc(strlen(e.name) + 1 + strlen(old) + 1);
+					strcpy(f.name, e.name);
+					strcat(f.name, "*");
+					strcat(f.name, old);
+					arrput(*unresolved, f);
+				}
+
+				return 1;
+			}
+		}
+	}
+
+	for (int i = 0; i < arrlen(annotations); i++) {
+		Entry *annotation = annotations + i;
+
+		if (0 == strcmp(annotation->name, "in") 
+				|| 0 == strcmp(annotation->name, "out")
+				|| 0 == strcmp(annotation->name, "in_out")) {
+			assert(1 == arrlen(annotation->children));
+
+			if (0 == strcmp(annotation->children[0].name, e.name)) {
+				assert(e.variable.pointer);
+				assert(e.variable.isConst == (0 == strcmp(annotation->name, "in")));
+				Entry f = e;
+				f.name = malloc(strlen(e.name) + 1 + 1);
+				strcpy(f.name, e.name);
+				strcat(f.name, "*");
+				f.variable.pointer--;
+				arrput(*unresolved, f);
+				return 1;
+			}
+		} else if (0 == strcmp(annotation->name, "buffer_out") 
+				|| 0 == strcmp(annotation->name, "heap_buffer_out") 
+				|| 0 == strcmp(annotation->name, "fixed_buffer_out") 
+				|| 0 == strcmp(annotation->name, "buffer_in")) {
+			assert(2 == arrlen(annotation->children));
+
+			if (0 == strcmp(annotation->children[0].name, e.name)) {
+				assert(e.variable.pointer && (0 == strcmp(e.variable.type, "void") 
+							|| 0 == strcmp(e.variable.type, "uint8_t") 
+							|| 0 == strcmp(e.variable.type, "char")));
+				assert(e.variable.isConst == (0 == strcmp(annotation->name, "buffer_in")
+							|| 0 == strcmp(annotation->name, "fixed_buffer_out")));
+
+				bool foundSize = false;
+
+				for (int i = 0; i < arrlen(resolved); i++) {
+					if (0 == strcmp(resolved[i].name, annotation->children[1].name)) {
+						assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
+									|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")));
+						foundSize = true;
+					}
+				}
+
+				if (!foundSize) {
+					arrins(*unresolved, 0, e);
+					return 2;
+				}
+
+				return 1;
+			}
+		} else if (0 == strcmp(annotation->name, "heap_array_out")
+				|| 0 == strcmp(annotation->name, "heap_matrix_out")
+				|| 0 == strcmp(annotation->name, "array_in")
+				|| 0 == strcmp(annotation->name, "matrix_in")
+				|| 0 == strcmp(annotation->name, "matrix_shared")) {
+			bool matrix = 0 == strcmp(annotation->name, "heap_matrix_out") 
+				|| 0 == strcmp(annotation->name, "matrix_in")
+				|| 0 == strcmp(annotation->name, "matrix_shared");
+			bool input = 0 == strcmp(annotation->name, "array_in")
+				|| 0 == strcmp(annotation->name, "matrix_in");
+			int children = arrlen(annotation->children);
+			if (matrix) assert(children == 3 || children == 4); // (width, height) or (width, height, stride) or (rectangle, stride)
+			else assert(children == 2);
+
+			if (0 == strcmp(annotation->children[0].name, e.name)) {
+				assert(e.variable.pointer);
+				assert(e.variable.isConst == input);
+
+				int foundSize = 1;
+
+				for (int j = 1; j < children; j++) {
+					for (int i = 0; i < arrlen(resolved); i++) {
+						if (0 == strcmp(resolved[i].name, annotation->children[j].name)) {
+							assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
+										|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")
+										|| 0 == strcmp(resolved[i].variable.type, "uintptr_t")
+										|| 0 == strcmp(resolved[i].variable.type, "uint32_t")
+										|| (0 == strcmp(resolved[i].variable.type, "EsRectangle") && matrix && j == 1)));
+							foundSize++;
+							break;
+						}
+					}
+				}
+
+				if (foundSize != children) {
+					arrins(*unresolved, 0, e);
+					return 2;
+				}
+
+				Entry f = e;
+				f.name = malloc(strlen(e.name) + 2 + 1);
+				strcpy(f.name, e.name);
+				strcat(f.name, "[]");
+				f.variable.pointer--;
+				arrput(*unresolved, f);
+
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
 void Analysis(Entry *root) {
 	// TODO @optional() annotation.
-	// TODO Discriminated unions.
-	// TODO Error handling support.
+	// TODO Smarter errors.
 	// TODO Fixed sized array based strings in structs.
 	// TODO Callbacks.
 	// TODO Array size computation: text run arrays, EsFileWriteAllGather, EsConstantBufferRead.
-	// TODO Complex types: EsMessage, EsINIState, EsConnection.
+	// TODO Generating constructors, getters and setters for @opaque() types like EsMessage, EsINIState, EsConnection, etc.
 	// TODO Check all the annotations have been used.
+	
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = root->children + i;
+		if (entry->isPrivate || entry->type != ENTRY_STRUCT) continue;
+
+		Entry *resolved = NULL;
+		Entry *unresolved = NULL;
+		bool understood = true;
+		const char *unresolvableName = NULL;
+		bool selfOpaque = false;
+
+		for (int i = 0; i < arrlen(entry->annotations); i++) {
+			Entry *annotation = entry->annotations + i;
+
+			if (0 == strcmp(annotation->name, "opaque")) {
+				// Managed languages should treat this structure as opaque.
+				selfOpaque = true;
+			}
+		}
+		
+		if (!selfOpaque) {
+			for (int i = 0; i < arrlen(entry->children); i++) {
+				Entry e = entry->children[i];
+
+				if (e.type != ENTRY_VARIABLE) {
+					assert(e.type == ENTRY_UNION);
+					unresolvableName = "(union)";
+					understood = false;
+					break;
+				}
+
+				arrput(unresolved, e);
+			}
+		}
+
+		while (understood && arrlen(unresolved)) {
+			Entry e = arrpop(unresolved);
+			int result = AnalysisResolve(root, e, &unresolved, resolved, entry->annotations);
+
+			if (result == 1) {
+				arrput(resolved, e);
+			} else if (result == 0) {
+				unresolvableName = e.name;
+				understood = false;
+			}
+		}
+
+		arrfree(resolved);
+		arrfree(unresolved);
+
+		if (!understood) {
+			Log("%s %s\n", entry->name, unresolvableName);
+		}
+	}
 
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
@@ -1272,177 +1503,14 @@ void Analysis(Entry *root) {
 
 		while (arrlen(unresolved)) {
 			Entry e = arrpop(unresolved);
-			assert(e.type == ENTRY_VARIABLE);
+			int result = AnalysisResolve(root, e, &unresolved, resolved, entry->annotations);
 
-			if (e.variable.pointer == 0 && (0 == strcmp(e.variable.type, "uint64_t")
-					|| 0 == strcmp(e.variable.type, "int64_t")
-					|| 0 == strcmp(e.variable.type, "uint32_t")
-					|| 0 == strcmp(e.variable.type, "int32_t")
-					|| 0 == strcmp(e.variable.type, "uint16_t")
-					|| 0 == strcmp(e.variable.type, "int16_t")
-					|| 0 == strcmp(e.variable.type, "uint8_t")
-					|| 0 == strcmp(e.variable.type, "int8_t")
-					|| 0 == strcmp(e.variable.type, "char")
-					|| 0 == strcmp(e.variable.type, "size_t")
-					|| 0 == strcmp(e.variable.type, "intptr_t")
-					|| 0 == strcmp(e.variable.type, "uintptr_t")
-					|| 0 == strcmp(e.variable.type, "ptrdiff_t")
-					|| 0 == strcmp(e.variable.type, "unsigned")
-					|| 0 == strcmp(e.variable.type, "int")
-					|| 0 == strcmp(e.variable.type, "long")
-					|| 0 == strcmp(e.variable.type, "double")
-					|| 0 == strcmp(e.variable.type, "float")
-					|| 0 == strcmp(e.variable.type, "void")
-					|| 0 == strcmp(e.variable.type, "bool")
-					|| 0 == strcmp(e.variable.type, "EsCString")
-					|| 0 == strcmp(e.variable.type, "EsGeneric")
-					|| 0 == strcmp(e.variable.type, "STRING"))) {
-				goto resolved;
+			if (result == 1) {
+				arrput(resolved, e);
+			} else if (result == 0) {
+				unresolvableName = e.name;
+				goto end;
 			}
-
-			if (e.variable.pointer == 1 && !e.variable.isConst && (0 == strcmp(e.variable.type, "ES_INSTANCE_TYPE"))) {
-				goto resolved;
-			}
-
-			for (int k = 0; k < arrlen(root->children); k++) {
-				if (!root->children[k].name) continue;
-				if (strcmp(e.variable.type, root->children[k].name)) continue;
-
-				if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
-					goto resolved;
-				} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
-					goto resolved;
-				} else if (root->children[k].type == ENTRY_API_TYPE && e.variable.pointer == 1) {
-					goto resolved;
-				} else if (root->children[k].type == ENTRY_STRUCT && e.variable.pointer == 0) {
-					for (int i = 0; i < arrlen(root->children[k].children); i++) {
-						Entry f = root->children[k].children[i];
-						assert(f.type == ENTRY_VARIABLE);
-						char *old = f.name;
-						f.name = malloc(strlen(e.name) + 1 + strlen(old) + 1);
-						strcpy(f.name, e.name);
-						strcat(f.name, "*");
-						strcat(f.name, old);
-						arrput(unresolved, f);
-					}
-
-					goto resolved;
-				}
-			}
-
-			for (int i = 0; i < arrlen(entry->annotations); i++) {
-				Entry *annotation = entry->annotations + i;
-
-				if (0 == strcmp(annotation->name, "in") 
-						|| 0 == strcmp(annotation->name, "out")
-						|| 0 == strcmp(annotation->name, "in_out")) {
-					assert(1 == arrlen(annotation->children));
-
-					if (0 == strcmp(annotation->children[0].name, e.name)) {
-						assert(e.variable.pointer);
-						assert(e.variable.isConst == (0 == strcmp(annotation->name, "in")));
-						Entry f = e;
-						f.name = malloc(strlen(e.name) + 1 + 1);
-						strcpy(f.name, e.name);
-						strcat(f.name, "*");
-						f.variable.pointer--;
-						arrput(unresolved, f);
-						goto resolved;
-					}
-				} else if (0 == strcmp(annotation->name, "opaque")) {
-					assert(1 == arrlen(annotation->children));
-
-					if (0 == strcmp(annotation->children[0].name, e.name)) {
-						assert(e.variable.pointer);
-						assert(!e.variable.isConst);
-						goto resolved;
-					}
-				} else if (0 == strcmp(annotation->name, "buffer_out") 
-						|| 0 == strcmp(annotation->name, "heap_buffer_out") 
-						|| 0 == strcmp(annotation->name, "fixed_buffer_out") 
-						|| 0 == strcmp(annotation->name, "buffer_in")) {
-					assert(2 == arrlen(annotation->children));
-
-					if (0 == strcmp(annotation->children[0].name, e.name)) {
-						assert(e.variable.pointer && (0 == strcmp(e.variable.type, "void") 
-									|| 0 == strcmp(e.variable.type, "uint8_t") 
-									|| 0 == strcmp(e.variable.type, "char")));
-						assert(e.variable.isConst == (0 == strcmp(annotation->name, "buffer_in")
-									|| 0 == strcmp(annotation->name, "fixed_buffer_out")));
-
-						bool foundSize = false;
-
-						for (int i = 0; i < arrlen(resolved); i++) {
-							if (0 == strcmp(resolved[i].name, annotation->children[1].name)) {
-								assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
-											|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")));
-								foundSize = true;
-							}
-						}
-
-						if (!foundSize) {
-							arrins(unresolved, 0, e);
-							goto tryAgain;
-						}
-
-						goto resolved;
-					}
-				} else if (0 == strcmp(annotation->name, "heap_array_out")
-						|| 0 == strcmp(annotation->name, "heap_matrix_out")
-						|| 0 == strcmp(annotation->name, "array_in")
-						|| 0 == strcmp(annotation->name, "matrix_in")
-						|| 0 == strcmp(annotation->name, "matrix_shared")) {
-					bool matrix = 0 == strcmp(annotation->name, "heap_matrix_out") 
-						|| 0 == strcmp(annotation->name, "matrix_in")
-						|| 0 == strcmp(annotation->name, "matrix_shared");
-					bool input = 0 == strcmp(annotation->name, "array_in")
-						|| 0 == strcmp(annotation->name, "matrix_in");
-					int children = arrlen(annotation->children);
-					if (matrix) assert(children == 3 || children == 4); // (width, height) or (width, height, stride) or (rectangle, stride)
-					else assert(children == 2);
-
-					if (0 == strcmp(annotation->children[0].name, e.name)) {
-						assert(e.variable.pointer);
-						assert(e.variable.isConst == input);
-
-						int foundSize = 1;
-
-						for (int j = 1; j < children; j++) {
-							for (int i = 0; i < arrlen(resolved); i++) {
-								if (0 == strcmp(resolved[i].name, annotation->children[j].name)) {
-									assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
-												|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")
-												|| 0 == strcmp(resolved[i].variable.type, "uintptr_t")
-												|| 0 == strcmp(resolved[i].variable.type, "uint32_t")
-												|| (0 == strcmp(resolved[i].variable.type, "EsRectangle") && matrix && j == 1)));
-									foundSize++;
-									break;
-								}
-							}
-						}
-
-						if (foundSize != children) {
-							arrins(unresolved, 0, e);
-							goto tryAgain;
-						}
-
-						Entry f = e;
-						f.name = malloc(strlen(e.name) + 2 + 1);
-						strcpy(f.name, e.name);
-						strcat(f.name, "[]");
-						f.variable.pointer--;
-						arrput(unresolved, f);
-
-						goto resolved;
-					}
-				}
-			}
-
-			unresolvableName = e.name;
-			goto end;
-			resolved:;
-			arrput(resolved, e);
-			tryAgain:;
 		}
 
 		understood = true;

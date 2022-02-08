@@ -125,14 +125,14 @@ bool SettingsPutValue(const char *cConfigurationSection, const char *cConfigurat
 		newValue = newValueDuplicate;
 	}
 
-	EsSystemConfigurationGroup *group = SystemConfigurationGetGroup(cConfigurationSection, -1, true);
+	SystemConfigurationGroup *group = SystemConfigurationGetGroup(cConfigurationSection, -1, true);
 
 	if (!group) {
 		EsHeapFree(newValue);
 		return false;
 	}
 
-	EsSystemConfigurationItem *item = SystemConfigurationGetItem(group, cConfigurationKey, -1, true);
+	SystemConfigurationItem *item = SystemConfigurationGetItem(group, cConfigurationKey, -1, true);
 
 	if (!item) {
 		EsHeapFree(newValue);
