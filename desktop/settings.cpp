@@ -691,7 +691,7 @@ int SettingsColorButtonMessage(EsElement *element, EsMessage *message) {
 		bounds.r = bounds.l + 14 * EsElementGetScaleFactor(element);
 		bounds = EsRectangleFit(bounds, ES_RECT_2S(1, 1), true);
 		uint32_t cornerRadius = Width(bounds);
-		uint32_t cornerRadii[4] = { cornerRadius, cornerRadius, cornerRadius, cornerRadius };
+		EsCornerRadii cornerRadii = { cornerRadius, cornerRadius, cornerRadius, cornerRadius };
 		int32_t borderSize = 1 * EsElementGetScaleFactor(element);
 
 		uint32_t color = EsColorBlend(windowColors[element->userData.u][0], 0x20FFFFFF, false);

@@ -523,3 +523,147 @@ const void *EsBundleFind(const EsBundle *bundle, const char *_name, ptrdiff_t na
 
 	return nullptr;
 }
+
+EsError EsFileWriteAll(const char *filePath, ptrdiff_t filePathLength, const void *data, size_t sizes) {
+	return EsFileWriteAllGather(filePath, filePathLength, &data, &sizes, 1);
+}
+
+EsError EsFileWriteAllGather(const char *filePath, ptrdiff_t filePathLength, const void **data, const size_t *sizes, size_t gatherCount) {
+	if (filePathLength == -1) {
+		filePathLength = EsCStringLength(filePath);
+	}
+
+	EsFileInformation information = EsFileOpen((char *) filePath, filePathLength, ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+
+	if (ES_SUCCESS != information.error) {
+		return information.error;
+	}
+
+	EsError error = EsFileWriteAllGatherFromHandle(information.handle, data, sizes, gatherCount);
+	EsHandleClose(information.handle);
+	return error;
+}
+
+EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, size_t sizes) {
+	return EsFileWriteAllGatherFromHandle(handle, &data, &sizes, 1);
+}
+
+EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, const size_t *sizes, size_t gatherCount) {
+	size_t fileSize = 0;
+
+	for (uintptr_t i = 0; i < gatherCount; i++) {
+		fileSize += sizes[i];
+	}
+
+	EsError error = EsFileResize(handle, fileSize);
+	if (ES_CHECK_ERROR(error)) return error;
+
+	size_t offset = 0;
+
+	for (uintptr_t i = 0; i < gatherCount; i++) {
+		error = EsFileWriteSync(handle, offset, sizes[i], data[i]);
+		if (ES_CHECK_ERROR(error)) return error;
+		offset += sizes[i];
+	}
+
+	error = EsFileControl(handle, ES_FILE_CONTROL_FLUSH);
+	return error;
+}
+
+void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error) {
+	if (error) *error = ES_SUCCESS;
+	EsFileOffset size = EsFileGetSize(handle);
+	if (fileSize) *fileSize = size;
+
+	void *buffer = EsHeapAllocate(size + 1, false);
+
+	if (!buffer) {
+		if (error) *error = ES_ERROR_INSUFFICIENT_RESOURCES;
+		return nullptr;
+	}
+
+	((char *) buffer)[size] = 0;
+
+	uintptr_t result = EsFileReadSync(handle, 0, size, buffer);
+
+	if (size != result) {
+		EsHeapFree(buffer);
+		buffer = nullptr;
+		if (error) *error = (EsError) result;
+	}
+	
+	return buffer;
+}
+
+void *EsFileReadAll(const char *filePath, ptrdiff_t filePathLength, size_t *fileSize, EsError *error) {
+	if (error) *error = ES_SUCCESS;
+	EsFileInformation information = EsFileOpen((char *) filePath, filePathLength, ES_FILE_READ | ES_NODE_FAIL_IF_NOT_FOUND);
+
+	if (ES_SUCCESS != information.error) {
+		if (error) *error = information.error;
+		return nullptr;
+	}
+
+	void *buffer = EsFileReadAllFromHandle(information.handle, fileSize);
+	EsHandleClose(information.handle);
+	return buffer;
+}
+
+EsError EsFileCopy(const char *source, ptrdiff_t sourceBytes, const char *destination, ptrdiff_t destinationBytes, void **_copyBuffer,
+		EsFileCopyCallback callback, EsGeneric callbackData) {
+	const size_t copyBufferBytes = 262144;
+	void *copyBuffer = _copyBuffer && *_copyBuffer ? *_copyBuffer : EsHeapAllocate(copyBufferBytes, false);
+	if (_copyBuffer) *_copyBuffer = copyBuffer;
+
+	if (!copyBuffer) {
+		return ES_ERROR_INSUFFICIENT_RESOURCES;
+	}
+
+	EsError error = ES_SUCCESS;
+
+	EsFileInformation sourceFile = EsFileOpen(source, sourceBytes, ES_FILE_READ | ES_NODE_FILE | ES_NODE_FAIL_IF_NOT_FOUND);
+
+	if (sourceFile.error == ES_SUCCESS) {
+		EsFileInformation destinationFile = EsFileOpen(destination, destinationBytes, ES_FILE_WRITE | ES_NODE_FILE | ES_NODE_FAIL_IF_FOUND);
+
+		if (destinationFile.error == ES_SUCCESS) {
+			error = EsFileResize(destinationFile.handle, sourceFile.size);
+
+			if (error == ES_SUCCESS) {
+				for (uintptr_t i = 0; i < sourceFile.size; i += copyBufferBytes) {
+					size_t bytesRead = EsFileReadSync(sourceFile.handle, i, copyBufferBytes, copyBuffer);
+
+					if (ES_CHECK_ERROR(bytesRead)) { 
+						error = bytesRead; 
+						break; 
+					}
+
+					size_t bytesWritten = EsFileWriteSync(destinationFile.handle, i, bytesRead, copyBuffer);
+
+					if (ES_CHECK_ERROR(bytesWritten)) { 
+						error = bytesWritten; 
+						break; 
+					}
+
+					EsAssert(bytesRead == bytesWritten);
+
+					if (callback && !callback(i + bytesWritten, sourceFile.size, callbackData)) {
+						error = ES_ERROR_CANCELLED;
+						break;
+					}
+				}
+			}
+
+			EsHandleClose(destinationFile.handle);
+		} else {
+			error = destinationFile.error;
+		}
+
+		EsHandleClose(sourceFile.handle);
+	} else {
+		error = sourceFile.error;
+	}
+
+	if (!_copyBuffer) EsHeapFree(copyBuffer);
+	return error;
+}

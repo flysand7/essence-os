@@ -1229,9 +1229,9 @@ struct UIStyle {
 	// Painting.
 
 	void PaintText(EsPainter *painter, EsElement *element, EsRectangle rectangle, const char *text, size_t textBytes, 
-			uint32_t iconID, uint32_t flags, EsTextSelection *selectionProperties = nullptr);
+			uint32_t iconID, uint32_t flags, const EsTextSelection *selectionProperties = nullptr);
 	void PaintLayers(EsPainter *painter, EsRectangle rectangle, int childType, int whichLayers);
-	void PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle textBounds, EsTextSelection *selectionProperties);
+	void PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle textBounds, const EsTextSelection *selectionProperties);
 
 	// Misc.
 
@@ -1858,7 +1858,7 @@ void UIStyle::CloseReference() {
 	referenceCount--;
 }
 
-void UIStyle::PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle textBounds, EsTextSelection *selectionProperties) {
+void UIStyle::PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle textBounds, const EsTextSelection *selectionProperties) {
 	EsBuffer data = {};
 	data.in = (uint8_t *) (this + 1);
 	data.bytes = layerDataByteCount;
@@ -1892,7 +1892,9 @@ void UIStyle::PaintTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle 
 }
 
 void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rectangle, 
-		const char *text, size_t textBytes, uint32_t iconID, uint32_t flags, EsTextSelection *selectionProperties) {
+		const char *text, size_t textBytes, uint32_t iconID, uint32_t flags, const EsTextSelection *selectionProperties) {
+	EsTextSelection _selectionProperties;
+
 	EsRectangle bounds = Translate(EsRectangleAddBorder(rectangle, insets), painter->offsetX, painter->offsetY);
 	EsRectangle textBounds = bounds;
 	EsRectangle oldClip = painter->clip;
@@ -1929,8 +1931,10 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 	}
 
 	if (selectionProperties) {
-		selectionProperties->foreground = metrics->selectedText;
-		selectionProperties->background = metrics->selectedBackground;
+		_selectionProperties = *selectionProperties;
+		_selectionProperties.foreground = metrics->selectedText;
+		_selectionProperties.background = metrics->selectedBackground;
+		selectionProperties = &_selectionProperties;
 	}
 
 	if (textBytes) {
@@ -1980,12 +1984,12 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 }
 
 void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, 
-		const char *text, ptrdiff_t textBytes, uint32_t iconID, uint32_t flags, EsTextSelection *selectionProperties) {
+		const char *text, ptrdiff_t textBytes, uint32_t iconID, uint32_t flags, const EsTextSelection *selectionProperties) {
 	if (textBytes == -1) textBytes = EsCStringLength(text);
 	((UIStyle *) painter->style)->PaintText(painter, element, rectangle, text, textBytes, iconID, flags, selectionProperties);
 }
 
-void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsTextSelection *selectionProperties) {
+void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsTextSelection *selectionProperties) {
 	((UIStyle *) painter->style)->PaintTextLayers(painter, plan, bounds, selectionProperties);
 }
 
@@ -2065,13 +2069,13 @@ bool UIStyle::IsRegionCompletelyOpaque(EsRectangle region, int width, int height
 		&& region.t >= opaqueInsets.t && region.b < height - opaqueInsets.b;
 }
 
-void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii) {
+void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, EsCornerRadii cornerRadii) {
 	ThemeLayer layer = {};
 	uint8_t info[sizeof(ThemeLayerBox) + sizeof(ThemePaintSolid) * 2] = {};
 
 	ThemeLayerBox *infoBox = (ThemeLayerBox *) info;
 	infoBox->borders = { (int8_t) borderSize.l, (int8_t) borderSize.r, (int8_t) borderSize.t, (int8_t) borderSize.b };
-	infoBox->corners = { (int8_t) cornerRadii[0], (int8_t) cornerRadii[1], (int8_t) cornerRadii[2], (int8_t) cornerRadii[3] };
+	infoBox->corners = { (int8_t) cornerRadii.tl, (int8_t) cornerRadii.tr, (int8_t) cornerRadii.bl, (int8_t) cornerRadii.br };
 	infoBox->mainPaintType = THEME_PAINT_SOLID;
 	infoBox->borderPaintType = THEME_PAINT_SOLID;
 

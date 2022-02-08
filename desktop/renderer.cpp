@@ -918,7 +918,7 @@ void RastGradientDestroy(RastPaint *paint) {
 }
 
 #ifndef IN_DESIGNER
-void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, uint32_t color, float width, uint32_t flags) {
+void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, uint32_t color, float width, uint32_t flags) {
 	RastSurface surface = {};
 	surface.buffer = (uint32_t *) painter->target->bits;
 	surface.stride = painter->target->stride;

@@ -1322,8 +1322,8 @@ struct EsProcessStartupInformation {
 
 struct EsProcessCreationArguments {
 	EsHandle executable;
-	EsHandle *handles; // Duplicated.
-	uint32_t *handleModes; // The share arguments.
+	const EsHandle *handles; // Duplicated.
+	const uint32_t *handleModes; // The share arguments.
 	size_t handleCount;
 	EsProcessCreateData data;
 	uint32_t flags;
@@ -1971,6 +1971,10 @@ struct EsPanelBandDecorator {
 	const EsThemeAppearance *appearance; // Pointer must remain valid.
 };
 
+struct EsCornerRadii {
+	uint32_t tl, tr, bl, br;
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -1988,17 +1992,17 @@ function_pointer void EsWorkCallback(EsGeneric context);
 
 // System.
 
-function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request); // The instance is optional, used only for ES_APPLICATION_STARTUP_IN_SAME_CONTAINER.
+function void EsApplicationStart(ES_INSTANCE_TYPE *instance, const EsApplicationStartupRequest *request) @in(request); // The instance is optional, used only for ES_APPLICATION_STARTUP_IN_SAME_CONTAINER.
 function void EsApplicationRunTemporary(STRING path);
-function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize); 
-function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING); 
+function EsHandle EsTakeSystemSnapshot(int type, size_t *bufferSize) @out(bufferSize); 
+function EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, STRING name = BLANK_STRING) @todo(); 
 function EsError EsHandleClose(EsHandle handle); 
 function void EsSystemShowShutdownDialog();
 function void EsSystemShutdown(uint32_t action);
 
-function void EsPOSIXInitialise(int *argc, char ***argv); 
-function long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long a6); 
-function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix); // Converts a POSIX path to a native path. Free with EsHeapFree.
+function void EsPOSIXInitialise(int *argc, char ***argv) @native(); 
+function long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long a6) @native(); 
+function char *EsPOSIXConvertPath(const char *path, size_t *outNameLength, bool addPOSIXMountPointPrefix) @native(); // Converts a POSIX path to a native path. Free with EsHeapFree.
 
 private function void EsBatch(EsBatchCall *calls, size_t count); 
 private function uintptr_t _EsSyscall(uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e, uintptr_t f); 
@@ -2009,122 +2013,122 @@ function uintptr_t _EsDebugCommand(uintptr_t a, uintptr_t b, uintptr_t c, uintpt
 function uintptr_t EsSystemGetOptimalWorkQueueThreadCount(); 
 
 function int64_t EsSystemConfigurationReadInteger(STRING section, STRING key, int64_t defaultValue = 0);
-function char *EsSystemConfigurationReadString(STRING section, STRING key, size_t *valueBytes = ES_NULL); // Free with EsHeapFree.
-function void EsSystemConfigurationReadFileTypes(EsBuffer *buffer); // Read the "file_type" sections of the system configuration INI to the buffer.
+function char *EsSystemConfigurationReadString(STRING section, STRING key, size_t *valueBytes = ES_NULL) @out(valueBytes) @heap_buffer_out(return, valueBytes*); // Free with EsHeapFree.
+function void EsSystemConfigurationReadFileTypes(EsBuffer *buffer) @opaque(buffer); // Read the "file_type" sections of the system configuration INI to the buffer.
 
 // INI files.
 
-function bool EsINIParse(EsINIState *s);
-function bool EsINIPeek(EsINIState *s);
-function size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes);
-function void EsINIZeroTerminate(EsINIState *s);
+function bool EsINIParse(EsINIState *s) @todo();
+function bool EsINIPeek(EsINIState *s) @todo();
+function size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes) @todo();
+function void EsINIZeroTerminate(EsINIState *s) @todo();
 
 // File systems.
 
-function const void *EsBundleFind(const EsBundle *bundle, STRING name, size_t *byteCount = ES_NULL); // Pass null as the bundle to use the current application's bundle.
+function const void *EsBundleFind(const EsBundle *bundle, STRING name, size_t *byteCount = ES_NULL) @out(byteCount) @fixed_buffer_out(return, byteCount*); // Pass null as the bundle to use the current application's bundle.
 
-function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer); // Free buffer with EsHeapFree. Returns number of children.
+function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer) @out(buffer) @heap_array_out(buffer*, return); // Free buffer with EsHeapFree. Returns number of children.
 
-function void *EsFileReadAll(STRING filePath, size_t *fileSize, EsError *error = ES_NULL); // Free with EsHeapFree.
-function void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error = ES_NULL); // Free with EsHeapFree.
-function EsError EsFileWriteAll(STRING filePath, const void *data, size_t fileSize); 
-function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, size_t fileSize); 
-function EsError EsFileWriteAllGather(STRING filePath, const void **data, size_t *fileSize, size_t gatherCount); 
-function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, size_t *fileSize, size_t gatherCount); 
-function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags);
-function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
+function void *EsFileReadAll(STRING filePath, size_t *fileSize, EsError *error = ES_NULL) @out(fileSize) @out(error) @heap_buffer_out(return, fileSize*); // Free with EsHeapFree.
+function void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error = ES_NULL) @out(fileSize) @out(error) @heap_buffer_out(return, fileSize*); // Free with EsHeapFree.
+function EsError EsFileWriteAll(STRING filePath, const void *data, size_t fileSize) @buffer_in(data, fileSize);
+function EsError EsFileWriteAllFromHandle(EsHandle handle, const void *data, size_t fileSize) @buffer_in(data, fileSize);
+function EsError EsFileWriteAllGather(STRING filePath, const void **data, const size_t *sizes, size_t gatherCount) @array_in(data, gatherCount) @array_in(sizes, gatherCount) @todo(); 
+function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, const size_t *sizes, size_t gatherCount) @array_in(data, gatherCount) @array_in(sizes, gatherCount) @todo(); 
+function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags) @native();
+function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL) @todo(); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
 function EsError EsFileControl(EsHandle file, uint32_t flags); 
 function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
 function EsFileOffset EsFileGetSize(EsHandle handle);
-function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer);
+function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer) @buffer_out(buffer, size);
 function EsError EsFileResize(EsHandle file, EsFileOffset newSize);
-function size_t EsFileWriteSync(EsHandle file, EsFileOffset offset, size_t size, const void *buffer);
+function size_t EsFileWriteSync(EsHandle file, EsFileOffset offset, size_t size, const void *buffer) @buffer_in(buffer, size);
 function EsError EsFileDelete(EsHandle file);
 
 function EsError EsPathDelete(STRING path);
-function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes);
+function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes) @todo();
 function EsError EsPathMove(STRING oldPath, STRING newPath, uint32_t flags = ES_FLAGS_DEFAULT);
-function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL); // Returns true if the file/directory exists.
+function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL) @out(type); // Returns true if the file/directory exists.
 function EsError EsPathCreate(STRING filePath, EsNodeType type, bool createLeadingDirectories);
-function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information);
+function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information) @out(information);
 
-function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize); // Free with EsHeapFree.
-function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes);
-function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes);
+function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) @heap_buffer_out(return, fileSize*) @out(fileSize); // Free with EsHeapFree.
+function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
+function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
 function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
-function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags);
+function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) @buffer_out(return, fileSize*) @out(fileSize);
 
 // These calls require permission_all_files.
-function bool EsMountPointGetVolumeInformation(STRING prefix, EsVolumeInformation *information); // Returns false if the mount point does not exist.
+function bool EsMountPointGetVolumeInformation(STRING prefix, EsVolumeInformation *information) @out(information); // Returns false if the mount point does not exist.
 function EsError EsMountPointAdd(STRING prefix, EsHandle base); // The system maintains a duplicate of the base handle.
 function bool EsMountPointRemove(STRING prefix); // Returns false if the mount point does not exist. You can only remove mount points you added with EsMountPointAdd.
-function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information);
+function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInformation *information) @out(information);
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
-function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer);
+function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) @opaque(outputBuffer);
 
-function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context);
-function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq);
+function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) @todo();
+function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq) @native();
 
 // Processes and threads.
 
-function EsError EsProcessCreate(const EsProcessCreationArguments *arguments, EsProcessInformation *information); 
+function EsError EsProcessCreate(const EsProcessCreationArguments *arguments, EsProcessInformation *information) @in(arguments) @array_in(arguments**handles, arguments**handleCount) @array_in(arguments**handleModes, arguments**handleCount) @out(information); 
 function int EsProcessGetExitStatus(EsHandle process); 
 function EsObjectID EsProcessGetID(EsHandle process);
-function void EsProcessGetState(EsHandle process, EsProcessState *state); 
-function void EsProcessGetCreateData(EsProcessCreateData *data); // For the current process.
+function void EsProcessGetState(EsHandle process, EsProcessState *state) @out(state); 
+function void EsProcessGetCreateData(EsProcessCreateData *data) @out(data); // For the current process.
 function EsHandle EsProcessOpen(EsObjectID pid); 
 function void EsProcessPause(EsHandle process, bool resume); 
 function void EsProcessTerminate(EsHandle process, int status); 
 function void EsProcessTerminateCurrent(); 
 
-function EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument); 
+function EsError EsThreadCreate(EsThreadEntryCallback entryFunction, EsThreadInformation *information, EsGeneric argument) @out(information) @todo(); 
 function EsObjectID EsThreadGetID(EsHandle thread);
 function void EsThreadTerminate(EsHandle thread); 
 
-function EsError EsWorkQueue(EsWorkCallback callback, EsGeneric context);
+function EsError EsWorkQueue(EsWorkCallback callback, EsGeneric context) @todo();
 function bool EsWorkIsExiting();
 
 // Memory.
 
-function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes);
-function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes);
-function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b);
-function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue);
-function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes);
-function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value);
-function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value); // Changes byte order if big endian.
-function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...); // Appends.
-function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments); // Appends.
-function void EsBufferFlushToFileStore(EsBuffer *buffer);
+function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) @native();
+function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) @buffer_out(destination, readBytes) @opaque(buffer);
+function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b) @native();
+function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue) @opaque(buffer);
+function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) @buffer_in(source, writeBytes) @opaque(buffer) @todo();
+function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value) @opaque(buffer);
+function bool EsBufferWriteInt32Endian(EsBuffer *buffer, int32_t value) @opaque(buffer); // Changes byte order if big endian.
+function void EsBufferFormat(EsBuffer *buffer, EsCString format, ...) @native(); // Appends.
+function void EsBufferFormatV(EsBuffer *buffer, EsCString format, va_list arguments) @native(); // Appends.
+function void EsBufferFlushToFileStore(EsBuffer *buffer) @opaque(buffer);
 
-function EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess); 
-function void EsConstantBufferRead(EsHandle constantBuffer, void *output); 
-function EsHandle EsConstantBufferShare(EsHandle constantBuffer, EsHandle targetProcess); 
+function EsHandle EsConstantBufferCreate(const void *data, size_t dataBytes, EsHandle targetProcess) @buffer_in(data, dataBytes); 
+function void EsConstantBufferRead(EsHandle constantBuffer, void *output) @todo();
+function EsHandle EsConstantBufferShare(EsHandle constantBuffer, EsHandle targetProcess);
 function size_t EsConstantBufferGetSize(EsHandle constantBuffer);
 
-function_not_in_kernel void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *heap = ES_NULL);
-function_not_in_kernel void EsHeapFree(void *address, size_t expectedSize = 0, EsHeap *heap = ES_NULL);
-function_not_in_kernel void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *heap = ES_NULL);
+function_not_in_kernel void *EsHeapAllocate(size_t size, bool zeroMemory, EsHeap *heap = ES_NULL) @native();
+function_not_in_kernel void EsHeapFree(void *address, size_t expectedSize = 0, EsHeap *heap = ES_NULL) @native();
+function_not_in_kernel void *EsHeapReallocate(void *oldAddress, size_t newAllocationSize, bool zeroNewSpace, EsHeap *heap = ES_NULL) @native();
 
-function void EsHeapValidate(); 
+function void EsHeapValidate() @native(); 
 
 function EsHandle EsMemoryCreateShareableRegion(size_t bytes);
-function bool EsMemoryCommit(void *pointer, size_t bytes);
-function int EsMemoryCompare(const void *a, const void *b, size_t bytes); 
-function void EsMemoryCopy(void *destination, const void *source, size_t bytes); 
-function void EsMemoryCopyReverse(void *_destination, void *_source, size_t bytes); 
-function bool EsMemoryDecommit(void *pointer, size_t bytes); // May fail in low-memory conditions when the commit ranges on the region are fragmented. (Cannot fail if you decommit the entire region.)
-function void EsMemoryFaultRange(const void *pointer, size_t bytes, uint32_t flags = ES_FLAGS_DEFAULT); // Simulate a page fault in each page in the range.
-function void EsMemoryFill(void *from, void *to, uint8_t byte); 
-function void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace); 
-function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, uint32_t flags = ES_MEMORY_RESERVE_COMMIT_ALL); 
+function bool EsMemoryCommit(void *pointer, size_t bytes) @native();
+function int EsMemoryCompare(const void *a, const void *b, size_t bytes) @native(); 
+function void EsMemoryCopy(void *destination, const void *source, size_t bytes) @native(); 
+function void EsMemoryCopyReverse(void *_destination, const void *_source, size_t bytes) @native(); 
+function bool EsMemoryDecommit(void *pointer, size_t bytes) @native(); // May fail in low-memory conditions when the commit ranges on the region are fragmented. (Cannot fail if you decommit the entire region.)
+function void EsMemoryFaultRange(const void *pointer, size_t bytes, uint32_t flags = ES_FLAGS_DEFAULT) @native(); // Simulate a page fault in each page in the range.
+function void EsMemoryFill(void *from, void *to, uint8_t byte) @native(); 
+function void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace) @native(); 
+function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, uint32_t flags = ES_MEMORY_RESERVE_COMMIT_ALL) @native(); 
 function EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly); 
-function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes); 
-function void EsMemoryUnreserve(void *pointer, size_t size = 0); // Must cover the entire reserved region. Leave size 0 if you don't know the size.
-function void EsMemoryZero(void *destination, size_t bytes); 
+function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes) @native(); 
+function void EsMemoryUnreserve(void *pointer, size_t size = 0) @native(); // Must cover the entire reserved region. Leave size 0 if you don't know the size.
+function void EsMemoryZero(void *destination, size_t bytes) @native(); 
 
-function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size, uint32_t flags); 
+function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size, uint32_t flags) @native(); 
 
 // Standard functions.
 
@@ -2132,8 +2136,8 @@ function void EsAssertionFailure(EsCString cFile, int line);
 
 function EsCalculationValue EsCalculateFromUserExpression(EsCString cExpression); // For user input only; do not rely on consistent behaviour across versions; use with message mutex.
 
-function void EsPanic(EsCString format, ...); 
-function void EsPrint(EsCString format, ...);
+function void EsPanic(EsCString format, ...) @native(); 
+function void EsPrint(EsCString format, ...) @native();
 function void EsPrintDirect(STRING string); 
 function void EsPrintHelloWorld(); 
 
@@ -2150,7 +2154,7 @@ function EsRectangle EsRectangleCut(EsRectangle a, int32_t amount, char side);
 function EsRectangle EsRectangleFit(EsRectangle parent, EsRectangle child, bool allowScalingUp); // Preserves aspect ratio.
 function EsRectangle EsRectangleIntersection(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleLinearInterpolate(EsRectangle a, EsRectangle b, float progress);
-function EsRectangle EsRectangleSplit(EsRectangle *a, int32_t amount, char side, int32_t gap = 0); // Same as EsRectangleCut, but the source rectangle is modified.
+function EsRectangle EsRectangleSplit(EsRectangle *a, int32_t amount, char side, int32_t gap = 0) @in_out(a); // Same as EsRectangleCut, but the source rectangle is modified.
 function EsRectangle EsRectangleSubtract(EsRectangle a, EsRectangle b);
 function EsRectangle EsRectangleTranslate(EsRectangle a, EsRectangle b);
 function bool EsRectangleEquals(EsRectangle a, EsRectangle b);
@@ -2162,72 +2166,70 @@ function bool EsRectangleContainsAll(EsRectangle parent, EsRectangle child); // 
 function uint32_t EsColorBlend(uint32_t under, uint32_t over, bool fullAlpha);
 function bool EsColorIsLight(uint32_t color); // Returns true if you should black to draw atop the color.
 function uint32_t EsColorConvertToRGB(float h, float s, float v); // 0 <= hue < 6; 0 <= saturation <= 1; 0 <= value <= 1.
-function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v);
+function bool EsColorConvertToHSV(uint32_t color, float *h, float *s, float *v) @out(h) @out(s) @out(v);
 function uint32_t EsColorParse(STRING string);
 function uint32_t EsColorInterpolate(uint32_t from, uint32_t to, float progress);
 
-function void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *bits, uintptr_t stride, uint16_t mode); // OR mode with alpha.
-function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *bits, uintptr_t stride, uint16_t alpha); // Set alpha to 0xFFFF if source is opaque.
-function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor);
-function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
-function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, EsTextSelection *selectionProperties = ES_NULL);
-function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
-function void EsDrawLine(EsPainter *painter, float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags); // Vertices are pairs of x,y coordinates.
-function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
-function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, const uint32_t *cornerRadii); // Must pass 4 corner radii in the order top left, top right, bottom left, bottom right.
-function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
-function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha); 
-function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *clip = ES_NULL, EsTextSelection *selectionProperties = ES_NULL); 
-function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT); 
-function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, const EsStyle *style, uint32_t flags = ES_FLAGS_DEFAULT); // The style must be one of the ES_STYLE_TEXT_... styles.
-function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsTextSelection *selectionProperties = ES_NULL); 
-function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes);
+function void EsDrawBitmap(EsPainter *painter, EsRectangle region, const uint32_t *bits, uintptr_t stride, uint16_t mode) @opaque(painter) @matrix_in(bits, region, stride); // OR mode with alpha.
+function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, const uint32_t *bits, uintptr_t stride, uint16_t alpha) @opaque(painter) @matrix_in(bits, sourceRegion, stride); // Set alpha to 0xFFFF if source is opaque.
+function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor) @opaque(painter);
+function void EsDrawClear(EsPainter *painter, EsRectangle bounds) @opaque(painter);
+function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties);
+function void EsDrawInvert(EsPainter *painter, EsRectangle bounds) @opaque(painter);
+function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags) @opaque(painter) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
+function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize) @opaque(painter);
+function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, EsCornerRadii cornerRadii) @opaque(painter);
+function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color) @opaque(painter);
+function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha) @opaque(painter); 
+function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsRectangle *clip = ES_NULL, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties) @in(clip); 
+function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter);
+function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, const EsStyle *style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter); // The style must be one of the ES_STYLE_TEXT_... styles.
+function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties); 
+function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes) @opaque(painter) @buffer_in(data, dataBytes);
 
 function uint32_t EsIconIDFromString(STRING string = BLANK_STRING);
 function uint32_t EsIconIDFromDriveType(uint8_t driveType);
 
-function uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *width, uint32_t *height, int imageChannels);
+function uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *width, uint32_t *height, int imageChannels) @out(width) @out(height) @buffer_in(file, fileSize) @heap_matrix_out(return, width*, height*);
 
-function EsRectangle EsPainterBoundsClient(EsPainter *painter); 
-function EsRectangle EsPainterBoundsInset(EsPainter *painter); 
+function EsRectangle EsPainterBoundsClient(EsPainter *painter) @opaque(painter); 
+function EsRectangle EsPainterBoundsInset(EsPainter *painter) @opaque(painter); 
 
 function void EsPaintTargetClear(EsPaintTarget *target);
 function void EsPaintTargetEndDirectAccess(EsPaintTarget *target);
-function void EsPaintTargetStartDirectAccess(EsPaintTarget *target, uint32_t **bits, size_t *width, size_t *height, size_t *stride);
+function void EsPaintTargetStartDirectAccess(EsPaintTarget *target, uint32_t **bits, size_t *width, size_t *height, size_t *stride) @out(bits) @out(width) @out(height) @out(stride) @matrix_shared(bits*, width*, height*);
 function EsPaintTarget *EsPaintTargetCreate(size_t width, size_t height, bool hasAlphaChannel);
-function EsPaintTarget *EsPaintTargetCreateFromBitmap(uint32_t *bits, size_t width, size_t height, bool hasAlphaChannel); // Do not access the bits again until calling EsPaintTargetDestroy!
-function void EsPaintTargetGetSize(EsPaintTarget *target, size_t *width, size_t *height);
+function EsPaintTarget *EsPaintTargetCreateFromBitmap(uint32_t *bits, size_t width, size_t height, bool hasAlphaChannel) @matrix_shared(bits, width, height); // Do not access the bits again until calling EsPaintTargetDestroy!
+function void EsPaintTargetGetSize(EsPaintTarget *target, size_t *width, size_t *height) @out(width) @out(height);
 function void EsPaintTargetDestroy(EsPaintTarget *target);
 
-function EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount); // textRuns should point to an array of (textRunCount + 1) EsTextRuns; the last one should have its offset set to the total number of bytes in the string. The passed string must remain valid until the plan is destroyed. The element is used for UI scaling calculations.
+function EsTextPlan *EsTextPlanCreate(EsElement *element, EsTextPlanProperties *properties, EsRectangle bounds, const char *string, const EsTextRun *textRuns, size_t textRunCount) @todo(); // textRuns should point to an array of (textRunCount + 1) EsTextRuns; the last one should have its offset set to the total number of bytes in the string. The passed string must remain valid until the plan is destroyed. The element is used for UI scaling calculations.
 function int EsTextPlanGetWidth(EsTextPlan *plan); // TODO Public property?
 function int EsTextPlanGetHeight(EsTextPlan *plan); // TODO Public property?
 function size_t EsTextPlanGetLineCount(EsTextPlan *plan); // TODO Public property?
 function void EsTextPlanDestroy(EsTextPlan *plan);
-function void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, EsTextStyle *style); // Only render properties - like color or underline, but not font weight - will be replaced.
+function void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, const EsTextStyle *style) @in(style); // Only render properties - like color or underline, but not font weight - will be replaced.
 
-function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes, 
-		char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount,
-		EsTextStyle *baseStyle);
+function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes, char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount, EsTextStyle *baseStyle) @todo();
 
-function void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context);
-function bool EsFontDatabaseLookupByName(STRING name, EsFontInformation *information); // Returns false if the font does not exist in the database.
-function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information); // Returns false if the font does not exist in the database.
-function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
+function void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context) @todo();
+function bool EsFontDatabaseLookupByName(STRING name, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
+function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
+function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store) @in(information); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
 
 // Networking.
 
-function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address);
-function void EsConnectionClose(EsConnection *connection);
-function void EsConnectionNotify(EsConnection *connection);
-function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags);
-function void EsConnectionPoll(EsConnection *connection);
-function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead); // Returns the number of bytes copied into the buffer.
-function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
+function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address) @todo();
+function void EsConnectionClose(EsConnection *connection) @todo();
+function void EsConnectionNotify(EsConnection *connection) @todo();
+function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags) @todo();
+function void EsConnectionPoll(EsConnection *connection) @todo();
+function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead) @buffer_out(buffer, bufferBytes) @out(bytesRead) @todo(); // Returns the number of bytes copied into the buffer.
+function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes) @todo(); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
 
 // Input.
 
-function size_t EsGameControllerStatePoll(EsGameControllerState *buffer); // Returns number of connected controllers. Buffer must have space for ES_GAME_CONTROLLER_MAX_COUNT.
+function size_t EsGameControllerStatePoll(EsGameControllerState *buffer) @todo(); // Returns number of connected controllers. Buffer must have space for ES_GAME_CONTROLLER_MAX_COUNT.
 
 function uint8_t EsKeyboardGetModifiers(); // Synchronous with respect to message processing.
 
@@ -2239,9 +2241,9 @@ function bool EsMouseIsMiddleHeld();
 
 // Pipes.
 
-function void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd);
-function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes, bool allowShortReads); // If buffer is null, then the data is discarded. If allowShortReads is false, then the call will block until the buffer is full or there are no writers; if allowShortReads is true, then the call will block until the buffer is non-empty or there are no writers. Note that the modes are equivalent iff bytes is 0 or 1.
-function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes);
+function void EsPipeCreate(EsHandle *readEnd, EsHandle *writeEnd) @out(readEnd) @out(writeEnd);
+function size_t EsPipeRead(EsHandle pipe, void *buffer, size_t bytes, bool allowShortReads) @buffer_out(buffer, bytes); // If buffer is null, then the data is discarded. If allowShortReads is false, then the call will block until the buffer is full or there are no writers; if allowShortReads is true, then the call will block until the buffer is non-empty or there are no writers. Note that the modes are equivalent iff bytes is 0 or 1.
+function size_t EsPipeWrite(EsHandle pipe, const void *buffer, size_t bytes) @buffer_in(buffer, bytes);
 
 // Synchronisation and timing.
 
@@ -2249,41 +2251,41 @@ function EsHandle EsEventCreate(bool autoReset);
 function void EsEventReset(EsHandle event); 
 function void EsEventSet(EsHandle event); 
 
-function void EsMutexAcquire(EsMutex *mutex); 
-function void EsMutexDestroy(EsMutex *mutex); 
-function void EsMutexRelease(EsMutex *mutex); 
+function void EsMutexAcquire(EsMutex *mutex) @native(); 
+function void EsMutexDestroy(EsMutex *mutex) @native(); 
+function void EsMutexRelease(EsMutex *mutex) @native(); 
 
 function void EsSchedulerYield(); 
 
-function void EsSpinlockAcquire(EsSpinlock *spinlock); 
-function void EsSpinlockRelease(EsSpinlock *spinlock); 
+function void EsSpinlockAcquire(EsSpinlock *spinlock) @native(); 
+function void EsSpinlockRelease(EsSpinlock *spinlock) @native(); 
 
-function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallback callback, EsGeneric argument); 
+function EsTimer EsTimerSet(uint64_t afterMs, EsTimerCallback callback, EsGeneric argument) @todo(); 
 function void EsTimerCancel(EsTimer id);
 
 function void EsSleep(uint64_t milliseconds); 
-function uintptr_t EsWait(EsHandle *objects, size_t objectCount, uintptr_t timeoutMs); 
+function uintptr_t EsWait(const EsHandle *objects, size_t objectCount, uintptr_t timeoutMs) @array_in(objects, objectCount);  
 
 function double EsTimeStampMs(); // Current value of the performance timer, in ms.
 
-function void EsDateNowUTC(EsDateComponents *date); // Don't rely on the accuracy of the millisecond field.
+function void EsDateNowUTC(EsDateComponents *date) @out(date); // Don't rely on the accuracy of the millisecond field.
 private function uint64_t DateToLinear(const EsDateComponents *date);
 
 // Strings.
 
 function size_t EsCStringLength(EsCString string); 
-function char *EsStringAllocateAndFormat(size_t *bytes, EsCString format, ...); // Zero-terminated.
-function char *EsStringAllocateAndFormatV(size_t *bytes, EsCString format, va_list arguments); 
+function char *EsStringAllocateAndFormat(size_t *bytes, EsCString format, ...) @native(); // Zero-terminated.
+function char *EsStringAllocateAndFormatV(size_t *bytes, EsCString format, va_list arguments) @native(); 
 function int EsStringCompare(STRING s1, STRING s2); 
 function int EsStringCompareRaw(STRING s1, STRING s2); 
-function ptrdiff_t EsStringFormat(char *buffer, size_t bufferLength, EsCString format, ...); // Not zero-terminated.
-function const char *EsStringFormatTemporary(EsCString format, ...);  // Not thread safe. The result is valid until the next call. Zero-terminated.
-function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments); 
-function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...); // Return false if buffer filled.
-function bool EsStringFormatAppendV(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, va_list arguments); 
+function ptrdiff_t EsStringFormat(char *buffer, size_t bufferLength, EsCString format, ...) @native(); // Not zero-terminated.
+function const char *EsStringFormatTemporary(EsCString format, ...) @native();  // Not thread safe. The result is valid until the next call. Zero-terminated.
+function ptrdiff_t EsStringFormatV(char *buffer, size_t bufferLength, EsCString format, va_list arguments) @native(); 
+function bool EsStringFormatAppend(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, ...) @native(); // Return false if buffer filled.
+function bool EsStringFormatAppendV(char *buffer, size_t bufferLength, size_t *bufferPosition, EsCString format, va_list arguments) @native(); 
 function bool EsUTF8IsValid(STRING input); // Does not check for surrogate characters or overlong sequences of non-ASCII characters.
 
-function double EsDoubleParse(STRING string, char **endptr); 
+function double EsDoubleParse(STRING string, char **endptr) @native(); 
 function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.
 
 // CRT functions.
@@ -2294,11 +2296,11 @@ function float EsCRTasinf(float x);
 function double EsCRTatan2(double y, double x); 
 function float EsCRTatan2f(float y, float x); 
 function float EsCRTatanf(float x); 
-function double EsCRTatod(const char *string); 
-function int EsCRTatoi(const char *string); 
-function float EsCRTatof(const char *string); 
-function void *EsCRTbsearch(const void *key, const void *base, size_t num, size_t size, EsCRTComparisonCallback compar);
-function void *EsCRTcalloc(size_t num, size_t size); 
+function double EsCRTatod(EsCString string); 
+function int EsCRTatoi(EsCString string); 
+function float EsCRTatof(EsCString string); 
+function void *EsCRTbsearch(const void *key, const void *base, size_t num, size_t size, EsCRTComparisonCallback compar) @native();
+function void *EsCRTcalloc(size_t num, size_t size) @native(); 
 function double EsCRTcbrt(double x);
 function float EsCRTcbrtf(float x);
 function double EsCRTceil(double x); 
@@ -2315,8 +2317,8 @@ function double EsCRTfloor(double x);
 function float EsCRTfloorf(float x); 
 function double EsCRTfmod(double x, double y); 
 function float EsCRTfmodf(float x, float y); 
-function void EsCRTfree(void *ptr); 
-function char *EsCRTgetenv(const char *name); 
+function void EsCRTfree(void *ptr) @native(); 
+function char *EsCRTgetenv(EsCString name) @native(); 
 function int EsCRTisalpha(int c); 
 function int EsCRTisdigit(int c); 
 function bool EsCRTisnanf(float f); 
@@ -2325,47 +2327,47 @@ function int EsCRTisupper(int c);
 function int EsCRTisxdigit(int c);
 function double EsCRTlog2(double x); 
 function float EsCRTlog2f(float x); 
-function void *EsCRTmalloc(size_t size); 
-function void *EsCRTmemchr(const void *_s, int _c, size_t n); 
-function int EsCRTmemcmp(const void *s1, const void *s2, size_t n); 
-function void *EsCRTmemcpy(void *dest, const void *src, size_t n); 
-function void *EsCRTmemmove(void *dest, const void *src, size_t n); 
-function void *EsCRTmemset(void *s, int c, size_t n); 
+function void *EsCRTmalloc(size_t size) @native(); 
+function void *EsCRTmemchr(const void *_s, int _c, size_t n) @native(); 
+function int EsCRTmemcmp(const void *s1, const void *s2, size_t n) @native(); 
+function void *EsCRTmemcpy(void *dest, const void *src, size_t n) @native(); 
+function void *EsCRTmemmove(void *dest, const void *src, size_t n) @native(); 
+function void *EsCRTmemset(void *s, int c, size_t n) @native(); 
 function double EsCRTpow(double x, double y);
 function float EsCRTpowf(float x, float y);
-function void EsCRTqsort(void *_base, size_t nmemb, size_t size, EsCRTComparisonCallback compar); 
+function void EsCRTqsort(void *_base, size_t nmemb, size_t size, EsCRTComparisonCallback compar) @native(); 
 function int EsCRTrand();
-function void *EsCRTrealloc(void *ptr, size_t size); 
+function void *EsCRTrealloc(void *ptr, size_t size) @native(); 
 function double EsCRTsin(double x); 
 function float EsCRTsinf(float x); 
-function int EsCRTsnprintf(char *buffer, size_t bufferSize, const char *format, ...); 
-function int EsCRTsprintf(char *buffer, const char *format, ...); 
+function int EsCRTsnprintf(char *buffer, size_t bufferSize, EsCString format, ...) @native(); 
+function int EsCRTsprintf(char *buffer, EsCString format, ...) @native(); 
 function double EsCRTsqrt(double x); 
 function float EsCRTsqrtf(float x); 
-function char *EsCRTstrcat(char *dest, const char *src); 
-function char *EsCRTstrchr(const char *s, int c); 
-function int EsCRTstrcmp(const char *s1, const char *s2); 
-function char *EsCRTstrcpy(char *dest, const char *src); 
-function char *EsCRTstrdup(const char *string); 
-function char *EsCRTstrerror(int errnum); 
-function size_t EsCRTstrlen(const char *s); 
-function int EsCRTstrncmp(const char *s1, const char *s2, size_t n); 
-function char *EsCRTstrncpy(char *dest, const char *src, size_t n); 
-function size_t EsCRTstrnlen(const char *s, size_t maxlen); 
-function char *EsCRTstrstr(const char *haystack, const char *needle); 
-function double EsCRTstrtod(const char *nptr, char **endptr); 
-function float EsCRTstrtof(const char *nptr, char **endptr); 
-function long EsCRTstrtol(const char *nptr, char **endptr, int base); 
-function uint64_t EsCRTstrtoul(const char *nptr, char **endptr, int base); 
+function char *EsCRTstrcat(char *dest, EsCString src) @native(); 
+function char *EsCRTstrchr(EsCString s, int c) @native(); 
+function int EsCRTstrcmp(EsCString s1, EsCString s2); 
+function char *EsCRTstrcpy(char *dest, EsCString src) @native(); 
+function char *EsCRTstrdup(EsCString string) @native(); 
+function char *EsCRTstrerror(int errnum) @native(); 
+function size_t EsCRTstrlen(EsCString s); 
+function int EsCRTstrncmp(EsCString s1, EsCString s2, size_t n); 
+function char *EsCRTstrncpy(char *dest, EsCString src, size_t n) @native(); 
+function size_t EsCRTstrnlen(EsCString s, size_t maxlen); 
+function char *EsCRTstrstr(EsCString haystack, EsCString needle) @native(); 
+function double EsCRTstrtod(EsCString nptr, char **endptr) @native(); 
+function float EsCRTstrtof(EsCString nptr, char **endptr) @native(); 
+function long EsCRTstrtol(EsCString nptr, char **endptr, int base) @native(); 
+function uint64_t EsCRTstrtoul(EsCString nptr, char **endptr, int base) @native(); 
 function int EsCRTtolower(int c); 
-function int EsCRTvsnprintf(char *buffer, size_t bufferSize, const char *format, va_list arguments); 
+function int EsCRTvsnprintf(char *buffer, size_t bufferSize, EsCString format, va_list arguments) @native(); 
 
 // Clipboard and undo.
 
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function bool EsClipboardHasData(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL); // Free with EsHeapFree.
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL) @out(flags) @buffer_out(return, bytes*) @out(bytes); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
 function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags = ES_FLAGS_DEFAULT);
 
@@ -2373,60 +2375,60 @@ function void EsUndoClear(EsUndoManager *manager);
 function void EsUndoContinueGroup(EsUndoManager *manager);
 function void EsUndoEndGroup(EsUndoManager *manager);
 function void EsUndoInvokeGroup(EsUndoManager *manager, bool redo);
-function bool EsUndoPeek(EsUndoManager *manager, EsUndoCallback *callback, const void **item);
+function bool EsUndoPeek(EsUndoManager *manager, EsUndoCallback *callback, const void **item) @todo();
 function void EsUndoPop(EsUndoManager *manager);
-function void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes, bool setAsActiveUndoManager = true);
+function void EsUndoPush(EsUndoManager *manager, EsUndoCallback callback, const void *item, size_t itemBytes, bool setAsActiveUndoManager = true) @buffer_in(item, itemBytes) @todo();
 function bool EsUndoInUndo(EsUndoManager *manager);
 function bool EsUndoIsEmpty(EsUndoManager *manager, bool redo);
 function ES_INSTANCE_TYPE *EsUndoGetInstance(EsUndoManager *manager);
 
 // Instances and commands.
 
-function void EsCommandAddButton(EsCommand *command, EsButton *button);
-function EsCommand *EsCommandByID(EsInstance *instance, uint32_t stableID);
-function EsCommand *EsCommandRegister(EsCommand *command, EsInstance *instance, STRING title, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false); // IDs >= 0xF0000000 reserved by the system.
-function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback);
-function void EsCommandSetDisabled(EsCommand *command, bool disabled);
-function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage);
+function void EsCommandAddButton(EsCommand *command, EsButton *button) @opaque(command);
+function EsCommand *EsCommandByID(ES_INSTANCE_TYPE *instance, uint32_t stableID) @opaque(return);
+function EsCommand *EsCommandRegister(EsCommand *command, ES_INSTANCE_TYPE *instance, STRING title, EsCommandCallback callback, uint32_t stableID, EsCString cDefaultKeyboardShortcut = ES_NULL, bool enabled = false) @opaque(return) @opaque(command) @todo(); // IDs >= 0xF0000000 reserved by the system.
+function void EsCommandSetCallback(EsCommand *command, EsCommandCallback callback) @opaque(command) @todo();
+function void EsCommandSetDisabled(EsCommand *command, bool disabled) @opaque(command);
+function void EsCommandSetCheck(EsCommand *command, EsCheckState check, bool sendUpdatedMessage) @opaque(command);
 
 function void EsInstanceOpenReference(ES_INSTANCE_TYPE *_instance);
 function void EsInstanceCloseReference(ES_INSTANCE_TYPE *_instance); // Sends ES_MSG_INSTANCE_DESTROY when all references closed.
 function void EsInstanceClose(ES_INSTANCE_TYPE *instance); // Sends ES_MSG_INSTANCE_CLOSE, and closes the window's reference to the instance.
 function void EsInstanceSetActiveUndoManager(ES_INSTANCE_TYPE *instance, EsUndoManager *manager);
-function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings);
-function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings);
+function void EsInstanceSetClassEditor(ES_INSTANCE_TYPE *instance, const EsInstanceClassEditorSettings *settings) @in(settings);
+function void EsInstanceSetClassViewer(ES_INSTANCE_TYPE *instance, const EsInstanceClassViewerSettings *settings) @in(settings);
 function EsApplicationStartupRequest EsInstanceGetStartupRequest(ES_INSTANCE_TYPE *instance);
 function void EsInstanceOpenComplete(ES_INSTANCE_TYPE *instance, EsFileStore *file, bool success, STRING errorText = BLANK_STRING);
 function void EsInstanceSaveComplete(ES_INSTANCE_TYPE *instance, EsFileStore *file, bool success);
 function void EsInstanceSetModified(ES_INSTANCE_TYPE *instance, bool modified);
 
-function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, STRING title, uint32_t iconID);
+function EsError EsUserTaskStart(EsUserTaskCallback callback, EsGeneric data, STRING title, uint32_t iconID) @todo();
 function void EsUserTaskSetProgress(EsUserTask *task, double progress, EsFileOffsetDifference bytesPerSecond); // Set bytesPerSecond to -1 if not applicable.
 function bool EsUserTaskIsRunning(EsUserTask *task); // Returns false if the task was cancelled.
 
 // Message processing.
 
-function size_t EsMessageGetInputText(EsMessage *message, char *buffer); // The buffer should be 64 bytes in size. 
+function size_t EsMessageGetInputText(EsMessage *message, char *buffer) @todo(); // The buffer should be 64 bytes in size. 
 function void EsMessageMutexAcquire(); 
 function void EsMessageMutexCheck();
 function void EsMessageMutexRelease(); 
-function EsError EsMessagePost(EsElement *target, EsMessage *message); 
-function EsError EsMessagePostRemote(EsHandle process, EsMessage *message); 
-function int EsMessageSend(EsElement *object, EsMessage *message);
-function EsMessage *EsMessageReceive();
+function EsError EsMessagePost(EsElement *target, EsMessage *message) @todo(); 
+function EsError EsMessagePostRemote(EsHandle process, EsMessage *message) @todo(); 
+function int EsMessageSend(EsElement *object, EsMessage *message) @todo();
+function EsMessage *EsMessageReceive() @todo();
 
 // User interface elements.
 
-function void EsElementDraw(EsElement *element, EsPainter *painter); // Actually draw an element onto a painter.
+function void EsElementDraw(EsElement *element, EsPainter *painter) @opaque(painter); // Actually draw an element onto a painter.
 function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
 function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
 function bool EsElementIsHidden(EsElement *element);
-function void EsElementSetCallback(EsElement *element, EsElementCallback callback);
-function void EsElementGetSize(EsElement *element, int *width, int *height);
-function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL); // Mark an element to be repainted. If region is null, then the whole element is repainted.
-function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border); // Minimal repaint for ES_MSG_SCROLL_X/Y.
+function void EsElementSetCallback(EsElement *element, EsElementCallback callback) @todo();
+function void EsElementGetSize(EsElement *element, int *width, int *height) @out(width) @out(height);
+function void EsElementRepaint(EsElement *element, const EsRectangle *region = ES_NULL) @in(region); // Mark an element to be repainted. If region is null, then the whole element is repainted.
+function void EsElementRepaintForScroll(EsElement *element, EsMessage *message, EsRectangle border) @todo(); // Minimal repaint for ES_MSG_SCROLL_X/Y.
 function void EsElementRelayout(EsElement *element);
 function void EsElementSetCellRange(EsElement *element, int xFrom, int yFrom, int xTo = -1, int yTo = -1); // Use only if the parent is a ES_PANEL_TABLE.
 function EsRectangle EsElementGetInsets(EsElement *element); 
@@ -2443,7 +2445,7 @@ function bool EsElementStartAnimating(EsElement *element); // Returns false if t
 function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization.
 function void EsElementInsertAfter(EsElement *element); // The next element created will be inserted after this element. They must have the same parent. Or, if this is the parent of the next element created, then it will be inserted at the start of the parent.
 function void EsElementUpdateContentSize(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
-function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style);
+function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style) @out(style);
 function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = true);
 function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
 
@@ -2451,7 +2453,7 @@ function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = 
 function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 
-function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
+function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) @todo(); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
 function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
 function void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool sendMovedMessage = true);
 function void EsScrollViewRefresh(EsScrollView *view);
@@ -2473,8 +2475,8 @@ function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsE
 
 function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
-function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL);
-function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command);
+function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL) @todo();
+function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command) @opaque(command);
 function void EsMenuAddSeparator(EsMenu *menu);
 function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
 function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
@@ -2483,12 +2485,11 @@ function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
 function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT);
-function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, 
-		STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL);
+function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
 function void EsDialogClose(EsDialog *dialog);
 function EsElement *EsDialogGetContentArea(EsDialog *dialog);
 
-function void EsFileMenuAddToToolbar(EsElement *toolbar, const EsFileMenuSettings *settings = ES_NULL);
+function void EsFileMenuAddToToolbar(EsElement *toolbar, const EsFileMenuSettings *settings = ES_NULL) @in(settings);
 function void EsFileMenuCreate(ES_INSTANCE_TYPE *instance, EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT);
 
 private function EsHandle _EsWindowGetHandle(EsWindow *window); 
@@ -2498,23 +2499,23 @@ private function void _EsUISetFont(EsFontFamily id);
 
 function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
-function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride);
+function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height, stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
 function EsCheckState EsButtonGetCheck(EsButton *button);
-function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback); // TODO Public property?
+function void EsButtonOnCommand(EsButton *button, EsCommandCallback callback) @todo(); // TODO Public property?
 function void EsButtonSetCheckBuddy(EsButton *button, EsElement *checkBuddy); // The buddy element is enabled/disabled when the button is checked/unchecked.
 function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public property?
 
 // Textboxes.
 
 function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags);
+function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags) @out(line) @out(byte);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
-function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT); // Result will be zero-terminated; free with EsHeapFree.
+function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT) @buffer_out(return, bytes*) @out(bytes); // Result will be zero-terminated; free with EsHeapFree.
 function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags = ES_FLAGS_DEFAULT); 
 function size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line = 0);
-function void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte);
+function void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte) @out(fromLine) @out(fromByte) @out(toLine) @out(toByte);
 function void EsTextboxMoveCaret(EsTextbox *textbox, int32_t line, int32_t byte);
 function void EsTextboxSetSelection(EsTextbox *textbox, int32_t fromLine, int32_t fromByte, int32_t toLine, int32_t toByte);
 function void EsTextboxSelectAll(EsTextbox *textbox);
@@ -2526,7 +2527,7 @@ function void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCen
 function void EsTextboxSetUndoManager(EsTextbox *textbox, EsUndoManager *manager);
 function void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size);
 function void EsTextboxSetFont(EsTextbox *textbox, EsFont font);
-function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
+function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 function void EsTextboxStartEdit(EsTextbox *textbox);
 function void EsTextboxEnableSmartReplacement(EsTextbox *textbox, bool enabled); // e.g. smart quotes.
 function void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly); // Prevents the user from modifying the contents of the textbox; EsTextboxInsert will still work. Incompatible with ES_TEXTBOX_EDIT_BASED. Undo events will not be created.
@@ -2544,10 +2545,10 @@ function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_D
 function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 
-function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL);
-function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
+function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL) @array_in(columns, columnCount) @array_in(rows, rowCount);
+function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL) @in(column) @in(row); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
-function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator);
+function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator) @todo();
 
 function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
@@ -2562,14 +2563,14 @@ function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = 
 function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 
 function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride);
-function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes);
-function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds);
+function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height);
+function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) @buffer_in(buffer, bufferBytes);
+function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds) @opaque(painter);
 
 function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);
-function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount); // See EsTextPlanCreate for how runCount works.
-function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, uint32_t *customColors = ES_NULL, size_t customColorCount = 0);
+function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount) @todo(); // See EsTextPlanCreate for how runCount works.
+function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 
 function EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
 function void EsListDisplaySetCounterContinuation(EsListDisplay *display, EsListDisplay *previous);
@@ -2591,8 +2592,8 @@ function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLA
 		const EsStyle *style = ES_NULL, const EsStyle *itemStyle = ES_NULL, 
 		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
 
-function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL);
-function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback);
+function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL) @out(group);
+function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback) @todo();
 
 function void EsListViewRegisterColumn(EsListView *view, uint32_t id, STRING title = BLANK_STRING, uint32_t flags = ES_FLAGS_DEFAULT, double initialWidth = 0);
 function void EsListViewAddAllColumns(EsListView *view); // Call after registering the columns to add them to the header. Call again after EsListViewChangeStyles, as needed.
@@ -2601,7 +2602,7 @@ function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItem
 function void EsListViewSelectNone(EsListView *view);
 function void EsListViewSelect(EsListView *view, EsListViewIndex group, EsListViewIndex index, bool addToExistingSelection = false);
 function void EsListViewFocusItem(EsListView *view, EsListViewIndex group, EsListViewIndex index);
-function bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index); // Returns false if not item was focused.
+function bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group, EsListViewIndex *index) @out(group) @out(index); // Returns false if not item was focused.
 function void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsListViewIndex index);
 function void EsListViewInvalidateAll(EsListView *view);
 function void EsListViewContentChanged(EsListView *view);
@@ -2624,6 +2625,6 @@ function void EsListViewFixedItemSetString(EsListView *view, EsListViewIndex ind
 function void EsListViewFixedItemSetDouble(EsListView *view, EsListViewIndex index, uint32_t columnID, double number);
 function void EsListViewFixedItemSetInteger(EsListView *view, EsListViewIndex index, uint32_t columnID, int64_t number);
 function bool EsListViewFixedItemSelect(EsListView *view, EsGeneric data); // Returns false if the item was not found.
-function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data); // Returns false if no item was selected.
-function void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount);
+function bool EsListViewFixedItemGetSelected(EsListView *view, EsGeneric *data) @out(data); // Returns false if no item was selected.
+function void EsListViewFixedItemSetEnumStringsForColumn(EsListView *view, uint32_t columnID, const EsListViewEnumString *strings, size_t stringCount) @array_in(strings, stringCount);
 function void EsListViewFixedItemSortAll(EsListView *view); // Re-sort the list after inserting new items or modifying existing items. TODO EsListViewFixedItemSortSingleItem.

@@ -37,6 +37,7 @@ typedef struct Token {
 #define TOKEN_FUNCTION_POINTER (30)
 #define TOKEN_TYPE_NAME (31)
 #define TOKEN_PRIVATE (32)
+#define TOKEN_ANNOTATE (33)
 	int type, value;
 	char *text;
 } Token;
@@ -56,6 +57,7 @@ typedef struct Entry {
 
 	char *name;
 	struct Entry *children;
+	struct Entry *annotations;
 
 	bool isPrivate;
 
@@ -78,6 +80,14 @@ typedef struct Entry {
 		struct {
 			char *parent;
 		} apiType;
+
+		struct {
+			bool used; // Temporary, used during analysis.
+		} annotation;
+
+		struct {
+			bool isSimple; // Set during analysis.
+		} record;
 
 		char *oldTypeName;
 	};
@@ -118,6 +128,7 @@ Token NextToken() {
 	else if (c == '*') token.type = TOKEN_ASTERISK;
 	else if (c == ',') token.type = TOKEN_COMMA;
 	else if (c == ';') token.type = TOKEN_SEMICOLON;
+	else if (c == '@') token.type = TOKEN_ANNOTATE;
 
 	else if (c == '.' && buffer[position] == '.' && buffer[position + 1] == '.') position += 2, token.type = TOKEN_ELLIPSIS;
 
@@ -378,6 +389,52 @@ void ParseFile(Entry *root, const char *name) {
 				if (token.type == TOKEN_COMMA) token = NextToken();
 				token = ParseVariable(token, true, firstVariable ? &objectFunctionType : NULL, &entry);
 				firstVariable = false;
+			}
+
+			while (true) {
+				token = NextToken();
+
+				if (token.type == TOKEN_SEMICOLON) {
+					break;
+				} else if (token.type == TOKEN_ANNOTATE) {
+					Entry annotation = { 0 };
+					token = NextToken();
+					assert(token.type == TOKEN_IDENTIFIER);
+					annotation.name = TokenToString(token);
+					token = NextToken();
+					assert(token.type == TOKEN_LEFT_PAREN);
+					bool needComma = false;
+					Entry child = { 0 };
+					child.name = malloc(256);
+					child.name[0] = 0;
+
+					while (true) {
+						token = NextToken();
+
+						if (token.type == TOKEN_RIGHT_PAREN) {
+							if (child.name[0]) arrput(annotation.children, child);
+							break;
+						} else if (token.type == TOKEN_COMMA) {
+							if (child.name[0]) arrput(annotation.children, child);
+							child.name = malloc(256);
+							child.name[0] = 0;
+							assert(needComma);
+							needComma = false;
+						} else if (token.type == TOKEN_IDENTIFIER) {
+							strcat(child.name, TokenToString(token));
+							needComma = true;
+						} else if (token.type == TOKEN_ASTERISK) {
+							strcat(child.name, "*");
+							needComma = true;
+						} else {
+							assert(false);
+						}
+					}
+
+					arrput(entry.annotations, annotation);
+				} else {
+					assert(false);
+				}
 			}
 
 			arrput(root->children, entry);
@@ -1189,6 +1246,334 @@ void OutputZig(Entry *root) {
 	}
 }
 
+void Analysis(Entry *root) {
+	// TODO @optional() annotation.
+	// TODO Discriminated unions.
+	// TODO Error handling support.
+	// TODO Fixed sized array based strings in structs.
+	// TODO Callbacks.
+	// TODO Array size computation: text run arrays, EsFileWriteAllGather, EsConstantBufferRead.
+	// TODO Complex types: EsMessage, EsINIState, EsConnection.
+	// TODO Check all the annotations have been used.
+
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = root->children + i;
+		if (entry->isPrivate || entry->type != ENTRY_FUNCTION || entry->function.functionPointer) continue;
+
+		Entry *resolved = NULL;
+		Entry *unresolved = NULL;
+		bool understood = false;
+		
+		for (int i = 0; i < arrlen(entry->annotations); i++) {
+			Entry *annotation = entry->annotations + i;
+
+			if (0 == strcmp(annotation->name, "native")) {
+				assert(0 == arrlen(annotation->children));
+				understood = true;
+				goto end;
+			}
+		}
+
+		for (int i = 0; i < arrlen(entry->children); i++) {
+			Entry e = entry->children[i];
+			if (!i) e.name = "return";
+			arrput(unresolved, e);
+		}
+
+		while (arrlen(unresolved)) {
+			Entry e = arrpop(unresolved);
+			assert(e.type == ENTRY_VARIABLE);
+
+			if (e.variable.pointer == 0 && (0 == strcmp(e.variable.type, "uint64_t")
+					|| 0 == strcmp(e.variable.type, "int64_t")
+					|| 0 == strcmp(e.variable.type, "uint32_t")
+					|| 0 == strcmp(e.variable.type, "int32_t")
+					|| 0 == strcmp(e.variable.type, "uint16_t")
+					|| 0 == strcmp(e.variable.type, "int16_t")
+					|| 0 == strcmp(e.variable.type, "uint8_t")
+					|| 0 == strcmp(e.variable.type, "int8_t")
+					|| 0 == strcmp(e.variable.type, "char")
+					|| 0 == strcmp(e.variable.type, "size_t")
+					|| 0 == strcmp(e.variable.type, "intptr_t")
+					|| 0 == strcmp(e.variable.type, "uintptr_t")
+					|| 0 == strcmp(e.variable.type, "ptrdiff_t")
+					|| 0 == strcmp(e.variable.type, "unsigned")
+					|| 0 == strcmp(e.variable.type, "int")
+					|| 0 == strcmp(e.variable.type, "long")
+					|| 0 == strcmp(e.variable.type, "double")
+					|| 0 == strcmp(e.variable.type, "float")
+					|| 0 == strcmp(e.variable.type, "void")
+					|| 0 == strcmp(e.variable.type, "bool")
+					|| 0 == strcmp(e.variable.type, "EsCString")
+					|| 0 == strcmp(e.variable.type, "EsGeneric")
+					|| 0 == strcmp(e.variable.type, "STRING"))) {
+				goto resolved;
+			}
+
+			if (e.variable.pointer == 1 && !e.variable.isConst && (0 == strcmp(e.variable.type, "ES_INSTANCE_TYPE"))) {
+				goto resolved;
+			}
+
+			if (e.variable.pointer == 1 && e.variable.isConst && (0 == strcmp(e.variable.type, "EsStyle"))) {
+				goto resolved;
+			}
+
+			for (int k = 0; k < arrlen(root->children); k++) {
+				if (!root->children[k].name) continue;
+				if (strcmp(e.variable.type, root->children[k].name)) continue;
+
+				if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
+					goto resolved;
+				} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
+					goto resolved;
+				} else if (root->children[k].type == ENTRY_API_TYPE && e.variable.pointer == 1) {
+					goto resolved;
+				} else if (root->children[k].type == ENTRY_STRUCT && e.variable.pointer == 0) {
+					for (int i = 0; i < arrlen(root->children[k].children); i++) {
+						Entry f = root->children[k].children[i];
+						assert(f.type == ENTRY_VARIABLE);
+						char *old = f.name;
+						f.name = malloc(strlen(e.name) + 1 + strlen(old) + 1);
+						strcpy(f.name, e.name);
+						strcat(f.name, "*");
+						strcat(f.name, old);
+						arrput(unresolved, f);
+					}
+
+					goto resolved;
+				}
+			}
+
+			for (int i = 0; i < arrlen(entry->annotations); i++) {
+				Entry *annotation = entry->annotations + i;
+
+				if (0 == strcmp(annotation->name, "in") 
+						|| 0 == strcmp(annotation->name, "out")
+						|| 0 == strcmp(annotation->name, "in_out")) {
+					assert(1 == arrlen(annotation->children));
+
+					if (0 == strcmp(annotation->children[0].name, e.name)) {
+						assert(e.variable.pointer);
+						assert(e.variable.isConst == (0 == strcmp(annotation->name, "in")));
+						Entry f = e;
+						f.name = malloc(strlen(e.name) + 1 + 1);
+						strcpy(f.name, e.name);
+						strcat(f.name, "*");
+						f.variable.pointer--;
+						arrput(unresolved, f);
+						goto resolved;
+					}
+				} else if (0 == strcmp(annotation->name, "opaque")) {
+					assert(1 == arrlen(annotation->children));
+
+					if (0 == strcmp(annotation->children[0].name, e.name)) {
+						assert(e.variable.pointer);
+						assert(!e.variable.isConst);
+						goto resolved;
+					}
+				} else if (0 == strcmp(annotation->name, "buffer_out") 
+						|| 0 == strcmp(annotation->name, "heap_buffer_out") 
+						|| 0 == strcmp(annotation->name, "fixed_buffer_out") 
+						|| 0 == strcmp(annotation->name, "buffer_in")) {
+					assert(2 == arrlen(annotation->children));
+
+					if (0 == strcmp(annotation->children[0].name, e.name)) {
+						assert(e.variable.pointer && (0 == strcmp(e.variable.type, "void") 
+									|| 0 == strcmp(e.variable.type, "uint8_t") 
+									|| 0 == strcmp(e.variable.type, "char")));
+						assert(e.variable.isConst == (0 == strcmp(annotation->name, "buffer_in")
+									|| 0 == strcmp(annotation->name, "fixed_buffer_out")));
+
+						bool foundSize = false;
+
+						for (int i = 0; i < arrlen(resolved); i++) {
+							if (0 == strcmp(resolved[i].name, annotation->children[1].name)) {
+								assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
+											|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")));
+								foundSize = true;
+							}
+						}
+
+						if (!foundSize) {
+							arrins(unresolved, 0, e);
+							goto tryAgain;
+						}
+
+						goto resolved;
+					}
+				} else if (0 == strcmp(annotation->name, "heap_array_out")
+						|| 0 == strcmp(annotation->name, "heap_matrix_out")
+						|| 0 == strcmp(annotation->name, "array_in")
+						|| 0 == strcmp(annotation->name, "matrix_in")
+						|| 0 == strcmp(annotation->name, "matrix_shared")) {
+					bool matrix = 0 == strcmp(annotation->name, "heap_matrix_out") 
+						|| 0 == strcmp(annotation->name, "matrix_in")
+						|| 0 == strcmp(annotation->name, "matrix_shared");
+					bool input = 0 == strcmp(annotation->name, "array_in")
+						|| 0 == strcmp(annotation->name, "matrix_in");
+					int children = arrlen(annotation->children);
+					if (matrix) assert(children == 3 || children == 4); // (width, height) or (width, height, stride) or (rectangle, stride)
+					else assert(children == 2);
+
+					if (0 == strcmp(annotation->children[0].name, e.name)) {
+						assert(e.variable.pointer);
+						assert(e.variable.isConst == input);
+
+						int foundSize = 1;
+
+						for (int j = 1; j < children; j++) {
+							for (int i = 0; i < arrlen(resolved); i++) {
+								if (0 == strcmp(resolved[i].name, annotation->children[j].name)) {
+									assert(!resolved[i].variable.pointer && (0 == strcmp(resolved[i].variable.type, "size_t")
+												|| 0 == strcmp(resolved[i].variable.type, "ptrdiff_t")
+												|| 0 == strcmp(resolved[i].variable.type, "uintptr_t")
+												|| 0 == strcmp(resolved[i].variable.type, "uint32_t")
+												|| (0 == strcmp(resolved[i].variable.type, "EsRectangle") && matrix && j == 1)));
+									foundSize++;
+									break;
+								}
+							}
+						}
+
+						if (foundSize != children) {
+							arrins(unresolved, 0, e);
+							goto tryAgain;
+						}
+
+						Entry f = e;
+						f.name = malloc(strlen(e.name) + 2 + 1);
+						strcpy(f.name, e.name);
+						strcat(f.name, "[]");
+						f.variable.pointer--;
+						arrput(unresolved, f);
+
+						goto resolved;
+					}
+				}
+			}
+
+			goto end;
+			resolved:;
+			arrput(resolved, e);
+			tryAgain:;
+		}
+
+		understood = true;
+		end:;
+		arrfree(resolved);
+		arrfree(unresolved);
+
+		bool hasTODOMarker = false;
+
+		for (int i = 0; i < arrlen(entry->annotations); i++) {
+			Entry *annotation = entry->annotations + i;
+
+			if (0 == strcmp(annotation->name, "todo")) {
+				assert(0 == arrlen(annotation->children));
+				hasTODOMarker = true;
+				break;
+			}
+		}
+
+		assert(hasTODOMarker == !understood);
+	}
+}
+
+void UpdateAPITable(Entry root) {
+	{
+		EsINIState s = { (char *) LoadFile("util/api_table.ini", &s.bytes) };
+
+		int32_t highestIndex = -1;
+
+		struct {
+			const char *cName;
+			int32_t index;
+		} *entries = NULL;
+
+		while (EsINIParse(&s)) {
+			EsINIZeroTerminate(&s);
+			int32_t index = atoi(s.value);
+			if (index < 0 || !s.key[0]) goto done;
+			if (index > highestIndex) highestIndex = index;
+			arraddn(entries, 1);
+			char *copy = (char *) malloc(strlen(s.key) + 1);
+			arrlast(entries).cName = copy;
+			strcpy(copy, s.key);
+			arrlast(entries).index = index;
+		}
+
+		done:;
+
+		arrsetlen(apiTableEntries, (size_t) (highestIndex + 1));
+
+		for (int i = 0; i < highestIndex + 1; i++) {
+			apiTableEntries[i] = "EsUnimplemented";
+		}
+
+		for (int i = 0; i < arrlen(entries); i++) {
+			apiTableEntries[entries[i].index] = entries[i].cName;
+		}
+
+		arrfree(entries);
+	}
+
+	for (int i = 0; i < arrlen(root.children); i++) {
+		Entry *entry = root.children + i;
+		if (entry->type != ENTRY_FUNCTION || entry->function.functionPointer) continue;
+		const char *name = entry->children[0].name;
+		bool found = false;
+
+		for (int i = 0; i < arrlen(apiTableEntries); i++) {
+			if (0 == strcmp(apiTableEntries[i], name)) {
+				entry->function.apiArrayIndex = i;
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			for (int i = 0; i < arrlen(apiTableEntries); i++) {
+				if (0 == strcmp(apiTableEntries[i], "EsUnimplemented")) {
+					apiTableEntries[i] = name;
+					entry->function.apiArrayIndex = i;
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				entry->function.apiArrayIndex = arrlen(apiTableEntries);
+				arrput(apiTableEntries, name);
+			}
+		}
+	}
+
+	for (int i = 0; i < arrlen(apiTableEntries); i++) {
+		apiTableEntries[i] = "EsUnimplemented";
+	}
+
+	for (int i = 0; i < arrlen(root.children); i++) {
+		Entry *entry = root.children + i;
+		if (entry->type != ENTRY_FUNCTION || entry->function.functionPointer) continue;
+		const char *name = entry->children[0].name;
+		apiTableEntries[entry->function.apiArrayIndex] = name;
+	}
+
+	if (outputAPIArray.ready) {
+		File f = FileOpen("util/api_table.ini", 'w');
+
+		for (int i = 0; i < arrlen(apiTableEntries); i++) {
+			FilePrintFormat(outputAPIArray, "(void *) %s,\n", apiTableEntries[i]);
+
+			if (strcmp(apiTableEntries[i], "EsUnimplemented")) {
+				FilePrintFormat(f, "%s=%d\n", apiTableEntries[i], i);
+			}
+		}
+
+		FileClose(f);
+	}
+}
+
 int HeaderGeneratorMain(int argc, char **argv) {
 	bool system = argc == 3 && 0 == strcmp(argv[1], "system");
 
@@ -1216,100 +1601,7 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		return 1;
 	}
 
-	{
-		{
-			EsINIState s = { (char *) LoadFile("util/api_table.ini", &s.bytes) };
-
-			int32_t highestIndex = -1;
-
-			struct {
-				const char *cName;
-				int32_t index;
-			} *entries = NULL;
-
-			while (EsINIParse(&s)) {
-				EsINIZeroTerminate(&s);
-				int32_t index = atoi(s.value);
-				if (index < 0 || !s.key[0]) goto done;
-				if (index > highestIndex) highestIndex = index;
-				arraddn(entries, 1);
-				char *copy = (char *) malloc(strlen(s.key) + 1);
-				arrlast(entries).cName = copy;
-				strcpy(copy, s.key);
-				arrlast(entries).index = index;
-			}
-
-			done:;
-
-			arrsetlen(apiTableEntries, (size_t) (highestIndex + 1));
-
-			for (int i = 0; i < highestIndex + 1; i++) {
-				apiTableEntries[i] = "EsUnimplemented";
-			}
-
-			for (int i = 0; i < arrlen(entries); i++) {
-				apiTableEntries[entries[i].index] = entries[i].cName;
-			}
-
-			arrfree(entries);
-		}
-
-		for (int i = 0; i < arrlen(root.children); i++) {
-			Entry *entry = root.children + i;
-			if (entry->type != ENTRY_FUNCTION || entry->function.functionPointer) continue;
-			const char *name = entry->children[0].name;
-			bool found = false;
-
-			for (int i = 0; i < arrlen(apiTableEntries); i++) {
-				if (0 == strcmp(apiTableEntries[i], name)) {
-					entry->function.apiArrayIndex = i;
-					found = true;
-					break;
-				}
-			}
-
-			if (!found) {
-				for (int i = 0; i < arrlen(apiTableEntries); i++) {
-					if (0 == strcmp(apiTableEntries[i], "EsUnimplemented")) {
-						apiTableEntries[i] = name;
-						entry->function.apiArrayIndex = i;
-						found = true;
-						break;
-					}
-				}
-
-				if (!found) {
-					entry->function.apiArrayIndex = arrlen(apiTableEntries);
-					arrput(apiTableEntries, name);
-				}
-			}
-		}
-
-		for (int i = 0; i < arrlen(apiTableEntries); i++) {
-			apiTableEntries[i] = "EsUnimplemented";
-		}
-
-		for (int i = 0; i < arrlen(root.children); i++) {
-			Entry *entry = root.children + i;
-			if (entry->type != ENTRY_FUNCTION || entry->function.functionPointer) continue;
-			const char *name = entry->children[0].name;
-			apiTableEntries[entry->function.apiArrayIndex] = name;
-		}
-
-		if (outputAPIArray.ready) {
-			File f = FileOpen("util/api_table.ini", 'w');
-
-			for (int i = 0; i < arrlen(apiTableEntries); i++) {
-				FilePrintFormat(outputAPIArray, "(void *) %s,\n", apiTableEntries[i]);
-
-				if (strcmp(apiTableEntries[i], "EsUnimplemented")) {
-					FilePrintFormat(f, "%s=%d\n", apiTableEntries[i], i);
-				}
-			}
-
-			FileClose(f);
-		}
-	}
+	UpdateAPITable(root);
 
 	if (0 == strcmp(language, "c") || 0 == strcmp(language, "system")) {
 		OutputC(&root);
@@ -1317,14 +1609,13 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		OutputOdin(&root);
 	} else if (0 == strcmp(language, "zig")) {
 		OutputZig(&root);
+	} else if (0 == strcmp(language, "analysis")) {
+		Analysis(&root);
 	} else {
 		Log("Unsupported language '%s'.\nLanguage must be one of: 'c', 'odin'.\n", language);
 	}
 
-	if (system) {
-		rename(DEST_DEPENDENCIES ".tmp", DEST_DEPENDENCIES);
-	}
-
+	if (system) rename(DEST_DEPENDENCIES ".tmp", DEST_DEPENDENCIES);
 	if (outputDependencies.ready) FileClose(outputDependencies);
 	if (output.ready) FileClose(output);
 	if (outputAPIArray.ready) FileClose(outputAPIArray);

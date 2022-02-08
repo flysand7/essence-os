@@ -181,7 +181,7 @@ void InstanceRefreshViewType(Instance *instance) {
 	}
 }
 
-void InstanceRemoveItemSelectionCommands(EsInstance *instance) {
+void InstanceRemoveItemSelectionCommands(Instance *instance) {
 	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_CUT), nullptr);
 	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_COPY), nullptr);
 	EsCommandSetCallback(EsCommandByID(instance, ES_COMMAND_PASTE), nullptr);

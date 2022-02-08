@@ -4144,7 +4144,7 @@ EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags, const EsSt
 	return display;
 }
 
-void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, uint32_t *customColors, size_t customColorCount) {
+void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, const uint32_t *customColors, size_t customColorCount) {
 	// Copied from EsTextboxSetupSyntaxHighlighting.
 	uint32_t colors[8];
 	colors[0] = 0x04000000; // Highlighted line.

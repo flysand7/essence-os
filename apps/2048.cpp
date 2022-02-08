@@ -236,7 +236,7 @@ void DrawTileText(EsPainter *painter, EsElement *element, EsRectangle bounds, fl
 }
 
 void DrawTile(EsPainter *painter, EsElement *element, uint8_t sourceNumber, uint8_t targetNumber, 
-		EsRectangle bounds, float opacity, const uint32_t *cornerRadii, float progress) {
+		EsRectangle bounds, float opacity, EsCornerRadii cornerRadii, float progress) {
 	size_t tileColorCount = sizeof(tileColors) / sizeof(tileColors[0]);
 	uint32_t sourceColor = sourceNumber >= tileColorCount ? tileColors[tileColorCount - 1] : tileColors[sourceNumber];
 	uint32_t targetColor = targetNumber >= tileColorCount ? tileColors[tileColorCount - 1] : tileColors[targetNumber];
@@ -261,7 +261,7 @@ int GameAreaMessage(EsElement *element, EsMessage *message) {
 		EsPainter *painter = message->painter;
 		float scale = EsElementGetScaleFactor(element);
 
-		const uint32_t cornerRadii[4] = { (uint32_t) (3 * scale), (uint32_t) (3 * scale), (uint32_t) (3 * scale), (uint32_t) (3 * scale) };
+		EsCornerRadii cornerRadii = { (uint32_t) (3 * scale), (uint32_t) (3 * scale), (uint32_t) (3 * scale), (uint32_t) (3 * scale) };
 
 		EsRectangle bounds = EsPainterBoundsInset(painter);
 		EsRectangle mainArea = EsRectangleFit(bounds, ES_RECT_1S(MAIN_AREA_SIZE()), false);

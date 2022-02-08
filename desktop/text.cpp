@@ -2233,7 +2233,7 @@ void EsTextPlanDestroy(EsTextPlan *plan) {
 	EsHeapFree(plan);
 }
 
-void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, EsTextStyle *style) {
+void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, const EsTextStyle *style) {
 	for (uintptr_t i = 0; i < plan->textRuns.Length() - 1; i++) {
 		plan->textRuns[i].style.color = style->color;
 		plan->textRuns[i].style.blur = style->blur;
@@ -2260,7 +2260,7 @@ EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan) {
 
 void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextLine *line,
 		int32_t cursorX, int32_t cursorY, 
-		EsTextSelection *selection, uintptr_t caret, int32_t selectionBackgroundBottom) {
+		const EsTextSelection *selection, uintptr_t caret, int32_t selectionBackgroundBottom) {
 	if (cursorX / FREETYPE_UNIT_SCALE > painter->clip.r 
 			|| (cursorX + piece->width) / FREETYPE_UNIT_SCALE < painter->clip.l
 			|| cursorY > painter->clip.b
@@ -2449,7 +2449,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 	}
 }
 
-void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, EsRectangle *_clip, EsTextSelection *_selection) {
+void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsRectangle *_clip, const EsTextSelection *_selection) {
 	EsMessageMutexCheck();
 
 	if (!plan) return;

@@ -327,7 +327,7 @@ void EsDrawBlock(EsPainter *painter, EsRectangle bounds, uint32_t color) {
 	_DrawBlock(target->stride, target->bits, bounds, color, target->fullAlpha);
 }
 
-void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *sourceBits, uintptr_t sourceStride, uint16_t mode) {
+void EsDrawBitmap(EsPainter *painter, EsRectangle region, const uint32_t *sourceBits, uintptr_t sourceStride, uint16_t mode) {
 	EsPaintTarget *target = painter->target;
 	EsRectangle bounds;
 
@@ -338,11 +338,11 @@ void EsDrawBitmap(EsPainter *painter, EsRectangle region, uint32_t *sourceBits, 
 	sourceStride /= 4;
 	uintptr_t stride = target->stride / 4;
 	uint32_t *lineStart = (uint32_t *) target->bits + bounds.t * stride + bounds.l;
-	uint32_t *sourceLineStart = sourceBits + (bounds.l - region.l) + sourceStride * (bounds.t - region.t);
+	const uint32_t *sourceLineStart = sourceBits + (bounds.l - region.l) + sourceStride * (bounds.t - region.t);
 
 	for (int i = 0; i < bounds.b - bounds.t; i++, lineStart += stride, sourceLineStart += sourceStride) {
 		uint32_t *destination = lineStart;
-		uint32_t *source = sourceLineStart;
+		const uint32_t *source = sourceLineStart;
 		int j = bounds.r - bounds.l;
 
 		if (mode == 0xFF) {
@@ -403,7 +403,7 @@ void EsDrawRectangle(EsPainter *painter, EsRectangle r, uint32_t mainColor, uint
 }
 
 #ifndef KERNEL
-void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, uint32_t *sourceBits, uintptr_t sourceStride, uint16_t alpha) {
+void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, const uint32_t *sourceBits, uintptr_t sourceStride, uint16_t alpha) {
 	EsRectangle bounds = EsRectangleIntersection(painter->clip, destinationRegion);
 	uint32_t *destinationBits = (uint32_t *) painter->target->bits;
 	uintptr_t destinationStride = painter->target->stride;
@@ -419,7 +419,7 @@ void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRec
 			sxFloat += sxDelta;
 
 			uint32_t *destinationPixel = destinationBits + x + y * destinationStride / 4;
-			uint32_t *sourcePixel = sourceBits + sx + sy * sourceStride / 4;
+			const uint32_t *sourcePixel = sourceBits + sx + sy * sourceStride / 4;
 			uint32_t modified = *sourcePixel;
 
 			if (alpha == ES_DRAW_BITMAP_OPAQUE) {
@@ -1244,7 +1244,7 @@ void EsMemoryCopy(void *_destination, const void *_source, size_t bytes) {
 }
 
 __attribute__((no_instrument_function))
-void EsMemoryCopyReverse(void *_destination, void *_source, size_t bytes) {
+void EsMemoryCopyReverse(void *_destination, const void *_source, size_t bytes) {
 	// TODO Prevent this from being optimised out in the kernel.
 
 	if (!bytes) {

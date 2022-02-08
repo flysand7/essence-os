@@ -2195,7 +2195,7 @@ void EsTextboxSetFont(EsTextbox *textbox, EsFont font) {
 	TextboxStyleChanged(textbox);
 }
 
-void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, uint32_t *customColors, size_t customColorCount) {
+void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, const uint32_t *customColors, size_t customColorCount) {
 	textbox->syntaxHighlightingLanguage = language;
 
 	// TODO Load these from the theme file.
