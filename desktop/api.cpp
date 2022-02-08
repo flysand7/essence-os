@@ -274,12 +274,14 @@ uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uint
 }
 #endif
 
-void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) {
+EsMessageDevice *EsDeviceEnumerate(size_t *count) {
 	EsMessageMutexCheck();
-
-	for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) {
-		callback(api.connectedDevices[i], context);
-	}
+	*count = 0;
+	EsMessageDevice *result = (EsMessageDevice *) EsHeapAllocate(sizeof(EsMessageDevice) * api.connectedDevices.Length(), true);
+	if (!result) return nullptr;
+	*count = api.connectedDevices.Length();
+	for (uintptr_t i = 0; i < api.connectedDevices.Length(); i++) result[i] = api.connectedDevices[i];
+	return result;
 }
 
 EsSystemConfigurationItem *SystemConfigurationGetItem(EsSystemConfigurationGroup *group, const char *key, ptrdiff_t keyBytes, bool createIfNeeded) {

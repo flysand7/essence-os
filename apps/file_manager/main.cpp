@@ -539,9 +539,10 @@ void _start() {
 
 	// Enumerate drives.
 
-	EsDeviceEnumerate([] (EsMessageDevice device, EsGeneric) {
-		if (device.type == ES_DEVICE_FILE_SYSTEM) DriveAdd(device.handle, device.id);
-	}, 0);
+	size_t deviceCount;
+	EsMessageDevice *devices = EsDeviceEnumerate(&deviceCount);
+	for (uintptr_t i = 0; i < deviceCount; i++) if (devices[i].type == ES_DEVICE_FILE_SYSTEM) DriveAdd(devices[i].handle, devices[i].id);
+	EsHeapFree(devices);
 
 	// Process messages.
 

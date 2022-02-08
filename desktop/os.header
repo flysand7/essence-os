@@ -1975,6 +1975,11 @@ struct EsCornerRadii {
 	uint32_t tl, tr, bl, br;
 };
 
+struct EsListViewEnumeratedVisibleItem {
+	EsElement *element;
+	EsListViewIndex group, index;
+};
+
 // Function pointer types.
 
 function_pointer void EsThreadEntryCallback(EsGeneric argument);
@@ -1983,8 +1988,6 @@ function_pointer int EsCRTComparisonCallback(const void *left, const void *right
 function_pointer void EsTimerCallback(EsGeneric argument);
 function_pointer void EsMenuCallback(EsMenu *menu, EsGeneric context); 
 function_pointer void EsUndoCallback(const void *item, EsUndoManager *manager, EsMessage *message);
-function_pointer void EsDeviceEnumerationCallback(EsMessageDevice device, EsGeneric context);
-function_pointer void EsListViewEnumerateVisibleItemsCallback(EsListView *view, EsElement *item, uint32_t group, EsListViewIndex index);
 function_pointer void EsFontEnumerationCallback(const EsFontInformation *information, EsGeneric context);
 function_pointer void EsUserTaskCallback(EsUserTask *task, EsGeneric data);
 function_pointer bool EsFileCopyCallback(EsFileOffset bytesCopied, EsFileOffset totalBytes, EsGeneric data); // Return false to cancel.
@@ -2067,7 +2070,7 @@ function void EsOpenDocumentQueryInformation(STRING filePath, EsOpenDocumentInfo
 function void _EsPathAnnouncePathMoved(STRING oldPath, STRING newPath); // Set oldPathBytes = 0 to make the file manager refresh the path.
 function void _EsOpenDocumentEnumerate(EsBuffer *outputBuffer) @opaque(outputBuffer);
 
-function void EsDeviceEnumerate(EsDeviceEnumerationCallback callback, EsGeneric context) @todo();
+function EsMessageDevice *EsDeviceEnumerate(size_t *count) @out(count) @heap_array_out(return, count*); // This must be done with the message mutex acquired. As soon as EsMessageReceived is next called, or the message mutex is released, then the handles in this array are invalid.
 function EsError EsDeviceControl(EsHandle handle, EsDeviceControlType type, void *dp, void *dq) @native();
 
 // Processes and threads.
@@ -2093,7 +2096,7 @@ function bool EsWorkIsExiting();
 
 function const void *EsBufferRead(EsBuffer *buffer, size_t readBytes) @native();
 function bool EsBufferReadInto(EsBuffer *buffer, void *destination, size_t readBytes) @buffer_out(destination, readBytes) @opaque(buffer);
-function const void *EsBufferReadMany(struct EsBuffer *buffer, size_t a, size_t b) @native();
+function const void *EsBufferReadMany(EsBuffer *buffer, size_t a, size_t b) @native();
 function int32_t EsBufferReadInt32Endian(EsBuffer *buffer, int32_t errorValue) @opaque(buffer);
 function void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writeBytes) @buffer_in(source, writeBytes) @opaque(buffer) @todo();
 function bool EsBufferWriteInt8(EsBuffer *buffer, int8_t value) @opaque(buffer);
@@ -2212,7 +2215,7 @@ function void EsTextPlanReplaceStyleRenderProperties(EsTextPlan *plan, const EsT
 
 function void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes, char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount, EsTextStyle *baseStyle) @todo();
 
-function void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context) @todo();
+function EsFontInformation *EsFontDatabaseEnumerate(size_t *count) @out(count) @heap_array_out(return, count*);
 function bool EsFontDatabaseLookupByName(STRING name, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
 function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
 function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store) @in(information); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
@@ -2593,7 +2596,7 @@ function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLA
 		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
 
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL) @out(group);
-function void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback) @todo();
+function EsListViewEnumeratedVisibleItem *EsListViewEnumerateVisibleItems(EsListView *view, size_t *count) @out(count) @heap_array_out(return, count*);
 
 function void EsListViewRegisterColumn(EsListView *view, uint32_t id, STRING title = BLANK_STRING, uint32_t flags = ES_FLAGS_DEFAULT, double initialWidth = 0);
 function void EsListViewAddAllColumns(EsListView *view); // Call after registering the columns to add them to the header. Call again after EsListViewChangeStyles, as needed.

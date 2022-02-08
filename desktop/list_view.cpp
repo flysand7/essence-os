@@ -3033,10 +3033,23 @@ void EsListViewScrollToEnd(EsListView *view) {
 	}
 }
 
-void EsListViewEnumerateVisibleItems(EsListView *view, EsListViewEnumerateVisibleItemsCallback callback) {
-	for (uintptr_t i = 0; i < view->visibleItems.Length(); i++) {
-		callback(view, view->visibleItems[i].element, view->visibleItems[i].group, view->visibleItems[i].index);
+EsListViewEnumeratedVisibleItem *EsListViewEnumerateVisibleItems(EsListView *view, size_t *count) {
+	EsMessageMutexCheck();
+	*count = view->visibleItems.Length();
+	EsListViewEnumeratedVisibleItem *result = (EsListViewEnumeratedVisibleItem *) EsHeapAllocate(sizeof(EsListViewEnumeratedVisibleItem) * *count, true);
+
+	if (!result) {
+		*count = 0;
+		return nullptr;
 	}
+
+	for (uintptr_t i = 0; i < *count; i++) {
+		result[i].element = view->visibleItems[i].element;
+		result[i].group = view->visibleItems[i].group;
+		result[i].index = view->visibleItems[i].index;
+	}
+
+	return result;
 }
 
 void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand) {

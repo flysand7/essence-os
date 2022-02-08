@@ -280,10 +280,10 @@ void VariantsPopupCreate(Instance *instance, EsElement *element, EsCommand *) {
 ES_MACRO_SORT(LoadFontsFromDatabaseSort, EsFontInformation, result = EsStringCompare(_left->name, _left->nameBytes, _right->name, _right->nameBytes);, int);
 
 void LoadFontsFromDatabase(Instance *instance) {
-	EsFontDatabaseEnumerate([] (const EsFontInformation *information, EsGeneric context) { 
-		((Instance *) context.p)->fonts.AddPointer(information); 
-	}, instance);
-
+	size_t fontCount;
+	EsFontInformation *fonts = EsFontDatabaseEnumerate(&fontCount);
+	for (uintptr_t i = 0; i < fontCount; i++) instance->fonts.Add(fonts[i]);
+	EsHeapFree(fonts);
 	LoadFontsFromDatabaseSort(instance->fonts.array, instance->fonts.Length(), 0);
 	EsListViewInsert(instance->fontList, 0, 0, instance->fonts.Length());
 }

@@ -21,9 +21,10 @@ void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder) {
 	EsWindowSetTitle(instance->window, (char *) buffer.out, buffer.position);
 	EsWindowSetIcon(instance->window, knownFileTypes[instance->folder->containerHandler->getFileType(instance->path)].iconID);
 
-	EsListViewEnumerateVisibleItems(instance->list, [] (EsListView *, EsElement *item, uint32_t, EsListViewIndex index) {
-		ListItemCreated(item, index, true);
-	});
+	size_t itemCount;
+	EsListViewEnumeratedVisibleItem *items = EsListViewEnumerateVisibleItems(instance->list, &itemCount);
+	for (uintptr_t i = 0; i < itemCount; i++) ListItemCreated(items[i].element, items[i].index, true);
+	EsHeapFree(items);
 }
 
 bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, int historyMode) {

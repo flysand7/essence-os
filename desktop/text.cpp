@@ -748,14 +748,15 @@ EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFi
 	return 0;
 }
 
-void EsFontDatabaseEnumerate(EsFontEnumerationCallback callback, EsGeneric context) {
+EsFontInformation *EsFontDatabaseEnumerate(size_t *count) {
+	// TODO Locking.
 	FontInitialise();
-
-	for (uintptr_t i = 1; i < fontManagement.database.Length(); i++) {
-		EsFontInformation information;
-		EsFontDatabaseLookupByID(i, &information);
-		callback(&information, context);
-	}
+	*count = 0;
+	EsFontInformation *result = (EsFontInformation *) EsHeapAllocate(sizeof(EsFontInformation) * (fontManagement.database.Length() - 1), true);
+	if (!result) return nullptr;
+	*count = fontManagement.database.Length() - 1;
+	for (uintptr_t i = 1; i <= *count; i++) EsFontDatabaseLookupByID(i, &result[i - 1]);
+	return result;
 }
 
 bool FontSupportsScript(FontDatabaseEntry *entry, uint32_t _script, bool first) {

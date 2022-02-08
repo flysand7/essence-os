@@ -935,11 +935,16 @@ void _start() {
 
 	// TODO Proper drive mounting.
 
-	EsDeviceEnumerate([] (EsMessageDevice device, EsGeneric) {
-		if (device.type == ES_DEVICE_FILE_SYSTEM && EsDeviceControl(device.handle, ES_DEVICE_CONTROL_FS_IS_BOOT, 0, nullptr)) {
-			EsMountPointAdd(EsLiteral("0:"), device.handle);
+	size_t deviceCount;
+	EsMessageDevice *devices = EsDeviceEnumerate(&deviceCount);
+	
+	for (uintptr_t i = 0; i < deviceCount; i++) {
+		if (devices[i].type == ES_DEVICE_FILE_SYSTEM && EsDeviceControl(devices[i].handle, ES_DEVICE_CONTROL_FS_IS_BOOT, 0, nullptr)) {
+			EsMountPointAdd(EsLiteral("0:"), devices[i].handle);
 		}
-	}, 0);
+	}
+
+	EsHeapFree(devices);
 
 	while (true) {
 		EsMessage *message = EsMessageReceive();
