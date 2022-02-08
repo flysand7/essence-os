@@ -304,15 +304,15 @@ void _start() {
 			EsElement *toolbar = EsWindowGetToolbar(window);
 			EsPanel *section = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 			EsTextDisplayCreate(section, ES_FLAGS_DEFAULT, 0, EsLiteral("Nick:"));
-			instance->textboxNick = EsTextboxCreate(section, ES_FLAGS_DEFAULT, &styleSmallTextbox);
-			EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
+			instance->textboxNick = EsTextboxCreate(section, ES_FLAGS_DEFAULT, EsStyleIntern(&styleSmallTextbox));
+			EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 			section = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 			EsTextDisplayCreate(section, ES_FLAGS_DEFAULT, 0, EsLiteral("Address:"));
-			instance->textboxAddress = EsTextboxCreate(section, ES_FLAGS_DEFAULT, &styleSmallTextbox);
-			EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
+			instance->textboxAddress = EsTextboxCreate(section, ES_FLAGS_DEFAULT, EsStyleIntern(&styleSmallTextbox));
+			EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 			section = EsPanelCreate(toolbar, ES_PANEL_HORIZONTAL);
 			EsTextDisplayCreate(section, ES_FLAGS_DEFAULT, 0, EsLiteral("Port:"));
-			instance->textboxPort = EsTextboxCreate(section, ES_FLAGS_DEFAULT, &styleSmallTextbox);
+			instance->textboxPort = EsTextboxCreate(section, ES_FLAGS_DEFAULT, EsStyleIntern(&styleSmallTextbox));
 			EsSpacerCreate(toolbar, ES_CELL_H_FILL);
 			instance->buttonConnect = EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, 0, EsLiteral("Connect"));
 			EsButtonOnCommand(instance->buttonConnect, ConnectCommand);
@@ -320,10 +320,10 @@ void _start() {
 			// Create the main area.
 
 			EsPanel *panel = EsPanelCreate(window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-			instance->textboxOutput = EsTextboxCreate(panel, ES_CELL_FILL | ES_TEXTBOX_MULTILINE, &styleOutputTextbox);
+			instance->textboxOutput = EsTextboxCreate(panel, ES_CELL_FILL | ES_TEXTBOX_MULTILINE, EsStyleIntern(&styleOutputTextbox));
 			EsPanelCreate(panel, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 			EsPanel *inputArea = EsPanelCreate(panel, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, ES_STYLE_PANEL_FILLED);
-			instance->textboxInput = EsTextboxCreate(inputArea, ES_CELL_FILL, &styleInputTextbox);
+			instance->textboxInput = EsTextboxCreate(inputArea, ES_CELL_FILL, EsStyleIntern(&styleInputTextbox));
 			instance->textboxInput->messageUser = TextboxInputCallback;
 			EsElementSetDisabled(instance->textboxInput);
 		}

@@ -923,6 +923,7 @@ EsMessage *EsMessageReceive() {
 				FreeUnusedStyles(true /* include permanent styles */);
 				theming.loadedStyles.Free();
 				SystemConfigurationUnload();
+				theming.internedStyles.Free();
 				api.mountPoints.Free();
 				api.postBox.Free();
 				api.timers.Free();

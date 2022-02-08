@@ -517,9 +517,9 @@ void InspectorSetup(EsWindow *window) {
 
 	{
 		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
-		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Horizontal:");
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
+		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Horizontal:");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 		inspector->alignH[0] = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_DISABLED);
 		EsButtonSetIcon(inspector->alignH[0], ES_ICON_ALIGN_HORIZONTAL_LEFT);
 		EsButtonOnCommand(inspector->alignH[0], InspectorHAlignLeft);
@@ -535,9 +535,9 @@ void InspectorSetup(EsWindow *window) {
 		EsButtonOnCommand(inspector->alignH[4], InspectorHAlignShrink);
 		inspector->alignH[5] = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_DISABLED, 0, "Push");
 		EsButtonOnCommand(inspector->alignH[5], InspectorHAlignPush);
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
-		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Vertical:");
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
+		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Vertical:");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 		inspector->alignV[0] = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_DISABLED);
 		EsButtonSetIcon(inspector->alignV[0], ES_ICON_ALIGN_VERTICAL_TOP);
 		EsButtonOnCommand(inspector->alignV[0], InspectorVAlignTop);
@@ -557,9 +557,9 @@ void InspectorSetup(EsWindow *window) {
 
 	{
 		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
-		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Stack:");
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
+		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Stack:");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
 		inspector->direction[0] = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_DISABLED);
 		EsButtonSetIcon(inspector->direction[0], ES_ICON_GO_PREVIOUS);
 		EsButtonOnCommand(inspector->direction[0], InspectorDirectionLeft);
@@ -572,22 +572,22 @@ void InspectorSetup(EsWindow *window) {
 		inspector->direction[3] = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_ELEMENT_DISABLED);
 		EsButtonSetIcon(inspector->direction[3], ES_ICON_GO_DOWN);
 		EsButtonOnCommand(inspector->direction[3], InspectorDirectionDown);
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 25, 0);
-		inspector->addChildButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_BUTTON_DROPDOWN | ES_ELEMENT_DISABLED | ES_BUTTON_COMPACT, nullptr, "Add child... ");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 25, 0);
+		inspector->addChildButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_BUTTON_DROPDOWN | ES_ELEMENT_DISABLED | ES_BUTTON_COMPACT, 0, "Add child... ");
 		EsButtonOnCommand(inspector->addChildButton, InspectorAddElement);
-		inspector->addSiblingButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_BUTTON_DROPDOWN | ES_ELEMENT_DISABLED | ES_BUTTON_COMPACT, nullptr, "Add sibling... ");
+		inspector->addSiblingButton = EsButtonCreate(toolbar, ES_BUTTON_TOOLBAR | ES_BUTTON_DROPDOWN | ES_ELEMENT_DISABLED | ES_BUTTON_COMPACT, 0, "Add sibling... ");
 		inspector->addSiblingButton->userData.i = 0x80;
 		EsButtonOnCommand(inspector->addSiblingButton, InspectorAddElement);
 	}
 
 	{
 		EsPanel *toolbar = EsPanelCreate(panel1, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_TOOLBAR);
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 5, 0);
-		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Content:");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 5, 0);
+		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Content:");
 		inspector->contentTextbox = EsTextboxCreate(toolbar, ES_ELEMENT_DISABLED | ES_TEXTBOX_EDIT_BASED);
 		inspector->contentTextbox->messageUser = InspectorContentTextboxCallback;
-		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, 25, 0);
-		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, nullptr, "Event category filter:");
+		EsSpacerCreate(toolbar, ES_FLAGS_DEFAULT, 0, 25, 0);
+		EsTextDisplayCreate(toolbar, ES_FLAGS_DEFAULT, 0, "Event category filter:");
 		inspector->textboxCategoryFilter = EsTextboxCreate(toolbar, ES_ELEMENT_DISABLED);
 		inspector->textboxCategoryFilter->messageUser = InspectorTextboxCategoryFilterCallback;
 	}

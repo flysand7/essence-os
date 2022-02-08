@@ -492,14 +492,14 @@ void DesktopInspectorThread(EsGeneric) {
 			bytes = EsStringFormat(buffer, sizeof(buffer), "inst: eid %d, title '%s', pid %d, docid %d, app '%z'%z", 
 					instance->embeddedWindowID, instance->titleBytes, instance->title, instance->process->id, 
 					instance->documentID, instance->application->cName, instance->isUserTask ? ", utask" : "");
-			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, EsStyleIntern(&styleSmallParagraph), buffer, bytes);
 		}
 
 		for (uintptr_t i = 0; i < desktop.allApplicationProcesses.Length(); i++) {
 			ApplicationProcess *process = desktop.allApplicationProcesses[i];
 			bytes = EsStringFormat(buffer, sizeof(buffer), "proc: pid %d, app '%z', instances %d", 
 					process->id, process->application ? process->application->cName : "??", process->instanceCount);
-			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, EsStyleIntern(&styleSmallParagraph), buffer, bytes);
 		}
 
 		for (uintptr_t i = 0; i < desktop.installedApplications.Length(); i++) {
@@ -509,14 +509,14 @@ void DesktopInspectorThread(EsGeneric) {
 					application->useSingleInstance ? ", 1inst" : "",  
 					application->singleProcess ? application->singleProcess->id : 0,
 					application->singleInstance ? application->singleInstance->embeddedWindowID : 0);
-			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, EsStyleIntern(&styleSmallParagraph), buffer, bytes);
 		}
 
 		for (uintptr_t i = 0; i < desktop.openDocuments.Count(); i++) {
 			OpenDocument *document = &desktop.openDocuments[i];
 			bytes = EsStringFormat(buffer, sizeof(buffer), "doc: '%s', id %d, refs %d", 
 					document->pathBytes, document->path, document->id, document->referenceCount);
-			EsTextDisplayCreate(panel, ES_CELL_H_FILL, &styleSmallParagraph, buffer, bytes);
+			EsTextDisplayCreate(panel, ES_CELL_H_FILL, EsStyleIntern(&styleSmallParagraph), buffer, bytes);
 		}
 
 		EsMessageMutexRelease();
@@ -970,7 +970,7 @@ int WindowTabMessage(EsElement *element, EsMessage *message) {
 WindowTab *WindowTabCreate(ContainerWindow *container) {
 	WindowTab *tab = (WindowTab *) EsHeapAllocate(sizeof(WindowTab), true);
 	tab->container = container;
-	tab->Initialise(container->tabBand, ES_CELL_H_FILL | ES_CELL_V_BOTTOM, WindowTabMessage, nullptr);
+	tab->Initialise(container->tabBand, ES_CELL_H_FILL | ES_CELL_V_BOTTOM, WindowTabMessage, 0);
 	tab->cName = "window tab";
 	container->openTabs.Add(tab);
 
@@ -1473,12 +1473,12 @@ void InstanceBlankTabCreate(EsMessage *message) {
 	EsInstance *instance = _EsInstanceCreate(sizeof(BlankTabInstance), message, nullptr);
 	EsWindowSetTitle(instance->window, INTERFACE_STRING(DesktopNewTabTitle));
 	EsPanel *windowBackground = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-	EsPanel *content = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *content = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&styleNewTabContent));
 	EsPanel *buttonGroup;
 
 	// Installed applications list.
 
-	buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleButtonGroupContainer);
+	buttonGroup = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, EsStyleIntern(&styleButtonGroupContainer));
 	buttonGroup->separatorStylePart = ES_STYLE_BUTTON_GROUP_SEPARATOR;
 	buttonGroup->separatorFlags = ES_CELL_H_FILL;
 
@@ -2739,7 +2739,7 @@ void DesktopSetup() {
 			desktop.tasksButton = EsButtonCreate(panel, ES_ELEMENT_HIDDEN, ES_STYLE_TASK_BAR_BUTTON);
 			desktop.tasksButton->messageUser = TaskBarTasksButtonMessage;
 
-			EsButton *clockButton = EsButtonCreate(panel, ES_BUTTON_COMPACT, &styleClockButton);
+			EsButton *clockButton = EsButtonCreate(panel, ES_BUTTON_COMPACT, EsStyleIntern(&styleClockButton));
 			clockButton->cName = "current time";
 			EsThreadCreate(TaskBarClockUpdateThread, nullptr, clockButton); 
 

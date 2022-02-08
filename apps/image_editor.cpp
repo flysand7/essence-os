@@ -659,7 +659,7 @@ void MenuImage(Instance *instance, EsElement *element, EsCommand *) {
 	EsMenu *menu = EsMenuCreate(element);
 
 	EsMenuAddItem(menu, ES_MENU_ITEM_HEADER, INTERFACE_STRING(ImageEditorCanvasSize));
-	EsPanel *table = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_PANEL_TABLE, &styleImageMenuTable);
+	EsPanel *table = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_PANEL_TABLE, EsStyleIntern(&styleImageMenuTable));
 	EsPanelSetBands(table, 2, 2);
 
 	char buffer[64];

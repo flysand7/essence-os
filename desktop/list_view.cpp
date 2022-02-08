@@ -77,7 +77,7 @@ struct EsListView : EsElement {
 	Array<ListViewGroup> groups;
 	Array<ListViewItem> visibleItems;
 
-	const EsStyle *itemStyle, *headerItemStyle, *footerItemStyle;
+	EsStyleID itemStyle, headerItemStyle, footerItemStyle;
 	int64_t fixedWidth, fixedHeight;
 	int64_t fixedHeaderSize, fixedFooterSize;
 
@@ -626,7 +626,7 @@ struct EsListView : EsElement {
 				visibleItem->size = MeasureItems(visibleItem->group, visibleItem->index, 1);
 
 				ListViewGroup *group = &groups[visibleItem->group];
-				const EsStyle *style = nullptr;
+				EsStyleID style = 0;
 
 				if ((group->flags & ES_LIST_VIEW_GROUP_HAS_HEADER) && visibleItem->index == 0) {
 					style = headerItemStyle;
@@ -1950,7 +1950,7 @@ struct EsListView : EsElement {
 			secondaryCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SECONDARY_CELL, 0), false);
 			selectedCellStyle = GetStyle(MakeStyleKey(ES_STYLE_LIST_SELECTED_CHOICE_CELL, 0), false);
 
-			EsListViewChangeStyles(this, nullptr, nullptr, nullptr, nullptr, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
+			EsListViewChangeStyles(this, 0, 0, 0, 0, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
 		} else if (message->type == ES_MSG_LIST_VIEW_GET_CONTENT && (activeColumns.Length() || (flags & ES_LIST_VIEW_FIXED_ITEMS))) {
 			uintptr_t index = message->getContent.index;
 
@@ -2163,8 +2163,8 @@ int ListViewColumnHeaderMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
-		const EsStyle *headerItemStyle, const EsStyle *footerItemStyle, uint32_t addFlags, uint32_t removeFlags) {
+void EsListViewChangeStyles(EsListView *view, EsStyleID style, EsStyleID itemStyle, 
+		EsStyleID headerItemStyle, EsStyleID footerItemStyle, uint32_t addFlags, uint32_t removeFlags) {
 	// TODO Animating changes.
 
 	bool wasTiledView = view->flags & ES_LIST_VIEW_TILED;
@@ -2255,8 +2255,8 @@ void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyl
 	EsElementRelayout(view);
 }
 
-EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *style, 
-		const EsStyle *itemStyle, const EsStyle *headerItemStyle, const EsStyle *footerItemStyle) {
+EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, EsStyleID style, 
+		EsStyleID itemStyle, EsStyleID headerItemStyle, EsStyleID footerItemStyle) {
 	EsListView *view = (EsListView *) EsHeapAllocate(sizeof(EsListView), true);
 	if (!view) return nullptr;
 
@@ -2276,7 +2276,7 @@ EsListView *EsListViewCreate(EsElement *parent, uint64_t flags, const EsStyle *s
 		else itemStyle = ES_STYLE_LIST_ITEM;
 	}
 
-	EsListViewChangeStyles(view, nullptr, itemStyle, headerItemStyle ?: ES_STYLE_LIST_ITEM_GROUP_HEADER, 
+	EsListViewChangeStyles(view, 0, itemStyle, headerItemStyle ?: ES_STYLE_LIST_ITEM_GROUP_HEADER, 
 			footerItemStyle ?: ES_STYLE_LIST_ITEM_GROUP_FOOTER, ES_FLAGS_DEFAULT, ES_FLAGS_DEFAULT);
 
 	return view;
@@ -2548,7 +2548,7 @@ void EsListViewAddAllColumns(EsListView *view) {
 	for (uintptr_t i = 0; i < view->registeredColumns.Length(); i++) {
 		view->activeColumns.Add(i);
 
-		EsStyle *style = (view->registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_HAS_MENU) ? ES_STYLE_LIST_COLUMN_HEADER_ITEM_HAS_MENU : ES_STYLE_LIST_COLUMN_HEADER_ITEM;
+		EsStyleID style = (view->registeredColumns[i].flags & ES_LIST_VIEW_COLUMN_HAS_MENU) ? ES_STYLE_LIST_COLUMN_HEADER_ITEM_HAS_MENU : ES_STYLE_LIST_COLUMN_HEADER_ITEM;
 		EsElement *columnHeaderItem = EsCustomElementCreate(view->columnHeader, ES_CELL_FILL, style);
 		columnHeaderItem->messageUser = ListViewColumnHeaderItemMessage;
 		columnHeaderItem->cName = "column header item";

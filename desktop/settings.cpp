@@ -289,8 +289,8 @@ void SettingsAddTitle(EsElement *container, SettingsPage *page) {
 }
 
 void SettingsPageUnimplemented(EsElement *element, SettingsPage *page) {
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL | ES_CELL_H_SHRINK, EsStyleIntern(&styleSettingsGroupContainer2));
 	SettingsAddTitle(container, page);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
@@ -468,7 +468,7 @@ void SettingsAddSlider(EsElement *table, const char *string, ptrdiff_t stringByt
 
 	EsPanel *stack = EsPanelCreate(table, ES_CELL_H_FILL);
 	EsTextDisplayCreate(stack, ES_CELL_H_LEFT, 0, string, stringBytes); 
-	EsPanel *row = EsPanelCreate(stack, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, &styleSliderRow);
+	EsPanel *row = EsPanelCreate(stack, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, EsStyleIntern(&styleSliderRow));
 	EsTextDisplayCreate(row, ES_CELL_H_PUSH | ES_CELL_H_RIGHT, 0, lowString, lowStringBytes); 
 	EsSlider *slider = EsSliderCreate(row, ES_ELEMENT_FREE_USER_DATA, 0, 
 			LinearMap(control->minimumValue, control->maximumValue, 0, 1, control->originalValueInt), steps);
@@ -556,8 +556,8 @@ int SettingsDoubleClickTestMessage(EsElement *element, EsMessage *message) {
 void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, EsStyleIntern(&styleSettingsGroupContainer2));
 	SettingsAddTitle(container, page);
 
 	EsPanel *table;
@@ -565,7 +565,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddSlider(container, INTERFACE_STRING(DesktopSettingsMouseSpeed), 'M', "general", "cursor_speed", -20, 20, 41, 
 			INTERFACE_STRING(DesktopSettingsMouseSpeedSlow), INTERFACE_STRING(DesktopSettingsMouseSpeedFast));
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	table = EsPanelCreate(container, ES_CELL_H_FILL, EsStyleIntern(&styleSettingsCheckboxGroup));
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseUseAcceleration), 'C', "general", "use_cursor_acceleration");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSlowOnAlt), 'O', "general", "use_cursor_alt_slow");
 
@@ -578,7 +578,7 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 	SettingsAddNumberBox(table, INTERFACE_STRING(DesktopSettingsMouseLinesPerScrollNotch), 'S', "general", "scroll_lines_per_notch", 
 			1, 100, nullptr, 0, 0.04, 1);
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	table = EsPanelCreate(container, ES_CELL_H_FILL, EsStyleIntern(&styleSettingsCheckboxGroup));
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseSwapLeftAndRightButtons), 'B', "general", "swap_left_and_right_buttons");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseShowShadow), 'W', "general", "show_cursor_shadow");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsMouseLocateCursorOnCtrl), 'L', "general", "locate_cursor_on_ctrl");
@@ -598,8 +598,8 @@ void SettingsPageMouse(EsElement *element, SettingsPage *page) {
 void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, EsStyleIntern(&styleSettingsGroupContainer2));
 	SettingsAddTitle(container, page);
 
 	EsPanel *table;
@@ -628,7 +628,7 @@ void SettingsPageKeyboard(EsElement *element, SettingsPage *page) {
 
 	EsListViewFixedItemSelect(list, activeKeyboardLayout);
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	table = EsPanelCreate(container, ES_CELL_H_FILL, EsStyleIntern(&styleSettingsCheckboxGroup));
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsKeyboardUseSmartQuotes), 'Q', "general", "use_smart_quotes");
 
 	EsSpacerCreate(container, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
@@ -669,8 +669,8 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 
 	EsElementSetHidden(((SettingsInstance *) element->instance)->undoButton, false);
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, EsStyleIntern(&styleSettingsGroupContainer2));
 	SettingsAddTitle(container, page);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
@@ -744,8 +744,8 @@ void SettingsColorButtonCommand(EsInstance *, EsElement *element, EsCommand *) {
 void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 	// TODO Fonts, theme file, etc.
 
-	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, &styleSettingsGroupContainer);
-	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, &styleSettingsGroupContainer2);
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, EsStyleIntern(&styleSettingsGroupContainer2));
 	SettingsAddTitle(container, page);
 
 	EsPanel *warningRow = EsPanelCreate(container, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_FORM_TABLE);
@@ -795,7 +795,7 @@ void SettingsPageTheme(EsElement *element, SettingsPage *page) {
 		EsButtonOnCommand(button, SettingsColorButtonCommand);
 	}
 
-	table = EsPanelCreate(container, ES_CELL_H_FILL, &styleSettingsCheckboxGroup);
+	table = EsPanelCreate(container, ES_CELL_H_FILL, EsStyleIntern(&styleSettingsCheckboxGroup));
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsThemeEnableHoverState), 'H', "general", "enable_hover_state");
 	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsThemeEnableAnimations), 'M', "general", "enable_animations");
 }
@@ -830,7 +830,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 	EsWindowSetIcon(instance->window, ES_ICON_PREFERENCES_DESKTOP);
 	EsPanel *windowBackground = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
 	instance->switcher = EsPanelCreate(windowBackground, ES_CELL_FILL | ES_PANEL_SWITCHER);
-	EsPanel *content = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleNewTabContent);
+	EsPanel *content = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&styleNewTabContent));
 	instance->mainPage = content;
 	EsPanelSwitchTo(instance->switcher, content, ES_TRANSITION_NONE);
 
@@ -863,7 +863,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 	}
 
 	{
-		EsPanel *container = EsPanelCreate(content, ES_CELL_H_SHRINK | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, &styleAllSettingsGroupContainer);
+		EsPanel *container = EsPanelCreate(content, ES_CELL_H_SHRINK | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleAllSettingsGroupContainer));
 		EsPanelSetBands(container, 4);
 
 		EsSort(settingsPages, sizeof(settingsPages) / sizeof(settingsPages[0]), sizeof(settingsPages[0]), [] (const void *_a, const void *_b, EsGeneric) {
@@ -874,7 +874,7 @@ void InstanceSettingsCreate(EsMessage *message) {
 		for (uintptr_t i = 0; i < sizeof(settingsPages) / sizeof(settingsPages[0]); i++) {
 			SettingsPage *page = &settingsPages[i];
 			EsButton *button = EsButtonCreate(container, ES_ELEMENT_NO_FOCUS_ON_CLICK | ES_CELL_H_FILL | ES_ELEMENT_STICKY_ACCESS_KEY, 
-					&styleSettingsButton, page->string, page->stringBytes);
+					EsStyleIntern(&styleSettingsButton), page->string, page->stringBytes);
 			button->userData = page;
 			button->accessKey = EsCRTisalpha(page->string[0]) ? page->string[0] : page->accessKey;
 			EsButtonSetIcon(button, page->iconID);

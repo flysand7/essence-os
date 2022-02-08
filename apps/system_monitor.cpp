@@ -254,7 +254,7 @@ void UpdateDisplay(Instance *instance, int index) {
 		EsPanelSwitchTo(instance->switcher, instance->panelMemoryStatistics, ES_TRANSITION_NONE);
 
 		if (!instance->textDisplaysMemory.Length()) {
-			EsPanel *panel = EsPanelCreate(instance->panelMemoryStatistics, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &stylePanelMemoryCommands);
+			EsPanel *panel = EsPanelCreate(instance->panelMemoryStatistics, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&stylePanelMemoryCommands));
 			EsButton *button;
 
 			button = EsButtonCreate(panel, ES_FLAGS_DEFAULT, 0, EsLiteral("Leak 1 MB"));
@@ -383,7 +383,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsPanel *switcher = EsPanelCreate(window, ES_CELL_FILL | ES_PANEL_SWITCHER, ES_STYLE_PANEL_WINDOW_DIVIDER);
 		instance->switcher = switcher;
 
-		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL | ES_ELEMENT_DISABLED, &styleMonospacedTextbox);
+		instance->textboxGeneralLog = EsTextboxCreate(switcher, ES_TEXTBOX_MULTILINE | ES_CELL_FILL | ES_ELEMENT_DISABLED, EsStyleIntern(&styleMonospacedTextbox));
 
 		instance->listViewProcesses = EsListViewCreate(switcher, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_SINGLE_SELECT | ES_LIST_VIEW_FIXED_ITEMS);
 		instance->listViewProcesses->messageUser = ListViewProcessesCallback;
@@ -398,7 +398,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsListViewAddAllColumns(instance->listViewProcesses);
 
 		instance->panelMemoryStatistics = EsPanelCreate(switcher, 
-				ES_CELL_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_V_SCROLL_AUTO, &stylePanelMemoryStatistics);
+				ES_CELL_FILL | ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&stylePanelMemoryStatistics));
 		EsPanelSetBands(instance->panelMemoryStatistics, 2 /* columns */);
 
 		EsElement *toolbar = EsWindowGetToolbar(window);

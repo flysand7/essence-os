@@ -650,19 +650,19 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 	if (type->type == T_INT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%d", value.i);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
 		EsHeapFree(buffer);
 	} else if (type->type == T_BOOL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", value.i ? "true" : "false");
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
 		EsHeapFree(buffer);
 	} else if (type->type == T_NULL) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%z", "null");
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
 		EsHeapFree(buffer);
 	} else if (type->type == T_FLOAT) {
 		char *buffer = EsStringAllocateAndFormat(&bytes, "%F", value.f);
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
 		EsHeapFree(buffer);
 	} else if (type->type == T_STR) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
@@ -680,10 +680,10 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 			EsImageDisplayLoadFromMemory(display, valueText, valueBytes);
 		} else if (EsUTF8IsValid(valueText, valueBytes)) {
 			char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);
-			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputData, buffer, bytes);
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
 			EsHeapFree(buffer);
 		} else {
-			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, EsLiteral("Binary data string.\n"));
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), EsLiteral("Binary data string.\n"));
 		}
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
@@ -693,7 +693,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		EsAssert(context->heapEntriesAllocated > (uint64_t) listEntry->list[0].i);
 		EsAssert(context->heap[listEntry->list[0].i].type == T_STRUCT);
 
-		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE | ES_PANEL_H_SCROLL_AUTO, &styleTable);
+		EsPanel *table = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_TABLE | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleTable));
 		EsPanelSetBands(table, context->heap[listEntry->list[0].i].fieldCount);
 		EsPanelTableAddBandDecorator(table, { .index = 0, .repeatEvery = 0, .axis = 1, .appearance = &styleAppearanceRowHeader });
 		EsPanelTableAddBandDecorator(table, { .index = 1, .repeatEvery = 2, .axis = 1, .appearance = &styleAppearanceRowEven });
@@ -704,7 +704,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 			while (field) {
 				EsTextDisplayCreate(table, ES_CELL_H_CENTER | ES_CELL_V_CENTER, 
-						&styleRowHeaderText, field->token.text, field->token.textBytes);
+						EsStyleIntern(&styleRowHeaderText), field->token.text, field->token.textBytes);
 				field = field->sibling;
 			}
 		}
@@ -719,7 +719,7 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 			while (field) {
 				EsAssert(j != itemEntry->fieldCount);
-				AddREPLResult(context, EsPanelCreate(table, ES_CELL_H_CENTER | ES_CELL_V_TOP, &styleTableCell), 
+				AddREPLResult(context, EsPanelCreate(table, ES_CELL_H_CENTER | ES_CELL_V_TOP, EsStyleIntern(&styleTableCell)), 
 						field->firstChild, itemEntry->fields[j]);
 				field = field->sibling;
 				j++;
@@ -727,18 +727,18 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 		}
 	} else if (type->type == T_LIST) {
 		normalList:;
-		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK, &styleList);
+		EsPanel *panel = EsPanelCreate(parent, ES_CELL_H_FILL | ES_PANEL_VERTICAL | ES_PANEL_STACK, EsStyleIntern(&styleList));
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
 		HeapEntry *entry = &context->heap[value.i];
 		EsAssert(entry->type == T_LIST);
 
 		if (!entry->length) {
-			EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
 					EsLiteral("Empty list.\n"));
 		}
 
 		for (uintptr_t i = 0; i < entry->length; i++) {
-			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowOdd : &styleListRowEven);
+			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, EsStyleIntern((i % 2) ? &styleListRowOdd : &styleListRowEven));
 			AddREPLResult(context, item, type->firstChild, entry->list[i]);
 		}
 	} else if (type->type == T_STRUCT) {
@@ -752,16 +752,16 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 		while (field) {
 			EsAssert(i != entry->fieldCount);
-			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, (i % 2) ? &styleListRowOdd : &styleListRowEven);
+			EsPanel *item = EsPanelCreate(panel, ES_CELL_H_FILL, EsStyleIntern((i % 2) ? &styleListRowOdd : &styleListRowEven));
 			AddREPLResult(context, item, field->firstChild, entry->fields[i]);
 			field = field->sibling;
 			i++;
 		}
 	} else if (type->type == T_FUNCPTR) {
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
 				EsLiteral("Function pointer.\n"));
 	} else {
-		EsTextDisplayCreate(parent, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+		EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
 				EsLiteral("The type of the result was not recognized.\n"));
 	}
 }
@@ -812,12 +812,12 @@ void ScriptThread(EsGeneric _instance) {
 	instance->gotREPLResult = false;
 
 	if (result == 0) {
-		EsSpacerChangeStyle(instance->outputDecoration, &styleOutputDecorationSuccess);
+		EsSpacerChangeStyle(instance->outputDecoration, EsStyleIntern(&styleOutputDecorationSuccess));
 	} else {
-		EsSpacerChangeStyle(instance->outputDecoration, &styleOutputDecorationFailure);
+		EsSpacerChangeStyle(instance->outputDecoration, EsStyleIntern(&styleOutputDecorationFailure));
 	}
 
-	instance->outputElements.Add(EsSpacerCreate(instance->root, ES_CELL_H_FILL, &styleInterCommandSpacer));
+	instance->outputElements.Add(EsSpacerCreate(instance->root, ES_CELL_H_FILL, EsStyleIntern(&styleInterCommandSpacer)));
 	AddPrompt(instance);
 
 	EsMessageMutexRelease();
@@ -835,16 +835,16 @@ void EnterCommand(Instance *instance) {
 	instance->inputRow = nullptr;
 	instance->defaultPrefixDisplay = nullptr;
 
-	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, &styleInputRow);
-	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, &stylePromptText, "\u2661");
-	EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, &styleCommandLogText, data, dataBytes);
+	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
+	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2661");
+	EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, EsStyleIntern(&styleCommandLogText), data, dataBytes);
 	instance->outputElements.Add(commandLogRow);
 
 	EsAssert(!instance->outputPanel);
 	EsAssert(!instance->outputDecoration);
-	EsPanel *outputPanelWrapper = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, &styleOutputPanelWrapper);
-	instance->outputDecoration = EsSpacerCreate(outputPanelWrapper, ES_CELL_V_FILL, &styleOutputDecorationInProgress);
-	instance->outputPanel = EsPanelCreate(outputPanelWrapper, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, &styleOutputPanel);
+	EsPanel *outputPanelWrapper = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleOutputPanelWrapper));
+	instance->outputDecoration = EsSpacerCreate(outputPanelWrapper, ES_CELL_V_FILL, EsStyleIntern(&styleOutputDecorationInProgress));
+	instance->outputPanel = EsPanelCreate(outputPanelWrapper, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, EsStyleIntern(&styleOutputPanel));
 
 	instance->inputText = data;
 	instance->inputBytes = dataBytes;
@@ -870,12 +870,12 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 		if (text[i] == '\n') {
 			if (EsUTF8IsValid(instance->outputLineBuffer, instance->outputLineBufferBytes)) {
 				EsMessageMutexAcquire();
-				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, &styleOutputParagraph, 
+				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraph), 
 						instance->outputLineBuffer, instance->outputLineBufferBytes);
 				EsMessageMutexRelease();
 			} else {
 				EsMessageMutexAcquire();
-				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, &styleOutputParagraphItalic, 
+				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
 						EsLiteral("Encoding error.\n"));
 				EsMessageMutexRelease();
 			}
@@ -903,10 +903,10 @@ void AddPrompt(Instance *instance) {
 	instance->outputPanel = nullptr;
 	instance->outputDecoration = nullptr;
 
-	instance->defaultPrefixDisplay = EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, &stylePathDefaultPrefixDisplay, "Essence HD (0:)");
-	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, &styleInputRow);
-	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, &stylePromptText, "\u2665");
-	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, &styleInputTextbox);
+	instance->defaultPrefixDisplay = EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, EsStyleIntern(&stylePathDefaultPrefixDisplay), "Essence HD (0:)");
+	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
+	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2665");
+	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox));
 	EsTextboxEnableSmartReplacement(instance->inputTextbox, false);
 	instance->inputTextbox->messageUser = InputTextboxMessage;
 	EsElementFocus(instance->inputTextbox, ES_ELEMENT_FOCUS_ENSURE_VISIBLE);
@@ -956,12 +956,12 @@ void _start() {
 					1 /* stableID */, "Ctrl+Shift+L", true /* enabled */);
 			EsWindowSetIcon(instance->window, ES_ICON_UTILITIES_TERMINAL);
 			EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-			EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleBackground);
-			instance->root = EsPanelCreate(background, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, &styleRoot);
+			EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&styleBackground));
+			instance->root = EsPanelCreate(background, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, EsStyleIntern(&styleRoot));
 			AddPrompt(instance);
 			EsElement *toolbar = EsWindowGetToolbar(instance->window);
 			EsCommandAddButton(&instance->commandClearOutput, 
-					EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, ES_NULL, EsLiteral("Clear output")));
+					EsButtonCreate(toolbar, ES_FLAGS_DEFAULT, 0, EsLiteral("Clear output")));
 		}
 	}
 }

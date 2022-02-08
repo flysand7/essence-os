@@ -236,12 +236,12 @@ const char *textTypes[] = {
 void AddPadding(Instance *instance, int32_t before, int32_t after) {
 	if (instance->inListDepth) return;
 	if (before < instance->paddingBefore) before = instance->paddingBefore;
-	EsSpacerCreate(instance->active, ES_FLAGS_DEFAULT, nullptr, 0, before);
+	EsSpacerCreate(instance->active, ES_FLAGS_DEFAULT, 0, 0, before);
 	instance->paddingBefore = after;
 }
 
-void CreateStyledTextDisplay(Instance *instance, EsStyle *style, uint64_t flags = ES_CELL_H_FILL) {
-	EsTextDisplay *display = EsTextDisplayCreate(instance->active, flags, style);
+void CreateStyledTextDisplay(Instance *instance, const EsStyle *style, uint64_t flags = ES_CELL_H_FILL) {
+	EsTextDisplay *display = EsTextDisplayCreate(instance->active, flags, EsStyleIntern(style));
 	EsTextRun *runs = (EsTextRun *) EsHeapAllocate(sizeof(EsTextRun) * (instance->spans.Length() + 1), false);
 
 	for (uintptr_t i = 0; i < instance->spans.Length(); i++) {
@@ -296,14 +296,14 @@ int ParserEnterBlock(MD_BLOCKTYPE type, void *detail, void *_instance) {
 		EsListDisplaySetCounterStart(display, ((MD_BLOCK_OL_DETAIL *) detail)->start - 1);
 	} else if (type == MD_BLOCK_QUOTE) {
 		AddPadding(instance, QUOTE_PADDING_BEFORE, QUOTE_PADDING_AFTER);
-		instance->active = EsPanelCreate(instance->active, ES_CELL_H_FILL, &styleQuote);
+		instance->active = EsPanelCreate(instance->active, ES_CELL_H_FILL, EsStyleIntern(&styleQuote));
 		instance->inBlockQuote = true;
 	} else if (type == MD_BLOCK_LI) {
-		instance->active = EsPanelCreate(instance->active, ES_CELL_H_FILL, &styleList);
+		instance->active = EsPanelCreate(instance->active, ES_CELL_H_FILL, EsStyleIntern(&styleList));
 		instance->inListDepth++;
 	} else if (type == MD_BLOCK_TABLE) {
 		AddPadding(instance, TABLE_PADDING_BEFORE, TABLE_PADDING_AFTER);
-		EsPanel *table = EsPanelCreate(instance->active, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_SHRINK, &styleTable);
+		EsPanel *table = EsPanelCreate(instance->active, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_SHRINK, EsStyleIntern(&styleTable));
 		instance->active = table;
 		instance->tableColumnCount = 0;
 	}
@@ -348,14 +348,14 @@ int ParserLeaveBlock(MD_BLOCKTYPE type, void *detail, void *_instance) {
 		CreateStyledTextDisplay(instance, level == 1 ? &styleHeading1 : level == 2 ? &styleHeading2 : &styleHeading3);
 
 		if (level <= 2) {
-			EsSpacerCreate(instance->active, ES_FLAGS_DEFAULT, nullptr, 0, HEADING_UNDERLINE_GAP);
-			EsSpacerCreate(instance->active, ES_CELL_H_FILL, &styleHeadingUnderline, 0, 0);
+			EsSpacerCreate(instance->active, ES_FLAGS_DEFAULT, 0, 0, HEADING_UNDERLINE_GAP);
+			EsSpacerCreate(instance->active, ES_CELL_H_FILL, EsStyleIntern(&styleHeadingUnderline), 0, 0);
 		}
 	} else if (type == MD_BLOCK_CODE) {
 		MD_BLOCK_CODE_DETAIL *code = (MD_BLOCK_CODE_DETAIL *) detail;
 		AddPadding(instance, PARAGRAPH_PADDING_BEFORE, PARAGRAPH_PADDING_AFTER);
-		EsElement *wrapper = EsPanelCreate(instance->active, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_H_SCROLL_AUTO, &styleCodeBlock);
-		EsTextDisplay *display = EsTextDisplayCreate(wrapper, ES_TEXT_DISPLAY_PREFORMATTED, &styleCode, instance->text.array, instance->text.Length());
+		EsElement *wrapper = EsPanelCreate(instance->active, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleCodeBlock));
+		EsTextDisplay *display = EsTextDisplayCreate(wrapper, ES_TEXT_DISPLAY_PREFORMATTED, EsStyleIntern(&styleCode), instance->text.array, instance->text.Length());
 
 		if (0 == EsStringCompare(code->lang.text, code->lang.size, EsLiteral("ini"))) {
 			EsTextDisplaySetupSyntaxHighlighting(display, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI);
@@ -369,7 +369,7 @@ int ParserLeaveBlock(MD_BLOCKTYPE type, void *detail, void *_instance) {
 		instance->inBlockQuote = false;
 	} else if (type == MD_BLOCK_HR) {
 		AddPadding(instance, HR_PADDING_BEFORE, HR_PADDING_AFTER);
-		EsSpacerCreate(instance->active, ES_CELL_H_FILL, &styleHorizontalRule, 0, 0);
+		EsSpacerCreate(instance->active, ES_CELL_H_FILL, EsStyleIntern(&styleHorizontalRule), 0, 0);
 	} else if (type == MD_BLOCK_TABLE) {
 		EsPanel *panel = (EsPanel *) instance->active;
 
@@ -491,8 +491,8 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsInstanceSetClassViewer(instance, nullptr);
 		EsWindow *window = instance->window;
 		EsPanel *wrapper = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_DIVIDER);
-		EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleBackground);
-		instance->root = EsPanelCreate(background, ES_CELL_H_SHRINK, &styleRoot);
+		EsPanel *background = EsPanelCreate(wrapper, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&styleBackground));
+		instance->root = EsPanelCreate(background, ES_CELL_H_SHRINK, EsStyleIntern(&styleRoot));
 		EsWindowSetIcon(window, ES_ICON_TEXT_MARKDOWN);
 	}
 }

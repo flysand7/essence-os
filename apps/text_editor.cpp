@@ -131,7 +131,7 @@ void FormatPopupCreate(Instance *instance) {
 	EsPanel *panel = EsPanelCreate(menu, ES_PANEL_HORIZONTAL, ES_STYLE_PANEL_POPUP);
 	
 	{
-		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, &styleFormatPopupColumn);
+		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, EsStyleIntern(&styleFormatPopupColumn));
 		EsTextDisplayCreate(column, ES_CELL_H_EXPAND, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(CommonFormatSize));
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 
@@ -174,7 +174,7 @@ void FormatPopupCreate(Instance *instance) {
 	}
 
 	{
-		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, &styleFormatPopupColumn);
+		EsPanel *column = EsPanelCreate(panel, ES_FLAGS_DEFAULT, EsStyleIntern(&styleFormatPopupColumn));
 		EsTextDisplayCreate(column, ES_CELL_H_EXPAND, ES_STYLE_TEXT_LABEL, INTERFACE_STRING(CommonFormatLanguage));
 		EsListView *list = EsListViewCreate(column, ES_LIST_VIEW_CHOICE_SELECT | ES_LIST_VIEW_FIXED_ITEMS, ES_STYLE_LIST_CHOICE_BORDERED);
 		EsListViewFixedItemSetString(list, EsListViewFixedItemInsert(list, 0), 0, INTERFACE_STRING(CommonFormatPlainText));

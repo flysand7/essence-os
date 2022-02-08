@@ -1935,8 +1935,8 @@ void InstanceCreate(EsMessage *message) {
 	EsCommandRegister(&commandLaunch, instance, INTERFACE_STRING(BuildCoreLaunch), CommandLaunch, 2, "F6", false);
 	EsWindowSetIcon(instance->window, ES_ICON_TEXT_X_MAKEFILE);
 	EsPanel *panelRoot = EsPanelCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-	EsPanel *panelStack = EsPanelCreate(panelRoot, ES_CELL_FILL | ES_PANEL_HORIZONTAL, &stylePanelStack);
-	EsPanel *panelButtonStack = EsPanelCreate(panelStack, ES_CELL_V_TOP | ES_PANEL_VERTICAL, &stylePanelButtonStack);
+	EsPanel *panelStack = EsPanelCreate(panelRoot, ES_CELL_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&stylePanelStack));
+	EsPanel *panelButtonStack = EsPanelCreate(panelStack, ES_CELL_V_TOP | ES_PANEL_VERTICAL, EsStyleIntern(&stylePanelButtonStack));
 	buttonBuild = EsButtonCreate(panelButtonStack, ES_BUTTON_DEFAULT, ES_NULL, INTERFACE_STRING(BuildCoreBuild));
 	EsCommandAddButton(&commandBuild, buttonBuild);
 	buttonBuild->accessKey = 'B';
@@ -1944,7 +1944,7 @@ void InstanceCreate(EsMessage *message) {
 	EsCommandAddButton(&commandLaunch, buttonLaunch);
 	buttonLaunch->accessKey = 'L';
 	EsSpacerCreate(panelStack, ES_CELL_V_FILL, ES_STYLE_SEPARATOR_VERTICAL, 0, 0);
-	textboxLog = EsTextboxCreate(panelStack, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleTextboxLog);
+	textboxLog = EsTextboxCreate(panelStack, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, EsStyleIntern(&styleTextboxLog));
 	textboxLog->accessKey = 'O';
 	EsTextboxSetReadOnly(textboxLog, true);
 }

@@ -3407,7 +3407,7 @@ void Export() {
 				}
 			}
 
-			fprintf(output, " (ES_STYLE_CAST(%d))\n", (headerID << 1) | 1);
+			fprintf(output, " (0x%.8X)\n", 0x80000000 | headerID);
 		}
 	}
 
@@ -3441,7 +3441,7 @@ void Export() {
 		
 		int32_t headerID = PropertyReadInt32(object, "headerID");
 		ThemeStyle entry = {};
-		entry.id = (headerID << 1) | 1;
+		entry.id = (uint32_t) headerID;
 		entry.layerCount = 1;
 
 		Object *appearance = PropertyFindOrInheritReadObject(object, "appearance");

@@ -39,6 +39,7 @@ type_name uint64_t EsTimer;
 type_name int64_t EsListViewIndex;
 type_name uint64_t EsObjectID;
 type_name uint32_t EsDeviceColor; // TODO Make this 64-bit?
+type_name uint32_t EsStyleID;
 
 define ES_SCANCODE_A				(0x04)
 define ES_SCANCODE_B				(0x05)
@@ -1368,8 +1369,8 @@ struct EsThemeAppearance {
 };
 
 struct EsStyle {
-	void *inherit;
-	EsThemeMetrics metrics;
+	EsStyleID inherit; // Must be a built-in style.
+	EsThemeMetrics metrics; // Unscaled!
 	EsThemeAppearance appearance;
 };
 
@@ -1835,7 +1836,7 @@ struct EsMessage {
 		EsMessageWindowActivated windowActivated;
 		EsMessageScroll scroll;
 		EsMessageEnsureVisible ensureVisible;
-		const EsStyle *childStyleVariant;
+		EsStyleID childStyleVariant;
 		EsRectangle *accessKeyHintBounds;
 		EsPainter *painter;
 		EsCursorStyle cursorStyle;
@@ -2186,7 +2187,7 @@ function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRe
 function void EsDrawPaintTarget(EsPainter *painter, EsPaintTarget *source, EsRectangle destinationRegion, EsRectangle sourceRegion, uint8_t alpha) @opaque(painter); 
 function void EsDrawText(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsRectangle *clip = ES_NULL, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties) @in(clip); 
 function void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsTextStyle style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter);
-function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, const EsStyle *style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter); // The style must be one of the ES_STYLE_TEXT_... styles.
+function void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, STRING stringBytes, EsStyleID style, uint32_t flags = ES_FLAGS_DEFAULT) @opaque(painter); // The style must be one of the ES_STYLE_TEXT_... styles.
 function void EsDrawTextLayers(EsPainter *painter, EsTextPlan *plan, EsRectangle bounds, const EsTextSelection *selectionProperties = ES_NULL) @opaque(painter) @in(selectionProperties); 
 function void EsDrawVectorFile(EsPainter *painter, EsRectangle bounds, const void *data, size_t dataBytes) @opaque(painter) @buffer_in(data, dataBytes);
 
@@ -2219,6 +2220,9 @@ function EsFontInformation *EsFontDatabaseEnumerate(size_t *count) @out(count) @
 function bool EsFontDatabaseLookupByName(STRING name, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
 function bool EsFontDatabaseLookupByID(EsFontFamily id, EsFontInformation *information) @out(information); // Returns false if the font does not exist in the database.
 function EsFontFamily EsFontDatabaseInsertFile(const EsFontInformation *information, EsFileStore *store) @in(information); // Don't set the `id` field in EsFontInformation. The assigned ID will be returned. If nameBytes is 0, then the system will not try to match it with an existing font family. Set the corresponding bit in availableWeightsNormal/availableWeightsItalic for the file being added. The request is ignored if the specific variant is already in the database.
+
+function EsStyleID EsStyleIntern(const EsStyle *style) @in(style); // Once a style has been interned, it cannot be removed. Duplicate styles will be given the same ID.
+// TODO Add an alternative API which allows for adding and removing styles dynamically.
 
 // Networking.
 
@@ -2453,8 +2457,8 @@ function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = 
 function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
 
 // TODO Rename these functions?
-function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
 function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message) @todo(); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
 function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
@@ -2488,7 +2492,7 @@ function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
 function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT);
-function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
+function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
 function void EsDialogClose(EsDialog *dialog);
 function EsElement *EsDialogGetContentArea(EsDialog *dialog);
 
@@ -2500,7 +2504,7 @@ private function void _EsUISetFont(EsFontFamily id);
 
 // Buttons.
 
-function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
+function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
 function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height, stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
@@ -2511,7 +2515,7 @@ function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public pro
 
 // Textboxes.
 
-function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags) @out(line) @out(byte);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
@@ -2537,16 +2541,16 @@ function void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly); // Preven
 
 // Sliders.
 
-function EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, double value = 0, uint32_t steps = 0);
+function EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, double value = 0, uint32_t steps = 0);
 function double EsSliderGetValue(EsSlider *slider);
 function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage = true);
 
 // Panels, spacers and splitters.
 
-function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, int width = 0, int height = 0);
-function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
-function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, int width = 0, int height = 0);
+function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
 function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL) @array_in(columns, columnCount) @array_in(rows, rowCount);
 function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL) @in(column) @in(row); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
@@ -2558,24 +2562,24 @@ function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier
 
 function EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel);
 
-function void EsSpacerChangeStyle(EsSpacer *spacer, const EsStyle *newStyle);
+function void EsSpacerChangeStyle(EsSpacer *spacer, EsStyleID newStyle);
 
 // Static displays.
 
-function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, uint32_t iconID = 0);
+function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, uint32_t iconID = 0);
 function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 
-function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height);
 function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) @buffer_in(buffer, bufferBytes);
 function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds) @opaque(painter);
 
-function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL, STRING label = BLANK_STRING);
+function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);
 function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount) @todo(); // See EsTextPlanCreate for how runCount works.
 function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 
-function EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, const EsStyle *style = ES_NULL);
+function EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsListDisplaySetCounterContinuation(EsListDisplay *display, EsListDisplay *previous);
 function void EsListDisplaySetCounterStart(EsListDisplay *display, uintptr_t index); // If index = 0, then the first item will be "1." or "(a)".
 
@@ -2591,9 +2595,7 @@ function void EsColorWellSetIndeterminate(EsColorWell *well);
 
 // List views.
 
-function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, 
-		const EsStyle *style = ES_NULL, const EsStyle *itemStyle = ES_NULL, 
-		const EsStyle *headerItemStyle = ES_NULL, const EsStyle *footerItemStyle = ES_NULL);
+function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, EsStyleID itemStyle = 0, EsStyleID headerItemStyle = 0, EsStyleID footerItemStyle = 0);
 
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL) @out(group);
 function EsListViewEnumeratedVisibleItem *EsListViewEnumerateVisibleItems(EsListView *view, size_t *count) @out(count) @heap_array_out(return, count*);
@@ -2609,8 +2611,7 @@ function bool EsListViewGetFocusedItem(EsListView *view, EsListViewIndex *group,
 function void EsListViewInvalidateContent(EsListView *view, EsListViewIndex group, EsListViewIndex index);
 function void EsListViewInvalidateAll(EsListView *view);
 function void EsListViewContentChanged(EsListView *view);
-function void EsListViewChangeStyles(EsListView *view, const EsStyle *style, const EsStyle *itemStyle, 
-		const EsStyle *headerItemStyle, const EsStyle *footerItemStyle, uint32_t addFlags, uint32_t removeFlags);
+function void EsListViewChangeStyles(EsListView *view, EsStyleID style, EsStyleID itemStyle, EsStyleID headerItemStyle, EsStyleID footerItemStyle, uint32_t addFlags, uint32_t removeFlags);
 function void EsListViewScrollToEnd(EsListView *view);
 function EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view);
 

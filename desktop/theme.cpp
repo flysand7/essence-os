@@ -236,7 +236,8 @@ typedef struct ThemeStyle {
 	// **This must be the first field in the structure; see the end of Export in util/designer2.cpp.**
 	uint32_t layerListOffset; 
 
-	uint16_t id;
+	uint32_t id;
+	uint16_t _unused0;
 	uint8_t layerCount;
 	uint8_t _unused1;
 	Rectangle8 paintOutsets, opaqueInsets, approximateBorders;
@@ -331,7 +332,7 @@ static const float gaussLookup[] = {
 
 #ifndef IN_DESIGNER
 struct UIStyleKey {
-	uintptr_t part;
+	EsStyleID part;
 	float scale;
 	uint16_t stateFlags;
 	uint16_t _unused1;
@@ -346,6 +347,7 @@ struct {
 	float scale;
 	HashStore<UIStyleKey, struct UIStyle *> loadedStyles;
 	uint32_t windowColors[6];
+	Array<EsStyle> internedStyles;
 } theming;
 #endif
 
@@ -1212,7 +1214,7 @@ struct UIStyle {
 	uint32_t observedStyleStateMask;
 	EsRectangle paintOutsets, opaqueInsets;
 	float scale;
-	EsThemeAppearance *appearance; // An optional, custom appearance provided by the application.
+	ptrdiff_t appearanceIndex; // An optional, custom appearance provided by the application.
 
 	// Data.
 
@@ -1241,6 +1243,8 @@ struct UIStyle {
 };
 
 void ThemeInitialise() {
+	EsMessageMutexCheck();
+
 	if (theming.initialised) return;
 	theming.initialised = true;
 
@@ -1523,8 +1527,7 @@ void ThemeAnimationBuild(ThemeAnimation *animation, UIStyle *oldStyle, uint16_t 
 	_ThemeAnimationBuildAddProperties(animation, oldStyle, newStateFlags);
 }
 
-void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
-	EsStyle *esStyle = (key.part & 1) || (!key.part) ? nullptr : (EsStyle *) (key.part);
+void ThemeStylePrepare(UIStyle *style, EsStyle *esStyle, UIStyleKey key) {
 	EsThemeMetrics *customMetrics = esStyle ? &esStyle->metrics : nullptr;
 	const ThemeStyle *themeStyle = style->style;
 
@@ -1559,9 +1562,7 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 		if (customMetrics->mask & ES_THEME_METRICS_LAYOUT_VERTICAL) style->metrics->layoutVertical = customMetrics->layoutVertical;
 	}
 
-	if (esStyle && esStyle->appearance.enabled) {
-		style->appearance = &esStyle->appearance;
-	}
+	style->appearanceIndex = esStyle && esStyle->appearance.enabled ? (ptrdiff_t) (key.part - 1) : -1;
 
 	// Apply scaling to the metrics.
 
@@ -1600,8 +1601,10 @@ void ThemeStylePrepare(UIStyle *style, UIStyleKey key) {
 		style->opaqueInsets.b = themeStyle->opaqueInsets.b * key.scale;
 	}
 
-	if (style->appearance) {
-		if ((style->appearance->backgroundColor & 0xFF000000) == 0xFF000000) {
+	if (style->appearanceIndex != -1) {
+		EsThemeAppearance *appearance = &theming.internedStyles[style->appearanceIndex].appearance;
+
+		if ((appearance->backgroundColor & 0xFF000000) == 0xFF000000) {
 			style->opaqueInsets = ES_RECT_1(0);
 		} else {
 			style->opaqueInsets = ES_RECT_1(0x7F);
@@ -1616,9 +1619,8 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 
 	// Find the ThemeStyle entry.
 
-	EsStyle *esStyle = (key.part & 1) || (!key.part) ? nullptr : (EsStyle *) (key.part);
-	uint16_t id = esStyle ? (uint16_t) (uintptr_t) esStyle->inherit : key.part;
-	if (!id) id = 1;
+	EsStyle *esStyle = (key.part & 0x80000000) || (!key.part) ? nullptr : &theming.internedStyles[key.part - 1];
+	EsStyleID id = (esStyle ? esStyle->inherit : key.part) & ~0x80000000;
 
 	EsBuffer data = theming.system;
 	const ThemeHeader *header = (const ThemeHeader *) EsBufferRead(&data, sizeof(ThemeHeader));
@@ -1804,12 +1806,27 @@ UIStyle *ThemeStyleInitialise(UIStyleKey key) {
 		layerDataByteCount += layer->dataByteCount;
 	}
 
-	ThemeStylePrepare(style, key);
+	ThemeStylePrepare(style, esStyle, key);
 	return style;
 }
 
-UIStyleKey MakeStyleKey(const EsStyle *style, uint16_t stateFlags) {
-	return { .part = (uintptr_t) style, .scale = theming.scale, .stateFlags = stateFlags };
+UIStyleKey MakeStyleKey(EsStyleID style, uint16_t stateFlags) {
+	return { .part = style, .scale = theming.scale, .stateFlags = stateFlags };
+}
+
+EsStyleID EsStyleIntern(const EsStyle *style) {
+	// TODO Faster lookup.
+
+	EsMessageMutexCheck();
+
+	for (uintptr_t i = 0; i < theming.internedStyles.Length(); i++) {
+		if (0 == EsMemoryCompare(&theming.internedStyles[i], style, sizeof(EsStyle))) {
+			return i + 1;
+		}
+	}
+
+	theming.internedStyles.AddPointer(style);
+	return theming.internedStyles.Length();
 }
 
 void FreeUnusedStyles(bool includePermanentStyles) {
@@ -1843,7 +1860,7 @@ UIStyle *GetStyle(UIStyleKey key, bool keepAround) {
 	return *style;
 }
 
-void GetPreferredSizeFromStylePart(const EsStyle *esStyle, int64_t *width, int64_t *height) {
+void GetPreferredSizeFromStylePart(EsStyleID esStyle, int64_t *width, int64_t *height) {
 	UIStyle *style = GetStyle(MakeStyleKey(esStyle, ES_FLAGS_DEFAULT), true);
 	if (width) *width = style->preferredWidth;
 	if (height) *height = style->preferredHeight;
@@ -1917,7 +1934,7 @@ void UIStyle::PaintText(EsPainter *painter, EsElement *element, EsRectangle rect
 	}
 
 	if (flags & (ES_DRAW_CONTENT_MARKER_DOWN_ARROW | ES_DRAW_CONTENT_MARKER_UP_ARROW)) {
-		EsStyle *part = (flags & ES_DRAW_CONTENT_MARKER_DOWN_ARROW) ? ES_STYLE_MARKER_DOWN_ARROW : ES_STYLE_MARKER_UP_ARROW;
+		EsStyleID part = (flags & ES_DRAW_CONTENT_MARKER_DOWN_ARROW) ? ES_STYLE_MARKER_DOWN_ARROW : ES_STYLE_MARKER_UP_ARROW;
 		UIStyle *style = GetStyle(MakeStyleKey(part, 0), true);
 		textBounds.r -= style->preferredWidth + gapMinor;
 		EsRectangle location = ES_RECT_4PD(bounds.r - style->preferredWidth - painter->offsetX, 
@@ -2011,8 +2028,9 @@ void UIStyle::PaintLayers(EsPainter *painter, EsRectangle location, int childTyp
 			_bounds.t + opaqueInsets.t, _bounds.b - opaqueInsets.b);
 	}
 
-	if (appearance && whichLayers == 0) {
-		EsDrawRectangle(painter, _bounds, appearance->backgroundColor, appearance->borderColor, appearance->borderSize);
+	if (appearanceIndex != -1 && whichLayers == 0) {
+		EsThemeAppearance *themeAppearance = &theming.internedStyles[appearanceIndex].appearance;
+		EsDrawRectangle(painter, _bounds, themeAppearance->backgroundColor, themeAppearance->borderColor, themeAppearance->borderSize);
 		return;
 	}
 

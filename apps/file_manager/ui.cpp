@@ -173,12 +173,12 @@ void InstanceRefreshViewType(Instance *instance) {
 	EsCommandSetCheck(&instance->commandViewThumbnails, instance->viewSettings.viewType == VIEW_THUMBNAILS ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 
 	if (instance->viewSettings.viewType == VIEW_DETAILS) {
-		EsListViewChangeStyles(instance->list, &styleFolderView, ES_STYLE_LIST_ITEM, nullptr, nullptr, ES_LIST_VIEW_COLUMNS, ES_LIST_VIEW_TILED);
+		EsListViewChangeStyles(instance->list, EsStyleIntern(&styleFolderView), ES_STYLE_LIST_ITEM, 0, 0, ES_LIST_VIEW_COLUMNS, ES_LIST_VIEW_TILED);
 		EsListViewAddAllColumns(instance->list);
 	} else if (instance->viewSettings.viewType == VIEW_TILES) {
-		EsListViewChangeStyles(instance->list, &styleFolderViewTiled, ES_STYLE_LIST_ITEM_TILE, nullptr, nullptr, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
+		EsListViewChangeStyles(instance->list, EsStyleIntern(&styleFolderViewTiled), ES_STYLE_LIST_ITEM_TILE, 0, 0, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
 	} else if (instance->viewSettings.viewType == VIEW_THUMBNAILS) {
-		EsListViewChangeStyles(instance->list, &styleFolderViewTiled, &styleFolderItemThumbnail, nullptr, nullptr, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
+		EsListViewChangeStyles(instance->list, EsStyleIntern(&styleFolderViewTiled), EsStyleIntern(&styleFolderItemThumbnail), 0, 0, ES_LIST_VIEW_TILED, ES_LIST_VIEW_COLUMNS);
 	}
 }
 
@@ -1134,7 +1134,7 @@ void InstanceCreateUI(Instance *instance) {
 	// Places:
 
 	instance->placesView = EsListViewCreate(splitter, ES_CELL_EXPAND | ES_CELL_COLLAPSABLE | ES_LIST_VIEW_SINGLE_SELECT | ES_CELL_V_FILL, 
-			&stylePlacesView, ES_STYLE_LIST_ITEM, ES_STYLE_LIST_ITEM, nullptr);
+			EsStyleIntern(&stylePlacesView), ES_STYLE_LIST_ITEM, ES_STYLE_LIST_ITEM, 0);
 	instance->placesView->accessKey = 'P';
 	instance->placesView->messageUser = PlacesViewCallback;
 	EsListViewInsertGroup(instance->placesView, PLACES_VIEW_GROUP_BOOKMARKS, ES_LIST_VIEW_GROUP_HAS_HEADER | ES_LIST_VIEW_GROUP_INDENT);
@@ -1144,7 +1144,7 @@ void InstanceCreateUI(Instance *instance) {
 
 	// Main list:
 
-	instance->list = EsListViewCreate(splitter, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_MULTI_SELECT, &styleFolderView);
+	instance->list = EsListViewCreate(splitter, ES_CELL_FILL | ES_LIST_VIEW_COLUMNS | ES_LIST_VIEW_MULTI_SELECT, EsStyleIntern(&styleFolderView));
 	instance->list->accessKey = 'L';
 	instance->list->messageUser = ListCallback;
 	EsListViewRegisterColumn(instance->list, COLUMN_NAME, INTERFACE_STRING(FileManagerColumnName), ES_LIST_VIEW_COLUMN_HAS_MENU);

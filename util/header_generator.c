@@ -956,45 +956,39 @@ void OutputOdin(Entry *root) {
 		if (entry->isPrivate) continue;
 
 		if (entry->type == ENTRY_DEFINE) {
-			const char *styleCast = strstr(entry->define.value, "STYLE_CAST(");
+			const char *name = TrimPrefix(entry->name);
+			const char *value = OdinReplaceTypes(entry->define.value, false);
 
-			if (styleCast) {
-				FilePrintFormat(output, "%s :: (^Style)(uintptr(%d));\n", TrimPrefix(entry->name), atoi(styleCast + 11));
-			} else {
-				const char *name = TrimPrefix(entry->name);
-				const char *value = OdinReplaceTypes(entry->define.value, false);
+			const char *enumPrefix = NULL;
+			char e[64];
+			int ep = 0;
 
-				const char *enumPrefix = NULL;
-				char e[64];
-				int ep = 0;
-
-				for (uintptr_t i = 0; value[i]; i++) {
-					if (value[i] == ' ' || value[i] == '(' || value[i] == ')' 
-							|| value[i] == '\t' || ep == sizeof(e) - 1) {
-						// Ignore.
-					} else {
-						e[ep++] = value[i];
-						e[ep] = 0;
-					}
+			for (uintptr_t i = 0; value[i]; i++) {
+				if (value[i] == ' ' || value[i] == '(' || value[i] == ')' 
+						|| value[i] == '\t' || ep == sizeof(e) - 1) {
+					// Ignore.
+				} else {
+					e[ep++] = value[i];
+					e[ep] = 0;
 				}
+			}
 
-				for (int i = 0; i < arrlen(root->children); i++) {
-					if (root->children[i].type == ENTRY_ENUM) {
-						for (int j = 0; j < arrlen(root->children[i].children); j++) {
-							const char *enumName = TrimPrefix(root->children[i].children[j].name);
+			for (int i = 0; i < arrlen(root->children); i++) {
+				if (root->children[i].type == ENTRY_ENUM) {
+					for (int j = 0; j < arrlen(root->children[i].children); j++) {
+						const char *enumName = TrimPrefix(root->children[i].children[j].name);
 
-							if (0 == strcmp(enumName, e)) {
-								enumPrefix = TrimPrefix(root->children[i].name);
-								value = enumName;
-								goto gotEnumPrefix;
-							}
+						if (0 == strcmp(enumName, e)) {
+							enumPrefix = TrimPrefix(root->children[i].name);
+							value = enumName;
+							goto gotEnumPrefix;
 						}
 					}
 				}
-
-				gotEnumPrefix:;
-				FilePrintFormat(output, "%s :: %s%s%s;\n", name, enumPrefix ? enumPrefix : "", enumPrefix ? "." : "", value);
 			}
+
+			gotEnumPrefix:;
+			FilePrintFormat(output, "%s :: %s%s%s;\n", name, enumPrefix ? enumPrefix : "", enumPrefix ? "." : "", value);
 		} else if (entry->type == ENTRY_STRUCT) {
 			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
 			OutputOdinRecord(entry, 0);
@@ -1065,10 +1059,6 @@ char *ZigRemoveTabs(const char *string) {
 void OutputZigType(Entry *entry) {
 	if (0 == strcmp(entry->variable.type, "void") && entry->variable.pointer) {
 		entry->variable.type = (char *) "u8";
-	} else if (0 == strcmp(entry->variable.type, "EsStyle")) {
-		assert(entry->variable.pointer);
-		entry->variable.type = (char *) "usize";
-		entry->variable.pointer--;
 	}
 
 	FilePrintFormat(output, "%c%.*s%s%s", 
@@ -1211,7 +1201,6 @@ void OutputZig(Entry *root) {
 	FilePrintFormat(output, "const INSTANCE_TYPE = Instance;\n");
 	FilePrintFormat(output, "pub const STRING = extern struct { ptr : [*] const u8, len : usize, };\n");
 	FilePrintFormat(output, "pub fn Str(x : [] const u8) STRING { return STRING { .ptr = x.ptr, .len = x.len }; }\n");
-	FilePrintFormat(output, "fn STYLE_CAST (x : isize) isize { return x; }\n");
 
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;
@@ -1263,6 +1252,7 @@ void Analysis(Entry *root) {
 		Entry *resolved = NULL;
 		Entry *unresolved = NULL;
 		bool understood = false;
+		const char *unresolvableName = NULL;
 		
 		for (int i = 0; i < arrlen(entry->annotations); i++) {
 			Entry *annotation = entry->annotations + i;
@@ -1311,10 +1301,6 @@ void Analysis(Entry *root) {
 			}
 
 			if (e.variable.pointer == 1 && !e.variable.isConst && (0 == strcmp(e.variable.type, "ES_INSTANCE_TYPE"))) {
-				goto resolved;
-			}
-
-			if (e.variable.pointer == 1 && e.variable.isConst && (0 == strcmp(e.variable.type, "EsStyle"))) {
 				goto resolved;
 			}
 
@@ -1452,6 +1438,7 @@ void Analysis(Entry *root) {
 				}
 			}
 
+			unresolvableName = e.name;
 			goto end;
 			resolved:;
 			arrput(resolved, e);
@@ -1475,7 +1462,10 @@ void Analysis(Entry *root) {
 			}
 		}
 
-		assert(hasTODOMarker == !understood);
+		if (hasTODOMarker == understood) {
+			Log("%s %s\n", entry->children[0].name, unresolvableName);
+			assert(false);
+		}
 	}
 }
 

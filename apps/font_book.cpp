@@ -153,12 +153,12 @@ int FontListMessage(EsElement *element, EsMessage *message) {
 	Instance *instance = element->instance;
 
 	if (message->type == ES_MSG_LIST_VIEW_CREATE_ITEM) {
-		EsPanel *panel = EsPanelCreate(message->createItem.item, ES_CELL_FILL, &styleFontInformationPanel);
+		EsPanel *panel = EsPanelCreate(message->createItem.item, ES_CELL_FILL, EsStyleIntern(&styleFontInformationPanel));
 		EsFontInformation *font = &instance->fonts[message->createItem.index];
 
-		EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+		EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleFontInformationRow));
 		// EsIconDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY_SMALL, ES_ICON_FONT_X_GENERIC);
-		EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, &styleFontName, font->name, font->nameBytes);
+		EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, EsStyleIntern(&styleFontName), font->name, font->nameBytes);
 		EsSpacerCreate(row, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
 
 		EsElement *preview = EsCustomElementCreate(panel, ES_CELL_FILL, ES_STYLE_TEXT_PARAGRAPH);
@@ -172,7 +172,7 @@ int FontListMessage(EsElement *element, EsMessage *message) {
 			if (font->availableWeightsItalic & (1 << i)) variants++;
 		}
 
-		row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+		row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleFontInformationRow));
 
 		char description[256]; // TODO Localization.
 		size_t descriptionBytes = EsStringFormat(description, sizeof(description), "%s " HYPHENATION_POINT " %d variant%z", 
@@ -316,7 +316,7 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 
 			EsElementDestroyContents(instance->fontPreview);
 
-			EsPanel *titleRow = EsPanelCreate(instance->fontPreview, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+			EsPanel *titleRow = EsPanelCreate(instance->fontPreview, ES_CELL_H_CENTER | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleFontInformationRow));
 			EsIconDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_ICON_DISPLAY, ES_ICON_FONT_X_GENERIC);
 			EsTextDisplayCreate(titleRow, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_HEADING0, message->instanceOpen.nameOrPath, message->instanceOpen.nameOrPathBytes);
 			EsSpacerCreate(instance->fontPreview, ES_FLAGS_DEFAULT, 0, 0, 20);
@@ -324,7 +324,7 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 			int sizes[] = { 12, 18, 24, 36, 48, 60, 72, 0 };
 
 			for (uintptr_t i = 0; sizes[i]; i++) {
-				EsPanel *row = EsPanelCreate(instance->fontPreview, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleFontInformationRow);
+				EsPanel *row = EsPanelCreate(instance->fontPreview, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleFontInformationRow));
 				char buffer[64];
 				EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, 0, buffer, EsStringFormat(buffer, sizeof(buffer), "%d", sizes[i]));
 				EsTextDisplay *display = EsTextDisplayCreate(row, ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION);
@@ -376,7 +376,7 @@ void _start() {
 			// Font list page:
 
 			uint64_t flags = ES_CELL_FILL | ES_LIST_VIEW_TILED | ES_LIST_VIEW_CENTER_TILES;
-			EsListView *fontList = EsListViewCreate(instance->switcher, flags, &styleFontList, &styleFontItem);
+			EsListView *fontList = EsListViewCreate(instance->switcher, flags, EsStyleIntern(&styleFontList), EsStyleIntern(&styleFontItem));
 			EsListViewSetMaximumItemsPerBand(fontList, 4);
 			EsListViewInsertGroup(fontList, 0);
 			instance->fontList = fontList;
@@ -388,7 +388,7 @@ void _start() {
 
 			// Font preview page:
 
-			instance->fontPreview = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, &styleFontPreviewPage);
+			instance->fontPreview = EsPanelCreate(instance->switcher, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO, EsStyleIntern(&styleFontPreviewPage));
 
 			// Font list toolbar:
 

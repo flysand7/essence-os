@@ -357,7 +357,7 @@ void ProcessApplicationMessage(EsMessage *message) {
 		EsSpacerCreate(panel, ES_CELL_FILL);
 		gameArea = EsCustomElementCreate(panel, ES_ELEMENT_FOCUSABLE);
 		gameArea->messageUser = GameAreaMessage;
-		EsSpacerCreate(panel, ES_FLAGS_DEFAULT, nullptr, 30, 0);
+		EsSpacerCreate(panel, ES_FLAGS_DEFAULT, 0, 30, 0);
 		EsPanel *info = EsPanelCreate(panel);
 		EsSpacerCreate(panel, ES_CELL_FILL);
 
@@ -365,12 +365,12 @@ void ProcessApplicationMessage(EsMessage *message) {
 		info->messageUser = InfoPanelMessage;
 		EsTextDisplayCreate(info, ES_CELL_H_FILL, ES_STYLE_TEXT_LABEL_SECONDARY, INTERFACE_STRING(Game2048Score));
 		scoreDisplay = EsTextDisplayCreate(info, ES_CELL_H_FILL, ES_STYLE_TEXT_HEADING0);
-		EsSpacerCreate(info, ES_FLAGS_DEFAULT, nullptr, 0, 10);
+		EsSpacerCreate(info, ES_FLAGS_DEFAULT, 0, 0, 10);
 		highScoreDisplay = EsTextDisplayCreate(info, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, ES_STYLE_TEXT_LABEL_SECONDARY);
 		EsSpacerCreate(info, ES_CELL_FILL);
 		EsTextDisplayCreate(info, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, ES_STYLE_TEXT_PARAGRAPH_SECONDARY, INTERFACE_STRING(Game2048Instructions));
-		EsSpacerCreate(info, ES_FLAGS_DEFAULT, nullptr, 0, 10);
-		EsButton *newGame = EsButtonCreate(info, ES_CELL_H_LEFT | ES_BUTTON_NOT_FOCUSABLE, nullptr, INTERFACE_STRING(Game2048NewGame));
+		EsSpacerCreate(info, ES_FLAGS_DEFAULT, 0, 0, 10);
+		EsButton *newGame = EsButtonCreate(info, ES_CELL_H_LEFT | ES_BUTTON_NOT_FOCUSABLE, 0, INTERFACE_STRING(Game2048NewGame));
 		newGame->accessKey = 'N';
 		EsButtonOnCommand(newGame, NewGameCommand);
 

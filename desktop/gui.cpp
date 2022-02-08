@@ -103,7 +103,7 @@ void UIMouseUp(EsWindow *window, EsMessage *message, bool sendClick);
 void UIMaybeRemoveFocusedElement(EsWindow *window);
 EsTextStyle TextPlanGetPrimaryStyle(EsTextPlan *plan);
 EsElement *UIFindHoverElementRecursively(EsElement *element, int offsetX, int offsetY, EsPoint position);
-const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent);
+EsStyleID UIGetDefaultStyleVariant(EsStyleID style, EsElement *parent);
 void AccessKeysCenterHint(EsElement *element, EsMessage *message);
 void UIRemoveFocusFromElement(EsElement *oldFocus);
 void UIQueueEnsureVisibleMessage(EsElement *element, bool center);
@@ -235,7 +235,7 @@ struct EsElement : EsElementPublic {
 	bool RefreshStyleState(); // Returns true if any observed bits have changed.
 	void RefreshStyle(UIStyleKey *oldStyleKey = nullptr, bool alreadyRefreshStyleState = false, bool force = false);
 	bool StartAnimating();
-	void SetStyle(const EsStyle *stylePart, bool refreshIfChanged = true);
+	void SetStyle(EsStyleID stylePart, bool refreshIfChanged = true);
 
 	inline void MaybeRefreshStyle() {
 		if (RefreshStyleState()) {
@@ -262,7 +262,7 @@ struct EsElement : EsElementPublic {
 
 	void Repaint(bool all, EsRectangle region = ES_RECT_1(0) /* client coordinates */);
 
-	void Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, const EsStyle *style);
+	void Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, EsStyleID style);
 };
 
 struct MeasurementCache {
@@ -375,7 +375,7 @@ struct EsPanel : EsElement {
 	
 	ScrollPane scroll;
 
-	const EsStyle *separatorStylePart;
+	EsStyleID separatorStylePart;
 	bool addingSeparator;
 	uint64_t separatorFlags;
 	
@@ -926,7 +926,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 
 	window->id = EsSyscall(ES_SYSCALL_WINDOW_GET_ID, window->handle, 0, 0, 0);
 	window->window = window;
-	window->Initialise(nullptr, ES_CELL_FILL, ProcessRootMessage, nullptr);
+	window->Initialise(nullptr, ES_CELL_FILL, ProcessRootMessage, 0);
 	window->cName = "window";
 	window->width = window->windowWidth, window->height = window->windowHeight;
 	window->hovered = window;
@@ -943,7 +943,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		window->mainPanel->cName = "window root";
 		window->toolbarSwitcher = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_PANEL_SWITCHER | ES_CELL_FILL, ES_STYLE_PANEL_TOOLBAR_ROOT);
 		window->toolbarSwitcher->cName = "toolbar";
-		EsElement *accessKeyLayer = EsCustomElementCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL | ES_ELEMENT_NO_HOVER, nullptr);
+		EsElement *accessKeyLayer = EsCustomElementCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL | ES_ELEMENT_NO_HOVER, 0);
 		accessKeyLayer->cName = "access key layer";
 		accessKeyLayer->messageUser = AccessKeyLayerMessage;
 		window->state |= UI_STATE_Z_STACK;
@@ -955,7 +955,7 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		EsSyscall(ES_SYSCALL_WINDOW_MOVE, window->handle, (uintptr_t) &bounds, 0, ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN);
 	} else if (style == ES_WINDOW_TIP || style == ES_WINDOW_PLAIN) {
 		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, style == ES_WINDOW_PLAIN ? ES_WINDOW_SOLID_TRUE : ES_FLAGS_DEFAULT, 0, ES_WINDOW_PROPERTY_SOLID);
-		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, nullptr);
+		window->mainPanel = EsPanelCreate(window, ES_ELEMENT_NON_CLIENT | ES_CELL_FILL, 0);
 	} else if (style == ES_WINDOW_MENU) {
 		window->SetStyle(ES_STYLE_MENU_ROOT);
 
@@ -1849,7 +1849,7 @@ void EsElement::RefreshStyle(UIStyleKey *_oldStyleKey, bool alreadyRefreshStyleS
 	}
 }
 
-void EsElement::SetStyle(const EsStyle *part, bool refreshIfChanged) {
+void EsElement::SetStyle(EsStyleID part, bool refreshIfChanged) {
 	UIStyleKey oldStyleKey = currentStyleKey;
 	currentStyleKey.part = (uintptr_t) part;
 
@@ -2762,7 +2762,7 @@ Scrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 		}
 
 		return ES_HANDLED;
-	}, nullptr);
+	}, 0);
 
 	scrollbar->cName = "scrollbar";
 
@@ -2794,7 +2794,7 @@ Scrollbar *ScrollbarCreate(EsElement *parent, uint64_t flags) {
 		}
 
 		return ES_HANDLED;
-	}, nullptr);
+	}, 0);
 
 	scrollbar->thumb->cName = "scrollbar thumb";
 
@@ -3082,7 +3082,7 @@ void EsScrollViewSetFixedViewport(EsScrollView *view, int axis, int32_t value) {
 bool EsScrollViewIsBarEnabled(EsScrollView *view, int axis) { return view->scroll.enabled[axis]; }
 bool EsScrollViewIsInDragScroll(EsScrollView *view) { return view->scroll.dragScrolling; }
 
-EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsScrollView *element = (EsScrollView *) EsHeapAllocate(sizeof(EsScrollView), true);
 	if (!element) return nullptr;
 	element->Initialise(parent, flags, nullptr, style);
@@ -3524,7 +3524,7 @@ int ProcessPanelMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsPanel *panel = (EsPanel *) EsHeapAllocate(sizeof(EsPanel), true);
 	if (!panel) return nullptr;
 
@@ -3560,7 +3560,7 @@ int ProcessSpacerMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsSpacer *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style, int width, int height) {
+EsSpacer *EsSpacerCreate(EsElement *panel, uint64_t flags, EsStyleID style, int width, int height) {
 	EsSpacer *spacer = (EsSpacer *) EsHeapAllocate(sizeof(EsSpacer), true);
 	if (!spacer) return nullptr;
 	spacer->Initialise(panel, flags, ProcessSpacerMessage, style);
@@ -3570,13 +3570,13 @@ EsSpacer *EsSpacerCreate(EsElement *panel, uint64_t flags, const EsStyle *style,
 	return spacer;
 }
 
-void EsSpacerChangeStyle(EsSpacer *spacer, const EsStyle *style) {
+void EsSpacerChangeStyle(EsSpacer *spacer, EsStyleID style) {
 	EsMessageMutexCheck();
 	EsAssert(spacer->messageClass == ProcessSpacerMessage);
 	spacer->SetStyle(style);
 }
 
-EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsElement *element = (EsElement *) EsHeapAllocate(sizeof(EsElement), true);
 	if (!element) return nullptr;
 	element->Initialise(parent, flags, nullptr, style);
@@ -3867,7 +3867,7 @@ EsDialog *EsDialogShow(EsWindow *window, const char *title, ptrdiff_t titleBytes
 	return dialog;
 }
 
-EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
+EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags, EsStyleID style, const char *label, ptrdiff_t labelBytes, EsCommandCallback callback) {
 	EsButton *button = EsButtonCreate(dialog->buttonArea, flags, style, label, labelBytes);
 
 	if (button) {
@@ -3995,7 +3995,7 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsCanvasPane *pane = (EsCanvasPane *) EsHeapAllocate(sizeof(EsCanvasPane), true);
 	if (!pane) return nullptr;
 	pane->Initialise(parent, flags, ProcessCanvasPaneMessage, style);
@@ -4134,7 +4134,7 @@ void EsTextDisplaySetContents(EsTextDisplay *display, const char *string, ptrdif
 	InspectorNotifyElementContentChanged(display);
 }
 
-EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes) {
+EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags, EsStyleID style, const char *label, ptrdiff_t labelBytes) {
 	EsTextDisplay *display = (EsTextDisplay *) EsHeapAllocate(sizeof(EsTextDisplay), true);
 	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessTextDisplayMessage, style ?: UIGetDefaultStyleVariant(ES_STYLE_TEXT_LABEL, parent));
@@ -4263,7 +4263,7 @@ int ProcessListDisplayMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsListDisplay *display = (EsListDisplay *) EsHeapAllocate(sizeof(EsListDisplay), true);
 	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessListDisplayMessage, style ?: ES_STYLE_LIST_DISPLAY_DEFAULT);
@@ -4465,7 +4465,7 @@ int ProcessButtonMessage(EsElement *element, EsMessage *message) {
 	return ES_HANDLED;
 }
 
-EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, const EsStyle *style, const char *label, ptrdiff_t labelBytes) {
+EsButton *EsButtonCreate(EsElement *parent, uint64_t flags, EsStyleID style, const char *label, ptrdiff_t labelBytes) {
 	EsButton *button = (EsButton *) EsHeapAllocate(sizeof(EsButton), true);
 	if (!button) return button;
 
@@ -4714,7 +4714,7 @@ int ProcessMenuItemMessage(EsElement *element, EsMessage *message) {
 MenuItem *MenuItemCreate(EsMenu *menu, uint64_t flags, const char *label, ptrdiff_t labelBytes) {
 	MenuItem *button = (MenuItem *) EsHeapAllocate(sizeof(MenuItem), true);
 	if (!button) return nullptr;
-	const EsStyle *style = (flags & ES_MENU_ITEM_HEADER) ? ES_STYLE_MENU_ITEM_HEADER : ES_STYLE_MENU_ITEM_NORMAL;
+	EsStyleID style = (flags & ES_MENU_ITEM_HEADER) ? ES_STYLE_MENU_ITEM_HEADER : ES_STYLE_MENU_ITEM_NORMAL;
 	if (flags & ES_MENU_ITEM_HEADER) flags |= ES_ELEMENT_DISABLED;
 	button->Initialise(menu, flags | ES_CELL_H_FILL, ProcessMenuItemMessage, style);
 	button->cName = "menu item";
@@ -5727,7 +5727,7 @@ int ProcessSplitterMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsSplitter *splitter = (EsSplitter *) EsHeapAllocate(sizeof(EsSplitter), true);
 	if (!splitter) return nullptr;
 	splitter->horizontal = flags & ES_SPLITTER_HORIZONTAL;
@@ -5805,7 +5805,7 @@ int ProcessImageDisplayMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsImageDisplay *display = (EsImageDisplay *) EsHeapAllocate(sizeof(EsImageDisplay), true);
 	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessImageDisplayMessage, style);
@@ -5871,7 +5871,7 @@ int ProcessIconDisplayMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
-EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags, const EsStyle *style, uint32_t iconID) {
+EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags, EsStyleID style, uint32_t iconID) {
 	EsIconDisplay *display = (EsIconDisplay *) EsHeapAllocate(sizeof(EsIconDisplay), true);
 	if (!display) return nullptr;
 	display->Initialise(parent, flags, ProcessIconDisplayMessage, style ?: ES_STYLE_ICON_DISPLAY);
@@ -5969,7 +5969,7 @@ void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage
 	}
 }
 
-EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, const EsStyle *style, double value, uint32_t steps) {
+EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags, EsStyleID style, double value, uint32_t steps) {
 	EsSlider *slider = (EsSlider *) EsHeapAllocate(sizeof(EsSlider), true);
 	if (!slider) return nullptr;
 	slider->Initialise(parent, flags | ES_ELEMENT_FOCUSABLE, ProcessSliderMessage, style ?: ES_STYLE_SLIDER_TRACK);
@@ -6094,7 +6094,7 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 
 	EsMenu *menu = EsMenuCreate(element, menuFlags);
 	if (!menu) return;
-	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel1);
+	EsPanel *panel1 = EsPanelCreate(menu, ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, EsStyleIntern(&styleFileMenuDocumentInformationPanel1));
 	if (!panel1) goto show;
 
 	{
@@ -6104,14 +6104,14 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 		EsIconDisplayCreate(panel1, ES_CELL_V_TOP, 0, editorSettings->documentIconID);
 		EsSpacerCreate(panel1, ES_FLAGS_DEFAULT, 0, 5, 0);
 
-		EsPanel *panel2 = EsPanelCreate(panel1, ES_CELL_H_FILL, &styleFileMenuDocumentInformationPanel2);
+		EsPanel *panel2 = EsPanelCreate(panel1, ES_CELL_H_FILL, EsStyleIntern(&styleFileMenuDocumentInformationPanel2));
 		if (!panel2) goto show;
 		EsPanel *switcher = EsPanelCreate(panel2, ES_CELL_H_FILL | ES_PANEL_SWITCHER | ES_PANEL_SWITCHER_MEASURE_LARGEST);
 		if (!switcher) goto show;
-		EsPanel *panel3 = EsPanelCreate(switcher, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, &styleFileMenuDocumentInformationPanel2);
+		EsPanel *panel3 = EsPanelCreate(switcher, ES_PANEL_HORIZONTAL | ES_CELL_H_FILL, EsStyleIntern(&styleFileMenuDocumentInformationPanel2));
 		if (!panel3) goto show;
 
-		instance->fileMenuNameTextbox = EsTextboxCreate(switcher, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED, &styleFileMenuNameTextbox);
+		instance->fileMenuNameTextbox = EsTextboxCreate(switcher, ES_CELL_H_FILL | ES_TEXTBOX_EDIT_BASED, EsStyleIntern(&styleFileMenuNameTextbox));
 
 		instance->fileMenuNameSwitcher = switcher;
 		instance->fileMenuNamePanel = panel3;
@@ -6133,7 +6133,7 @@ void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFl
 		EsButtonOnCommand(renameButton, FileMenuRename);
 
 		if (!newDocument) {
-			EsPanel *panel4 = EsPanelCreate(panel2, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, &styleFileMenuDocumentInformationPanel2);
+			EsPanel *panel4 = EsPanelCreate(panel2, ES_PANEL_TABLE | ES_PANEL_HORIZONTAL | ES_CELL_H_LEFT, EsStyleIntern(&styleFileMenuDocumentInformationPanel2));
 			if (!panel4) goto show;
 			EsPanelSetBands(panel4, 2 /* columns */);
 
@@ -6427,7 +6427,7 @@ EsPoint EsMouseGetPosition(EsElement *relativeElement) {
 	}
 }
 
-const EsStyle *UIGetDefaultStyleVariant(const EsStyle *style, EsElement *parent) {
+EsStyleID UIGetDefaultStyleVariant(EsStyleID style, EsElement *parent) {
 	EsMessage m = { .type = ES_MSG_GET_CHILD_STYLE_VARIANT, .childStyleVariant = style };
 	EsElement *ancestor = parent;
 
@@ -6687,7 +6687,7 @@ void EsElementInsertAfter(EsElement *element) {
 	gui.insertAfter = element;
 }
 
-void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, const EsStyle *_style) {
+void EsElement::Initialise(EsElement *_parent, uint64_t _flags, EsElementCallback _classCallback, EsStyleID _style) {
 	EsMessageMutexCheck();
 
 	// EsPrint("New element '%z' %x with parent %x.\n", _debugName, this, _parent);

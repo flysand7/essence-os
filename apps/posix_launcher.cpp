@@ -189,11 +189,11 @@ void MessageLoopThread(EsGeneric) {
 			EsWindow *window = instance->window;
 			EsWindowSetIcon(window, ES_ICON_UTILITIES_TERMINAL);
 			EsPanel *panel = EsPanelCreate(window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-			textboxOutput = EsTextboxCreate(panel, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, &styleOutputTextbox);
+			textboxOutput = EsTextboxCreate(panel, ES_TEXTBOX_MULTILINE | ES_CELL_FILL, EsStyleIntern(&styleOutputTextbox));
 			EsSpacerCreate(panel, ES_CELL_H_FILL, ES_STYLE_SEPARATOR_HORIZONTAL);
-			EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, &styleInputRow);
+			EsPanel *row = EsPanelCreate(panel, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 			EsTextDisplayCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_TEXT_LABEL, EsLiteral("Input:"));
-			textboxInput = EsTextboxCreate(row, ES_CELL_H_FILL, &styleInputTextbox);
+			textboxInput = EsTextboxCreate(row, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox));
 			EsTextboxEnableSmartReplacement(textboxInput, false);
 			EsTextboxSetReadOnly(textboxOutput, true);
 			textboxInput->messageUser = ProcessTextboxInputMessage;

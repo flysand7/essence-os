@@ -1946,7 +1946,7 @@ int ProcessTextboxMessage(EsElement *element, EsMessage *message) {
 	return response;
 }
 
-EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, const EsStyle *style) {
+EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsTextbox *textbox = (EsTextbox *) EsHeapAllocate(sizeof(EsTextbox), true);
 	if (!textbox) return nullptr;
 

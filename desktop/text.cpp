@@ -2537,7 +2537,7 @@ void EsDrawTextSimple(EsPainter *painter, EsElement *element, EsRectangle bounds
 	EsDrawText(painter, EsTextPlanCreate(element, &properties, bounds, string, textRuns, 1), bounds); 
 }
 
-void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, const EsStyle *style, uint32_t flags) {
+void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds, const char *string, ptrdiff_t stringBytes, EsStyleID style, uint32_t flags) {
 	EsTextStyle textStyle;
 	GetStyle(MakeStyleKey(style, 0), true)->GetTextStyle(&textStyle);
 	EsDrawTextSimple(painter, element, bounds, string, stringBytes, textStyle, flags); 
