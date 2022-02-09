@@ -1239,6 +1239,165 @@ void OutputZig(Entry *root) {
 	}
 }
 
+bool ScriptWriteBasicType(const char *type) {
+	if      (0 == strcmp(type, "uint64_t"))  FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "int64_t"))   FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "uint32_t"))  FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "int32_t"))   FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "uint16_t"))  FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "int16_t"))   FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "uint8_t"))   FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "int8_t"))    FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "char"))      FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "size_t"))    FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "intptr_t"))  FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "uintptr_t")) FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "ptrdiff_t")) FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "unsigned"))  FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "int"))       FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "long"))      FilePrintFormat(output, "int");
+	else if (0 == strcmp(type, "EsGeneric")) FilePrintFormat(output, "int"); // TODO any type.
+	else if (0 == strcmp(type, "double"))    FilePrintFormat(output, "float");
+	else if (0 == strcmp(type, "float"))     FilePrintFormat(output, "float");
+	else if (0 == strcmp(type, "bool"))      FilePrintFormat(output, "bool");
+	else if (0 == strcmp(type, "EsCString")) FilePrintFormat(output, "str");
+	else if (0 == strcmp(type, "STRING"))    FilePrintFormat(output, "str");
+	else return false;
+	return true;
+}
+
+void OutputScript(Entry *root) {
+	// TODO Return values.
+	// TODO Structs, enums, etc.
+
+	int skippedFunctions = 0, totalFunctions = 0;
+
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = &root->children[i];
+		if (entry->isPrivate) continue;
+
+		if (entry->type == ENTRY_FUNCTION && !entry->function.functionPointer) {
+			totalFunctions++;
+
+			for (int i = 0; i < arrlen(entry->annotations); i++) {
+				Entry *annotation = entry->annotations + i;
+
+				if (0 == strcmp(annotation->name, "native")
+						|| 0 == strcmp(annotation->name, "matrix_shared")
+						|| 0 == strcmp(annotation->name, "todo")) {
+					skippedFunctions++;
+					goto skipRootEntry;
+				}
+			}
+
+			FilePrintFormat(output, "void %s(", entry->children[0].name);
+
+			bool firstArgument = true;
+
+			for (int i = 1; i < arrlen(entry->children); i++) {
+				Entry *argument = &entry->children[i];
+				assert(argument->type == ENTRY_VARIABLE);
+				bool bufferIn = false;
+				bool arrayIn = false;
+
+				for (int i = 0; i < arrlen(entry->annotations); i++) {
+					if ((0 == strcmp(entry->annotations[i].name, "out")
+								|| 0 == strcmp(entry->annotations[i].name, "heap_array_out")
+								|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
+							&& 0 == strcmp(entry->annotations[i].children[0].name, argument->name)) {
+						goto skipArgument;
+					} else if ((0 == strcmp(entry->annotations[i].name, "array_in")
+								|| 0 == strcmp(entry->annotations[i].name, "buffer_in")
+								|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
+							&& 0 == strcmp(entry->annotations[i].children[1].name, argument->name)) {
+						goto skipArgument;
+					} else if ((0 == strcmp(entry->annotations[i].name, "buffer_in")
+								|| 0 == strcmp(entry->annotations[i].name, "matrix_in"))
+							&& 0 == strcmp(entry->annotations[i].children[0].name, argument->name)) {
+						bufferIn = true;
+					} else if (0 == strcmp(entry->annotations[i].name, "array_in")
+							&& 0 == strcmp(entry->annotations[i].children[0].name, argument->name)) {
+						arrayIn = true;
+					}
+				}
+
+				if (!firstArgument) {
+					FilePrintFormat(output, ", ");
+				} else {
+					firstArgument = false;
+				}
+
+				bool foundType = false;
+				int pointer = argument->variable.pointer;
+
+				if (arrayIn) {
+					pointer--;
+				}
+
+				if (bufferIn) {
+					assert(pointer == 1);
+					FilePrintFormat(output, "str");
+					foundType = true;
+				} else if (pointer == 0) {
+					if (ScriptWriteBasicType(argument->variable.type)) {
+						foundType = true;
+					} else {
+						for (int k = 0; k < arrlen(root->children); k++) {
+							if (!root->children[k].name) continue;
+							if (strcmp(argument->variable.type, root->children[k].name)) continue;
+
+							if (root->children[k].type == ENTRY_TYPE_NAME) {
+								if (ScriptWriteBasicType(root->children[k].variable.type)) {
+									foundType = true;
+								}
+							} else if (root->children[k].type == ENTRY_ENUM) {
+								FilePrintFormat(output, "%s", root->children[k].name);
+								foundType = true;
+							} else if (root->children[k].type == ENTRY_STRUCT) {
+								FilePrintFormat(output, "%s", root->children[k].name);
+								foundType = true;
+							}
+						}
+					}
+				} else if (pointer == 1) {
+					for (int k = 0; k < arrlen(root->children); k++) {
+						if (!root->children[k].name) continue;
+						if (strcmp(argument->variable.type, root->children[k].name)) continue;
+
+						if (root->children[k].type == ENTRY_API_TYPE) {
+							FilePrintFormat(output, "%s", root->children[k].name);
+							foundType = true;
+						} else if (root->children[k].type == ENTRY_STRUCT) {
+							FilePrintFormat(output, "%s", root->children[k].name);
+							foundType = true;
+						}
+					}
+
+					if (!foundType && 0 == strcmp(argument->variable.type, "ES_INSTANCE_TYPE")) {
+						FilePrintFormat(output, "EsInstance");
+						foundType = true;
+					}
+				}
+
+				if (arrayIn) {
+					FilePrintFormat(output, "[]");
+				}
+
+				assert(foundType);
+				FilePrintFormat(output, " %s", argument->name);
+
+				skipArgument:;
+			}
+
+			FilePrintFormat(output, ") #extcall;\n");
+		}
+
+		skipRootEntry:;
+	}
+
+	Log("Skipped %d/%d functions.\n", skippedFunctions, totalFunctions);
+}
+
 int AnalysisResolve(Entry *root, Entry e, Entry **unresolved, Entry *resolved, Entry *annotations) {
 	assert(e.type == ENTRY_VARIABLE);
 
@@ -1472,7 +1631,8 @@ void Analysis(Entry *root) {
 		arrfree(unresolved);
 
 		if (!understood) {
-			Log("%s %s\n", entry->name, unresolvableName);
+			Log("Insufficient annotations to understand '%s': '%s' could not be resolved.\n", entry->name, unresolvableName);
+			assert(false);
 		}
 	}
 
@@ -1531,7 +1691,8 @@ void Analysis(Entry *root) {
 		}
 
 		if (hasTODOMarker == understood) {
-			Log("%s %s\n", entry->children[0].name, unresolvableName);
+			Log("Insufficient annotations to understand '%s': '%s' could not be resolved.\n", entry->children[0].name, unresolvableName);
+			Log("Add the @todo() annotation to silence this error.\n");
 			assert(false);
 		}
 	}
@@ -1660,6 +1821,7 @@ int HeaderGeneratorMain(int argc, char **argv) {
 	}
 
 	UpdateAPITable(root);
+	Analysis(&root);
 
 	if (0 == strcmp(language, "c") || 0 == strcmp(language, "system")) {
 		OutputC(&root);
@@ -1667,8 +1829,8 @@ int HeaderGeneratorMain(int argc, char **argv) {
 		OutputOdin(&root);
 	} else if (0 == strcmp(language, "zig")) {
 		OutputZig(&root);
-	} else if (0 == strcmp(language, "analysis")) {
-		Analysis(&root);
+	} else if (0 == strcmp(language, "script")) {
+		OutputScript(&root);
 	} else {
 		Log("Unsupported language '%s'.\nLanguage must be one of: 'c', 'odin'.\n", language);
 	}
