@@ -98,45 +98,55 @@ EsError EsFileControl(EsHandle file, uint32_t flags) {
 	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, flags, 0, 0);
 }
 
-ptrdiff_t EsDirectoryEnumerateChildrenFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
+ptrdiff_t DirectoryEnumerateChildrenFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
 	if (!size) return 0;
 	return EsSyscall(ES_SYSCALL_DIRECTORY_ENUMERATE, directory, (uintptr_t) buffer, size, 0);
 }
 
-ptrdiff_t EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, EsDirectoryChild **buffer) {
-	*buffer = nullptr;
+EsDirectoryChild *EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, size_t *countOut, EsError *errorOut) {
+	*countOut = 0;
+	*errorOut = ES_ERROR_UNKNOWN;
+
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
 
 	_EsNodeInformation node;
 	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND | ES_NODE_DIRECTORY, &node);
-	if (error != ES_SUCCESS) return error;
+
+	if (error != ES_SUCCESS) {
+		*errorOut = error;
+		return nullptr;
+	}
 
 	if (node.directoryChildren == ES_DIRECTORY_CHILDREN_UNKNOWN) {
-		node.directoryChildren = 4194304 / sizeof(EsDirectoryChild); // TODO Grow the buffer until all entries fit.
+		// TODO Grow the buffer until all entries fit.
+		node.directoryChildren = 4194304 / sizeof(EsDirectoryChild);
 	}
 
 	if (node.directoryChildren == 0) {
 		// Empty directory.
-		*buffer = nullptr;
-		return 0;
+		*errorOut = ES_SUCCESS;
+		return nullptr;
 	}
 
-	*buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
-	ptrdiff_t result;
+	EsDirectoryChild *buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
 
-	if (*buffer) {
-		result = EsDirectoryEnumerateChildrenFromHandle(node.handle, *buffer, node.directoryChildren);
+	if (buffer) {
+		ptrdiff_t result = DirectoryEnumerateChildrenFromHandle(node.handle, buffer, node.directoryChildren);
 
 		if (ES_CHECK_ERROR(result)) { 
-			EsHeapFree(*buffer); 
-			*buffer = nullptr; 
+			EsHeapFree(buffer); 
+			buffer = nullptr; 
+			*errorOut = result;
+		} else {
+			*errorOut = ES_SUCCESS;
+			*countOut = result;
 		}
 	} else {
-		result = ES_ERROR_INSUFFICIENT_RESOURCES;
+		*errorOut = ES_ERROR_INSUFFICIENT_RESOURCES;
 	}
 
 	EsHandleClose(node.handle);
-	return result;
+	return buffer;
 }
 
 EsFileInformation EsFileOpen(const char *path, ptrdiff_t pathLength, uint32_t flags) {

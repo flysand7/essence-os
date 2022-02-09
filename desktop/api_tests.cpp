@@ -543,15 +543,16 @@ struct {
 const int testVariable = 3;
 
 bool DirectoryEnumerateChildrenRecursive(const char *path, size_t pathBytes) {
-	EsDirectoryChild *buffer;
-	ptrdiff_t count = EsDirectoryEnumerateChildren(path, pathBytes, &buffer);
+	size_t count;
+	EsError error;
+	EsDirectoryChild *buffer = EsDirectoryEnumerateChildren(path, pathBytes, &count, &error);
 
-	if (count < 0) {
-		EsPrint("Error %i enumerating at path \"%s\".\n", (EsError) count, pathBytes, path);
+	if (error != ES_SUCCESS) {
+		EsPrint("Error %i enumerating at path \"%s\".\n", error, pathBytes, path);
 		return false;
 	}
 
-	for (intptr_t i = 0; i < count; i++) {
+	for (uintptr_t i = 0; i < count; i++) {
 		char *childPath = (char *) EsHeapAllocate(pathBytes + 1 + buffer[i].nameBytes, false);
 		size_t childPathBytes = EsStringFormat(childPath, ES_STRING_FORMAT_ENOUGH_SPACE, "%s/%s", pathBytes, path, buffer[i].nameBytes, buffer[i].name);
 

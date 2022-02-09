@@ -2019,7 +2019,7 @@ function void EsINIZeroTerminate(EsINIState *s);
 
 function const void *EsBundleFind(const EsBundle *bundle, STRING name, size_t *byteCount = ES_NULL) @out(byteCount) @fixed_buffer_out(return, byteCount*); // Pass null as the bundle to use the current application's bundle.
 
-function ptrdiff_t EsDirectoryEnumerateChildren(STRING path, EsDirectoryChild **buffer) @out(buffer) @heap_array_out(buffer*, return); // Free buffer with EsHeapFree. Returns number of children.
+function EsDirectoryChild *EsDirectoryEnumerateChildren(STRING path, size_t *count, EsError *error = ES_NULL) @out(count) @out(error) @heap_array_out(return, count*);
 
 function void *EsFileReadAll(STRING filePath, size_t *fileSize, EsError *error = ES_NULL) @out(fileSize) @out(error) @heap_buffer_out(return, fileSize*); // Free with EsHeapFree.
 function void *EsFileReadAllFromHandle(EsHandle handle, size_t *fileSize, EsError *error = ES_NULL) @out(fileSize) @out(error) @heap_buffer_out(return, fileSize*); // Free with EsHeapFree.

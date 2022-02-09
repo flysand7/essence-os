@@ -412,11 +412,13 @@ void CreateImportNode(const char *path, ImportNode *node) {
 #ifdef OS_ESSENCE
 	size_t path2Bytes;
 	char *path2 = EsPOSIXConvertPath(path, &path2Bytes, true);
-	EsDirectoryChild *children;
-	ptrdiff_t childCount = EsDirectoryEnumerateChildren(path2, path2Bytes, &children);
+	EsError error;
+	uintptr_t childCount;
+	EsDirectoryChild *children = EsDirectoryEnumerateChildren(path2, path2Bytes, &childCount, &error);
+	EsAssert(error == ES_SUCCESS);
 	EsHeapFree(path2, 0, NULL);
 
-	for (intptr_t i = 0; i < childCount; i++) {
+	for (uintptr_t i = 0; i < childCount; i++) {
 		snprintf(pathBuffer, sizeof(pathBuffer), "%s/%.*s", path, (int) children[i].nameBytes, children[i].name);
 
 		ImportNode child = {};

@@ -56,6 +56,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 		EsMutexAcquire(&folder->modifyEntriesMutex);
 
 		if (!folder->doneInitialEnumeration) {
+			// TODO Reporting errors.
 			folder->itemHandler->enumerate(folder);
 
 			if (folder->containerHandler->getTotalSize) {

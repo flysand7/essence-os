@@ -1269,6 +1269,7 @@ bool ScriptWriteBasicType(const char *type) {
 void OutputScript(Entry *root) {
 	// TODO Return values.
 	// TODO Structs, enums, etc.
+	// TODO matrix_shared
 
 	int skippedFunctions = 0, totalFunctions = 0;
 
@@ -1302,7 +1303,6 @@ void OutputScript(Entry *root) {
 
 				for (int i = 0; i < arrlen(entry->annotations); i++) {
 					if ((0 == strcmp(entry->annotations[i].name, "out")
-								|| 0 == strcmp(entry->annotations[i].name, "heap_array_out")
 								|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
 							&& 0 == strcmp(entry->annotations[i].children[0].name, argument->name)) {
 						goto skipArgument;

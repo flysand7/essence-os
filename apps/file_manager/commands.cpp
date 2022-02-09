@@ -270,16 +270,14 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 	}
 
 	if (error == ES_ERROR_INCORRECT_NODE_TYPE) {
-		EsDirectoryChild *buffer;
-		ptrdiff_t childCount = EsDirectoryEnumerateChildren(STRING(source), &buffer);
+		uintptr_t childCount;
+		EsDirectoryChild *buffer = EsDirectoryEnumerateChildren(STRING(source), &childCount, &error);
 
-		if (ES_CHECK_ERROR(childCount)) {
-			error = (EsError) childCount;
-		} else {
+		if (error == ES_SUCCESS) {
 			error = EsPathCreate(STRING(destination), ES_NODE_DIRECTORY, false);
 
 			if (error == ES_SUCCESS) {
-				for (intptr_t i = 0; i < childCount && error == ES_SUCCESS; i++) {
+				for (uintptr_t i = 0; i < childCount && error == ES_SUCCESS; i++) {
 					String childSourcePath = StringAllocateAndFormat("%s%z%s", STRFMT(source), 
 							PathHasTrailingSlash(source) ? "" : "/", buffer[i].nameBytes, buffer[i].name);
 					error = CommandPasteFile(childSourcePath, destination, copyBuffer, task, nullptr);

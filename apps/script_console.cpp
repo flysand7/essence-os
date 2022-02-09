@@ -297,11 +297,10 @@ int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	EsHeapFree(directoryIterationBuffer);
-	directoryIterationBuffer = nullptr;
-	ptrdiff_t count = EsDirectoryEnumerateChildren(entryText, entryBytes, &directoryIterationBuffer);
-	returnValue->i = count >= 0 ? 1 : 0;
+	EsError error;
+	directoryIterationBuffer = EsDirectoryEnumerateChildren(entryText, entryBytes, &directoryIterationBufferCount, &error);
+	returnValue->i = error == ES_SUCCESS ? 1 : 0;
 	directoryIterationBufferPosition = 0;
-	directoryIterationBufferCount = count >= 0 ? count : 0;
 	return 2;
 }
 
