@@ -1291,7 +1291,158 @@ void OutputScript(Entry *root) {
 				}
 			}
 
-			FilePrintFormat(output, "void %s(", entry->children[0].name);
+			uintptr_t returnValueCount = 0;
+
+			for (int pass = 0; pass < 2; pass++) {
+				if (pass == 1 && returnValueCount > 1) {
+					FilePrintFormat(output, "tuple[");
+				}
+
+				returnValueCount = 0;
+
+				for (int i = 0; i < arrlen(entry->children); i++) {
+					Entry argument = entry->children[i];
+					assert(argument.type == ENTRY_VARIABLE);
+					bool isVoidReturn = 0 == strcmp(argument.variable.type, "void") && !argument.variable.pointer;
+					bool isOutput = i == 0 && !isVoidReturn;
+
+					for (int i = 0; i < arrlen(entry->annotations); i++) {
+						if ((0 == strcmp(entry->annotations[i].name, "out")
+									|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
+								&& 0 == strcmp(entry->annotations[i].children[0].name, argument.name)) {
+							isOutput = true;
+						}
+					}
+
+					char nameWithAsteriskSuffix[256];
+					assert(strlen(argument.name) < sizeof(nameWithAsteriskSuffix) - 2);
+					strcpy(nameWithAsteriskSuffix, argument.name);
+					strcat(nameWithAsteriskSuffix, "*");
+
+					for (int i = 0; i < arrlen(entry->annotations); i++) {
+						if ((0 == strcmp(entry->annotations[i].name, "heap_array_out")
+									|| 0 == strcmp(entry->annotations[i].name, "heap_buffer_out"))
+								&& 0 == strcmp(entry->annotations[i].children[1].name, nameWithAsteriskSuffix)) {
+							assert(isOutput);
+							isOutput = false;
+						}
+					}
+
+					if (!isOutput) {
+						continue;
+					}
+
+					returnValueCount++;
+
+					if (pass == 0) {
+						continue;
+					}
+
+					if (returnValueCount > 1) {
+						FilePrintFormat(output, ", ");
+					}
+
+					bool foundType = false;
+					int pointer = argument.variable.pointer;
+
+					for (int i = 0; i < arrlen(entry->annotations); i++) {
+						if ((0 == strcmp(entry->annotations[i].name, "heap_array_out")
+									|| 0 == strcmp(entry->annotations[i].name, "heap_buffer_out"))
+								&& 0 == strcmp(entry->annotations[i].children[1].name, nameWithAsteriskSuffix)) {
+							assert(isOutput);
+							isOutput = false;
+						}
+					}
+
+					for (int i = 0; i < arrlen(entry->annotations); i++) {
+						if ((0 == strcmp(entry->annotations[i].name, "out"))
+								&& 0 == strcmp(entry->annotations[i].children[0].name, argument.name)) {
+							pointer--;
+						}
+					}
+
+					bool isArray = false;
+					const char *argumentName = i ? argument.name : "return";
+					
+					for (int i = 0; i < arrlen(entry->annotations); i++) {
+						if ((0 == strcmp(entry->annotations[i].name, "heap_array_out")
+									|| 0 == strcmp(entry->annotations[i].name, "heap_matrix_out")
+									|| 0 == strcmp(entry->annotations[i].name, "heap_buffer_out")
+									|| 0 == strcmp(entry->annotations[i].name, "fixed_buffer_out")
+									|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
+								&& 0 == strcmp(entry->annotations[i].children[0].name, argumentName)) {
+							isArray = 0 == strcmp(entry->annotations[i].name, "heap_array_out");
+
+							if (isArray) {
+								pointer--;
+							} else {
+								foundType = true;
+								FilePrintFormat(output, "str");
+							}
+						}
+					}
+
+					if (foundType) {
+					} else if (pointer == 0) {
+						if (ScriptWriteBasicType(argument.variable.type)) {
+							foundType = true;
+						} else {
+							for (int k = 0; k < arrlen(root->children); k++) {
+								if (!root->children[k].name) continue;
+								if (strcmp(argument.variable.type, root->children[k].name)) continue;
+
+								if (root->children[k].type == ENTRY_TYPE_NAME) {
+									if (ScriptWriteBasicType(root->children[k].variable.type)) {
+										foundType = true;
+									}
+								} else if (root->children[k].type == ENTRY_ENUM) {
+									FilePrintFormat(output, "%s", root->children[k].name);
+									foundType = true;
+								} else if (root->children[k].type == ENTRY_STRUCT) {
+									FilePrintFormat(output, "%s", root->children[k].name);
+									foundType = true;
+								}
+							}
+						}
+					} else if (pointer == 1) {
+						for (int k = 0; k < arrlen(root->children); k++) {
+							if (!root->children[k].name) continue;
+							if (strcmp(argument.variable.type, root->children[k].name)) continue;
+
+							if (root->children[k].type == ENTRY_API_TYPE) {
+								FilePrintFormat(output, "%s", root->children[k].name);
+								foundType = true;
+							} else if (root->children[k].type == ENTRY_STRUCT) {
+								FilePrintFormat(output, "%s", root->children[k].name);
+								foundType = true;
+							}
+						}
+
+						if (!foundType && 0 == strcmp(argument.variable.type, "ES_INSTANCE_TYPE")) {
+							FilePrintFormat(output, "EsInstance");
+							foundType = true;
+						}
+					}
+
+					if (isArray) {
+						FilePrintFormat(output, "[]");
+					}
+
+					if (!foundType) {
+						assert(false);
+					}
+				}
+
+				if (pass == 1 && returnValueCount > 1) {
+					FilePrintFormat(output, "]");
+				}
+			}
+
+			if (returnValueCount == 0) {
+				FilePrintFormat(output, "void");
+			}
+
+			FilePrintFormat(output, " %s(", entry->children[0].name);
 
 			bool firstArgument = true;
 
@@ -1307,8 +1458,7 @@ void OutputScript(Entry *root) {
 							&& 0 == strcmp(entry->annotations[i].children[0].name, argument->name)) {
 						goto skipArgument;
 					} else if ((0 == strcmp(entry->annotations[i].name, "array_in")
-								|| 0 == strcmp(entry->annotations[i].name, "buffer_in")
-								|| 0 == strcmp(entry->annotations[i].name, "buffer_out"))
+								|| 0 == strcmp(entry->annotations[i].name, "buffer_in"))
 							&& 0 == strcmp(entry->annotations[i].children[1].name, argument->name)) {
 						goto skipArgument;
 					} else if ((0 == strcmp(entry->annotations[i].name, "buffer_in")

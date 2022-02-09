@@ -2049,7 +2049,7 @@ function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) @heap_buf
 function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
 function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
 function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
-function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) @buffer_out(return, fileSize*) @out(fileSize);
+function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) @native();
 
 // These calls require permission_all_files.
 function bool EsMountPointGetVolumeInformation(STRING prefix, EsVolumeInformation *information) @out(information); // Returns false if the mount point does not exist.
@@ -2362,7 +2362,7 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, EsCString format, v
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function bool EsClipboardHasData(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL) @out(flags) @buffer_out(return, bytes*) @out(bytes); // Free with EsHeapFree.
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL) @out(flags) @heap_buffer_out(return, bytes*) @out(bytes); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
 function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags = ES_FLAGS_DEFAULT);
 
@@ -2507,7 +2507,7 @@ function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS
 function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags) @out(line) @out(byte);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
-function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT) @buffer_out(return, bytes*) @out(bytes); // Result will be zero-terminated; free with EsHeapFree.
+function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT) @heap_buffer_out(return, bytes*) @out(bytes); // Result will be zero-terminated; free with EsHeapFree.
 function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags = ES_FLAGS_DEFAULT); 
 function size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line = 0);
 function void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte) @out(fromLine) @out(fromByte) @out(toLine) @out(toByte);
