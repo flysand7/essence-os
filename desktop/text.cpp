@@ -862,7 +862,7 @@ Font FontGet(EsFont key) {
 	}
 
 	if (!file) {
-		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		// EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
 		key.family = fontManagement.fallback;
 		return FontGet(key);
 	}
@@ -873,7 +873,7 @@ Font FontGet(EsFont key) {
 	void *data = EsFileStoreMap(file, &size, ES_MEMORY_MAP_OBJECT_READ_ONLY);
 
 	if (!data) {
-		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		// EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
 		key.family = fontManagement.fallback;
 		return FontGet(key);
 	}
@@ -881,7 +881,7 @@ Font FontGet(EsFont key) {
 	Font font = {};
 
 	if (!FontLoad(&font, data, size)) {
-		EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
+		// EsPrint("Could not load font (f%d/w%d/%X).\n", key.family, key.weight, key.flags);
 		key.family = fontManagement.fallback;
 		return FontGet(key);
 	}
