@@ -46,7 +46,8 @@ const EsStyle stylePanelMemoryStatistics = {
 	.inherit = ES_STYLE_PANEL_FILLED,
 
 	.metrics = {
-		.mask = ES_THEME_METRICS_GAP_ALL,
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_ALL,
+		.insets = ES_RECT_1(8),
 		.gapMajor = 5,
 		.gapMinor = 5,
 	},

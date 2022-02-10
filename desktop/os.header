@@ -2528,6 +2528,19 @@ function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdat
 
 // Panels, spacers and splitters.
 
+// Styles for panels:
+//	Visual:
+// 		ES_STYLE_PANEL_DOCUMENT - same background color as textbox - use to contain textual content
+//		ES_STYLE_PANEL_FILLED - same background color as window - use to contain a page of controls
+//		ES_STYLE_PANEL_INSET, ES_STYLE_PANEL_GROUP_BOX, ES_STYLE_PANEL_SHEET - use for grouping controls
+//	Layout:
+//		ES_STYLE_PANEL_FORM_TABLE - use for laying out controls in a table
+//		ES_STYLE_PANEL_POPUP - use for laying out controls in a menu popup
+//	Root level (the root panel/splitter should be one of these):
+//		ES_STYLE_PANEL_WINDOW_DIVIDER - does not give the window a background color
+//		ES_STYLE_PANEL_WINDOW_BACKGROUND - gives the window a background color, same as ES_STYLE_PANEL_FILLED
+//		ES_STYLE_PANEL_WINDOW_WITH_STATUS_BAR_CONTENT - alternate version of ES_STYLE_PANEL_WINDOW_DIVIDER if the window has a status bar
+
 function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, int width = 0, int height = 0);
 function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
