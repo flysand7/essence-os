@@ -3110,7 +3110,8 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 
 		if (node->type == T_BLOCK && child->expressionType && child->expressionType->type != T_VOID) {
 			if (child->type == T_CALL || child->type == T_AWAIT 
-					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DELETE)) {
+					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DELETE)
+					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DEL_STR)) {
 				uint8_t b = T_POP;
 				FunctionBuilderAppend(builder, &b, sizeof(b));
 			} else if (child->type == T_DECLARE || child->type == T_EQUALS) {
