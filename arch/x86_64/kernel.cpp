@@ -669,7 +669,7 @@ EsError ArchApplyRelocation(uintptr_t type, uint8_t *buffer, uintptr_t offset, u
 	else if (type == 2  /* R_X86_64_PC32 */)  *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
 	else if (type == 24 /* R_X86_64_PC64 */)  *((uint64_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
 	else if (type == 4  /* R_X86_64_PLT32 */) *((uint32_t *) (buffer + offset)) = result - ((uint64_t) buffer + offset);
-	else return ES_ERROR_UNSUPPORTED_FEATURE;
+	else return ES_ERROR_UNSUPPORTED;
 	return ES_SUCCESS;
 }
 

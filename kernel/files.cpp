@@ -346,7 +346,7 @@ EsError FSFileResize(KNode *node, EsFileOffset newSize) {
 	KWriterLockTake(&file->resizeLock, K_LOCK_EXCLUSIVE);
 
 	if (file->blockResize) {
-		error = ES_ERROR_FILE_IN_EXCLUSIVE_USE;
+		error = ES_ERROR_OPERATION_BLOCKED;
 	} else if (!file->fileSystem->resize) {
 		error = ES_ERROR_FILE_ON_READ_ONLY_VOLUME;
 	} else {
@@ -446,7 +446,7 @@ EsError FSNodeDelete(KNode *node) {
 
 		if (file->blockResize) {
 			KWriterLockReturn(&file->resizeLock, K_LOCK_EXCLUSIVE);
-			return ES_ERROR_FILE_IN_EXCLUSIVE_USE;
+			return ES_ERROR_OPERATION_BLOCKED;
 		}
 
 		_FSFileResize(file, 0);
@@ -483,7 +483,7 @@ EsError FSNodeMove(KNode *node, KNode *_newParent, const char *newName, size_t n
 	if (fs.shutdown) KernelPanic("FSNodeMove - Attempting to move a file after FSShutdown called.\n");
 
 	if (!FSCheckPathForIllegalCharacters(newName, newNameBytes)) {
-		return ES_ERROR_ILLEGAL_PATH;
+		return ES_ERROR_INVALID_NAME;
 	}
 
 	FSDirectoryEntry *entry = node->directoryEntry;
@@ -493,7 +493,7 @@ EsError FSNodeMove(KNode *node, KNode *_newParent, const char *newName, size_t n
 	// Check the move is valid.
 
 	if (newParent->directoryEntry->type != ES_NODE_DIRECTORY) {
-		return ES_ERROR_TARGET_INVALID_TYPE;
+		return ES_ERROR_INCORRECT_NODE_TYPE;
 	}
 
 	if (!oldParent || oldParent->fileSystem != newParent->fileSystem || oldParent->fileSystem != node->fileSystem) {
@@ -561,7 +561,7 @@ EsError FSNodeMove(KNode *node, KNode *_newParent, const char *newName, size_t n
 	}
 
 	if (alreadyExists) {
-		error = ES_ERROR_FILE_ALREADY_EXISTS;
+		error = ES_ERROR_ALREADY_EXISTS;
 		goto fail;
 	}
 
@@ -1093,7 +1093,7 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode) {
 			FSFile *file = (FSFile *) node;
 
 			if (flags & ES_FILE_READ) {
-				if (file->countWrite > 0) return ES_ERROR_FILE_HAS_WRITERS; 
+				if (file->countWrite > 0) return ES_ERROR_OPERATION_BLOCKED; 
 			} else if (flags & ES_FILE_WRITE) {
 				if (flags & _ES_NODE_FROM_WRITE_EXCLUSIVE) {
 					if (!file->countWrite || (~file->flags & NODE_HAS_EXCLUSIVE_WRITER)) {
@@ -1101,11 +1101,11 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode) {
 					}
 				} else {
 					if (file->countWrite) {
-						return ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE; 
+						return ES_ERROR_OPERATION_BLOCKED; 
 					}
 				}
 			} else if (flags & ES_FILE_WRITE_SHARED) {
-				if ((file->flags & NODE_HAS_EXCLUSIVE_WRITER) || file->countWrite < 0) return ES_ERROR_FILE_IN_EXCLUSIVE_USE;
+				if ((file->flags & NODE_HAS_EXCLUSIVE_WRITER) || file->countWrite < 0) return ES_ERROR_OPERATION_BLOCKED;
 			}
 
 			if (flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) {
@@ -1389,7 +1389,7 @@ KNodeInformation FSNodeOpen(const char *path, size_t pathBytes, uint32_t flags, 
 	if (pathBytes && path[pathBytes - 1] == '/') pathBytes--;
 
 	if (!FSCheckPathForIllegalCharacters(path, pathBytes)) {
-		return { ES_ERROR_ILLEGAL_PATH };
+		return { ES_ERROR_INVALID_NAME };
 	}
 
 	KFileSystem *fileSystem = nullptr;
@@ -1430,7 +1430,7 @@ KNodeInformation FSNodeOpen(const char *path, size_t pathBytes, uint32_t flags, 
 	}
 
 	if ((flags & ES_NODE_FAIL_IF_FOUND) && !createdNode) {
-		error = ES_ERROR_FILE_ALREADY_EXISTS;
+		error = ES_ERROR_ALREADY_EXISTS;
 	} else {
 		error = FSNodeOpenHandle(node, flags, FS_NODE_OPEN_HANDLE_STANDARD);
 	}
@@ -1609,7 +1609,7 @@ EsError FSBlockDeviceAccess(KBlockDeviceAccessRequest request) {
 	}
 
 	if (request.dispatchGroup == &fakeDispatchGroup) {
-		return fakeDispatchGroup.Wait() ? ES_SUCCESS : ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+		return fakeDispatchGroup.Wait() ? ES_SUCCESS : ES_ERROR_HARDWARE_FAILURE;
 	} else {
 		return ES_SUCCESS;
 	}

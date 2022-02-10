@@ -337,15 +337,15 @@ void ArchShutdown() {
 }
 
 EsError KACPIObjectSetDeviceNotificationHandler(KACPIObject *, KACPINotificationHandler, EsGeneric) {
-	return ES_ERROR_UNSUPPORTED_FEATURE;
+	return ES_ERROR_UNSUPPORTED;
 }
 
 EsError KACPIObjectEvaluateInteger(KACPIObject *, const char *, uint64_t *) {
-	return ES_ERROR_UNSUPPORTED_FEATURE;
+	return ES_ERROR_UNSUPPORTED;
 }
 
 EsError KACPIObjectEvaluateMethodWithInteger(KACPIObject *, const char *, uint64_t) {
-	return ES_ERROR_UNSUPPORTED_FEATURE;
+	return ES_ERROR_UNSUPPORTED;
 }
 #endif
 

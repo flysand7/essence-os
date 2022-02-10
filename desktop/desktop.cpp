@@ -2252,7 +2252,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 
 		if (!nameBytes || (failIfAlreadyExists && nameBytes != folderBytes + newNameBytes)) {
 			EsHeapFree(name);
-			m.tabOperation.error = nameBytes ? ES_ERROR_FILE_ALREADY_EXISTS : ES_ERROR_TOO_MANY_FILES_WITH_NAME;
+			m.tabOperation.error = nameBytes ? ES_ERROR_ALREADY_EXISTS : ES_ERROR_TOO_MANY_FILES_WITH_NAME;
 			EsMessagePostRemote(instance->process->handle, &m);
 			return;
 		}
@@ -2296,7 +2296,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	}
 
 	if (document->currentWriter) {
-		m.tabOperation.error = ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE;
+		m.tabOperation.error = ES_ERROR_OPERATION_BLOCKED;
 	} else {
 		EsHeapFree(document->temporarySavePath);
 		document->temporarySavePath = nullptr;

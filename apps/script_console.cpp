@@ -214,7 +214,7 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	EsError error = EsPathCreate(entryText, entryBytes, ES_NODE_DIRECTORY, false);
-	returnValue->i = error == ES_SUCCESS || error == ES_ERROR_FILE_ALREADY_EXISTS;
+	returnValue->i = error == ES_SUCCESS || error == ES_ERROR_ALREADY_EXISTS;
 	return 2;
 }
 

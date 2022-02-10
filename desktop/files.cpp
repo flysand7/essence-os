@@ -282,7 +282,7 @@ EsError MountPointAdd(const char *prefix, size_t prefixBytes, EsHandle base, boo
 	EsError error = ES_SUCCESS;
 
 	if (duplicate) {
-		error = ES_ERROR_MOUNT_POINT_ALREADY_EXISTS;
+		error = ES_ERROR_ALREADY_EXISTS;
 	} else {
 		EsMountPoint mountPoint = {};
 		EsAssert(prefixBytes < sizeof(mountPoint.prefix));

@@ -193,8 +193,8 @@ DEFINE_INTERFACE_STRING(FileRenameSuccess, "Renamed");
 
 DEFINE_INTERFACE_STRING(FileSaveAnnouncement, "Saved to %s");
 DEFINE_INTERFACE_STRING(FileSaveErrorFileDeleted, "Another application deleted the file.");
-DEFINE_INTERFACE_STRING(FileSaveErrorCorrupt, "The file has been corrupted, and it cannot be modified.");
-DEFINE_INTERFACE_STRING(FileSaveErrorDrive, "The drive containing the file was unable to modify it.");
+DEFINE_INTERFACE_STRING(FileSaveErrorCorrupt, "The file has been corrupted, and it cannot be accessed.");
+DEFINE_INTERFACE_STRING(FileSaveErrorDrive, "The drive containing the file was unable to access it.");
 DEFINE_INTERFACE_STRING(FileSaveErrorTooLarge, "The drive does not support files large enough to store this document.");
 DEFINE_INTERFACE_STRING(FileSaveErrorConcurrentAccess, "Another application is modifying the file.");
 DEFINE_INTERFACE_STRING(FileSaveErrorDriveFull, "The drive is full. Try deleting some files to free up space.");

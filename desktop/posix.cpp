@@ -328,13 +328,13 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			EsHeapFree(path);
 			if (error == ES_ERROR_FILE_DOES_NOT_EXIST) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOTDIR;
-			else if (error == ES_ERROR_FILE_IN_EXCLUSIVE_USE) returnValue = -EBUSY;
-			else if (error == ES_ERROR_DRIVE_CONTROLLER_REPORTED || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
+			else if (error == ES_ERROR_OPERATION_BLOCKED) returnValue = -EBUSY;
+			else if (error == ES_ERROR_HARDWARE_FAILURE || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
 			else if (error != ES_SUCCESS) returnValue = -EACCES;
 			else {
 				error = EsSyscall(ES_SYSCALL_NODE_DELETE, node.handle, 0, 0, 0);
 				EsHandleClose(node.handle);
-				if (error == ES_ERROR_DRIVE_CONTROLLER_REPORTED || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
+				if (error == ES_ERROR_HARDWARE_FAILURE || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
 				else if (error != ES_SUCCESS) returnValue = -EACCES;
 			}
 		} break;
@@ -348,14 +348,14 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			EsHeapFree(path);
 			if (error == ES_ERROR_FILE_DOES_NOT_EXIST) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOTDIR;
-			else if (error == ES_ERROR_FILE_IN_EXCLUSIVE_USE) returnValue = -EBUSY;
-			else if (error == ES_ERROR_DRIVE_CONTROLLER_REPORTED || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
+			else if (error == ES_ERROR_OPERATION_BLOCKED) returnValue = -EBUSY;
+			else if (error == ES_ERROR_HARDWARE_FAILURE || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
 			else if (error != ES_SUCCESS) returnValue = -EACCES;
 			else if (node.type == ES_NODE_DIRECTORY) { returnValue = -EISDIR; EsHandleClose(node.handle); }
 			else {
 				EsError error = EsFileResize(node.handle, a2);
 				EsHandleClose(node.handle);
-				if (error == ES_ERROR_DRIVE_CONTROLLER_REPORTED || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
+				if (error == ES_ERROR_HARDWARE_FAILURE || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
 				else if (error != ES_SUCCESS) returnValue = -EACCES;
 			}
 		} break;
@@ -656,7 +656,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			char *path = EsPOSIXConvertPath((const char *) a1, &pathBytes, true);
 			EsError error = EsPathCreate(path, pathBytes, ES_NODE_DIRECTORY, false);
 			if (error == ES_ERROR_INSUFFICIENT_RESOURCES) returnValue = -ENOMEM;
-			else if (error == ES_ERROR_FILE_ALREADY_EXISTS) returnValue = -EEXIST;
+			else if (error == ES_ERROR_ALREADY_EXISTS) returnValue = -EEXIST;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME) returnValue = -ENOENT;
 			else if (error == ES_ERROR_FILE_ON_READ_ONLY_VOLUME) returnValue = -EPERM;
@@ -698,8 +698,8 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 			// TODO More return values.
 			if (error == ES_ERROR_FILE_DOES_NOT_EXIST) returnValue = -ENOENT;
 			else if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) returnValue = -ENOTDIR;
-			else if (error == ES_ERROR_FILE_IN_EXCLUSIVE_USE) returnValue = -EBUSY;
-			else if (error == ES_ERROR_DRIVE_CONTROLLER_REPORTED || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
+			else if (error == ES_ERROR_OPERATION_BLOCKED) returnValue = -EBUSY;
+			else if (error == ES_ERROR_HARDWARE_FAILURE || error == ES_ERROR_CORRUPT_DATA) returnValue = -EIO;
 			else if (error != ES_SUCCESS) returnValue = -EACCES;
 		} break;
 

@@ -630,8 +630,8 @@ bool OldTests2018() {
 		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/b.txt")));
 		CHECK(EsPathExists(EsLiteral("|Settings:/a.txt")));
 		CHECK(ES_ERROR_FILE_DOES_NOT_EXIST == EsPathMove(EsLiteral("|Settings:/TestFolder/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
-		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/b.txt"), ES_FLAGS_DEFAULT));
-		CHECK(ES_ERROR_FILE_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/b.txt"), ES_FLAGS_DEFAULT));
+		CHECK(ES_ERROR_ALREADY_EXISTS == EsPathMove(EsLiteral("|Settings:/a.txt"), EsLiteral("|Settings:/a.txt"), ES_FLAGS_DEFAULT));
 		CHECK(ES_ERROR_TARGET_WITHIN_SOURCE == EsPathMove(EsLiteral("|Settings:/"), EsLiteral("|Settings:/TestFolder/TargetWithinSource"), ES_FLAGS_DEFAULT));
 		CHECK(!EsPathExists(EsLiteral("|Settings:/TestFolder/a.txt")));
 		CHECK(EsPathExists(EsLiteral("|Settings:/b.txt")));

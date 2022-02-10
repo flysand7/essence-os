@@ -133,7 +133,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 		if (bytesRead != sizeof(BundleHeader)) {
 			KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the bundle header.\n");
-			return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+			return ES_ERROR_UNSUPPORTED;
 		}
 
 		if (header.signature == BUNDLE_SIGNATURE 
@@ -149,12 +149,12 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			if (ArchCheckBundleHeader() || header.mapAddress & (K_PAGE_SIZE - 1)) {
 				KernelLog(LOG_ERROR, "ELF", "executable load error", "Invalid bundle mapping addresses.\n");
-				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+				return ES_ERROR_UNSUPPORTED;
 			}
 
 			if (header.version != 1) {
 				KernelLog(LOG_ERROR, "ELF", "executable load error", "Invalid bundle version.\n");
-				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+				return ES_ERROR_UNSUPPORTED;
 			}
 
 			// Map the bundle file.
@@ -183,7 +183,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			if (executableOffset >= fileSize || !found) {
 				KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not find the executable section for the current architecture.\n");
-				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+				return ES_ERROR_UNSUPPORTED;
 			}
 
 			executable->isBundle = true;
@@ -197,39 +197,39 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 	if (bytesRead != sizeof(ElfHeader)) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the ELF header.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	size_t programHeaderEntrySize = header.programHeaderEntrySize;
 
 	if (header.magicNumber != 0x464C457F) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable magic number.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	if (header.bits != 2) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable bits.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	if (header.endianness != 1) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable endianness.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	if (header.abi != 0) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable ABI.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	if (header.type != 2) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable type.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	if (header.instructionSet != 0x3E) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Incorrect executable instruction set.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	ElfProgramHeader *programHeaders = (ElfProgramHeader *) EsHeapAllocate(programHeaderEntrySize * header.programHeaderEntries, false, K_PAGED);
@@ -245,7 +245,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 	if (bytesRead != programHeaderEntrySize * header.programHeaderEntries) {
 		KernelLog(LOG_ERROR, "ELF", "executable load error", "Could not read the program headers.\n");
-		return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	for (uintptr_t i = 0; i < header.programHeaderEntries; i++) {
@@ -254,7 +254,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 		if (header->type == 1 /* PT_LOAD */) {
 			if (ArchCheckELFHeader()) {
 				KernelLog(LOG_ERROR, "ELF", "executable load error", "Rejected ELF program header.\n");
-				return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+				return ES_ERROR_UNSUPPORTED;
 			}
 
 #if 0
@@ -270,7 +270,7 @@ EsError KLoadELF(KNode *node, KLoadedExecutable *executable) {
 
 			if (success) {
 				bytesRead = FSFileReadSync(node, (void *) header->virtualAddress, executableOffset + header->fileOffset, header->dataInFile, 0);
-				if (bytesRead != header->dataInFile) return ES_ERROR_UNSUPPORTED_EXECUTABLE;
+				if (bytesRead != header->dataInFile) return ES_ERROR_UNSUPPORTED;
 			}
 #else
 			uintptr_t fileStart = RoundDown(header->virtualAddress, K_PAGE_SIZE);
@@ -451,13 +451,13 @@ EsError KLoadELFModule(KModule *module) {
 	if (!getVersion || getVersion() != KERNEL_VERSION) {
 		KernelLog(LOG_ERROR, "Modules", "invalid module kernel version", 
 				"KLoadELFModule - Attempted to load module '%s' for invalid kernel version.\n", module->pathBytes, module->path);
-		return ES_ERROR_UNSUPPORTED_FEATURE;
+		return ES_ERROR_UNSUPPORTED;
 	}
 
 	return ES_SUCCESS;
 #else
 	(void) module;
-	return ES_ERROR_UNSUPPORTED_FEATURE;
+	return ES_ERROR_UNSUPPORTED;
 #endif
 }
 

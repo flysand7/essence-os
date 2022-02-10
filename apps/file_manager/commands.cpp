@@ -250,7 +250,7 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 		} else {
 			destination.allocated = destination.bytes;
 			StringDestroy(&destination);
-			return ES_ERROR_FILE_ALREADY_EXISTS;
+			return ES_ERROR_ALREADY_EXISTS;
 		}
 	}
 

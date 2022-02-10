@@ -1214,7 +1214,7 @@ void InstanceReportError(Instance *instance, int error, EsError code) {
 
 	const char *message = interfaceString_FileManagerGenericError;
 
-	if (code == ES_ERROR_FILE_ALREADY_EXISTS) {
+	if (code == ES_ERROR_ALREADY_EXISTS) {
 		message = interfaceString_FileManagerItemAlreadyExistsError;
 	} else if (code == ES_ERROR_FILE_DOES_NOT_EXIST) {
 		message = interfaceString_FileManagerItemDoesNotExistError;

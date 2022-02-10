@@ -1067,17 +1067,17 @@ EsMessage *EsMessageReceive() {
 						case ES_ERROR_INCORRECT_NODE_TYPE:
 							errorMessage = interfaceString_FileSaveErrorFileDeleted;
 							break;
-						case ES_ERROR_DRIVE_ERROR_FILE_DAMAGED:
+						case ES_ERROR_CORRUPT_DATA:
 							errorMessage = interfaceString_FileSaveErrorCorrupt;
 							break;
-						case ES_ERROR_DRIVE_CONTROLLER_REPORTED:
+						case ES_ERROR_HARDWARE_FAILURE:
 							errorMessage = interfaceString_FileSaveErrorDrive;
 							break;
 						case ES_ERROR_INSUFFICIENT_RESOURCES:
 							errorMessage = interfaceString_FileSaveErrorResourcesLow;
 							break;
 
-						case ES_ERROR_FILE_ALREADY_EXISTS: {
+						case ES_ERROR_ALREADY_EXISTS: {
 							errorMessage = buffer;
 							errorMessageBytes = EsStringFormat(buffer, sizeof(buffer), interfaceString_FileSaveErrorAlreadyExists, 
 									apiInstance->newNameBytes, apiInstance->newName);
@@ -1195,10 +1195,10 @@ void EsInstanceOpenComplete(EsInstance *instance, EsFileStore *file, bool succes
 			const char *errorMessage = interfaceString_FileLoadErrorUnknown;
 
 			switch (file->error) {
-				case ES_ERROR_DRIVE_ERROR_FILE_DAMAGED:
+				case ES_ERROR_CORRUPT_DATA:
 					errorMessage = interfaceString_FileLoadErrorCorrupt;
 					break;
-				case ES_ERROR_DRIVE_CONTROLLER_REPORTED:
+				case ES_ERROR_HARDWARE_FAILURE:
 					errorMessage = interfaceString_FileLoadErrorDrive;
 					break;
 				case ES_ERROR_INSUFFICIENT_RESOURCES:
@@ -1274,19 +1274,17 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 				case ES_ERROR_INCORRECT_NODE_TYPE:
 					errorMessage = interfaceString_FileSaveErrorFileDeleted;
 					break;
-				case ES_ERROR_DRIVE_ERROR_FILE_DAMAGED:
+				case ES_ERROR_CORRUPT_DATA:
 					errorMessage = interfaceString_FileSaveErrorCorrupt;
 					break;
-				case ES_ERROR_DRIVE_CONTROLLER_REPORTED:
+				case ES_ERROR_HARDWARE_FAILURE:
 					errorMessage = interfaceString_FileSaveErrorDrive;
 					break;
 				case ES_ERROR_COULD_NOT_RESIZE_FILE:
-				case ES_ERROR_FILE_TOO_FRAGMENTED:
+				case ES_ERROR_FILE_TOO_LARGE:
 					errorMessage = interfaceString_FileSaveErrorTooLarge;
 					break;
-				case ES_ERROR_FILE_IN_EXCLUSIVE_USE:
-				case ES_ERROR_FILE_CANNOT_GET_EXCLUSIVE_USE:
-				case ES_ERROR_FILE_HAS_WRITERS:
+				case ES_ERROR_OPERATION_BLOCKED:
 					errorMessage = interfaceString_FileSaveErrorConcurrentAccess;
 					break;
 				case ES_ERROR_DRIVE_FULL:
@@ -1299,7 +1297,7 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 					errorMessage = interfaceString_FileSaveErrorTooManyFiles;
 					break;
 
-				case ES_ERROR_FILE_ALREADY_EXISTS: {
+				case ES_ERROR_ALREADY_EXISTS: {
 					errorMessage = buffer;
 					errorMessageBytes = EsStringFormat(buffer, sizeof(buffer), interfaceString_FileSaveErrorAlreadyExists, 
 							apiInstance->newNameBytes, apiInstance->newName);

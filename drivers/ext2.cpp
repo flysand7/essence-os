@@ -318,7 +318,7 @@ static EsError Enumerate(KNode *node) {
 		uint32_t block = GetDataBlock(volume, &directory->inode, i, blockBuffer);
 
 		if (!block) {
-			return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+			return ES_ERROR_HARDWARE_FAILURE;
 		}
 
 		EsError error = volume->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT);
@@ -387,7 +387,7 @@ static EsError Scan(const char *name, size_t nameBytes, KNode *_directory) {
 		uint32_t block = GetDataBlock(volume, &directory->inode, i, blockBuffer);
 
 		if (!block) {
-			return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+			return ES_ERROR_HARDWARE_FAILURE;
 		}
 
 		EsError error = volume->Access((uint64_t) block * volume->blockBytes, volume->blockBytes, K_ACCESS_READ, blockBuffer, ES_FLAGS_DEFAULT);
@@ -428,7 +428,7 @@ static EsError Scan(const char *name, size_t nameBytes, KNode *_directory) {
 	} else if (entry->type == DIRENT_TYPE_REGULAR) {
 		metadata.type = ES_NODE_FILE;
 	} else {
-		SCAN_FAILURE("Unsupported file type.\n", ES_ERROR_UNSUPPORTED_FEATURE);
+		SCAN_FAILURE("Unsupported file type.\n", ES_ERROR_UNSUPPORTED);
 	}
 
 	return FSDirectoryEntryFound(_directory, &metadata, &inode, name, nameBytes, false);
@@ -581,7 +581,7 @@ static size_t Read(KNode *node, void *_buffer, EsFileOffset offset, EsFileOffset
 	bool success = dispatchGroup.Read();
 
 	if (!success) {
-		READ_FAILURE("Could not read blocks from drive.\n", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+		READ_FAILURE("Could not read blocks from drive.\n", ES_ERROR_HARDWARE_FAILURE);
 	}
 
 	return count;

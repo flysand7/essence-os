@@ -73,7 +73,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 	IndexVertex *vertex = (IndexVertex *) buffer;
 
 	if (!AccessBlock(volume, rootBlock, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) {
-		return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+		return ES_ERROR_HARDWARE_FAILURE;
 	}
 
 	int depth = 0;
@@ -89,7 +89,7 @@ static EsError FindDirectoryEntryReferenceFromIndex(Volume *volume, uint8_t *buf
 			if (i == vertex->count || keys[i].value > nameHash) {
 				if (keys[i].child) {
 					// The directory is in the child.
-					if (!AccessBlock(volume, keys[i].child, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return ES_ERROR_DRIVE_CONTROLLER_REPORTED;
+					if (!AccessBlock(volume, keys[i].child, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ)) return ES_ERROR_HARDWARE_FAILURE;
 					else goto nextVertex;
 				} else {
 					// We couldn't find the entry.
@@ -708,7 +708,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 
 			if (entry->fileSize) {
 				if (!ReadWrite(file, 0, superblock->blockSize, blockBuffer, false, false)) {
-					return *error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED, entry->fileSize;
+					return *error = ES_ERROR_HARDWARE_FAILURE, entry->fileSize;
 				}
 			}
 
@@ -729,7 +729,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 				if (!FreeExtent(volume, previousExtentStart, extentCount)) {
 					file->corrupt = true;
 					entry->fileSize = 0;
-					*error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED;
+					*error = ES_ERROR_HARDWARE_FAILURE;
 					return (entry->fileSize = 0);
 				}
 			}
@@ -738,7 +738,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 
 			EsMemoryCopy(dataBuffer, blockBuffer, newSize);
 		} else {
-			*error = ES_ERROR_UNSUPPORTED_FEATURE;
+			*error = ES_ERROR_UNSUPPORTED;
 			return entry->fileSize; // Unrecognised indirection.
 		}
 
@@ -754,7 +754,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 
 		if (data->indirection == ESFS_INDIRECTION_DIRECT) {
 			if (!ReadWrite(file, 0, entry->fileSize, blockBuffer, false, false)) {
-				*error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED;
+				*error = ES_ERROR_HARDWARE_FAILURE;
 				return entry->fileSize;
 			}
 
@@ -763,7 +763,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 			oldBlocks = 0;
 			entry->fileSize = 0;
 		} else if (data->indirection != ESFS_INDIRECTION_L1) {
-			*error = ES_ERROR_UNSUPPORTED_FEATURE;
+			*error = ES_ERROR_UNSUPPORTED;
 			return entry->fileSize; // Unrecognised indirection.
 		}
 
@@ -800,7 +800,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 						&allocatedStart, &allocatedCount, true /* Zero the blocks */);
 
 				if (!success) {
-					*error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED;
+					*error = ES_ERROR_HARDWARE_FAILURE;
 					return entry->fileSize;
 				}
 
@@ -821,7 +821,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 
 				if (length + position > newDataBufferSize) {
 					// The data buffer is full.
-					*error = ES_ERROR_FILE_TOO_FRAGMENTED;
+					*error = ES_ERROR_FILE_TOO_LARGE;
 					return entry->fileSize;
 				} else {
 					EsMemoryCopy(dataBuffer + position, encode, length);
@@ -839,7 +839,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 
 			file->corrupt = true;
 			entry->fileSize = 0;
-			*error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED;
+			*error = ES_ERROR_HARDWARE_FAILURE;
 
 			// Free the removed extents.
 
@@ -907,7 +907,7 @@ static uint64_t ResizeInternal(FSNode *file, uint64_t newSize, EsError *error, u
 				data->indirection = ESFS_INDIRECTION_DIRECT;
 				data->count = entry->fileSize = oldSize;
 				EsMemoryCopy(dataBuffer, blockBuffer, data->count);
-				*error = ES_ERROR_DRIVE_ERROR_FILE_DAMAGED;
+				*error = ES_ERROR_HARDWARE_FAILURE;
 				return (entry->fileSize = oldSize);
 			}
 		}
@@ -1426,17 +1426,17 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 	// EsPrint("\tpositionOfLastEntry = %d\n\tThis node Reference = %d/%d\n", positionOfLastEntry, file->reference.block, file->reference.offsetIntoBlock);
 
 	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), 
-			"Remove - Could not load the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+			"Remove - Could not load the container block.", ES_ERROR_HARDWARE_FAILURE);
 	ESFS_CHECK_TO_ERROR(ReadWrite(directory, positionOfLastEntry & ~(superblock->blockSize - 1), superblock->blockSize, 
-				blockBuffers + superblock->blockSize, false, false), "Remove - Could not load the last block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+				blockBuffers + superblock->blockSize, false, false), "Remove - Could not load the last block.", ES_ERROR_HARDWARE_FAILURE);
 	ESFS_CHECK_TO_ERROR(0 == EsMemoryCompare(blockBuffers + file->reference.offsetIntoBlock, &file->entry, sizeof(DirectoryEntry)), 
-			"Remove - Inconsistent file entry.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+			"Remove - Inconsistent file entry.", ES_ERROR_HARDWARE_FAILURE);
 
 	DirectoryEntry *movedEntry = (DirectoryEntry *) (blockBuffers + superblock->blockSize + (positionOfLastEntry & (superblock->blockSize - 1)));
 	DirectoryEntry *deletedEntry = (DirectoryEntry *) (blockBuffers + file->reference.offsetIntoBlock);
 	EsMemoryCopy(deletedEntry, movedEntry, sizeof(DirectoryEntry));
 	ESFS_CHECK_TO_ERROR(AccessBlock(volume, file->reference.block, 1, blockBuffers, FS_BLOCK_ACCESS_CACHED, K_ACCESS_WRITE), 
-			"Remove - Could not save the container block.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+			"Remove - Could not save the container block.", ES_ERROR_HARDWARE_FAILURE);
 
 	// Step 2: Update the node for the moved entry.
 
@@ -1456,7 +1456,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 			uint64_t key = CalculateCRC64(filename->filename, filename->length, 0);
 			// EsPrint("\tModify index key for %s\n", filename->length, filename->filename);
 			ESFS_CHECK_TO_ERROR(IndexModifyKey(volume, key, file->reference, directoryAttribute->indexRootBlock, blockBuffers + superblock->blockSize), 
-					"Remove - Could not update index (2).", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+					"Remove - Could not update index (2).", ES_ERROR_HARDWARE_FAILURE);
 		}
 	}
 
@@ -1466,7 +1466,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 
 	if (!(directoryAttribute->childNodes % superblock->directoryEntriesPerBlock)) {
 		uint64_t newSize = directory->entry.fileSize - superblock->blockSize;
-		ESFS_CHECK_TO_ERROR(newSize == ResizeInternal(directory, newSize, &error), "Remove - Could not resize directory.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+		ESFS_CHECK_TO_ERROR(newSize == ResizeInternal(directory, newSize, &error), "Remove - Could not resize directory.", ES_ERROR_HARDWARE_FAILURE);
 	}
 
 	// Step 4: Remove the entry from the index.
@@ -1476,7 +1476,7 @@ static EsError RemoveDirectoryEntry(FSNode *file, uint8_t *blockBuffers /* super
 
 	if (filename) {
 		uint64_t removeKey = CalculateCRC64(filename->filename, filename->length, 0);
-		ESFS_CHECK_TO_ERROR(IndexRemoveKey(volume, removeKey, &directoryAttribute->indexRootBlock), "Remove - Could not update index.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+		ESFS_CHECK_TO_ERROR(IndexRemoveKey(volume, removeKey, &directoryAttribute->indexRootBlock), "Remove - Could not update index.", ES_ERROR_HARDWARE_FAILURE);
 	}
 
 	return ES_SUCCESS;
@@ -1504,7 +1504,7 @@ static EsError Remove(KNode *_directory, KNode *node) {
 		if (attribute->indexRootBlock) {
 			IndexVertex *vertex = (IndexVertex *) blockBuffers;
 			ESFS_CHECK_TO_ERROR(AccessBlock(volume, attribute->indexRootBlock, 1, vertex, FS_BLOCK_ACCESS_CACHED, K_ACCESS_READ), 
-					"Remove - Could not access index root.", ES_ERROR_DRIVE_CONTROLLER_REPORTED);
+					"Remove - Could not access index root.", ES_ERROR_HARDWARE_FAILURE);
 			ESFS_CHECK_TO_ERROR(!vertex->count, "Remove - Index was not empty (although it should be as the directory is empty).", ES_ERROR_CORRUPT_DATA);
 			KWriterLockTake(&volume->blockBitmapLock, K_LOCK_EXCLUSIVE);
 			EsDefer(KWriterLockReturn(&volume->blockBitmapLock, K_LOCK_EXCLUSIVE));
