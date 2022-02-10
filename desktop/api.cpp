@@ -1967,7 +1967,7 @@ void EsPOSIXInitialise(int *, char ***) {
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			EsInstance *instance = EsInstanceCreate(message, INTERFACE_STRING(POSIXTitle));
 			EsPanel *panel = EsPanelCreate((EsElement *) instance->window, ES_PANEL_VERTICAL | ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-			EsTextDisplayCreate(panel, ES_CELL_H_CENTER | ES_CELL_V_FILL | ES_TEXT_DISPLAY_RICH_TEXT, nullptr, INTERFACE_STRING(POSIXUnavailable));
+			EsTextDisplayCreate(panel, ES_CELL_H_CENTER | ES_CELL_V_FILL | ES_TEXT_DISPLAY_RICH_TEXT, 0, INTERFACE_STRING(POSIXUnavailable));
 		}
 	}
 }
