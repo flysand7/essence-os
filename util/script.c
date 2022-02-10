@@ -1,11 +1,12 @@
 // TODO Basic missing features:
-// 	- Other list operations: insert_many, delete, delete_many, delete_last.
-// 	- Maps: T[int], T[str].
+// 	- Other list operations: insert_many, delete_many.
+// 	- Maps: map[int, T], map[str, T].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, bitwise shifts, bitwise AND/OR/XOR/NOT, ternary.
 // 	- Enums, bitsets.
 // 	- Named optional arguments with default values.
 // 	- Accessing structs and functypes from inline modules.
+// 	- For each syntax: for type identifier; list block
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -134,6 +135,9 @@
 #define T_OP_CURRY            (153)
 #define T_OP_ASYNC            (154)
 #define T_OP_FIND_AND_DELETE  (155)
+#define T_OP_FIND             (156)
+#define T_OP_FIND_AND_DEL_STR (157)
+#define T_OP_FIND_STR         (158)
 
 #define T_IF                  (160)
 #define T_WHILE               (161)
@@ -2534,6 +2538,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		else if (isList && KEYWORD("insert_many")) arguments[0] = &globalExpressionTypeInt, arguments[1] = &globalExpressionTypeInt, op = T_OP_INSERT_MANY;
 		else if (isList && KEYWORD("delete")) arguments[0] = &globalExpressionTypeInt, op = T_OP_DELETE;
 		else if (isList && KEYWORD("find_and_delete")) arguments[0] = expressionType->firstChild, op = T_OP_FIND_AND_DELETE, returnsBool = true;
+		else if (isList && KEYWORD("find")) arguments[0] = expressionType->firstChild, op = T_OP_FIND, returnsInt = true;
 		else if (isList && KEYWORD("delete_many")) arguments[0] = &globalExpressionTypeInt, arguments[1] = &globalExpressionTypeInt, op = T_OP_DELETE_MANY;
 		else if (isList && KEYWORD("delete_last")) op = T_OP_DELETE_LAST;
 		else if (isList && KEYWORD("delete_all")) op = T_OP_DELETE_ALL;
@@ -2609,8 +2614,17 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		if (op == T_OP_FIND_AND_DELETE && ASTMatching(arguments[0], &globalExpressionTypeFloat)) {
-			PrintError2(tokenizer, node, "The find_and_delete operation cannot be used with floats.\n");
+			PrintError2(tokenizer, node, "The 'find_and_delete' operation cannot be used with floats.\n");
 			return false;
+		} else if (op == T_OP_FIND && ASTMatching(arguments[0], &globalExpressionTypeFloat)) {
+			PrintError2(tokenizer, node, "The 'find' operation cannot be used with floats.\n");
+			return false;
+		}
+
+		if (op == T_OP_FIND_AND_DELETE && ASTMatching(arguments[0], &globalExpressionTypeStr)) {
+			op = T_OP_FIND_AND_DEL_STR;
+		} else if (op == T_OP_FIND && ASTMatching(arguments[0], &globalExpressionTypeStr)) {
+			op = T_OP_FIND_STR;
 		}
 
 		if (simple) {
@@ -4338,7 +4352,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->heap[index].length = context->heap[index].allocated = 0;
 			context->heap[index].list = (Value *) AllocateResize(context->heap[index].list, 0);
 			context->c->stackPointer--;
-		} else if (command == T_OP_FIND_AND_DELETE) {
+		} else if (command == T_OP_FIND_AND_DELETE || command == T_OP_FIND
+				|| command == T_OP_FIND_AND_DEL_STR || command == T_OP_FIND_STR) {
 			if (context->c->stackPointer < 2) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
 
@@ -4353,22 +4368,36 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_LIST) return -1;
 			if (entry->internalValuesAreManaged != context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
-			bool found = false;
+			if ((command == T_OP_FIND_STR || command == T_OP_FIND_AND_DEL_STR) && !entry->internalValuesAreManaged) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = command == T_OP_FIND || command == T_OP_FIND_STR ? -1 : 0;
 
 			for (uintptr_t i = 0; i < entry->length; i++) {
-				if (entry->list[i].i == context->c->stack[context->c->stackPointer - 1].i) {
+				if (command == T_OP_FIND_STR || command == T_OP_FIND_AND_DEL_STR) {
+					const char *text1, *text2;
+					size_t bytes1, bytes2;
+					ScriptHeapEntryToString(context, &context->heap[entry->list[i].i], &text1, &bytes1);
+					ScriptHeapEntryToString(context, &context->heap[context->c->stack[context->c->stackPointer - 1].i], &text2, &bytes2);
+					bool equal = bytes1 == bytes2 && 0 == MemoryCompare(text1, text2, bytes1);
+					if (!equal) continue;
+				} else {
+					bool equal = entry->list[i].i == context->c->stack[context->c->stackPointer - 1].i;
+					if (!equal) continue;
+				}
+					
+				if (command == T_OP_FIND || command == T_OP_FIND_STR) {
+					context->c->stack[context->c->stackPointer - 2].i = i;
+				} else {
+					context->c->stack[context->c->stackPointer - 2].i = 1;
 					entry->length--;
-					found = true;
 
 					for (uintptr_t j = i; j < entry->length; j++) {
 						entry->list[j] = entry->list[j + 1];
 					}
-
-					break;
 				}
+
+				break;
 			}
 
-			context->c->stack[context->c->stackPointer - 2].i = found;
 			context->c->stackIsManaged[context->c->stackPointer - 2] = false;
 			context->c->stackPointer--;
 		} else if (command == T_OP_DISCARD || command == T_OP_ASSERT) {
