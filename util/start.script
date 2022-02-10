@@ -46,6 +46,7 @@ void Setup(bool forAutomation) {
 	if forAutomation {
 		assert FileWriteAll("bin/build_config.ini", "accepted_license=1\nautomated_build=1\n");
 		assert SystemShellExecute("bin/build get-toolchain");
+		assert FileAppend("bin/build_config.ini", "\nautomated_build=1\n");
 		assert FileWriteAll("bin/commit.txt", StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15));
 	}
 }

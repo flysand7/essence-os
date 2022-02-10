@@ -509,6 +509,7 @@ char baseModuleSource[] = {
 	"bool PathSetDefaultPrefixToScriptSourceDirectory() #extcall;"
 	"str FileReadAll(str path) #extcall;" // TODO Returning an error?
 	"bool FileWriteAll(str path, str x) #extcall;" // TODO Returning an error?
+	"bool FileAppend(str path, str x) #extcall;" // TODO Returning an error?
 	"bool FileCopy(str source, str destination) #extcall;"
 	"int FileGetSize(str path) #extcall;" // Returns -1 on error. TODO Returning an error code.
 					      
@@ -704,6 +705,7 @@ int ExternalPathGetDefaultPrefix(ExecutionContext *context, Value *returnValue);
 int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *context, Value *returnValue);
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue);
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue);
+int ExternalFileAppend(ExecutionContext *context, Value *returnValue);
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue);
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue);
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue);
@@ -742,6 +744,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "PathSetDefaultPrefixToScriptSourceDirectory", .callback = ExternalPathSetDefaultPrefixToScriptSourceDirectory },
 	{ .cName = "FileReadAll", .callback = ExternalFileReadAll },
 	{ .cName = "FileWriteAll", .callback = ExternalFileWriteAll },
+	{ .cName = "FileAppend", .callback = ExternalFileAppend },
 	{ .cName = "FileCopy", .callback = ExternalFileCopy },
 	{ .cName = "FileGetSize", .callback = ExternalFileGetSize },
 	{ .cName = "PersistRead", .callback = ExternalPersistRead },
@@ -5497,6 +5500,23 @@ int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
 	if (!temporary) return 3;
 	FILE *f = fopen(temporary, "wb");
+
+	if (f) {
+		returnValue->i = entry2Bytes == fwrite(entry2Text, 1, entry2Bytes, f);
+		if (fclose(f)) returnValue->i = 0;
+	}
+
+	free(temporary);
+	return 2;
+}
+
+int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
+	returnValue->i = 0;
+	if (entryBytes == 0) return 2;
+	char *temporary = StringZeroTerminate(entryText, entryBytes);
+	if (!temporary) return 3;
+	FILE *f = fopen(temporary, "ab");
 
 	if (f) {
 		returnValue->i = entry2Bytes == fwrite(entry2Text, 1, entry2Bytes, f);

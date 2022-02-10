@@ -280,6 +280,19 @@ int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
 	return 2;
 }
 
+int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
+	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
+	returnValue->i = 0;
+	EsFileInformation information = EsFileOpen(entryText, entryBytes, ES_FILE_WRITE);
+
+	if (information.error == ES_SUCCESS) {
+		returnValue->i = EsFileWriteSync(information.handle, information.size, entry2Bytes, entry2Text);
+		EsHandleClose(information.handle);
+	}
+
+	return 2;
+}
+
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	EsDirectoryChild information;
