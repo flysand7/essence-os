@@ -7919,7 +7919,7 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 				window->inactiveFocus = window->focused;
 				window->inactiveFocus->Repaint(true);
 				window->focused = nullptr;
-				UIRemoveFocusFromElement(window->focused);
+				UIRemoveFocusFromElement(window->inactiveFocus);
 			}
 
 			EsMessageSend(window, message);
