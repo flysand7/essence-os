@@ -60,7 +60,7 @@ void _start() {
 				ES_CELL_H_CENTER     // Horizontally center it in panelRoot.
 				| ES_PANEL_STACK     // Use the stack layout.
 				| ES_PANEL_VERTICAL, // Layout child elements from top to bottom.
-				&stylePanelStack);
+				EsStyleIntern(&stylePanelStack));
 
 			// Add a second layout panel to panelStack to contain the elements of the form.
 			EsPanel *panelForm = EsPanelCreate(
