@@ -36,6 +36,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+// #define TRACE_COMMAND_EXECUTION
+
+#define FUNCTION_MAX_ARGUMENTS (20) // Also the maximum number of return values in a tuple.
+
 #define T_ERROR               (0)
 #define T_EOF                 (1)
 #define T_IDENTIFIER          (2)
@@ -88,6 +92,10 @@
 #define T_IMPORT_PATH         (93)
 #define T_LIST_LITERAL        (94)
 #define T_REPL_RESULT         (95)
+#define T_RETURN_TUPLE        (96)
+#define T_DECLARE_GROUP       (97)
+#define T_DECL_GROUP_AND_SET  (98)
+#define T_SET_GROUP           (99)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -162,6 +170,7 @@
 #define T_IMPORT              (180)
 #define T_INLINE              (181)
 #define T_AWAIT               (182)
+#define T_TUPLE               (183)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -768,6 +777,7 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_MINUS_EQUALS)    return 10;
 	if (t == T_ASTERISK_EQUALS) return 10;
 	if (t == T_SLASH_EQUALS)    return 10;
+	if (t == T_COMMA)           return 12;
 	if (t == T_LOGICAL_OR)      return 14;
 	if (t == T_LOGICAL_AND)     return 15;
 	if (t == T_GREATER_THAN)    return 20;
@@ -890,6 +900,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("str") token.type = T_STR;
 			else if KEYWORD("struct") token.type = T_STRUCT;
 			else if KEYWORD("true") token.type = T_TRUE;
+			else if KEYWORD("tuple") token.type = T_TUPLE;
 			else if KEYWORD("void") token.type = T_VOID;
 			else if KEYWORD("while") token.type = T_WHILE;
 
@@ -984,7 +995,7 @@ Token TokenPeek(Tokenizer *tokenizer) {
 	return TokenNext(&copy);
 }
 
-Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid) {
+Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid, bool allowTuple) {
 	Node *node = (Node *) AllocateFixed(sizeof(Node));
 	node->token = TokenNext(tokenizer);
 
@@ -993,6 +1004,7 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid) {
 			|| node->token.type == T_STR 
 			|| node->token.type == T_BOOL 
 			|| node->token.type == T_VOID 
+			|| node->token.type == T_TUPLE
 			|| node->token.type == T_IDENTIFIER) {
 		node->type = node->token.type;
 
@@ -1002,6 +1014,60 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid) {
 			}
 
 			return NULL;
+		}
+
+		if (!allowTuple && node->type == T_TUPLE) {
+			if (!maybe) {
+				PrintError2(tokenizer, node, "The 'tuple' type is not allowed here.\n");
+			}
+
+			return NULL;
+		}
+
+		if (node->type == T_TUPLE) {
+			Token token = TokenNext(tokenizer);
+
+			if (token.type != T_LEFT_SQUARE) {
+				if (!maybe) PrintError2(tokenizer, node, "Expected a '[' after 'tuple'.\n");
+				return NULL;
+			}
+
+			Node **link = &node->firstChild;
+			bool needComma = false;
+			int count = 0;
+
+			while (true) {
+				token = TokenPeek(tokenizer);
+
+				if (token.type == T_RIGHT_SQUARE) {
+					TokenNext(tokenizer);
+					break;
+				} else if (needComma) {
+					if (token.type == T_COMMA) {
+						TokenNext(tokenizer);
+					} else {
+						if (!maybe) PrintError2(tokenizer, node, "Expected a ',' or ']' in the type list for 'tuple'.\n");
+						return NULL;
+					}
+				}
+
+				if (count == FUNCTION_MAX_ARGUMENTS) {
+					if (!maybe) PrintError2(tokenizer, node, "Too many values in the tuple (maximum is %d).\n", FUNCTION_MAX_ARGUMENTS);
+					return NULL;
+				}
+
+				Node *n = ParseType(tokenizer, maybe, false, false);
+				if (!n) return NULL;
+				*link = n;
+				link = &n->sibling;
+				needComma = true;
+				count++;
+			}
+
+			if (!node->firstChild || !node->firstChild->sibling) {
+				if (!maybe) PrintError2(tokenizer, node, "A tuple must have at least two types in its list.\n");
+				return NULL;
+			}
 		}
 
 		bool first = true;
@@ -1045,7 +1111,7 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid) {
 
 		return node;
 	} else if (!maybe) {
-		PrintError2(tokenizer, node, "Expected a type. This can be 'int', 'float', 'bool', 'void', 'str', or an identifier.\n");
+		PrintError2(tokenizer, node, "Expected a type. This can be 'int', 'float', 'bool', 'void', 'str', 'tuple', or an identifier.\n");
 		return NULL;
 	} else {
 		return NULL;
@@ -1173,7 +1239,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 		}
 	} else if (node->token.type == T_NEW) {
 		node->type = T_NEW;
-		node->firstChild = ParseType(tokenizer, false, false);
+		node->firstChild = ParseType(tokenizer, false, false /* allow void */, false /* allow tuple */);
 		node->expressionType = node->firstChild;
 		if (!node->firstChild) return NULL;
 	} else if (node->token.type == T_LEFT_SQUARE) {
@@ -1299,6 +1365,14 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 				PrintError2(tokenizer, &n, "Expected a matching closing bracket.\n");
 				return NULL;
 			}
+		} else if (token.type == T_COMMA && TokenLookupPrecedence(token.type) >= precedence && allowAssignment) {
+			Node *operation = (Node *) AllocateFixed(sizeof(Node));
+			operation->token = TokenNext(tokenizer);
+			operation->type = T_SET_GROUP;
+			operation->firstChild = node;
+			node->sibling = ParseExpression(tokenizer, true, TokenLookupPrecedence(token.type));
+			if (!node->sibling) return NULL;
+			node = operation;
 		} else {
 			break;
 		}
@@ -1367,12 +1441,9 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) 
 	Tokenizer copy = *tokenizer;
 	bool isVariableDeclaration = false;
 
-	if (ParseType(tokenizer, true, false) && TokenNext(tokenizer).type == T_IDENTIFIER) {
-		Token equalsOrSemicolon = TokenNext(tokenizer);
-
-		if (equalsOrSemicolon.type == T_EQUALS || equalsOrSemicolon.type == T_SEMICOLON) {
-			isVariableDeclaration = true;
-		}
+	if (ParseType(tokenizer, true, false /* allow void */, false /* allow tuple */) && TokenNext(tokenizer).type == T_IDENTIFIER) {
+		Token token = TokenNext(tokenizer);
+		isVariableDeclaration = token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA;
 	}
 
 	if (tokenizer->error) {
@@ -1390,14 +1461,15 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) 
 
 		Node *declaration = (Node *) AllocateFixed(sizeof(Node));
 		declaration->type = T_DECLARE;
-		declaration->firstChild = ParseType(tokenizer, false, false);
+		declaration->firstChild = ParseType(tokenizer, false, false /* allow void */, false /* allow tuple */);
 		Assert(declaration->firstChild);
 		declaration->token = TokenNext(tokenizer);
 		Assert(declaration->token.type == T_IDENTIFIER);
-		Token equalsOrSemicolon = TokenNext(tokenizer);
-		Assert(equalsOrSemicolon.type == T_EQUALS || equalsOrSemicolon.type == T_SEMICOLON);
 
-		if (equalsOrSemicolon.type == T_EQUALS) {
+		Token token = TokenNext(tokenizer);
+		Assert(token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA);
+
+		if (token.type == T_EQUALS) {
 			declaration->firstChild->sibling = ParseExpression(tokenizer, false, 0);
 			if (!declaration->firstChild->sibling) return NULL;
 			Token semicolon = TokenNext(tokenizer);
@@ -1405,6 +1477,53 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) 
 			if (semicolon.type != T_SEMICOLON) {
 				PrintError2(tokenizer, declaration, "Expected a semicolon at the end of the variable declaration.\n");
 				return NULL;
+			}
+		} else if (token.type == T_COMMA) {
+			Node *group = (Node *) AllocateFixed(sizeof(Node));
+			group->type = T_DECLARE_GROUP;
+			group->firstChild = declaration;
+			group->token = declaration->token;
+			Node **link = &declaration->sibling;
+			declaration = group;
+
+			while (true) {
+				Node *declaration = (Node *) AllocateFixed(sizeof(Node));
+				*link = declaration;
+				link = &declaration->sibling;
+				declaration->type = T_DECLARE;
+				declaration->firstChild = ParseType(tokenizer, false, false /* allow void */, false /* allow tuple */);
+				if (!declaration->firstChild) return NULL;
+				declaration->token = TokenNext(tokenizer);
+
+				if (declaration->token.type != T_IDENTIFIER) {
+					PrintError2(tokenizer, declaration, "Expected an identifier for the variable name.\n");
+					return NULL;
+				}
+
+				Token token = TokenNext(tokenizer);
+
+				if (token.type == T_ERROR) {
+					return NULL;
+				} else if (token.type == T_COMMA) {
+					// Keep going...
+				} else if (token.type == T_SEMICOLON) {
+					break;
+				} else if (token.type == T_EQUALS) {
+					group->type = T_DECL_GROUP_AND_SET;
+					*link = ParseExpression(tokenizer, false, 0);
+					if (!(*link)) return NULL;
+					Token semicolon = TokenNext(tokenizer);
+
+					if (semicolon.type != T_SEMICOLON) {
+						PrintError2(tokenizer, declaration, "Expected a semicolon at the end of the variable declaration group.\n");
+						return NULL;
+					}
+
+					break;
+				} else {
+					PrintError2(tokenizer, declaration, "Expected one of ',', '=' or ';' in the variable declaration group.\n");
+					return NULL;
+				}
 			}
 		}
 
@@ -1534,13 +1653,30 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
 			node->type = token.type;
 			node->token = TokenNext(tokenizer);
-			*link = node;
-			link = &node->sibling;
 
 			if (token.type == T_ASSERT || TokenPeek(tokenizer).type != T_SEMICOLON) {
 				node->firstChild = ParseExpression(tokenizer, false, 0);
 				if (!node->firstChild) return NULL;
+
+				if (token.type == T_RETURN && TokenPeek(tokenizer).type == T_COMMA) {
+					Node *n = node;
+					node = (Node *) AllocateFixed(sizeof(Node));
+					node->type = T_RETURN_TUPLE;
+					node->firstChild = n->firstChild;
+					Node **argumentLink = &n->firstChild->sibling;
+
+					while (TokenPeek(tokenizer).type == T_COMMA) {
+						TokenNext(tokenizer);
+						n = ParseExpression(tokenizer, false, 0);
+						if (!n) return NULL;
+						*argumentLink = n;
+						argumentLink = &n->sibling;
+					}
+				}
 			}
+
+			*link = node;
+			link = &node->sibling;
 
 			Token semicolon = TokenNext(tokenizer);
 
@@ -1564,7 +1700,7 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 }
 
 Node *ParseGlobalVariableOrFunctionDefinition(Tokenizer *tokenizer, bool allowGlobalVariables, bool parseFunctionBody) {
-	Node *type = ParseType(tokenizer, false, true);
+	Node *type = ParseType(tokenizer, false, true /* allow void */, true /* allow tuple */);
 
 	if (!type) {
 		return NULL;
@@ -1620,14 +1756,13 @@ Node *ParseGlobalVariableOrFunctionDefinition(Tokenizer *tokenizer, bool allowGl
 
 			Node *argument = (Node *) AllocateFixed(sizeof(Node));
 			argument->type = T_ARGUMENT;
-			argument->firstChild = ParseType(tokenizer, false, false);
+			argument->firstChild = ParseType(tokenizer, false, false /* allow void */, false /* allow tuple */);
 			if (!argument->firstChild) return NULL;
 			argument->token = TokenNext(tokenizer);
 			*link = argument;
 			link = &argument->sibling;
 			argumentCount++;
 
-#define FUNCTION_MAX_ARGUMENTS (20)
 			if (argumentCount > FUNCTION_MAX_ARGUMENTS) {
 				PrintError2(tokenizer, argument, "Functions cannot have more than %d arguments.\n", FUNCTION_MAX_ARGUMENTS);
 				return NULL;
@@ -1767,6 +1902,7 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 		if (token.type == T_ERROR) {
 			return NULL;
 		} else if (token.type == T_EOF) {
+			// ScriptPrintNode(root, 0);
 			return root;
 		} else if (token.type == T_FUNCTYPE) {
 			TokenNext(tokenizer);
@@ -1806,7 +1942,7 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 				Token peek = TokenPeek(tokenizer);
 				if (peek.type == T_ERROR) return NULL;
 				if (peek.type == T_RIGHT_FANCY) break;
-				Node *type = ParseType(tokenizer, false, true);
+				Node *type = ParseType(tokenizer, false, false /* allow void */, false /* allow tuple */);
 				if (!type) return NULL;
 				Node *field = (Node *) AllocateFixed(sizeof(Node));
 				field->token = TokenNext(tokenizer);
@@ -2211,6 +2347,17 @@ bool ASTIsManagedType(Node *node) {
 	return node->type == T_STR || node->type == T_LIST || node->type == T_STRUCT || node->type == T_FUNCPTR || node->type == T_FUNCPTR;
 }
 
+int ASTGetTypePopCount(Node *node) {
+	if (node->type == T_TUPLE) {
+		int count = 0;
+		Node *child = node->firstChild;
+		while (child) { count++; child = child->sibling; }
+		return count;
+	} else {
+		return 1;
+	}
+}
+
 bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 	Node *child = node->firstChild;
 
@@ -2276,12 +2423,12 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 	}
 
 	if (node->type == T_ROOT || node->type == T_BLOCK
-			|| node->type == T_INT || node->type == T_FLOAT || node->type == T_STR || node->type == T_LIST
+			|| node->type == T_INT || node->type == T_FLOAT || node->type == T_STR || node->type == T_LIST || node->type == T_TUPLE
 			|| node->type == T_BOOL || node->type == T_VOID || node->type == T_IDENTIFIER
 			|| node->type == T_ARGUMENTS || node->type == T_ARGUMENT
 			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT || node->type == T_IMPORT_PATH
 			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION
-			|| node->type == T_REPL_RESULT) {
+			|| node->type == T_REPL_RESULT || node->type == T_DECLARE_GROUP) {
 	} else if (node->type == T_NUMERIC_LITERAL) {
 		size_t dotCount = 0;
 
@@ -2375,10 +2522,64 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 	} else if (node->type == T_DECLARE) {
 		if (node->firstChild->sibling && !ASTMatching(node->firstChild, node->firstChild->sibling->expressionType)) {
-			ScriptPrintNode(node->firstChild, 0);
-			ScriptPrintNode(node->firstChild->sibling->expressionType, 0);
-
 			PrintError2(tokenizer, node, "The type of the variable being assigned does not match the expression.\n");
+			return false;
+		}
+	} else if (node->type == T_DECL_GROUP_AND_SET) {
+		Node *lastChild = node->firstChild;
+		while (lastChild->sibling) lastChild = lastChild->sibling;
+		Node *tuple = lastChild->expressionType;
+
+		if (tuple->type != T_TUPLE) {
+			PrintError2(tokenizer, node, "You can only use '=' in the declaration group with a function that returns a tuple.\n");
+			return false;
+		}
+
+		Node *child = node->firstChild;
+		Node *item = tuple->firstChild;
+		int index = 1;
+
+		while (child->sibling && item) {
+			if (!ASTMatching(child->expressionType, item)) {
+				PrintError2(tokenizer, node, "The type of value %d in the tuple does not match the declaration type.\n", index);
+				return false;
+			}
+
+			child = child->sibling;
+			item = item->sibling;
+			index++;
+		}
+
+		if ((!item && child->sibling) || (item && !child->sibling)) {
+			PrintError2(tokenizer, node, "The number of declarations in the group does not match the number of values in the tuple.\n");
+			return false;
+		}
+	} else if (node->type == T_SET_GROUP) {
+		if (node->parent->type == T_SET_GROUP) {
+			// Reattach our children at the end of the parent's children.
+			Assert(!node->sibling);
+			Node *child = node->parent->firstChild;
+			while (child->sibling != node) child = child->sibling;
+			child->sibling = node->firstChild;
+		} else if (node->parent->type == T_EQUALS) {
+			Node *expressionType = (Node *) AllocateFixed(sizeof(Node));
+			expressionType->type = T_TUPLE;
+			node->expressionType = expressionType;
+
+			Node *child = node->firstChild;
+			Node **link = &expressionType->firstChild;
+
+			while (child) {
+				Node *copy = (Node *) AllocateFixed(sizeof(Node));
+				*copy = *child->expressionType;
+				*link = copy;
+				link = &(*link)->sibling;
+				child = child->sibling;
+			}
+
+			*link = NULL;
+		} else {
+			PrintError2(tokenizer, node, "A comma separated list of expressions can only be used to assign a tuple return value to variables.\n");
 			return false;
 		}
 	} else if (node->type == T_EQUALS) {
@@ -2434,6 +2635,40 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		Node *returnType = function->firstChild->firstChild->sibling;
 
 		if (node->firstChild && ASTMatching(returnType, &globalExpressionTypeVoid)) {
+			PrintError2(tokenizer, node, "The function does not return a value ('void'), but the return statement has a return value.\n");
+			return false;
+		}
+
+		if (!ASTMatching(expressionType, returnType)) {
+			PrintError2(tokenizer, node, "The type of the expression does not match the declared return type of the function.\n");
+			return false;
+		}
+	} else if (node->type == T_RETURN_TUPLE) {
+		Node *expressionType = (Node *) AllocateFixed(sizeof(Node));
+		expressionType->type = T_TUPLE;
+
+		Node *child = node->firstChild;
+		Node **link = &expressionType->firstChild;
+
+		while (child) {
+			Node *copy = (Node *) AllocateFixed(sizeof(Node));
+			*copy = *child->expressionType;
+			*link = copy;
+			link = &(*link)->sibling;
+			child = child->sibling;
+		}
+
+		*link = NULL;
+
+		Node *function = node->parent;
+
+		while (function->type != T_FUNCTION) {
+			function = function->parent;
+		}
+
+		Node *returnType = function->firstChild->firstChild->sibling;
+
+		if (ASTMatching(returnType, &globalExpressionTypeVoid)) {
 			PrintError2(tokenizer, node, "The function does not return a value ('void'), but the return statement has a return value.\n");
 			return false;
 		}
@@ -2573,6 +2808,12 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 				if (ASTMatching(expressionType->firstChild->sibling, &globalExpressionTypeVoid)) {
 					PrintError2(tokenizer, node, "The return value cannot be discarded from a function that already returns void.\n");
+					return false;
+				}
+
+				if (expressionType->firstChild->sibling && expressionType->firstChild->sibling->type == T_TUPLE) {
+					// TODO Remove this restriction?
+					PrintError2(tokenizer, node, "The discard operation cannot be used on a function returning a tuple.\n");
 					return false;
 				}
 			}
@@ -2729,7 +2970,7 @@ bool ASTCheckForReturnStatements(Tokenizer *tokenizer, Node *node) {
 			lastStatement = lastStatement->sibling;
 		}
 
-		if (lastStatement && lastStatement->type == T_RETURN) {
+		if (lastStatement && (lastStatement->type == T_RETURN || lastStatement->type == T_RETURN_TUPLE)) {
 			return true;
 		} else if (lastStatement && (lastStatement->type == T_IF || lastStatement->type == T_BLOCK)) {
 			return ASTCheckForReturnStatements(tokenizer, lastStatement);
@@ -2888,22 +3129,50 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 				FunctionBuilderAppend(builder, &isManaged, sizeof(isManaged));
 			}
 		}
-	} else if (node->type == T_EQUALS || node->type == T_DECLARE) {
+	} else if (node->type == T_EQUALS || node->type == T_DECLARE || node->type == T_DECL_GROUP_AND_SET) {
 		if (node->firstChild->sibling) {
-			if (!FunctionBuilderRecurse(tokenizer, node->firstChild->sibling, builder, false)) return false;
-			builder->isPersistentVariable = false;
+			Node *variables[FUNCTION_MAX_ARGUMENTS];
+			uintptr_t variableCount = 0;
+			bool setGroup = node->type == T_EQUALS && node->firstChild->type == T_SET_GROUP;
+			Node *lastChild = setGroup ? node->firstChild->firstChild : node->firstChild;
 
-			if (node->type == T_DECLARE) {
-				if (!FunctionBuilderVariable(tokenizer, builder, node, true)) return false;
+			while (setGroup ? lastChild : lastChild->sibling) {
+				Assert(variableCount != FUNCTION_MAX_ARGUMENTS);
+				variables[variableCount++] = lastChild;
+				lastChild = lastChild->sibling;
 			}
 
-			else if (!FunctionBuilderRecurse(tokenizer, node->firstChild, builder, true)) return false;
-			FunctionBuilderAddLineNumber(builder, node);
-			uint8_t b = builder->isListAssignment ? T_EQUALS_LIST : builder->isDotAssignment ? T_EQUALS_DOT : T_EQUALS;
-			FunctionBuilderAppend(builder, &b, sizeof(b));
-			if (!builder->isListAssignment) FunctionBuilderAppend(builder, &builder->scopeIndex, sizeof(builder->scopeIndex));
-			b = T_PERSIST;
-			if (builder->isPersistentVariable) FunctionBuilderAppend(builder, &b, sizeof(b));
+			if (!FunctionBuilderRecurse(tokenizer, setGroup ? node->firstChild->sibling : lastChild, builder, false)) {
+				return false;
+			}
+
+			while (variableCount) {
+				Node *child = variables[--variableCount];
+				builder->isPersistentVariable = false;
+
+				if (node->type == T_DECLARE || node->type == T_DECL_GROUP_AND_SET) {
+					if (!FunctionBuilderVariable(tokenizer, builder, node->type == T_DECL_GROUP_AND_SET ? child : node, true)) {
+						return false;
+					}
+				} else if (!FunctionBuilderRecurse(tokenizer, child, builder, true)) {
+					return false;
+				}
+
+				FunctionBuilderAddLineNumber(builder, node);
+				uint8_t b = builder->isListAssignment ? T_EQUALS_LIST : builder->isDotAssignment ? T_EQUALS_DOT : T_EQUALS;
+				FunctionBuilderAppend(builder, &b, sizeof(b));
+
+				if (!builder->isListAssignment) {
+					FunctionBuilderAppend(builder, &builder->scopeIndex, sizeof(builder->scopeIndex));
+				}
+
+				if (builder->isPersistentVariable) {
+					b = T_PERSIST;
+					FunctionBuilderAppend(builder, &b, sizeof(b));
+				}
+
+				child = child->sibling;
+			}
 		}
 
 		return true;
@@ -2970,7 +3239,10 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		if (increment->expressionType && increment->expressionType->type != T_VOID) {
 			if (increment->type == T_CALL) {
 				uint8_t b = T_POP;
-				FunctionBuilderAppend(builder, &b, sizeof(b));
+
+				for (int i = 0; i < ASTGetTypePopCount(increment->expressionType); i++) {
+					FunctionBuilderAppend(builder, &b, sizeof(b));
+				}
 			} else {
 				PrintError2(tokenizer, increment, "The result of the expression is unused.\n");
 				return false;
@@ -3113,7 +3385,10 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DELETE)
 					|| (child->type == T_COLON && child->operationType == T_OP_FIND_AND_DEL_STR)) {
 				uint8_t b = T_POP;
-				FunctionBuilderAppend(builder, &b, sizeof(b));
+
+				for (int i = 0; i < ASTGetTypePopCount(child->expressionType); i++) {
+					FunctionBuilderAppend(builder, &b, sizeof(b));
+				}
 			} else if (child->type == T_DECLARE || child->type == T_EQUALS) {
 			} else {
 				PrintError2(tokenizer, child, "The result of the expression is unused.\n");
@@ -3132,7 +3407,8 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		FunctionBuilderAppend(builder, &entryCount, sizeof(entryCount));
 		b = T_END_FUNCTION;
 		if (node->type == T_FUNCBODY) FunctionBuilderAppend(builder, &b, sizeof(b));
-	} else if (node->type == T_RETURN) {
+	} else if (node->type == T_DECLARE_GROUP) {
+	} else if (node->type == T_RETURN || node->type == T_RETURN_TUPLE) {
 		uint8_t b = T_END_FUNCTION;
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &b, sizeof(b));
