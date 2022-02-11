@@ -1251,14 +1251,14 @@ struct EsRectangle {
 
 struct EsSpinlock {
 	volatile uint8_t state;
-};
+} @opaque();
 
 struct EsMutex {
 	EsHandle event;
 	EsSpinlock spinlock;
 	volatile uint8_t state;
 	volatile uint32_t queued;
-};
+} @opaque();
 
 struct EsCrashReason {
 	EsFatalError errorCode;

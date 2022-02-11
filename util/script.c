@@ -1,3 +1,5 @@
+// TODO Bug: Structure fields cannot have names the same as global variables or as in other structures.
+
 // TODO Basic missing features:
 // 	- Other list operations: insert_many, delete_many.
 // 	- Maps: map[int, T], map[str, T].
@@ -35,8 +37,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
-// #define TRACE_COMMAND_EXECUTION
 
 #define FUNCTION_MAX_ARGUMENTS (20) // Also the maximum number of return values in a tuple.
 

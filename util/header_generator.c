@@ -1540,6 +1540,104 @@ void OutputScript(Entry *root) {
 			}
 
 			FilePrintFormat(output, ") #extcall;\n");
+		} else if (entry->type == ENTRY_STRUCT) {
+			for (int i = 0; i < arrlen(entry->annotations); i++) {
+				Entry *annotation = entry->annotations + i;
+
+				if (0 == strcmp(annotation->name, "opaque")) {
+					goto skipRootEntry;
+				}
+			}
+
+			FilePrintFormat(output, "struct %s {\n", entry->name);
+
+			for (int i = 0; i < arrlen(entry->children); i++) {
+				Entry e = entry->children[i];
+				assert(e.type == ENTRY_VARIABLE);
+
+				bool isArray = false;
+				bool isArrayLength = false;
+
+				for (int i = 0; i < arrlen(entry->annotations); i++) {
+					if (0 == strcmp(entry->annotations[i].name, "array_in")
+							&& 0 == strcmp(entry->annotations[i].children[0].name, e.name)) {
+						isArray = true;
+						assert(e.variable.pointer);
+						e.variable.pointer--;
+						break;
+					} else if (0 == strcmp(entry->annotations[i].name, "array_in")
+							&& 0 == strcmp(entry->annotations[i].children[1].name, e.name)) {
+						isArrayLength = true;
+						break;
+					}
+				}
+
+				if (isArrayLength) {
+					continue;
+				}
+
+				FilePrintFormat(output, "\t");
+
+				bool foundType = false;
+
+				if (e.variable.pointer == 0 && ScriptWriteBasicType(e.variable.type)) {
+					foundType = true;
+				}
+
+				if (!foundType) {
+					for (int k = 0; k < arrlen(root->children); k++) {
+						if (!root->children[k].name) continue;
+						if (strcmp(e.variable.type, root->children[k].name)) continue;
+
+						if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
+							if (ScriptWriteBasicType(root->children[k].variable.type)) {
+								foundType = true;
+								break;
+							}
+						} else if (root->children[k].type == ENTRY_API_TYPE && e.variable.pointer == 1) {
+							FilePrintFormat(output, "%s", root->children[k].name);
+							foundType = true;
+							break;
+						} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
+							FilePrintFormat(output, "%s", root->children[k].name);
+							foundType = true;
+							break;
+						} else if (root->children[k].type == ENTRY_STRUCT && e.variable.pointer == 0) {
+							FilePrintFormat(output, "%s", root->children[k].name);
+							foundType = true;
+							break;
+						} else if (root->children[k].type == ENTRY_STRUCT && e.variable.pointer == 1) {
+							bool isOpaque = false;
+
+							for (int i = 0; i < arrlen(root->children[k].annotations); i++) {
+								if (0 == strcmp(root->children[k].annotations[i].name, "opaque")) {
+									isOpaque = true;
+									break;
+								}
+							}
+
+							if (isOpaque) {
+								FilePrintFormat(output, "%s", root->children[k].name);
+								foundType = true;
+								break;
+							}
+						}
+					}
+				}
+
+				if (!foundType) {
+					FilePrintFormat(output, "??");
+				}
+
+				if (e.variable.isArray) FilePrintFormat(output, "[]");
+				if (isArray) FilePrintFormat(output, "[]");
+
+				assert(!e.variable.isVolatile);
+
+				FilePrintFormat(output, " %s;\n", e.name);
+			}
+
+			FilePrintFormat(output, "};\n\n");
 		}
 
 		skipRootEntry:;
