@@ -843,10 +843,10 @@ void TextboxUndoItemCallback(const void *item, EsUndoManager *manager, EsMessage
 void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringBytes, bool sendUpdatedMessage) {
 	EsMessageMutexCheck();
 
-	// EsPrint("EsTextboxInsert \"%s\" at %d:%d->%d:%d.\n", 
-	// 		stringBytes, string, textbox->carets[0].line, textbox->carets[0].byte, textbox->carets[1].line, textbox->carets[1].byte);
-
 #if 0
+	EsPrint("EsTextboxInsert \"%s\" at %d:%d->%d:%d.\n", 
+			stringBytes, string, textbox->carets[0].line, textbox->carets[0].byte, textbox->carets[1].line, textbox->carets[1].byte);
+
 	for (uintptr_t i = 0; i < textbox->lines.Length(); i++) {
 		EsPrint("line %d %d '%s'\n", i, textbox->lines[i].lengthBytes, textbox->lines[i].lengthBytes, GET_BUFFER(&textbox->lines[i]));
 	}
@@ -992,9 +992,6 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 		TextboxCaret insertionPoint = textbox->carets[0];
 
 		DocumentLine *line = &textbox->lines[insertionPoint.line];
-		int32_t lineByteOffset = line->offset,
-			offsetIntoLine = insertionPoint.byte,
-			byteOffset = offsetIntoLine + lineByteOffset;
 
 		// Step 1: Count the number of newlines in the input string.
 
@@ -1024,6 +1021,7 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			// Step 2: Update the active line buffer.
 
 			TextboxSetActiveLine(textbox, insertionPoint.line);
+			int32_t offsetIntoLine = insertionPoint.byte;
 			TextboxBufferResize((void **) &textbox->activeLine, &textbox->activeLineAllocated, (textbox->activeLineBytes += bytesToInsert), 1);
 			EsMemoryMove(textbox->activeLine + offsetIntoLine, textbox->activeLine + line->lengthBytes, bytesToInsert, false);
 
@@ -1061,6 +1059,11 @@ void EsTextboxInsert(EsTextbox *textbox, const char *string, ptrdiff_t stringByt
 			// Step 2: Make room in the buffer for the contents of the string.
 
 			TextboxSetActiveLine(textbox, -1);
+
+			int32_t lineByteOffset = line->offset,
+				offsetIntoLine = insertionPoint.byte,
+				byteOffset = offsetIntoLine + lineByteOffset;
+
 			TextboxBufferResize((void **) &textbox->data, &textbox->dataAllocated, textbox->dataBytes + bytesToInsert, 1);
 			EsMemoryMove(textbox->data + byteOffset, textbox->data + textbox->dataBytes, bytesToInsert, false);
 			textbox->dataBytes += bytesToInsert;

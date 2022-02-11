@@ -496,6 +496,14 @@ bool TextboxEditOperations() {
 	EsRandomSeed(10); 
 	EsTextboxSetUndoManager(textbox, textbox->instance->undoManager);
 
+	CHECK(Insert(0, EsLiteral("hello\n\t\t\ttest\n\t\t\tworld")));
+	CHECK(Insert(13, EsLiteral("\n")));
+	CHECK(Insert(14, EsLiteral("\t\t\t")));
+	CHECK(Insert(26, EsLiteral("\n")));
+	CHECK(Insert(27, EsLiteral("\t\t\t")));
+	CHECK(Insert(30, EsLiteral("\n")));
+	CHECK(Insert(31, EsLiteral("\t\t\t")));
+
 	char *initialText = (char *) EsHeapAllocate(100000, false);
 	for (uintptr_t i = 0; i < 100000; i++) initialText[i] = EsRandomU8() < 0x40 ? '\n' : ((EsRandomU8() % 26) + 'a');
 	CHECK(Insert(0, initialText, 100000));
