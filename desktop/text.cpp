@@ -2548,6 +2548,9 @@ void EsDrawTextThemed(EsPainter *painter, EsElement *element, EsRectangle bounds
 void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes, 
 		char **outString, EsTextRun **outTextRuns, size_t *outTextRunCount,
 		EsTextStyle *baseStyle) {
+	// TODO Check that this can be used on untrusted input.
+	// 	Specifically, what if textRunCount/stringBytes are calculated incorrectly?
+
 	if (inStringBytes == -1) {
 		inStringBytes = EsCStringLength(inString);
 	}
@@ -2597,15 +2600,17 @@ void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 				if (c == ']') {
 					break;
 				} else if (c == 'w' /* weight */) {
-					i++; if (i >= inStringBytes || inString[i] == ']') goto parsedFormat;
-					textRun->style.font.weight = inString[i] - '0';
+					i++; 
+					if (i >= inStringBytes || inString[i] == ']') {}
+					else textRun->style.font.weight = inString[i] - '0';
 				} else if (c == 'i' /* italic */) {
 					textRun->style.font.flags |= ES_FONT_ITALIC;
 				} else if (c == 's' /* size */) {
 					textRun->style.size = 0;
 
 					while (true) {
-						i++; if (i >= inStringBytes || inString[i] == ']') goto parsedFormat;
+						i++; 
+						if (i >= inStringBytes || inString[i] == ']') break;
 						if (inString[i] < '0' || inString[i] > '9') { i--; break; }
 						textRun->style.size *= 10;
 						textRun->style.size += inString[i] - '0';
@@ -2627,12 +2632,11 @@ void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 						string[bytes++] = inString[i++];
 					}
 
+					i--;
 					textRun->style.color = EsColorParse(string, bytes);
-					goto parsedFormat;
 				}
 			}
 
-			parsedFormat:;
 			textRunIndex++;
 		} else {
 			string[stringIndex++] = inString[i];
@@ -2650,41 +2654,84 @@ void EsRichTextParse(const char *inString, ptrdiff_t inStringBytes,
 
 // --------------------------------- Syntax highlighting.
 
-const char *const keywords_a[] = { "auto", nullptr };
-const char *const keywords_b[] = { "bool", "break", nullptr };
-const char *const keywords_c[] = { "case", "char", "const", "continue", nullptr };
-const char *const keywords_d[] = { "default", "do", "double", nullptr };
-const char *const keywords_e[] = { "else", "enum", "extern", nullptr };
-const char *const keywords_f[] = { "float", "for", nullptr };
-const char *const keywords_g[] = { "goto", nullptr };
-const char *const keywords_h[] = { nullptr };
-const char *const keywords_i[] = { "if", "inline", "int", "int16_t", "int32_t", "int64_t", "int8_t", "intptr_t", nullptr };
-const char *const keywords_j[] = { nullptr };
-const char *const keywords_k[] = { nullptr };
-const char *const keywords_l[] = { "long", nullptr };
-const char *const keywords_m[] = { nullptr };
-const char *const keywords_n[] = { nullptr };
-const char *const keywords_o[] = { nullptr };
-const char *const keywords_p[] = { nullptr };
-const char *const keywords_q[] = { nullptr };
-const char *const keywords_r[] = { "register", "restrict", "return", nullptr };
-const char *const keywords_s[] = { "short", "signed", "sizeof", "static", "struct", "switch", nullptr };
-const char *const keywords_t[] = { "typedef", nullptr };
-const char *const keywords_u[] = { "uint16_t", "uint32_t", "uint64_t", "uint8_t", "uintptr_t", "union", "unsigned", nullptr };
-const char *const keywords_v[] = { "void", "volatile", nullptr };
-const char *const keywords_w[] = { "while", nullptr };
-const char *const keywords_x[] = { nullptr };
-const char *const keywords_y[] = { nullptr };
-const char *const keywords_z[] = { nullptr };
+const char *const keywordsC_a[] = { "auto", nullptr };
+const char *const keywordsC_b[] = { "bool", "break", nullptr };
+const char *const keywordsC_c[] = { "case", "char", "const", "continue", nullptr };
+const char *const keywordsC_d[] = { "default", "do", "double", nullptr };
+const char *const keywordsC_e[] = { "else", "enum", "extern", nullptr };
+const char *const keywordsC_f[] = { "float", "for", nullptr };
+const char *const keywordsC_g[] = { "goto", nullptr };
+const char *const keywordsC_h[] = { nullptr };
+const char *const keywordsC_i[] = { "if", "inline", "int", "int16_t", "int32_t", "int64_t", "int8_t", "intptr_t", nullptr };
+const char *const keywordsC_j[] = { nullptr };
+const char *const keywordsC_k[] = { nullptr };
+const char *const keywordsC_l[] = { "long", nullptr };
+const char *const keywordsC_m[] = { nullptr };
+const char *const keywordsC_n[] = { nullptr };
+const char *const keywordsC_o[] = { nullptr };
+const char *const keywordsC_p[] = { nullptr };
+const char *const keywordsC_q[] = { nullptr };
+const char *const keywordsC_r[] = { "register", "restrict", "return", nullptr };
+const char *const keywordsC_s[] = { "short", "signed", "sizeof", "static", "struct", "switch", nullptr };
+const char *const keywordsC_t[] = { "typedef", nullptr };
+const char *const keywordsC_u[] = { "uint16_t", "uint32_t", "uint64_t", "uint8_t", "uintptr_t", "union", "unsigned", nullptr };
+const char *const keywordsC_v[] = { "void", "volatile", nullptr };
+const char *const keywordsC_w[] = { "while", nullptr };
+const char *const keywordsC_x[] = { nullptr };
+const char *const keywordsC_y[] = { nullptr };
+const char *const keywordsC_z[] = { nullptr };
 
-const char *const *const keywords[] = {
-	keywords_a, keywords_b, keywords_c, keywords_d,
-	keywords_e, keywords_f, keywords_g, keywords_h,
-	keywords_i, keywords_j, keywords_k, keywords_l,
-	keywords_m, keywords_n, keywords_o, keywords_p,
-	keywords_q, keywords_r, keywords_s, keywords_t,
-	keywords_u, keywords_v, keywords_w, keywords_x,
-	keywords_y, keywords_z,
+const char *const keywordsScript_a[] = { "assert", "await", nullptr };
+const char *const keywordsScript_b[] = { "bool", nullptr };
+const char *const keywordsScript_c[] = { nullptr };
+const char *const keywordsScript_d[] = { nullptr };
+const char *const keywordsScript_e[] = { "else", nullptr };
+const char *const keywordsScript_f[] = { "false", "float", "for", "functype", nullptr };
+const char *const keywordsScript_g[] = { nullptr };
+const char *const keywordsScript_h[] = { nullptr };
+const char *const keywordsScript_i[] = { "if", "int", nullptr };
+const char *const keywordsScript_j[] = { nullptr };
+const char *const keywordsScript_k[] = { nullptr };
+const char *const keywordsScript_l[] = { nullptr };
+const char *const keywordsScript_m[] = { nullptr };
+const char *const keywordsScript_n[] = { "new", "null", nullptr };
+const char *const keywordsScript_o[] = { nullptr };
+const char *const keywordsScript_p[] = { nullptr };
+const char *const keywordsScript_q[] = { nullptr };
+const char *const keywordsScript_r[] = { "return", nullptr };
+const char *const keywordsScript_s[] = { "str", "struct", nullptr };
+const char *const keywordsScript_t[] = { "true", "tuple", nullptr };
+const char *const keywordsScript_u[] = { nullptr };
+const char *const keywordsScript_v[] = { "void", nullptr };
+const char *const keywordsScript_w[] = { "while", nullptr };
+const char *const keywordsScript_x[] = { nullptr };
+const char *const keywordsScript_y[] = { nullptr };
+const char *const keywordsScript_z[] = { nullptr };
+
+const char *const *const keywordsC[] = {
+	keywordsC_a, keywordsC_b, keywordsC_c, keywordsC_d,
+	keywordsC_e, keywordsC_f, keywordsC_g, keywordsC_h,
+	keywordsC_i, keywordsC_j, keywordsC_k, keywordsC_l,
+	keywordsC_m, keywordsC_n, keywordsC_o, keywordsC_p,
+	keywordsC_q, keywordsC_r, keywordsC_s, keywordsC_t,
+	keywordsC_u, keywordsC_v, keywordsC_w, keywordsC_x,
+	keywordsC_y, keywordsC_z,
+};
+
+const char *const *const keywordsScript[] = {
+	keywordsScript_a, keywordsScript_b, keywordsScript_c, keywordsScript_d,
+	keywordsScript_e, keywordsScript_f, keywordsScript_g, keywordsScript_h,
+	keywordsScript_i, keywordsScript_j, keywordsScript_k, keywordsScript_l,
+	keywordsScript_m, keywordsScript_n, keywordsScript_o, keywordsScript_p,
+	keywordsScript_q, keywordsScript_r, keywordsScript_s, keywordsScript_t,
+	keywordsScript_u, keywordsScript_v, keywordsScript_w, keywordsScript_x,
+	keywordsScript_y, keywordsScript_z,
+};
+
+const char *const *const *const keywords[] = {
+	keywordsC,
+	nullptr /* INI */,
+	keywordsScript,
 };
 
 bool CharIsAlphaOrDigitOrUnderscore(char c) {
@@ -2693,7 +2740,6 @@ bool CharIsAlphaOrDigitOrUnderscore(char c) {
 
 Array<EsTextRun> TextApplySyntaxHighlighting(const EsTextStyle *baseStyle, int language, uint32_t *colors, Array<EsTextRun> runs, const char *string, size_t bytes) {
 	// TODO Make these colors customizable!
-	// TODO Highlight keywords.
 
 	int lexState = 0;
 	bool inComment = false, inIdentifier = false, inChar = false, startedString = false;
@@ -2713,14 +2759,14 @@ Array<EsTextRun> TextApplySyntaxHighlighting(const EsTextStyle *baseStyle, int l
 			last = 0;
 		}
 
-		if (language == ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C) {
+		if (language == ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C || language == ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT) {
 			if (lexState == 4) {
 				lexState = 0;
 			} else if (lexState == 1) {
 				if ((last & 0xFF0000) == ('*' << 16) && (last & 0xFF00) == ('/' << 8) && inComment) {
 					lexState = 0, inComment = false;
 				}
-			} else if (lexState == 3 || lexState == 6) {
+			} else if (lexState == 3 || lexState == 6 || (lexState == 5 && language == ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT)) {
 				if (!CharIsAlphaOrDigitOrUnderscore(c)) {
 					lexState = 0;
 				}
@@ -2760,7 +2806,7 @@ Array<EsTextRun> TextApplySyntaxHighlighting(const EsTextStyle *baseStyle, int l
 					inIdentifier = true;
 
 					if (c >= 'a' && c <= 'z' && (!index || !CharIsAlphaOrDigitOrUnderscore(string[index - 1]))) {
-						const char *const *k = keywords[c - 'a'];
+						const char *const *k = keywords[language - 1][c - 'a'];
 
 						for (int i = 0; k[i]; i++) {
 							int j = 0;

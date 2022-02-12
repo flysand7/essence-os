@@ -694,8 +694,9 @@ define ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE (1 << 2)
 
 define ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
 
-define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C (1)
-define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI (2)
+define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C      (1)
+define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI    (2)
+define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT (3)
 
 define ES_DRAW_LINE_CAP_ROUND (1 << 0)
 define ES_DRAW_LINE_CAP_SQUARE (1 << 1)
@@ -2569,6 +2570,8 @@ function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags 
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height);
 function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) @buffer_in(buffer, bufferBytes);
 function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds);
+function uint32_t EsImageDisplayGetImageWidth(EsImageDisplay *display);
+function uint32_t EsImageDisplayGetImageHeight(EsImageDisplay *display);
 
 function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);

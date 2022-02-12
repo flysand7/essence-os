@@ -437,9 +437,16 @@ char baseModuleSource[] = {
 
 	// Logging:
 
-	"void PrintStdErr(str x) #extcall;"
-	"void PrintStdErrWarning(str x) #extcall;"
-	"void PrintStdErrHighlight(str x) #extcall;"
+	"void Log(str x) #extcall;"
+	"void LogInfo(str x) { Log(TextColorHighlight() + x); }"
+	"void LogError(str x) { Log(TextColorError() + \"Error: \" + x); }"
+
+	"str TextColorError() #extcall;"
+	"str TextColorHighlight() #extcall;"
+	"str TextWeight(int i) #extcall;"
+	"str TextMonospaced() #extcall;"
+	"str TextPlain() #extcall;"
+	"str TextBold() { return TextWeight(700); }"
 
 	// String operations:
 
@@ -691,9 +698,12 @@ char baseModuleSource[] = {
 
 // --------------------------------- External function calls.
 
-int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue);
-int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue);
-int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue);
+int ExternalLog(ExecutionContext *context, Value *returnValue);
+int ExternalTextColorError(ExecutionContext *context, Value *returnValue);
+int ExternalTextColorHighlight(ExecutionContext *context, Value *returnValue);
+int ExternalTextWeight(ExecutionContext *context, Value *returnValue);
+int ExternalTextMonospaced(ExecutionContext *context, Value *returnValue);
+int ExternalTextPlain(ExecutionContext *context, Value *returnValue);
 int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue);
 int ExternalStringSlice(ExecutionContext *context, Value *returnValue);
 int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue);
@@ -730,9 +740,12 @@ int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *ret
 int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue);
 
 ExternalFunction externalFunctions[] = {
-	{ .cName = "PrintStdErr", .callback = ExternalPrintStdErr },
-	{ .cName = "PrintStdErrWarning", .callback = ExternalPrintStdErrWarning },
-	{ .cName = "PrintStdErrHighlight", .callback = ExternalPrintStdErrHighlight },
+	{ .cName = "Log", .callback = ExternalLog },
+	{ .cName = "TextColorError", .callback = ExternalTextColorError },
+	{ .cName = "TextColorHighlight", .callback = ExternalTextColorHighlight },
+	{ .cName = "TextWeight", .callback = ExternalTextWeight },
+	{ .cName = "TextMonospaced", .callback = ExternalTextMonospaced },
+	{ .cName = "TextPlain", .callback = ExternalTextPlain },
 	{ .cName = "ConsoleGetLine", .callback = ExternalConsoleGetLine },
 	{ .cName = "StringSlice", .callback = ExternalStringSlice },
 	{ .cName = "CharacterToByte", .callback = ExternalCharacterToByte },
@@ -5363,6 +5376,7 @@ pthread_mutex_t externalCoroutineMutex;
 CoroutineState *externalCoroutineUnblockedList;
 
 bool systemShellLoggingEnabled = true;
+bool coloredOutput;
 
 char *scriptSourceDirectory;
 
@@ -5552,33 +5566,36 @@ int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnVal
 	return 1;
 }
 
-int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
+int ExternalLog(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	fprintf(stderr, "%.*s", (int) entryBytes, (char *) entryText);
+	fprintf(stderr, coloredOutput ? "\033[0;m\n" : "\n");
 	return 1;
 }
 
-int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	STACK_POP_STRING(entryText, entryBytes);
-	static int coloredOutput = 0;
-#ifndef _WIN32
-	if (!coloredOutput) coloredOutput = isatty(STDERR_FILENO) ? 2 : 1;
-#endif
-	fprintf(stderr, coloredOutput == 2 ? "\033[0;33m%.*s\033[0;m" : "%.*s", (int) entryBytes, (char *) entryText);
-	return 1;
+int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char *mode) {
+	if (coloredOutput) {
+		char *buffer = malloc(32);
+		uintptr_t index = HeapAllocate(context);
+		context->heap[index].type = T_STR;
+		context->heap[index].bytes = sprintf(buffer, "\033[0;%sm", mode);
+		context->heap[index].text = buffer;
+		returnValue->i = index;
+	} else {
+		returnValue->i = 0;
+	}
+
+	return 3;
 }
 
-int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
-	STACK_POP_STRING(entryText, entryBytes);
-	static int coloredOutput = 0;
-#ifndef _WIN32
-	if (!coloredOutput) coloredOutput = isatty(STDERR_FILENO) ? 2 : 1;
-#endif
-	fprintf(stderr, coloredOutput == 2 ? "\033[0;36m%.*s\033[0;m" : "%.*s", (int) entryBytes, (char *) entryText);
-	return 1;
+int ExternalTextColorError    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "31"); }
+int ExternalTextColorHighlight(ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "36"); }
+int ExternalTextMonospaced    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue,   ""); }
+int ExternalTextPlain         (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue,   ""); }
+
+int ExternalTextWeight(ExecutionContext *context, Value *returnValue) { 
+	if (context->c->stackPointer < 1) return -1;
+	return ExternalTextFormat(context, returnValue, context->c->stack[--context->c->stackPointer].i > 500 ? "1" : ""); 
 }
 
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
@@ -6240,8 +6257,8 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	coloredOutput = isatty(STDERR_FILENO);
 	srand(time(NULL));
-
 	sem_init(&externalCoroutineSemaphore, 0, 0);
 
 	char *scriptPath = NULL;

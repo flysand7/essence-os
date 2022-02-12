@@ -170,14 +170,14 @@ void PortMesa() {
 void PortGCC() {
 	if buildCross {
 		// Print instructions.
-		PrintStdErr("To build Essence, you need a cross compiler. This will be built for you automatically.\n");
-		PrintStdErr("- You need to be connected to the internet. ~100MB will be downloaded.\n");
-		PrintStdErr("- You need ~3GB of drive space available.\n");
-		PrintStdErr("- You need ~8GB of RAM available.\n");
-		PrintStdErr("- This should take ~20 minutes on a modern computer.\n");
-		PrintStdErr("- This does *not* require root permissions.\n");
-		PrintStdErr("- You must fully update your system before building.\n");
-		PrintStdErr("Enter 'yes' to continue.\n");
+		Log("To build Essence, you need a cross compiler. This will be built for you automatically.");
+		Log("- You need to be connected to the internet. ~100MB will be downloaded.");
+		Log("- You need ~3GB of drive space available.");
+		Log("- You need ~8GB of RAM available.");
+		Log("- This should take ~20 minutes on a modern computer.");
+		Log("- This does *not* require root permissions.");
+		Log("- You must fully update your system before building.");
+		Log("Enter 'yes' to continue.");
 		assert ConsoleGetYes();
 	}
 
@@ -234,8 +234,8 @@ void PortGCC() {
 	// Ask the user if they want to resume an incomplete build.
 	bool resumeBuild = false;
 	if runningMakefiles {
-		PrintStdErr("The build system has detected a build was started, but was not completed.\n");
-		PrintStdErr("Enter 'yes' to attempt to resume this build.\n");
+		Log("The build system has detected a build was started, but was not completed.");
+		Log("Enter 'yes' to attempt to resume this build.");
 		resumeBuild = ConsoleGetYes();
 		runningMakefiles = false;
 	}
@@ -429,7 +429,7 @@ void PortGCC() {
 	PathDeleteRecursively("bin/mpc-src");
 	PathDeleteRecursively("bin/mpfr-src");
 	PathDeleteRecursively("bin/gmp-src");
-	PrintStdErrHighlight("Build succeeded.\n");
+	LogInfo("Build succeeded.");
 }
 
 void PortFreeType() {
@@ -618,24 +618,24 @@ void Start() {
 	PortCallback[] portCallbacks = [ PortFFmpeg, PortUxn, PortNasm, PortBochs, PortBusybox, PortMesa, PortGCC, PortFreeType, PortHarfBuzz, PortMusl ];
 
 	if portName == "" {
-		PrintStdErrHighlight("Available ports:\n");
+		LogInfo("Available ports:");
 
 		for int i = 0; i < portNames:len(); i += 1 {
-			PrintStdErr("\t%portNames[i]%\n");
+			Log("\t%portNames[i]%");
 		}
 	} else {
 		assert targetName      != "";
 		assert toolchainPrefix != "";
 
-		// PrintStdErrHighlight("Target name: '%targetName%'\n");
-		// PrintStdErrHighlight("Toolchain prefix: '%toolchainPrefix%'\n");
-		// PrintStdErrHighlight("Processors to use for compilation: '%processorCount%'\n");
-		// PrintStdErrHighlight("Skip yes checks: '%skipYesChecks%'\n");
+		// LogInfo("Target name: '%targetName%'");
+		// LogInfo("Toolchain prefix: '%toolchainPrefix%'");
+		// LogInfo("Processors to use for compilation: '%processorCount%'");
+		// LogInfo("Skip yes checks: '%skipYesChecks%'");
 
 		for int i = 0; i < portNames:len(); i += 1 {
 			if portNames[i] == portName || portName == "all" {
 				if portName == "all" {
-					PrintStdErrHighlight("Building port: '%portNames[i]%'\n");
+					LogInfo("Building port: '%portNames[i]%'");
 				}
 
 				portCallbacks[i]();

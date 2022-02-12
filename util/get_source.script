@@ -25,9 +25,9 @@ void Get(str url, str directoryName, str checksum) {
 	if checksum != "" {
 		// If we're verifying the checksum of the file, then it should be okay to try downloading it from a non-official mirror.
 		alternateURL = "https://github.com/nakst/cdn/raw/main/cache/" + url2;
-		PrintStdErr("Attempting to download from '%alternateURL%' with fallback '%url%'...\n");
+		Log("Attempting to download from '%alternateURL%' with fallback '%url%'...");
 	} else {
-		PrintStdErr("Attempting to download from '%url%'...\n");
+		Log("Attempting to download from '%url%'...");
 	}
 
 	bool got = PathExists(cachePath);
@@ -37,18 +37,18 @@ void Get(str url, str directoryName, str checksum) {
 
 	if !got {
 		PathDelete(cachePath);
-		PrintStdErrWarning("Error: Could not download the file at '%url%'. Exiting.\n");
+		LogError("Could not download the file at '%url%'. Exiting.\n");
 		assert false;
 	}
 
 	if checksum != "" {
 		if SystemShellEvaluate("shasum -a 256 %cachePath%") != "%checksum%  %cachePath%\n" {
-			PrintStdErrWarning("Error: Checksum mismatch for file '%cachePath%'.\n");
+			LogError("Checksum mismatch for file '%cachePath%'.\n");
 			PathDelete(cachePath);
 			assert false;
 		}
 
-		PrintStdErr("Valid checksum.\n");
+		Log("Valid checksum.");
 	}
 
 	str decompressFlag = "";
@@ -60,14 +60,14 @@ void Get(str url, str directoryName, str checksum) {
 	} else if StringContains(url, ".tar.gz") {
 		decompressFlag = "z";
 	} else {
-		PrintStdErrWarning("Error: Unrecognised archive format extension.\n");
+		LogError("Unrecognised archive format extension.\n");
 		assert false;
 	}
 
 	assert SystemShellExecute("tar -x%decompressFlag%f %cachePath%");
 	assert PathMove(directoryName, "bin/source");
 
-	PrintStdErr("File successfully downloaded and extracted.\n");
+	Log("File successfully downloaded and extracted.");
 }
 
 void Start() {

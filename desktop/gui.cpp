@@ -5822,6 +5822,14 @@ int ProcessImageDisplayMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
+uint32_t EsImageDisplayGetImageWidth(EsImageDisplay *display) {
+	return display->width;
+}
+
+uint32_t EsImageDisplayGetImageHeight(EsImageDisplay *display) {
+	return display->height;
+}
+
 EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags, EsStyleID style) {
 	EsImageDisplay *display = (EsImageDisplay *) EsHeapAllocate(sizeof(EsImageDisplay), true);
 	if (!display) return nullptr;

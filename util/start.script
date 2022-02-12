@@ -13,28 +13,28 @@ void Setup(bool forAutomation) {
 	assert PathCreateLeadingDirectories("bin/Object Files");
 
 	if SystemGetHostName() == "Cygwin" {
-		PrintStdErrWarning("Building on Cygwin is not supported. Use the Windows Subsystem for Linux instead.\n");
+		LogError("Building on Cygwin is not supported. Use the Windows Subsystem for Linux instead.");
 		assert false;
 	}
 
 	if SystemShellEvaluate("shasum -a 256 util/test.txt") 
 			!= "2c5622dbbf2552e0e66424a302bde0918e09379afce47eef1a21ef0198990fed  util/test.txt\n" {
-		PrintStdErrWarning("--------------------------------------------------------------------\n");
-		PrintStdErrWarning("                  The source has been corrupted!!                   \n");
-		PrintStdErrWarning("  Please check that you have disabled any automatic line-ending or  \n");
-		PrintStdErrWarning(" encoding conversions in Git and archive extraction tools you use.  \n");
-		PrintStdErrWarning("--------------------------------------------------------------------\n");
+		Log(TextColorError() + "--------------------------------------------------------------------");
+		Log(TextColorError() + "                  The source has been corrupted!!                   ");
+		Log(TextColorError() + "  Please check that you have disabled any automatic line-ending or  ");
+		Log(TextColorError() + " encoding conversions in Git and archive extraction tools you use.  ");
+		Log(TextColorError() + "--------------------------------------------------------------------");
 		assert false;
 	}
 
 	if StringContains(PathGetDefaultPrefix(), " ") {
-		PrintStdErrWarning("Error: The path to your essence directory, '%PathGetDefaultPrefix()%', contains spaces.\n");
+		LogError("The path to your essence directory, '%PathGetDefaultPrefix()%', contains spaces.");
 		assert false;
 	}
 
-	if !SystemShellExecute("which gcc  > /dev/null") { PrintStdErrWarning("Error: GCC was not found.\n");  assert false; }
-	if !SystemShellExecute("which nasm > /dev/null") { PrintStdErrWarning("Error: Nasm was not found.\n"); assert false; }
-	if !SystemShellExecute("which make > /dev/null") { PrintStdErrWarning("Error: Make was not found.\n"); assert false; }
+	if !SystemShellExecute("which gcc  > /dev/null") { LogError("GCC was not found.");  assert false; }
+	if !SystemShellExecute("which nasm > /dev/null") { LogError("Nasm was not found."); assert false; }
+	if !SystemShellExecute("which make > /dev/null") { LogError("Make was not found."); assert false; }
 
 	if target == "" {
 		target = "TARGET_X86_64";
@@ -54,7 +54,7 @@ void Setup(bool forAutomation) {
 void Start() {
 	Setup(false);
 	SystemShellExecute("bin/build %options%");
-	PrintStdErrHighlight("\n");
+	Log("");
 }
 
 void GenerateOVF() {

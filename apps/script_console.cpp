@@ -2,6 +2,11 @@
 #include <essence.h>
 #include <shared/array.cpp>
 
+// TODO:
+// LogOpenGroup()
+// LogOpenList()
+// LogClose()
+
 struct Instance : EsInstance {
 	EsCommand commandClearOutput;
 
@@ -27,6 +32,7 @@ struct Instance : EsInstance {
 
 void AddPrompt(Instance *instance);
 void AddOutput(Instance *instance, const char *text, size_t textBytes);
+void AddLogOutput(Instance *instance, const char *text, size_t textBytes);
 
 // --------------------------------- Script engine interface.
 
@@ -159,19 +165,34 @@ CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	return nullptr;
 }
 
-int ExternalPrintStdErr(ExecutionContext *context, Value *returnValue) {
+int ExternalLog(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
-	AddOutput(scriptInstance, entryText, entryBytes);
+	AddLogOutput(scriptInstance, entryText, entryBytes);
 	return 1;
 }
 
-int ExternalPrintStdErrWarning(ExecutionContext *context, Value *returnValue) {
-	return ExternalPrintStdErr(context, returnValue);
+int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char *mode) {
+	char *buffer = (char *) EsHeapAllocate(16, false);
+	uintptr_t index = HeapAllocate(context);
+	context->heap[index].type = T_STR;
+	context->heap[index].bytes = EsStringFormat(buffer, 16, "%z", mode);
+	context->heap[index].text = buffer;
+	returnValue->i = index;
+	return 3;
 }
 
-int ExternalPrintStdErrHighlight(ExecutionContext *context, Value *returnValue) {
-	return ExternalPrintStdErr(context, returnValue);
+int ExternalTextColorError    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "\a#DB002A]"); }
+int ExternalTextColorHighlight(ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "\a#362CB6]"); }
+int ExternalTextMonospaced    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue,       "\am]"); }
+int ExternalTextPlain         (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue,        "\a]"); }
+
+int ExternalTextWeight(ExecutionContext *context, Value *returnValue) { 
+	if (context->c->stackPointer < 1) return -1;
+	int i = context->c->stack[--context->c->stackPointer].i / 100;
+	if (i < 1) i = 1; else if (i > 9) i = 9;
+	char b[5] = { '\a', 'w', (char) (i + '0'), ']', 0 };
+	return ExternalTextFormat(context, returnValue, b); 
 }
 
 int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
@@ -693,12 +714,19 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 		uint64_t pngSignature = 0x0A1A0A0D474E5089;
 		uint32_t jpgSignature = 0xE0FFD8FF;
+		bool isPNG = valueBytes > sizeof(pngSignature) && 0 == EsMemoryCompare(&pngSignature, valueText, sizeof(pngSignature));
+		bool isJPG = valueBytes > sizeof(jpgSignature) && 0 == EsMemoryCompare(&jpgSignature, valueText, sizeof(jpgSignature));
 
-		if ((valueBytes > sizeof(pngSignature) && 0 == EsMemoryCompare(&pngSignature, valueText, sizeof(pngSignature)))
-				|| (valueBytes > sizeof(jpgSignature) && 0 == EsMemoryCompare(&jpgSignature, valueText, sizeof(jpgSignature)))) {
+		if (isPNG || isJPG) {
 			EsCanvasPane *canvasPane = EsCanvasPaneCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleImageViewerPane));
 			EsImageDisplay *display = EsImageDisplayCreate(canvasPane, ES_CELL_H_LEFT | ES_CELL_V_TOP);
 			EsImageDisplayLoadFromMemory(display, valueText, valueBytes);
+			char *buffer = EsStringAllocateAndFormat(&bytes, "%d by %d pixels \u2027 %z", 
+					EsImageDisplayGetImageWidth(display),
+					EsImageDisplayGetImageHeight(display),
+					isPNG ? "PNG" : isJPG ? "JPEG" : "unknown format");
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), buffer, bytes);
+			EsHeapFree(buffer);
 		} else if (EsUTF8IsValid(valueText, valueBytes)) {
 			char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);
 			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputData), buffer, bytes);
@@ -858,7 +886,8 @@ void EnterCommand(Instance *instance) {
 
 	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2661");
-	EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, EsStyleIntern(&styleCommandLogText), data, dataBytes);
+	EsTextDisplay *inputCommand = EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, EsStyleIntern(&styleCommandLogText), data, dataBytes);
+	EsTextDisplaySetupSyntaxHighlighting(inputCommand, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT);
 	instance->outputElements.Add(commandLogRow);
 
 	EsAssert(!instance->outputPanel);
@@ -891,7 +920,8 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 		if (text[i] == '\n') {
 			if (EsUTF8IsValid(instance->outputLineBuffer, instance->outputLineBufferBytes)) {
 				EsMessageMutexAcquire();
-				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraph), 
+				EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, 
+						EsStyleIntern(&styleOutputParagraph), 
 						instance->outputLineBuffer, instance->outputLineBufferBytes);
 				EsMessageMutexRelease();
 			} else {
@@ -900,6 +930,7 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 						EsLiteral("Encoding error.\n"));
 				EsMessageMutexRelease();
 			}
+
 			instance->outputLineBufferBytes = 0;
 		} else {
 			if (instance->outputLineBufferBytes == instance->outputLineBufferAllocated) {
@@ -910,6 +941,22 @@ void AddOutput(Instance *instance, const char *text, size_t textBytes) {
 
 			instance->outputLineBuffer[instance->outputLineBufferBytes++] = text[i];
 		}
+	}
+}
+
+void AddLogOutput(Instance *instance, const char *text, size_t textBytes) {
+	instance->anyOutput = true;
+
+	if (EsUTF8IsValid(text, textBytes)) {
+		EsMessageMutexAcquire();
+		EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, 
+				EsStyleIntern(&styleOutputParagraph), text, textBytes);
+		EsMessageMutexRelease();
+	} else {
+		EsMessageMutexAcquire();
+		EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, 
+				EsStyleIntern(&styleOutputParagraphItalic), EsLiteral("Encoding error.\n"));
+		EsMessageMutexRelease();
 	}
 }
 
@@ -928,6 +975,7 @@ void AddPrompt(Instance *instance) {
 	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2665");
 	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox));
+	EsTextboxSetupSyntaxHighlighting(instance->inputTextbox, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT);
 	EsTextboxEnableSmartReplacement(instance->inputTextbox, false);
 	instance->inputTextbox->messageUser = InputTextboxMessage;
 	EsElementFocus(instance->inputTextbox, ES_ELEMENT_FOCUS_ENSURE_VISIBLE);
