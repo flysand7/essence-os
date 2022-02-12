@@ -2,11 +2,6 @@
 #include <essence.h>
 #include <shared/array.cpp>
 
-// TODO:
-// LogOpenGroup()
-// LogOpenList()
-// LogClose()
-
 struct Instance : EsInstance {
 	EsCommand commandClearOutput;
 
@@ -18,6 +13,8 @@ struct Instance : EsInstance {
 	EsElement *defaultPrefixDisplay;
 	EsPanel *inputRow;
 	EsPanel *outputPanel;
+	EsElement *logOutputGroup;
+	uintptr_t logGroupNestLevel;
 	EsSpacer *outputDecoration;
 	EsTextbox *inputTextbox;
 
@@ -30,9 +27,13 @@ struct Instance : EsInstance {
 	Array<EsElement *> outputElements;
 };
 
+EsFileInformation globalCommandHistoryFile;
+
 void AddPrompt(Instance *instance);
 void AddOutput(Instance *instance, const char *text, size_t textBytes);
 void AddLogOutput(Instance *instance, const char *text, size_t textBytes);
+void AddLogOpenGroup(Instance *instance, const char *title, size_t titleBytes);
+void AddLogClose(Instance *instance);
 
 // --------------------------------- Script engine interface.
 
@@ -169,6 +170,20 @@ int ExternalLog(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	AddLogOutput(scriptInstance, entryText, entryBytes);
+	return 1;
+}
+
+int ExternalLogOpenGroup(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	STACK_POP_STRING(entryText, entryBytes);
+	AddLogOpenGroup(scriptInstance, entryText, entryBytes);
+	return 1;
+}
+
+int ExternalLogClose(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	(void) returnValue;
+	AddLogClose(scriptInstance);
 	return 1;
 }
 
@@ -582,6 +597,27 @@ const EsStyle styleOutputPanel = {
 	},
 };
 
+const EsStyle styleLogOutputGroup = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_INSETS | ES_THEME_METRICS_GAP_MAJOR,
+		.insets = ES_RECT_4(26, 0, 4, 4),
+		.gapMajor = 0,
+	},
+};
+
+const EsStyle styleLogOutputGroupTitle = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_FONT_FAMILY | ES_THEME_METRICS_FONT_WEIGHT | ES_THEME_METRICS_INSETS
+			| ES_THEME_METRICS_TEXT_SIZE | ES_THEME_METRICS_TEXT_ALIGN | ES_THEME_METRICS_TEXT_COLOR,
+		.insets = ES_RECT_4(6, 0, 0, 0),
+		.textColor = COLOR_TEXT_MAIN,
+		.textAlign = ES_TEXT_H_LEFT | ES_TEXT_V_CENTER,
+		.textSize = TEXT_SIZE_SMALL,
+		.fontFamily = ES_FONT_SANS,
+		.fontWeight = 6,
+	},
+};
+
 const EsStyle styleOutputDecorationInProgress = {
 	.metrics = {
 		.mask = ES_THEME_METRICS_PREFERRED_WIDTH,
@@ -685,6 +721,7 @@ const EsStyle styleImageViewerPane = {
 
 void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
 	// TODO Truncating/scrolling/collapsing/saving/copying output.
+	// TODO Pagination.
 	// TODO Letting scripts register custom views for structs.
 
 	size_t bytes;
@@ -884,6 +921,11 @@ void EnterCommand(Instance *instance) {
 	instance->inputRow = nullptr;
 	instance->defaultPrefixDisplay = nullptr;
 
+	uint8_t newline = '\n';
+	EsFileWriteSync(globalCommandHistoryFile.handle, EsFileGetSize(globalCommandHistoryFile.handle), dataBytes, data);
+	EsFileWriteSync(globalCommandHistoryFile.handle, EsFileGetSize(globalCommandHistoryFile.handle), 1, &newline);
+	EsFileControl(globalCommandHistoryFile.handle, ES_FILE_CONTROL_FLUSH); 
+
 	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2661");
 	EsTextDisplay *inputCommand = EsTextDisplayCreate(commandLogRow, ES_CELL_H_FILL, EsStyleIntern(&styleCommandLogText), data, dataBytes);
@@ -895,6 +937,7 @@ void EnterCommand(Instance *instance) {
 	EsPanel *outputPanelWrapper = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleOutputPanelWrapper));
 	instance->outputDecoration = EsSpacerCreate(outputPanelWrapper, ES_CELL_V_FILL, EsStyleIntern(&styleOutputDecorationInProgress));
 	instance->outputPanel = EsPanelCreate(outputPanelWrapper, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_VERTICAL, EsStyleIntern(&styleOutputPanel));
+	instance->logOutputGroup = instance->outputPanel;
 
 	instance->inputText = data;
 	instance->inputBytes = dataBytes;
@@ -949,14 +992,56 @@ void AddLogOutput(Instance *instance, const char *text, size_t textBytes) {
 
 	if (EsUTF8IsValid(text, textBytes)) {
 		EsMessageMutexAcquire();
-		EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, 
+		EsTextDisplayCreate(instance->logOutputGroup, ES_CELL_H_FILL | ES_TEXT_DISPLAY_RICH_TEXT, 
 				EsStyleIntern(&styleOutputParagraph), text, textBytes);
 		EsMessageMutexRelease();
 	} else {
 		EsMessageMutexAcquire();
-		EsTextDisplayCreate(instance->outputPanel, ES_CELL_H_FILL, 
+		EsTextDisplayCreate(instance->logOutputGroup, ES_CELL_H_FILL, 
 				EsStyleIntern(&styleOutputParagraphItalic), EsLiteral("Encoding error.\n"));
 		EsMessageMutexRelease();
+	}
+}
+
+void DisclosureButtonCommand(Instance *, EsElement *element, EsCommand *) {
+	EsElement *panel = (EsElement *) element->userData.p;
+	EsButtonSetIcon((EsButton *) element, EsElementIsHidden(panel) ? ES_ICON_PANE_HIDE_SYMBOLIC : ES_ICON_PANE_SHOW_SYMBOLIC);
+	EsElementSetHidden(panel, !EsElementIsHidden(panel));
+}
+
+void AddLogOpenGroup(Instance *instance, const char *title, size_t titleBytes) {
+	if (instance->logGroupNestLevel >= 1000000000) {
+		return;
+	}
+
+	instance->anyOutput = true;
+	instance->logGroupNestLevel++;
+
+	if (instance->logGroupNestLevel < 20) {
+		bool startCollapsed = instance->logGroupNestLevel > 2;
+		EsMessageMutexAcquire();
+		EsPanel *row = EsPanelCreate(instance->logOutputGroup, ES_CELL_H_FILL | ES_PANEL_HORIZONTAL);
+		// TODO Better icons, or make a dedicated disclosure control in the API?
+		EsButton *disclosureButton = EsButtonCreate(row, ES_FLAGS_DEFAULT, ES_STYLE_PUSH_BUTTON_STATUS_BAR);
+		EsButtonSetIcon(disclosureButton, startCollapsed ? ES_ICON_PANE_SHOW_SYMBOLIC : ES_ICON_PANE_HIDE_SYMBOLIC);
+		EsTextDisplayCreate(row, ES_CELL_H_FILL, EsStyleIntern(&styleLogOutputGroupTitle), title, titleBytes);
+		instance->logOutputGroup = EsPanelCreate(instance->logOutputGroup, 
+				ES_CELL_H_FILL | (startCollapsed ? ES_ELEMENT_HIDDEN : 0), EsStyleIntern(&styleLogOutputGroup));
+		disclosureButton->userData = instance->logOutputGroup;
+		EsButtonOnCommand(disclosureButton, DisclosureButtonCommand);
+		EsMessageMutexRelease();
+	}
+}
+
+void AddLogClose(Instance *instance) {
+	if (instance->logGroupNestLevel) {
+		if (instance->logGroupNestLevel < 20) {
+			EsMessageMutexAcquire();
+			instance->logOutputGroup = EsElementGetLayoutParent(instance->logOutputGroup);
+			EsMessageMutexRelease();
+		}
+
+		instance->logGroupNestLevel--;
 	}
 }
 
@@ -974,7 +1059,7 @@ void AddPrompt(Instance *instance) {
 	instance->defaultPrefixDisplay = EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, EsStyleIntern(&stylePathDefaultPrefixDisplay), "Essence HD (0:)");
 	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2665");
-	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox));
+	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox)); // TODO Command history.
 	EsTextboxSetupSyntaxHighlighting(instance->inputTextbox, ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT);
 	EsTextboxEnableSmartReplacement(instance->inputTextbox, false);
 	instance->inputTextbox->messageUser = InputTextboxMessage;
@@ -992,6 +1077,8 @@ void CommandClearOutput(Instance *instance, EsElement *, EsCommand *) {
 int InstanceCallback(Instance *instance, EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_DESTROY) {
 		// TODO Stopping the script thread.
+		// 	Probably the script thread will need to open a reference to the instance,
+		// 	and check the instance is not closed every time it attempts to acquire the message mutex.
 		EsHeapFree(instance->outputLineBuffer);
 		instance->outputElements.Free();
 	}
@@ -1001,6 +1088,8 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 
 void _start() {
 	_init();
+
+	globalCommandHistoryFile = EsFileOpen(EsLiteral("|Settings:/Command History.txt"), ES_FILE_WRITE);
 
 	// TODO Proper drive mounting.
 

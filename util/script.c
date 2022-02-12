@@ -441,6 +441,10 @@ char baseModuleSource[] = {
 	"void LogInfo(str x) { Log(TextColorHighlight() + x); }"
 	"void LogError(str x) { Log(TextColorError() + \"Error: \" + x); }"
 
+	"void LogOpenGroup(str title) #extcall;"
+	// TODO LogOpenList, LogOpenTable, etc.
+	"void LogClose() #extcall;"
+
 	"str TextColorError() #extcall;"
 	"str TextColorHighlight() #extcall;"
 	"str TextWeight(int i) #extcall;"
@@ -699,6 +703,8 @@ char baseModuleSource[] = {
 // --------------------------------- External function calls.
 
 int ExternalLog(ExecutionContext *context, Value *returnValue);
+int ExternalLogOpenGroup(ExecutionContext *context, Value *returnValue);
+int ExternalLogClose(ExecutionContext *context, Value *returnValue);
 int ExternalTextColorError(ExecutionContext *context, Value *returnValue);
 int ExternalTextColorHighlight(ExecutionContext *context, Value *returnValue);
 int ExternalTextWeight(ExecutionContext *context, Value *returnValue);
@@ -741,6 +747,8 @@ int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue)
 
 ExternalFunction externalFunctions[] = {
 	{ .cName = "Log", .callback = ExternalLog },
+	{ .cName = "LogOpenGroup", .callback = ExternalLogOpenGroup },
+	{ .cName = "LogClose", .callback = ExternalLogClose },
 	{ .cName = "TextColorError", .callback = ExternalTextColorError },
 	{ .cName = "TextColorHighlight", .callback = ExternalTextColorHighlight },
 	{ .cName = "TextWeight", .callback = ExternalTextWeight },
@@ -5567,9 +5575,23 @@ int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnVal
 }
 
 int ExternalLog(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	fprintf(stderr, "%.*s", (int) entryBytes, (char *) entryText);
 	fprintf(stderr, coloredOutput ? "\033[0;m\n" : "\n");
+	return 1;
+}
+
+int ExternalLogOpenGroup(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	if (context->c->stackPointer < 1) return -1;
+	context->c->stackPointer--;
+	return 1;
+}
+
+int ExternalLogClose(ExecutionContext *context, Value *returnValue) {
+	(void) context;
+	(void) returnValue;
 	return 1;
 }
 
