@@ -777,6 +777,8 @@ define ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK (4)
 define ES_SHUTDOWN_ACTION_POWER_OFF (1)
 define ES_SHUTDOWN_ACTION_RESTART (2)
 
+define ES_CANVAS_PANE_SHOW_SHADOW (1 << 0)
+
 include desktop/icons.header
 
 enum EsFatalError {

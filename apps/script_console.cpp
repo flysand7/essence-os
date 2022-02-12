@@ -654,6 +654,14 @@ const EsStyle styleList = {
 	},
 };
 
+const EsStyle styleImageViewerPane = {
+	.metrics = {
+		.mask = ES_THEME_METRICS_CLIP_ENABLED | ES_THEME_METRICS_MAXIMUM_HEIGHT,
+		.clipEnabled = true,
+		.maximumHeight = 400,
+	},
+};
+
 void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Value value) {
 	// TODO Truncating/scrolling/collapsing/saving/copying output.
 	// TODO Letting scripts register custom views for structs.
@@ -688,7 +696,8 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 
 		if ((valueBytes > sizeof(pngSignature) && 0 == EsMemoryCompare(&pngSignature, valueText, sizeof(pngSignature)))
 				|| (valueBytes > sizeof(jpgSignature) && 0 == EsMemoryCompare(&jpgSignature, valueText, sizeof(jpgSignature)))) {
-			EsImageDisplay *display = EsImageDisplayCreate(parent, ES_CELL_H_FILL);
+			EsCanvasPane *canvasPane = EsCanvasPaneCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleImageViewerPane));
+			EsImageDisplay *display = EsImageDisplayCreate(canvasPane, ES_CELL_H_LEFT | ES_CELL_V_TOP);
 			EsImageDisplayLoadFromMemory(display, valueText, valueBytes);
 		} else if (EsUTF8IsValid(valueText, valueBytes)) {
 			char *buffer = EsStringAllocateAndFormat(&bytes, "\u201C%s\u201D", valueBytes, valueText);

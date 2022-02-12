@@ -887,8 +887,8 @@ void InstanceCreate(EsMessage *message) {
 
 	EsWindowSetIcon(instance->window, ES_ICON_MULTIMEDIA_PHOTO_MANAGER);
 
-	EsCanvasPane *canvasPane = EsCanvasPaneCreate(instance->window, ES_CELL_FILL, ES_STYLE_PANEL_WINDOW_BACKGROUND);
-	instance->canvas = EsCustomElementCreate(canvasPane, ES_CELL_FILL | ES_ELEMENT_FOCUSABLE);
+	EsCanvasPane *canvasPane = EsCanvasPaneCreate(instance->window, ES_CELL_FILL | ES_CANVAS_PANE_SHOW_SHADOW, ES_STYLE_PANEL_WINDOW_BACKGROUND);
+	instance->canvas = EsCustomElementCreate(canvasPane, ES_CELL_CENTER | ES_ELEMENT_FOCUSABLE);
 	instance->canvas->messageUser = CanvasMessage;
 	EsElementFocus(instance->canvas, false);
 

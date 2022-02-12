@@ -3943,12 +3943,26 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 		if (pane->panY < 0) pane->panY = 0;
 		if (pane->panY > height - Height(bounds) / pane->zoom) pane->panY = height - Height(bounds) / pane->zoom;
 
-		if (width * pane->zoom <= Width(bounds) || pane->center) {
+		bool widthFits = width * pane->zoom <= Width(bounds);
+		bool heightFits = height * pane->zoom <= Height(bounds);
+
+		if (pane->center) {
 			pane->panX = width / 2 - Width(bounds) / pane->zoom / 2;
+			pane->panY = height / 2 - Height(bounds) / pane->zoom / 2;
 		}
 
-		if (height * pane->zoom <= Height(bounds) || pane->center) {
-			pane->panY = height / 2 - Height(bounds) / pane->zoom / 2;
+		if (widthFits) {
+			uint64_t cellH = canvas->flags & (ES_CELL_H_LEFT | ES_CELL_H_RIGHT);
+			if (cellH == ES_CELL_H_LEFT)   pane->panX = 0;
+			if (cellH == ES_CELL_H_CENTER) pane->panX = width / 2 - Width(bounds) / pane->zoom / 2;
+			if (cellH == ES_CELL_H_RIGHT)  pane->panX = width - Width(bounds) / pane->zoom;
+		}
+
+		if (heightFits) {
+			uint64_t cellV = canvas->flags & (ES_CELL_V_TOP | ES_CELL_V_BOTTOM);
+			if (cellV == ES_CELL_V_TOP)    pane->panY = 0;
+			if (cellV == ES_CELL_V_CENTER) pane->panY = height / 2 - Height(bounds) / pane->zoom / 2;
+			if (cellV == ES_CELL_V_BOTTOM) pane->panY = height - Height(bounds) / pane->zoom;
 		}
 
 		pane->scroll.position[0] = pane->panX;
@@ -3964,9 +3978,12 @@ int ProcessCanvasPaneMessage(EsElement *element, EsMessage *message) {
 	} else if (message->type == ES_MSG_PAINT) {
 		EsElement *canvas = CanvasPaneGetCanvas(element);
 		if (!canvas) return 0;
-		UIStyle *style = GetStyle(MakeStyleKey(ES_STYLE_CANVAS_SHADOW, 0), true);
-		EsRectangle shadow = ES_RECT_4PD(canvas->offsetX, canvas->offsetY, canvas->width, canvas->height);
-		style->PaintLayers(message->painter, shadow, THEME_CHILD_TYPE_ONLY, ES_FLAGS_DEFAULT);
+
+		if (element->flags & ES_CANVAS_PANE_SHOW_SHADOW) {
+			UIStyle *style = GetStyle(MakeStyleKey(ES_STYLE_CANVAS_SHADOW, 0), true);
+			EsRectangle shadow = ES_RECT_4PD(canvas->offsetX, canvas->offsetY, canvas->width, canvas->height);
+			style->PaintLayers(message->painter, shadow, THEME_CHILD_TYPE_ONLY, ES_FLAGS_DEFAULT);
+		}
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DOWN) {
 		pane->lastPanPoint = EsMouseGetPosition(pane);
 	} else if (message->type == ES_MSG_MOUSE_MIDDLE_DRAG) {
