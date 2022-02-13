@@ -1,5 +1,3 @@
-// TODO Bug: Structure fields cannot have names the same as global variables or as in other structures.
-
 // TODO Basic missing features:
 // 	- Other list operations: insert_many, delete_many.
 // 	- Maps: map[int, T], map[str, T].
@@ -2212,8 +2210,8 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 		}
 	}
 
-	if (node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_FUNCTYPE 
-			|| node->type == T_STRUCT || node->type == T_IMPORT) {
+	if ((node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_FUNCTYPE 
+			|| node->type == T_STRUCT || node->type == T_IMPORT) && node->parent->type != T_STRUCT) {
 		if (!ScopeAddEntry(tokenizer, scope, node)) {
 			return false;
 		}
