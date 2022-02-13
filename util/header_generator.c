@@ -923,7 +923,7 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 
 			const char *initialValue = TrimPrefix(variable->variable.initialValue);
 			bool needLeadingDot = false;
-			const char *leadingTypeName = "";
+			bool needBraces = false;
 
 			if (0 == strcmp(initialValue, "NULL")) {
 				initialValue = "nil";
@@ -947,8 +947,8 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 					if (entry->type == ENTRY_BITSET && 0 == strcmp(variable->variable.type, entry->name)) {
 						if (0 == memcmp(initialValue, entry->bitset.definePrefix + 3, strlen(entry->bitset.definePrefix) - 3)) {
 							needLeadingDot = true;
+							needBraces = true;
 							initialValue += strlen(entry->bitset.definePrefix) - 3;
-							leadingTypeName = TrimPrefix(entry->name);
 						}
 
 						break;
@@ -956,7 +956,8 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 				}
 			}
 
-			FilePrintFormat(output, " = %s%c%s", leadingTypeName, needLeadingDot ? '.' : ' ', initialValue);
+			FilePrintFormat(output, " = %c%c%s%c", needBraces ? '{' : ' ', 
+					needLeadingDot ? '.' : ' ', initialValue, needBraces ? '}' : ' ');
 		}
 	}
 
