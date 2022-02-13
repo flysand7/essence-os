@@ -1572,6 +1572,7 @@ TextStyleDifference CompareTextStyles(const EsTextStyle *style1, const EsTextSty
 	return TEXT_STYLE_IDENTICAL;
 }
 
+#define TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
 ptrdiff_t TextGetCharacterAtPoint(EsElement *element, const EsTextStyle *textStyle, const char *string, size_t stringBytes, int *_pointX, uint32_t flags) {
 	// TODO Better integration with the EsTextPlan API.
 
@@ -1583,7 +1584,7 @@ ptrdiff_t TextGetCharacterAtPoint(EsElement *element, const EsTextStyle *textSty
 	if (!plan) return 0;
 
 	EsAssert(plan->lines.Length() == 1);
-	bool useMiddle = flags & ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE;
+	bool useMiddle = flags & TEXT_GET_CHARACTER_AT_POINT_MIDDLE;
 	int pointX = *_pointX;
 	pointX *= FREETYPE_UNIT_SCALE;
 	int currentX = 0, priorMiddle = 0;

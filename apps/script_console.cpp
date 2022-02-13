@@ -10,7 +10,6 @@ struct Instance : EsInstance {
 	size_t inputBytes;
 
 	EsPanel *root;
-	EsElement *defaultPrefixDisplay;
 	EsPanel *inputRow;
 	EsPanel *outputPanel;
 	EsElement *logOutputGroup;
@@ -912,14 +911,11 @@ void ScriptThread(EsGeneric _instance) {
 void EnterCommand(Instance *instance) {
 	EsAssert(instance->inputTextbox);
 	EsAssert(instance->inputRow);
-	EsAssert(instance->defaultPrefixDisplay);
 	size_t dataBytes;
 	char *data = EsTextboxGetContents(instance->inputTextbox, &dataBytes, ES_FLAGS_DEFAULT);
 	EsElementDestroy(instance->inputRow);
-	instance->outputElements.Add(instance->defaultPrefixDisplay);
 	instance->inputTextbox = nullptr;
 	instance->inputRow = nullptr;
-	instance->defaultPrefixDisplay = nullptr;
 
 	uint8_t newline = '\n';
 	EsFileWriteSync(globalCommandHistoryFile.handle, EsFileGetSize(globalCommandHistoryFile.handle), dataBytes, data);
@@ -1052,11 +1048,9 @@ void AddPrompt(Instance *instance) {
 
 	EsAssert(!instance->inputTextbox);
 	EsAssert(!instance->inputRow);
-	EsAssert(!instance->defaultPrefixDisplay);
 	instance->outputPanel = nullptr;
 	instance->outputDecoration = nullptr;
 
-	instance->defaultPrefixDisplay = EsTextDisplayCreate(instance->root, ES_CELL_H_FILL, EsStyleIntern(&stylePathDefaultPrefixDisplay), "Essence HD (0:)");
 	instance->inputRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(instance->inputRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2665");
 	instance->inputTextbox = EsTextboxCreate(instance->inputRow, ES_CELL_H_FILL, EsStyleIntern(&styleInputTextbox)); // TODO Command history.

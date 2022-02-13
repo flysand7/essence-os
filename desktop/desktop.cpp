@@ -1906,7 +1906,7 @@ bool ApplicationInstanceStart(_EsApplicationStartupInformation *startupInformati
 
 		{
 			error = NodeOpen(application->settingsPath, application->settingsPathBytes, 
-					ES_NODE_DIRECTORY | ES_NODE_CREATE_DIRECTORIES | _ES_NODE_DIRECTORY_WRITE, &settingsNode);
+					ES_NODE_DIRECTORY | ES_NODE_CREATE_DIRECTORIES | ES__NODE_DIRECTORY_WRITE, &settingsNode);
 
 			if (error == ES_SUCCESS) {
 				EsMountPoint settings = {};
@@ -2634,7 +2634,7 @@ void CheckForegroundWindowResponding(EsGeneric) {
 	EsProcessState state;
 	EsProcessGetState(instance->process->handle, &state);
 
-	if (state.flags & ES_PROCESS_STATE_PINGED) {
+	if (state.flags & ES_PROCESS_STATE__PINGED) {
 		if (tab->notRespondingInstance) {
 			// The tab is already not responding.
 		} else {

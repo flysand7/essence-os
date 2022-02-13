@@ -525,8 +525,8 @@ namespace POSIX {
 				} systemData;
 
 				EsMemoryZero(&systemData, sizeof(systemData));
-				OpenHandleToObject((void *) syscall.arguments[4], KERNEL_OBJECT_NODE, _ES_NODE_DIRECTORY_WRITE);
-				systemData.mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], _ES_NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
+				OpenHandleToObject((void *) syscall.arguments[4], KERNEL_OBJECT_NODE, ES__NODE_DIRECTORY_WRITE);
+				systemData.mountPoint.base = process->handleTable.OpenHandle((void *) syscall.arguments[4], ES__NODE_DIRECTORY_WRITE, KERNEL_OBJECT_NODE);
 				systemData.mountPoint.prefixBytes = EsStringFormat(systemData.mountPoint.prefix, sizeof(systemData.mountPoint.prefix), "|POSIX:");
 				systemData.header.initialMountPointCount = 1;
 				process->data.systemData = ConstantBufferCreate(&systemData, sizeof(systemData), process);

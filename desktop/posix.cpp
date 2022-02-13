@@ -173,7 +173,7 @@ long EsPOSIXSystemCall(long n, long a1, long a2, long a3, long a4, long a5, long
 
 		if (!posixMountPointBase) {
 			_EsNodeInformation node;
-			EsAssert(ES_SUCCESS == NodeOpen(EsLiteral("|POSIX:/"), ES_NODE_DIRECTORY | _ES_NODE_DIRECTORY_WRITE, &node));
+			EsAssert(ES_SUCCESS == NodeOpen(EsLiteral("|POSIX:/"), ES_NODE_DIRECTORY | ES__NODE_DIRECTORY_WRITE, &node));
 			posixMountPointBase = node.handle;
 		}
 

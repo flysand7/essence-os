@@ -275,11 +275,13 @@ define ES_SCANCODE_WWW_STOP			(0x10F)
 define ES_SCANCODE_WWW_REFRESH			(0x110)
 define ES_SCANCODE_WWW_STARRED			(0x111)
 
-define ES_PROCESS_STATE_ALL_THREADS_TERMINATED    (1 << 0)
-define ES_PROCESS_STATE_TERMINATING               (1 << 1)
-define ES_PROCESS_STATE_CRASHED	                  (1 << 2)
-private define ES_PROCESS_STATE_PINGED            (1 << 3)
-private define ES_PROCESS_STATE_PAUSED_FROM_CRASH (1 << 4)
+bitset EsProcessStateFlags ES_PROCESS_STATE_ uint8_t {
+	ALL_THREADS_TERMINATED
+	TERMINATING
+	CRASHED
+	_PINGED
+	_PAUSED_FROM_CRASH
+};
 
 define ES_FLAGS_DEFAULT (0)
 define ES_SUCCESS 	(-1)
@@ -401,52 +403,65 @@ define ES_LIST_VIEW_COLUMN_FORMAT_MASK        (31 << 27)
 // ...plus draw content flags and alignment flags.
 
 // For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
-define ES_LIST_VIEW_COLUMN_SORT_ASCENDING  (1 << 0)
-define ES_LIST_VIEW_COLUMN_SORT_DESCENDING (1 << 1)
-
-define ES_FILE_READ_SHARED		(0x1) // Read-only. The file can still be opened for writing.
-define ES_FILE_READ			(0x2) // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
-define ES_FILE_WRITE_SHARED		(0x4) // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
-define ES_FILE_WRITE 			(0x8) // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
+bitset EsListViewGetColumnSortFlags ES_LIST_VIEW_COLUMN_SORT_ uint32_t {
+	ASCENDING
+	DESCENDING
+};
 
 define ES_NODE_FILE			(0)
 define ES_NODE_DIRECTORY		(0x10)
 define ES_NODE_INVALID			(0x20)
 
-define ES_NODE_FAIL_IF_FOUND		(0x001000)
-define ES_NODE_FAIL_IF_NOT_FOUND	(0x002000)
-define ES_NODE_PREVENT_RESIZE		(0x004000)
-define ES_NODE_CREATE_DIRECTORIES	(0x008000)  // Create the directories leading to the file, if they don't already exist.
+bitset EsFileOpenFlags ES_ uint32_t {
+	// TODO Cleanup!
 
-define _ES_NODE_FROM_WRITE_EXCLUSIVE	(0x020000)
-define _ES_NODE_DIRECTORY_WRITE		(0x040000)
-define _ES_NODE_NO_WRITE_BASE		(0x080000)
+	FILE_READ_SHARED = 0		 // Read-only. The file can still be opened for writing.
+	FILE_READ = 1			 // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
+	FILE_WRITE_SHARED = 2		 // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
+	FILE_WRITE = 3 			 // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
+
+	NODE_FAIL_IF_FOUND = 16
+	NODE_FAIL_IF_NOT_FOUND = 17
+	NODE_PREVENT_RESIZE = 18
+	NODE_CREATE_DIRECTORIES = 19 	// Create the directories leading to the file, if they don't already exist.
+
+	_NODE_FROM_WRITE_EXCLUSIVE = 21
+	_NODE_DIRECTORY_WRITE = 22
+	_NODE_NO_WRITE_BASE = 23
+};
 
 define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
 
 define ES_MEMORY_MAP_OBJECT_ALL (0) // Set size to this to map the entire object.
-define ES_MEMORY_MAP_OBJECT_READ_WRITE    (1 << 0)
-define ES_MEMORY_MAP_OBJECT_READ_ONLY     (1 << 1)
-define ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE (1 << 2) // Files only.
+
+bitset EsMemoryMapFlags ES_MEMORY_MAP_OBJECT_ uint32_t {
+	READ_WRITE    
+	READ_ONLY     
+	COPY_ON_WRITE // Files only.
+};
 
 define ES_SHARED_MEMORY_READ_WRITE (1 << 0)
 
 define ES_STRING_FORMAT_ENOUGH_SPACE	(-1)
 
 // Flags set with %f.
-define ES_STRING_FORMAT_SIMPLE		(1 << 0)
+bitset EsStringFormatFlags ES_STRING_FORMAT_ uint32_t {
+	SIMPLE
+};
 
-define ES_PERMISSION_NETWORKING				(1 << 0)
-define ES_PERMISSION_PROCESS_CREATE			(1 << 1)
-define ES_PERMISSION_PROCESS_OPEN			(1 << 2)
-define ES_PERMISSION_SCREEN_MODIFY			(1 << 3)	
-define ES_PERMISSION_SHUTDOWN				(1 << 4)
-define ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT		(1 << 5)
-define ES_PERMISSION_GET_VOLUME_INFORMATION		(1 << 6)
-define ES_PERMISSION_WINDOW_MANAGER			(1 << 7)
-define ES_PERMISSION_POSIX_SUBSYSTEM			(1 << 8)
+bitset EsProcessPermissions ES_PERMISSION_ uint64_t {
+	NETWORKING
+	PROCESS_CREATE
+	PROCESS_OPEN
+	SCREEN_MODIFY
+	SHUTDOWN
+	TAKE_SYSTEM_SNAPSHOT
+	GET_VOLUME_INFORMATION
+	WINDOW_MANAGER
+	POSIX_SUBSYSTEM
+	INHERIT = 63
+};
 define ES_PERMISSION_ALL				((_EsLongConstant) (-1))
-define ES_PERMISSION_INHERIT				((_EsLongConstant) (1) << 63)
 
 // Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
 
@@ -517,9 +532,13 @@ define ES_TEXTBOX_NO_SMART_CONTEXT_MENUS	(1 << 3)
 define ES_TEXTBOX_ALLOW_TABS			(1 << 4)
 define ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS	(1 << 5)
 
-define ES_TEXTBOX_FIND_BACKWARDS		(1 << 0)
+bitset EsTextboxFindFlags ES_TEXTBOX_FIND_ uint32_t {
+	BACKWARDS
+};
 
-define ES_TEXTBOX_GET_CONTENTS_SELECTED_ONLY	(1 << 0)
+bitset EsTextboxGetContentsFlags ES_TEXTBOX_GET_CONTENTS_ uint32_t {
+	SELECTED_ONLY
+};
 
 // First few bits reserved for the check state.
 define ES_BUTTON_DEFAULT			(1 << 3)
@@ -555,10 +574,12 @@ define ES_LIST_VIEW_COLUMNS			(1 << 6) // Display a column header and let items 
 define ES_LIST_VIEW_FIXED_ITEMS			(1 << 7) // Use the fixed item API rather than the callback API.
 define ES_LIST_VIEW_CENTER_TILES                (1 << 8) // Center tiled items.
 
-define ES_LIST_VIEW_GROUP_HAS_HEADER		(1 << 0) // The first item in the group is a header.
-define ES_LIST_VIEW_GROUP_HAS_FOOTER		(1 << 1) // The last item in the group is a footer.
-define ES_LIST_VIEW_GROUP_INDENT		(1 << 2) // Indent the group's items (excluding the header and footer).
-define ES_LIST_VIEW_GROUP_COLLAPSABLE		(1 << 3) // The group can be collapsed.
+bitset EsListViewGroupFlags ES_LIST_VIEW_GROUP_ uint32_t {
+	HAS_HEADER // The first item in the group is a header.
+	HAS_FOOTER // The last item in the group is a footer.
+	INDENT // Indent the group's items (excluding the header and footer).
+	COLLAPSABLE // The group can be collapsed.
+};
 
 define ES_MENU_AT_CURSOR			(1 << 0)
 define ES_MENU_MAXIMUM_HEIGHT			(1 << 1)
@@ -573,15 +594,18 @@ define ES_FONT_REGULAR		(4)
 define ES_FONT_SEMIBOLD 	(6)
 define ES_FONT_BOLD 		(7)
 
-// Font flags:
-define ES_FONT_ITALIC           (1 << 0)
+bitset EsFontFlags ES_FONT_ uint8_t {
+	ITALIC
+};
 
 define ES_TEXT_FIGURE_DEFAULT	(0)
 define ES_TEXT_FIGURE_OLD	(1)
 define ES_TEXT_FIGURE_TABULAR	(2)
 
-define ES_TEXT_DECORATION_UNDERLINE      (1 << 0)
-define ES_TEXT_DECORATION_STRIKE_THROUGH (1 << 1)
+bitset EsTextDecorations ES_TEXT_DECORATION_ uint8_t {
+	UNDERLINE
+	STRIKE_THROUGH
+};
 
 define ES_TEXT_DISPLAY_RICH_TEXT            (1 << 0)
 define ES_TEXT_DISPLAY_PREFORMATTED         (1 << 1) // Prevents trimming of trailing/leading whitespace.
@@ -621,32 +645,35 @@ define ES_CELL_H_CENTER  (ES_CELL_H_LEFT | ES_CELL_H_RIGHT)
 define ES_CELL_V_CENTER  (ES_CELL_V_TOP | ES_CELL_V_BOTTOM)
 
 // Mask bits for EsThemeMetrics:
-define ES_THEME_METRICS_INSETS (1 << 0)
-define ES_THEME_METRICS_CLIP_INSETS (1 << 1)
-define ES_THEME_METRICS_CLIP_ENABLED (1 << 2)
-define ES_THEME_METRICS_CURSOR (1 << 3)
-define ES_THEME_METRICS_PREFERRED_WIDTH (1 << 4)
-define ES_THEME_METRICS_PREFERRED_HEIGHT (1 << 5)
-define ES_THEME_METRICS_MINIMUM_WIDTH (1 << 6)
-define ES_THEME_METRICS_MINIMUM_HEIGHT (1 << 7)
-define ES_THEME_METRICS_MAXIMUM_WIDTH (1 << 8)
-define ES_THEME_METRICS_MAXIMUM_HEIGHT (1 << 9)
-define ES_THEME_METRICS_GAP_MAJOR (1 << 10)
-define ES_THEME_METRICS_GAP_MINOR (1 << 11)
-define ES_THEME_METRICS_GAP_WRAP (1 << 12)
+bitset EsThemeMetricsMask ES_THEME_METRICS_ uint64_t {
+	INSETS
+	CLIP_INSETS
+	CLIP_ENABLED
+	CURSOR
+	PREFERRED_WIDTH
+	PREFERRED_HEIGHT
+	MINIMUM_WIDTH
+	MINIMUM_HEIGHT
+	MAXIMUM_WIDTH
+	MAXIMUM_HEIGHT
+	GAP_MAJOR
+	GAP_MINOR
+	GAP_WRAP
+	TEXT_COLOR
+	SELECTED_BACKGROUND
+	SELECTED_TEXT
+	ICON_COLOR
+	TEXT_ALIGN
+	TEXT_SIZE
+	FONT_FAMILY
+	FONT_WEIGHT
+	ICON_SIZE
+	IS_ITALIC
+	LAYOUT_VERTICAL
+	TEXT_FIGURES
+};
+
 define ES_THEME_METRICS_GAP_ALL (ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR | ES_THEME_METRICS_GAP_WRAP)
-define ES_THEME_METRICS_TEXT_COLOR (1 << 13)
-define ES_THEME_METRICS_SELECTED_BACKGROUND (1 << 14)
-define ES_THEME_METRICS_SELECTED_TEXT (1 << 15)
-define ES_THEME_METRICS_ICON_COLOR (1 << 16)
-define ES_THEME_METRICS_TEXT_ALIGN (1 << 17)
-define ES_THEME_METRICS_TEXT_SIZE (1 << 18)
-define ES_THEME_METRICS_FONT_FAMILY (1 << 19)
-define ES_THEME_METRICS_FONT_WEIGHT (1 << 20)
-define ES_THEME_METRICS_ICON_SIZE (1 << 21)
-define ES_THEME_METRICS_IS_ITALIC (1 << 22)
-define ES_THEME_METRICS_LAYOUT_VERTICAL (1 << 23)
-define ES_THEME_METRICS_TEXT_FIGURES (1 << 24)
 
 define ES_WINDOW_MOVE_MAXIMIZED (1 << 0)
 define ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN (1 << 1)
@@ -675,31 +702,45 @@ define ES_GAME_CONTROLLER_MAX_COUNT (16)
 define ES_DOMAIN_NAME_MAX_LENGTH (255)
 define ES_ECHO_REQUEST_MAX_LENGTH (48)
 
-define ES_CONNECTION_OPEN_WAIT (1 << 0)
+bitset EsConnectionOpenFlags ES_CONNECTION_OPEN_ uint32_t {
+	WAIT
+};
 
-define ES_FILE_CONTROL_FLUSH (1 << 0)
+bitset EsFileControlFlags ES_FILE_CONTROL_ uint32_t {
+	FLUSH
+};
 
-define ES_ELEMENT_UPDATE_CONTENT_WIDTH  (1 << 0)
-define ES_ELEMENT_UPDATE_CONTENT_HEIGHT (1 << 1)
+bitset EsElementUpdateContentFlags ES_ELEMENT_UPDATE_CONTENT_ uint32_t {
+	WIDTH
+	HEIGHT
+};
 
-define ES_DIALOG_ALERT_OK_BUTTON (1 << 0)
+bitset EsDialogShowFlags ES_DIALOG_ uint32_t {
+	ALERT_OK_BUTTON
+};
 
-define ES_MEMORY_RESERVE_COMMIT_ALL (1 << 0)
+bitset EsMemoryReserveFlags ES_MEMORY_RESERVE_ uint32_t {
+	COMMIT_ALL
+};
 
-define ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION (1 << 0)
+bitset EsPanelSwitchToFlags ES_PANEL_SWITCHER_ uint32_t {
+	DESTROY_PREVIOUS_AFTER_TRANSITION
+};
 
-define ES_ELEMENT_TRANSITION_ENTRANCE (1 << 0)
-define ES_ELEMENT_TRANSITION_EXIT (1 << 1)
-define ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE (1 << 2)
-
-define ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE  (1 << 0)
+bitset EsElementTransitionFlags ES_ELEMENT_TRANSITION_ uint32_t {
+	ENTRANCE
+	EXIT
+	HIDE_AFTER_COMPLETE
+};
 
 define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C      (1)
 define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI    (2)
 define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT (3)
 
-define ES_DRAW_LINE_CAP_ROUND (1 << 0)
-define ES_DRAW_LINE_CAP_SQUARE (1 << 1)
+bitset EsDrawLineFlags ES_DRAW_LINE_ uint32_t {
+	CAP_ROUND 
+	CAP_SQUARE
+};
 
 define ES_INSTANCE_CLASS_VIEWER (0) // Default.
 define ES_INSTANCE_CLASS_EDITOR (1)
@@ -712,24 +753,34 @@ define ES_DRIVE_TYPE_SSD              (2)
 define ES_DRIVE_TYPE_CDROM            (3)
 define ES_DRIVE_TYPE_USB_MASS_STORAGE (4)
 
-define ES_ELEMENT_FOCUS_ENSURE_VISIBLE             (1 << 0)
-define ES_ELEMENT_FOCUS_FROM_KEYBOARD              (1 << 1)
-define ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT (1 << 2)
+bitset EsElementFocusFlags ES_ELEMENT_FOCUS_ uint32_t {
+	ENSURE_VISIBLE
+	FROM_KEYBOARD
+	ONLY_IF_NO_FOCUSED_ELEMENT
+};
 
-define ES_APPLICATION_STARTUP_BACKGROUND_SERVICE (1 << 1)
-define ES_APPLICATION_STARTUP_IN_SAME_CONTAINER  (1 << 2)
-define ES_APPLICATION_STARTUP_NO_DOCUMENT        (1 << 3) // The file path given in EsApplicationStartupRequest should be passed directly to the application, and should not be used to open a document.
+bitset EsApplicationStartupRequestFlags ES_APPLICATION_STARTUP_ uint32_t {
+	BACKGROUND_SERVICE
+	IN_SAME_CONTAINER
+	NO_DOCUMENT // The file path given in EsApplicationStartupRequest should be passed directly to the application, and should not be used to open a document.
+};
 
-define ES_LIST_VIEW_INLINE_TEXTBOX_COPY_EXISTING_TEXT        (1 << 0)
-define ES_LIST_VIEW_INLINE_TEXTBOX_REJECT_EDIT_IF_FOCUS_LOST (1 << 1)
+bitset EsListViewInlineTextboxFlags ES_LIST_VIEW_INLINE_TEXTBOX_ uint32_t {
+	COPY_EXISTING_TEXT
+	REJECT_EDIT_IF_FOCUS_LOST
+};
 
-define ES_MODIFIER_CTRL		(1 << 0)
-define ES_MODIFIER_SHIFT	(1 << 1)
-define ES_MODIFIER_ALT		(1 << 2)
-define ES_MODIFIER_FLAG		(1 << 3)
-define ES_MODIFIER_ALT_GR	(1 << 4)
+bitset EsKeyboardModifiers ES_MODIFIER_ uint8_t {
+	CTRL	
+	SHIFT
+	ALT
+	FLAG
+	ALT_GR
+};
 
-define ES_PROCESS_CREATE_PAUSED (1 << 0)
+bitset EsProcessCreationFlags ES_PROCESS_CREATE_ uint32_t {
+	PAUSED
+};
 
 define ES_THREAD_EVENT_MUTEX_ACQUIRE (1)
 define ES_THREAD_EVENT_MUTEX_RELEASE (2)
@@ -749,11 +800,19 @@ define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
 define ES_DRAW_BITMAP_XOR    (0xFFFE)
 define ES_DRAW_BITMAP_BLEND  (0)
 
-define ES_VOLUME_READ_ONLY (1 << 0)
+bitset EsVolumeFlags ES_VOLUME_ uint32_t {
+	READ_ONLY
+};
 
-define ES_PATH_MOVE_ALLOW_COPY_AND_DELETE (1 << 0) // Copy and delete the file if a direct move is not possible.
+bitset EsPathMoveFlags ES_PATH_MOVE_ uint32_t {
+	// Copy and delete the file if a direct move is not possible (e.g. the files are on different volumes).
+	ALLOW_COPY_AND_DELETE 
+};
 
-define ES_CLIPBOARD_ADD_LAZY_CUT (1 << 0) // Only perform the deletion after pasting; often implemented as a move.
+bitset EsClipboardDataFlags ES_CLIPBOARD_ADD_ uint32_t {
+	// Only perform the deletion after pasting; often implemented as a move (e.g. files).
+	LAZY_CUT
+}
 
 define ES_SCROLL_WHEEL_NOTCH (0x100)
 
@@ -1272,7 +1331,7 @@ struct EsProcessState {
 	EsCrashReason crashReason;
 	EsObjectID id;
 	uint8_t executableState;
-	uint8_t flags;
+	EsProcessStateFlags flags;
 };
 
 struct EsPainter {
@@ -1323,8 +1382,8 @@ struct EsProcessCreationArguments {
 	const uint32_t *handleModes; // The share arguments.
 	size_t handleCount;
 	EsProcessCreateData data;
-	uint32_t flags;
-	uint64_t permissions;
+	EsProcessCreationFlags flags;
+	EsProcessPermissions permissions;
 } @array_in(handles, handleCount) @array_in(handleModes, handleCount);
 
 struct EsInstance {
@@ -1343,7 +1402,7 @@ struct EsPanelBand {
 };
 
 struct EsThemeMetrics {
-	uint64_t mask;
+	EsThemeMetricsMask mask;
 	EsRectangle insets, clipInsets;
 	bool clipEnabled;
 	EsCursorStyle cursor;
@@ -1375,7 +1434,7 @@ include desktop/styles.header
 struct EsFont {
 	EsFontFamily family;
 	uint8_t weight;
-	uint8_t flags;
+	EsFontFlags flags;
 };
 
 struct EsTextStyle {
@@ -1392,7 +1451,7 @@ struct EsTextStyle {
 
 	// Render properties:
 	uint8_t blur;
-	uint8_t decorations;
+	EsTextDecorations decorations;
 	uint32_t color;
 	uint32_t decorationsColor;
 };
@@ -1435,7 +1494,7 @@ struct EsCommand {
 struct EsApplicationStartupRequest {
 	int64_t id;
 	STRING filePath; // Only contains the file name if the application does not have permission_all_files or the file is not on a file system.
-	uint32_t flags;
+	EsApplicationStartupRequestFlags flags;
 };
 
 private struct _EsApplicationStartupInformation {
@@ -1530,7 +1589,7 @@ struct EsVolumeInformation {
 	char label[64];
 	uint8_t labelBytes;
 	uint8_t driveType;
-	uint32_t flags;
+	EsVolumeFlags flags;
 	EsObjectID id;
 	EsFileOffset spaceTotal;
 	EsFileOffset spaceUsed;
@@ -1555,7 +1614,7 @@ struct EsMessageMouseButton {
 
 struct EsMessageKeyboard {
 	uint16_t scancode; 
-	uint8_t modifiers;
+	EsKeyboardModifiers modifiers;
 	bool repeat, numpad, numlock, single;
 };
 
@@ -2026,8 +2085,8 @@ function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **da
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags) @native();
 function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL) @todo(); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
-function EsError EsFileControl(EsHandle file, uint32_t flags); 
-function EsFileInformation EsFileOpen(STRING path, uint32_t flags);
+function EsError EsFileControl(EsHandle file, EsFileControlFlags flags); 
+function EsFileInformation EsFileOpen(STRING path, EsFileOpenFlags flags);
 function EsFileOffset EsFileGetSize(EsHandle handle);
 function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer) @buffer_out(buffer, size);
 function EsError EsFileResize(EsHandle file, EsFileOffset newSize);
@@ -2036,7 +2095,7 @@ function EsError EsFileDelete(EsHandle file);
 
 function EsError EsPathDelete(STRING path);
 function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t bufferBytes) @todo();
-function EsError EsPathMove(STRING oldPath, STRING newPath, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsError EsPathMove(STRING oldPath, STRING newPath, EsPathMoveFlags flags = ES_FLAGS_DEFAULT);
 function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL) @out(type); // Returns true if the file/directory exists.
 function EsError EsPathCreate(STRING filePath, EsNodeType type, bool createLeadingDirectories);
 function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information) @out(information);
@@ -2110,13 +2169,13 @@ function bool EsMemoryDecommit(void *pointer, size_t bytes) @native(); // May fa
 function void EsMemoryFaultRange(const void *pointer, size_t bytes, uint32_t flags = ES_FLAGS_DEFAULT) @native(); // Simulate a page fault in each page in the range.
 function void EsMemoryFill(void *from, void *to, uint8_t byte) @native(); 
 function void EsMemoryMove(void *_start, void *_end, intptr_t amount, bool zeroEmptySpace) @native(); 
-function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, uint32_t flags = ES_MEMORY_RESERVE_COMMIT_ALL) @native(); 
+function void *EsMemoryReserve(size_t size, EsMemoryProtection protection = ES_MEMORY_PROTECTION_READ_WRITE, EsMemoryReserveFlags flags = ES_MEMORY_RESERVE_COMMIT_ALL) @native(); 
 function EsHandle EsMemoryShare(EsHandle sharedMemoryRegion, EsHandle targetProcess, bool readOnly); 
 function uint8_t EsMemorySumBytes(uint8_t *data, size_t bytes) @native(); 
 function void EsMemoryUnreserve(void *pointer, size_t size = 0) @native(); // Must cover the entire reserved region. Leave size 0 if you don't know the size.
 function void EsMemoryZero(void *destination, size_t bytes) @native(); 
 
-function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size, uint32_t flags) @native(); 
+function void *EsMemoryMapObject(EsHandle object, uintptr_t offset, size_t size, EsMemoryMapFlags flags) @native(); 
 
 // Standard functions.
 
@@ -2164,7 +2223,7 @@ function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor 
 function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
 function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties);
 function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
-function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, uint32_t flags) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
+function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, EsDrawLineFlags flags) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
 function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
 function void EsDrawRoundedRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize, EsCornerRadii cornerRadii);
 function bool EsDrawStandardIcon(EsPainter *painter, uint32_t id, int size, EsRectangle region, EsDeviceColor color);
@@ -2213,7 +2272,7 @@ function EsStyleID EsStyleIntern(const EsStyle *style) @in(style); // Once a sty
 function EsError EsAddressResolve(STRING domain, uint32_t flags, EsAddress *address);
 function void EsConnectionClose(EsConnection *connection);
 function void EsConnectionNotify(EsConnection *connection);
-function EsError EsConnectionOpen(EsConnection *connection, uint32_t flags);
+function EsError EsConnectionOpen(EsConnection *connection, EsConnectionOpenFlags flags);
 function void EsConnectionPoll(EsConnection *connection);
 function EsError EsConnectionRead(EsConnection *connection, void *buffer, size_t bufferBytes, size_t *bytesRead) @buffer_out(buffer, bufferBytes) @out(bytesRead); // Returns the number of bytes copied into the buffer.
 function EsError EsConnectionWriteSync(EsConnection *connection, const void *data, size_t dataBytes) @buffer_in(data, dataBytes); // Waits until all the data has been written into the send buffer. This does *not* flush the send buffer.
@@ -2358,9 +2417,9 @@ function int EsCRTvsnprintf(char *buffer, size_t bufferSize, EsCString format, v
 function EsError EsClipboardAddText(EsClipboard clipboard, STRING text = BLANK_STRING);
 function bool EsClipboardHasFormat(EsClipboard clipboard, EsClipboardFormat format);
 function bool EsClipboardHasData(EsClipboard clipboard);
-function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, uint32_t *flags = ES_NULL) @out(flags) @heap_buffer_out(return, bytes*) @out(bytes); // Free with EsHeapFree.
+function char *EsClipboardReadText(EsClipboard clipboard, size_t *bytes, EsClipboardDataFlags *flags = ES_NULL) @out(flags) @heap_buffer_out(return, bytes*) @out(bytes); // Free with EsHeapFree.
 function EsFileStore *EsClipboardOpen(EsClipboard clipboard); // Open the clipboard for writing.
-function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsError EsClipboardCloseAndAdd(EsClipboard clipboard, EsClipboardFormat format, EsFileStore *fileStore, EsClipboardDataFlags flags = ES_FLAGS_DEFAULT);
 
 function void EsUndoClear(EsUndoManager *manager);
 function void EsUndoContinueGroup(EsUndoManager *manager);
@@ -2411,7 +2470,7 @@ function EsMessage *EsMessageReceive();
 // User interface elements.
 
 function void EsElementDraw(EsElement *element, EsPainter *painter); // Actually draw an element onto a painter.
-function void EsElementFocus(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsElementFocus(EsElement *element, EsElementFocusFlags flags = ES_FLAGS_DEFAULT);
 function bool EsElementIsFocused(EsElement *element);
 function void EsElementSetDisabled(EsElement *element, bool disabled = true);
 function void EsElementSetHidden(EsElement *element, bool hidden = true);
@@ -2433,9 +2492,9 @@ function EsElement *EsElementGetLayoutParent(EsElement *element);
 function void EsElementDestroy(EsElement *element);
 function void EsElementDestroyContents(EsElement *element);
 function bool EsElementStartAnimating(EsElement *element); // Returns false if the element was already animating.
-function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization.
+function void EsElementStartTransition(EsElement *element, EsTransitionType transitionType, EsElementTransitionFlags flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization.
 function void EsElementInsertAfter(EsElement *element); // The next element created will be inserted after this element. They must have the same parent. Or, if this is the parent of the next element created, then it will be inserted at the start of the parent.
-function void EsElementUpdateContentSize(EsElement *element, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsElementUpdateContentSize(EsElement *element, EsElementUpdateContentFlags flags = ES_FLAGS_DEFAULT);
 function void EsElementGetTextStyle(EsElement *element, EsTextStyle *style) @out(style);
 function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = true);
 function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
@@ -2475,7 +2534,7 @@ function void EsMenuClose(EsMenu *menu);
 function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
-function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, EsDialogShowFlags flags = ES_FLAGS_DEFAULT);
 function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
 function void EsDialogClose(EsDialog *dialog);
 function EsElement *EsDialogGetContentArea(EsDialog *dialog);
@@ -2500,11 +2559,11 @@ function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public pro
 // Textboxes.
 
 function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
-function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, uint32_t flags) @out(line) @out(byte);
+function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, EsTextboxFindFlags flags) @out(line) @out(byte);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
-function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, uint32_t flags = ES_FLAGS_DEFAULT) @heap_buffer_out(return, bytes*) @out(bytes); // Result will be zero-terminated; free with EsHeapFree.
-function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, uint32_t flags = ES_FLAGS_DEFAULT); 
+function char *EsTextboxGetContents(EsTextbox *textbox, size_t *bytes = ES_NULL, EsTextboxGetContentsFlags flags = ES_FLAGS_DEFAULT) @heap_buffer_out(return, bytes*) @out(bytes); // Result will be zero-terminated; free with EsHeapFree.
+function double EsTextboxGetContentsAsDouble(EsTextbox *textbox, EsTextboxGetContentsFlags flags = ES_FLAGS_DEFAULT); 
 function size_t EsTextboxGetLineLength(EsTextbox *textbox, uintptr_t line = 0);
 function void EsTextboxGetSelection(EsTextbox *textbox, int32_t *fromLine, int32_t *fromByte, int32_t *toLine, int32_t *toByte) @out(fromLine) @out(fromByte) @out(toLine) @out(toByte);
 function void EsTextboxMoveCaret(EsTextbox *textbox, int32_t line, int32_t byte);
@@ -2554,7 +2613,7 @@ function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_
 function void EsPanelTableSetChildCells(EsPanel *panel); // Automatically set the child cells for items in a table. This is only necessary if the number of columns/rows is changed after adding items to a table.
 function void EsPanelTableAddBandDecorator(EsPanel *panel, EsPanelBandDecorator decorator);
 
-function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, uint32_t flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
+function void EsPanelSwitchTo(EsPanel *panel, EsElement *targetChild, EsTransitionType transitionType, EsPanelSwitchToFlags flags = ES_FLAGS_DEFAULT, float timeMultiplier = 1); // TODO More customization of transitions?
 function void EsPanelStartMovementAnimation(EsPanel *panel, float timeMultiplier = 1); // TODO More customization.
 
 function EsButton *EsPanelRadioGroupGetChecked(EsPanel *panel);
@@ -2614,10 +2673,10 @@ function void EsListViewChangeStyles(EsListView *view, EsStyleID style, EsStyleI
 function void EsListViewScrollToEnd(EsListView *view);
 function EsPoint EsListViewGetAnnouncementPointForSelection(EsListView *view);
 
-function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group, EsListViewIndex index, uint32_t flags = ES_FLAGS_DEFAULT);
+function EsTextbox *EsListViewCreateInlineTextbox(EsListView *view, EsListViewIndex group, EsListViewIndex index, EsListViewInlineTextboxFlags flags = ES_FLAGS_DEFAULT);
 
 // (Callback items.)
-function void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, uint32_t flags = ES_FLAGS_DEFAULT);
+function void EsListViewInsertGroup(EsListView *view, EsListViewIndex group, EsListViewGroupFlags flags = ES_FLAGS_DEFAULT);
 function void EsListViewInsert(EsListView *view, EsListViewIndex group, EsListViewIndex firstIndex, EsListViewIndex count);
 function void EsListViewRemove(EsListView *view, EsListViewIndex group, EsListViewIndex firstIndex, EsListViewIndex count);
 function void EsListViewRemoveAll(EsListView *view, EsListViewIndex group);

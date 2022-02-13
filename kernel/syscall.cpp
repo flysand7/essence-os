@@ -640,9 +640,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 	size_t pathLength = (size_t) argument1;
 	uint64_t flags = (uint64_t) argument2;
 
-	flags &= ~_ES_NODE_FROM_WRITE_EXCLUSIVE | _ES_NODE_NO_WRITE_BASE;
+	flags &= ~ES__NODE_FROM_WRITE_EXCLUSIVE | ES__NODE_NO_WRITE_BASE;
 
-	bool needWritePermission = flags & (ES_FILE_WRITE | ES_FILE_WRITE_SHARED | _ES_NODE_DIRECTORY_WRITE);
+	bool needWritePermission = flags & (ES_FILE_WRITE | ES_FILE_WRITE_SHARED | ES__NODE_DIRECTORY_WRITE);
 
 	char *path;
 	if (argument1 > K_MAX_PATH) SYSCALL_RETURN(ES_FATAL_ERROR_OUT_OF_RANGE, true);
@@ -662,7 +662,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 		if (device->type == ES_DEVICE_FILE_SYSTEM) {
 			KFileSystem *fileSystem = (KFileSystem *) device;
 			directory = fileSystem->rootDirectory;
-			directoryFlags = _ES_NODE_DIRECTORY_WRITE;
+			directoryFlags = ES__NODE_DIRECTORY_WRITE;
 		} else {
 			SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 		}
@@ -677,12 +677,12 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
 	}
 
-	if ((~directoryFlags & _ES_NODE_DIRECTORY_WRITE) && needWritePermission) {
+	if ((~directoryFlags & ES__NODE_DIRECTORY_WRITE) && needWritePermission) {
 		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 
-	if (~directoryFlags & _ES_NODE_DIRECTORY_WRITE) {
-		flags |= _ES_NODE_NO_WRITE_BASE;
+	if (~directoryFlags & ES__NODE_DIRECTORY_WRITE) {
+		flags |= ES__NODE_NO_WRITE_BASE;
 	}
 
 	KNodeInformation _information = FSNodeOpen(path, pathLength, flags, directory);
@@ -695,7 +695,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 		// Mark this handle as being the exclusive writer for this file.
 		// This way, when the handle is used, OpenHandleToObject succeeds.
 		// The exclusive writer flag will only be removed from the file where countWrite drops to zero.
-		flags |= _ES_NODE_FROM_WRITE_EXCLUSIVE;
+		flags |= ES__NODE_FROM_WRITE_EXCLUSIVE;
 	}
 
 	EsMemoryZero(&information, sizeof(_EsNodeInformation));
@@ -712,7 +712,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_DELETE) {
 	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_NODE, handle);
 	KNode *node = (KNode *) handle.object; 
 
-	if (handle.flags & _ES_NODE_NO_WRITE_BASE) {
+	if (handle.flags & ES__NODE_NO_WRITE_BASE) {
 		SYSCALL_RETURN(ES_ERROR_PERMISSION_NOT_GRANTED, false);
 	}
 	
@@ -1235,9 +1235,9 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_STATE) {
 		| (process->preventNewThreads ? ES_PROCESS_STATE_TERMINATING : 0)
 		| (process->crashed ? ES_PROCESS_STATE_CRASHED : 0)
 #ifdef PAUSE_ON_USERLAND_CRASH
-		| (process->pausedFromCrash ? ES_PROCESS_STATE_PAUSED_FROM_CRASH : 0)
+		| (process->pausedFromCrash ? ES_PROCESS_STATE__PAUSED_FROM_CRASH : 0)
 #endif
-		| (process->messageQueue.pinged ? ES_PROCESS_STATE_PINGED : 0);
+		| (process->messageQueue.pinged ? ES_PROCESS_STATE__PINGED : 0);
 
 	SYSCALL_WRITE(argument1, &state, sizeof(EsProcessState));
 	SYSCALL_RETURN(ES_SUCCESS, false);
@@ -1396,7 +1396,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_POSIX) {
 	if (syscall.index == 2 /* open */ || syscall.index == 59 /* execve */) {
 		SYSCALL_HANDLE_2(syscall.arguments[4], KERNEL_OBJECT_NODE, node);
 		syscall.arguments[4] = (long) node.object;
-		if (~node.flags & _ES_NODE_DIRECTORY_WRITE) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
+		if (~node.flags & ES__NODE_DIRECTORY_WRITE) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_HANDLE, true);
 		long result = POSIX::DoSyscall(syscall, userStackPointer);
 		SYSCALL_RETURN(result, false);
 	} else if (syscall.index == 109 /* setpgid */) {

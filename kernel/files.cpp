@@ -1095,9 +1095,9 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode) {
 			if (flags & ES_FILE_READ) {
 				if (file->countWrite > 0) return ES_ERROR_OPERATION_BLOCKED; 
 			} else if (flags & ES_FILE_WRITE) {
-				if (flags & _ES_NODE_FROM_WRITE_EXCLUSIVE) {
+				if (flags & ES__NODE_FROM_WRITE_EXCLUSIVE) {
 					if (!file->countWrite || (~file->flags & NODE_HAS_EXCLUSIVE_WRITER)) {
-						KernelPanic("FSNodeOpenHandle - File %x is invalid state for a handle to have the _ES_NODE_FROM_WRITE_EXCLUSIVE flag.\n", file);
+						KernelPanic("FSNodeOpenHandle - File %x is invalid state for a handle to have the ES__NODE_FROM_WRITE_EXCLUSIVE flag.\n", file);
 					}
 				} else {
 					if (file->countWrite) {
@@ -1282,7 +1282,7 @@ EsError FSNodeTraverseLayer(uintptr_t *sectionEnd,
 	if (!treeItem) {
 		// The node does not exist.
 
-		if (flags & _ES_NODE_NO_WRITE_BASE) {
+		if (flags & ES__NODE_NO_WRITE_BASE) {
 			error = ES_ERROR_PERMISSION_NOT_GRANTED;
 			goto failed;
 		}

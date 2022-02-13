@@ -470,6 +470,7 @@ char baseModuleSource[] = {
 	"	return StringSlice(string, start, end);"
 	"}"
 	"str[] StringSplitByCharacter(str string, str character, bool includeEmptyString) {"
+	"\n	assert character:len() == 1;\n"
 	"	str[] list = new str[];"
 	"	int x = 0;"
 	"	for int i = 0; i < string:len(); i += 1 {"
@@ -565,9 +566,11 @@ char baseModuleSource[] = {
 	"}"
 	"str[] DirectoryEnumerateChildrenRecursively(str path) {" // TODO Returning an error code.
 	"	str[] result = new str[];"
-	"	if _DirectoryInternalEnumerateChildren(path, \"\", result, true) { return result; }"
+	"	if _DirectoryInternalEnumerateChildren(PathTrimTrailingSlash(path), \"\", result, true) { return result; }"
 	"	return null;"
 	"}"
+
+	"str PathTrimTrailingSlash(str x) { if x:len() > 0 && x[x:len() - 1] == \"/\" { return StringSlice(x, 0, x:len() - 1); } return x; }"
 
 	"bool PathDeleteRecursively(str path) {"
 	"	str[] all = DirectoryEnumerateChildrenRecursively(path);"

@@ -281,7 +281,7 @@ uintptr_t APISyscallCheckForCrash(uintptr_t argument0, uintptr_t argument1, uint
 	EsProcessState state;
 	_APISyscall(ES_SYSCALL_PROCESS_GET_STATE, ES_CURRENT_PROCESS, (uintptr_t) &state, 0, 0, 0);
 	volatile int x = 1;
-	if (state.flags & ES_PROCESS_STATE_PAUSED_FROM_CRASH) while (x);
+	if (state.flags & ES_PROCESS_STATE__PAUSED_FROM_CRASH) while (x);
 	return returnValue;
 }
 #endif

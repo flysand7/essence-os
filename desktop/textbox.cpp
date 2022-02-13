@@ -573,7 +573,7 @@ bool TextboxMoveCaret(EsTextbox *textbox, TextboxCaret *caret, bool right, int m
 		DocumentLine *line = &textbox->lines[caret->line];
 		int pointX = textbox->verticalMotionHorizontalDepth ? textbox->verticalMotionHorizontalDepth - 1 : 0;
 		ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
-				GET_BUFFER(line), line->lengthBytes, &pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
+				GET_BUFFER(line), line->lengthBytes, &pointX, TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 		caret->byte = result == -1 ? line->lengthBytes : result;
 	} else {
 		CharacterType type = CHARACTER_INVALID;
@@ -1407,7 +1407,7 @@ bool TextboxFindCaret(EsTextbox *textbox, int positionX, int positionY, bool sec
 				if (pointX < 0) pointX = 0;
 				ptrdiff_t result = TextGetCharacterAtPoint(textbox, &textbox->textStyle,
 						GET_BUFFER(line), line->lengthBytes, 
-						&pointX, ES_TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
+						&pointX, TEXT_GET_CHARACTER_AT_POINT_MIDDLE);
 				EsAssert(result >= -1 && result <= line->lengthBytes);
 				textbox->carets[1].byte = result == -1 ? line->lengthBytes : result;
 			}

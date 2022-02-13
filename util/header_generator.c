@@ -16,6 +16,7 @@ typedef struct Token {
 #define TOKEN_EQUALS (4) 
 #define TOKEN_ENUM (5) 
 #define TOKEN_STRUCT (6) 
+#define TOKEN_BITSET (7) 
 #define TOKEN_NUMBER (8) 
 #define TOKEN_ASTERISK (9) 
 #define TOKEN_COMMA (10) 
@@ -44,6 +45,7 @@ typedef struct Token {
 
 #define ENTRY_ROOT (0)
 #define ENTRY_DEFINE (1)
+#define ENTRY_BITSET (2)
 #define ENTRY_ENUM (3)
 #define ENTRY_STRUCT (4)
 #define ENTRY_UNION (5)
@@ -86,8 +88,8 @@ typedef struct Entry {
 		} annotation;
 
 		struct {
-			bool isSimple; // Set during analysis.
-		} record;
+			char *definePrefix, *storageType;
+		} bitset;
 
 		char *oldTypeName;
 	};
@@ -159,6 +161,7 @@ Token NextToken() {
 		COMPARE_KEYWORD("define", TOKEN_DEFINE);
 		COMPARE_KEYWORD("enum", TOKEN_ENUM);
 		COMPARE_KEYWORD("struct", TOKEN_STRUCT);
+		COMPARE_KEYWORD("bitset", TOKEN_BITSET);
 		COMPARE_KEYWORD("function", TOKEN_FUNCTION);
 		COMPARE_KEYWORD("function_not_in_kernel", TOKEN_FUNCTION_NOT_IN_KERNEL);
 		COMPARE_KEYWORD("union", TOKEN_UNION);
@@ -343,6 +346,34 @@ void ParseAnnotationsUntilSemicolon(Entry *entry) {
 	}
 }
 
+Entry ParseEnum() {
+	Entry entry = { .type = ENTRY_ENUM };
+	Token token = NextToken();
+
+	while (true) {
+		if (token.type == TOKEN_RIGHT_BRACE) {
+			break;
+		}
+
+		Token entryName = token;
+		token = NextToken();
+		assert(entryName.type == TOKEN_IDENTIFIER);
+		Entry define = { .type = ENTRY_DEFINE, .name = TokenToString(entryName) };
+
+		if (token.type == TOKEN_EQUALS) {
+			size_t length = 0;
+			while (!FoundEndOfLine(length)) length++;
+			define.define.value = TokenToString((Token) { .value = (int) length, .text = buffer + position });
+			position += length;
+			token = NextToken();
+		}
+
+		arrput(entry.children, define);
+	}
+
+	return entry;
+}
+
 void ParseFile(Entry *root, const char *name) {
 	if (outputDependencies.ready) {
 		FilePrintFormat(outputDependencies, "%s\n", name);
@@ -383,31 +414,9 @@ void ParseFile(Entry *root, const char *name) {
 			Token name = NextToken();
 			assert(name.type == TOKEN_IDENTIFIER);
 			assert(NextToken().type == TOKEN_LEFT_BRACE);
-
-			Entry entry = { .type = ENTRY_ENUM, .name = TokenToString(name), .isPrivate = isPrivate };
-			Token token = NextToken();
-
-			while (true) {
-				if (token.type == TOKEN_RIGHT_BRACE) {
-					break;
-				}
-
-				Token entryName = token;
-				token = NextToken();
-				assert(entryName.type == TOKEN_IDENTIFIER);
-				Entry define = { .type = ENTRY_DEFINE, .name = TokenToString(entryName) };
-
-				if (token.type == TOKEN_EQUALS) {
-					size_t length = 0;
-					while (!FoundEndOfLine(length)) length++;
-					define.define.value = TokenToString((Token) { .value = (int) length, .text = buffer + position });
-					position += length;
-					token = NextToken();
-				}
-
-				arrput(entry.children, define);
-			}
-
+			Entry entry = ParseEnum();
+			entry.isPrivate = isPrivate;
+			entry.name = TokenToString(name);
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_STRUCT) {
 			Token structName = NextToken();
@@ -417,6 +426,21 @@ void ParseFile(Entry *root, const char *name) {
 			entry.isPrivate = isPrivate;
 			entry.name = TokenToString(structName);
 			ParseAnnotationsUntilSemicolon(&entry);
+			arrput(root->children, entry);
+		} else if (token.type == TOKEN_BITSET) {
+			Token bitsetName = NextToken();
+			assert(bitsetName.type == TOKEN_IDENTIFIER);
+			Token definePrefix = NextToken();
+			assert(definePrefix.type == TOKEN_IDENTIFIER);
+			Token storageType = NextToken();
+			assert(storageType.type == TOKEN_IDENTIFIER);
+			assert(NextToken().type == TOKEN_LEFT_BRACE);
+			Entry entry = ParseEnum();
+			entry.isPrivate = isPrivate;
+			entry.type = ENTRY_BITSET;
+			entry.name = TokenToString(bitsetName);
+			entry.bitset.definePrefix = TokenToString(definePrefix);
+			entry.bitset.storageType = TokenToString(storageType);
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_FUNCTION || token.type == TOKEN_FUNCTION_NOT_IN_KERNEL 
 				|| token.type == TOKEN_FUNCTION_POINTER) {
@@ -698,6 +722,29 @@ void OutputC(Entry *root) {
 			}
 
 			FilePrintFormat(output, "} %s;\n\n", entry->name);
+		} else if (entry->type == ENTRY_BITSET) {
+			int autoIndex = 0;
+			int maximumIndex = 0;
+
+			if (0 == strcmp(entry->bitset.storageType, "uint8_t" )) maximumIndex =  8;
+			if (0 == strcmp(entry->bitset.storageType, "uint16_t")) maximumIndex = 16;
+			if (0 == strcmp(entry->bitset.storageType, "uint32_t")) maximumIndex = 32;
+			if (0 == strcmp(entry->bitset.storageType, "uint64_t")) maximumIndex = 64;
+			assert(maximumIndex);
+
+			FilePrintFormat(output, "typedef %s %s;\n", entry->bitset.storageType, entry->name);
+
+			for (int i = 0; i < arrlen(entry->children); i++) {
+				if (entry->children[i].define.value) {
+					FilePrintFormat(output, "#define %s%s ((%s) 1 << %s)\n", 
+							entry->bitset.definePrefix, entry->children[i].name, entry->name, entry->children[i].define.value);
+				} else {
+					assert(autoIndex < maximumIndex);
+					FilePrintFormat(output, "#define %s%s ((%s) 1 << %d)\n", 
+							entry->bitset.definePrefix, entry->children[i].name, entry->name, autoIndex);
+					autoIndex++;
+				}
+			}
 		} else if (entry->type == ENTRY_API_TYPE) {
 			FilePrintFormat(output, "#ifdef __cplusplus\nstruct %s;\n#else\n#define %s %s\n#endif\n", 
 					entry->name, entry->name, 0 == strcmp(entry->apiType.parent, "none") ? "void" : entry->apiType.parent);
@@ -1009,6 +1056,20 @@ void OutputOdin(Entry *root) {
 			}
 
 			FilePrintFormat(output, "}\n");
+		} else if (entry->type == ENTRY_BITSET) {
+			FilePrintFormat(output, "_Bitset_%s :: enum {\n", TrimPrefix(entry->name));
+
+			for (int i = 0; i < arrlen(entry->children); i++) {
+				if (entry->children[i].define.value) {
+					FilePrintFormat(output, "\t%s = %s,\n", TrimPrefix(entry->children[i].name), entry->children[i].define.value);
+				} else {
+					FilePrintFormat(output, "\t%s,\n", TrimPrefix(entry->children[i].name));
+				}
+			}
+
+			FilePrintFormat(output, "}\n");
+			FilePrintFormat(output, "%s :: bit_set [_Bitset_%s; %s];\n", 
+					TrimPrefix(entry->name), TrimPrefix(entry->name), OdinReplaceTypes(entry->bitset.storageType, true));
 		} else if (entry->type == ENTRY_API_TYPE) {
 			bool hasParent = 0 != strcmp(entry->apiType.parent, "none");
 			FilePrintFormat(output, "%s :: #type %s;\n", TrimPrefix(entry->name), hasParent ? TrimPrefix(entry->apiType.parent) : "rawptr");
@@ -1235,6 +1296,24 @@ void OutputZig(Entry *root) {
 			OutputZigFunction(entry);
 		} else if (entry->type == ENTRY_TYPE_NAME) {
 			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), TrimPrefix(ZigReplaceTypes(entry->oldTypeName, true)));
+		} else if (entry->type == ENTRY_BITSET) {
+			// TODO Is there a better language construct for this?
+
+			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), 
+					TrimPrefix(ZigReplaceTypes(entry->bitset.storageType, true)));
+
+			int autoIndex = 0;
+
+			for (int i = 0; i < arrlen(entry->children); i++) {
+				if (entry->children[i].define.value) {
+					FilePrintFormat(output, "pub const %s%s = 1 << %s;\n", 
+							entry->bitset.definePrefix, TrimPrefix(entry->children[i].name), entry->define.value);
+				} else {
+					FilePrintFormat(output, "pub const %s%s = 1 << %d;\n", 
+							entry->bitset.definePrefix, TrimPrefix(entry->children[i].name), autoIndex);
+					autoIndex++;
+				}
+			}
 		}
 	}
 }
@@ -1686,6 +1765,8 @@ int AnalysisResolve(Entry *root, Entry e, Entry **unresolved, Entry *resolved, E
 		if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
 			return 1;
 		} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
+			return 1;
+		} else if (root->children[k].type == ENTRY_BITSET && e.variable.pointer == 0) {
 			return 1;
 		} else if (root->children[k].type == ENTRY_API_TYPE && e.variable.pointer == 1) {
 			return 1;
