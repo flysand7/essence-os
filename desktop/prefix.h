@@ -145,9 +145,21 @@ ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int 
 #define EsCommandSetEnabled(command, enabled) EsCommandSetDisabled(command, !(enabled))
 #define EsClipboardHasText(clipboard) EsClipboardHasFormat(clipboard, ES_CLIPBOARD_FORMAT_TEXT)
 
-#define EsLiteral(x) (char *) x, EsCStringLength((char *) x)
+#define ES_THEME_METRICS_GAP_ALL (ES_THEME_METRICS_GAP_MAJOR | ES_THEME_METRICS_GAP_MINOR | ES_THEME_METRICS_GAP_WRAP)
 
-#define ES_STYLE_CAST(x) ((EsStyle *) (uintptr_t) (x))
+// Some common layouts...
+#define ES_CELL_FILL	 (ES_CELL_H_FILL | ES_CELL_V_FILL)
+#define ES_CELL_H_FILL	 (ES_CELL_H_PUSH | ES_CELL_H_EXPAND | ES_CELL_H_SHRINK)
+#define ES_CELL_V_FILL	 (ES_CELL_V_PUSH | ES_CELL_V_EXPAND | ES_CELL_V_SHRINK)
+#define ES_CELL_CENTER	 (ES_CELL_H_CENTER | ES_CELL_V_CENTER)
+#define ES_CELL_PUSH	 (ES_CELL_H_PUSH | ES_CELL_V_PUSH)
+#define ES_CELL_EXPAND   (ES_CELL_H_EXPAND | ES_CELL_V_EXPAND)
+#define ES_CELL_CORNER	 (ES_CELL_H_LEFT | ES_CELL_V_TOP)
+#define ES_CELL_SHRINK	 (ES_CELL_H_SHRINK | ES_CELL_V_SHRINK)
+#define ES_CELL_H_CENTER (ES_CELL_H_LEFT | ES_CELL_H_RIGHT)
+#define ES_CELL_V_CENTER (ES_CELL_V_TOP | ES_CELL_V_BOTTOM)
+
+#define EsLiteral(x) (char *) x, EsCStringLength((char *) x)
 
 #ifndef ES_INSTANCE_TYPE
 #define ES_INSTANCE_TYPE struct EsInstance
