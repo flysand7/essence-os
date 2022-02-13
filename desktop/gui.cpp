@@ -1020,7 +1020,7 @@ EsElement *EsMenuGetSource(EsMenu *menu) {
 	return ((EsWindow *) menu)->source;
 }
 
-EsMenu *EsMenuCreate(EsElement *source, uint64_t flags) {
+EsMenu *EsMenuCreate(EsElement *source, uint32_t flags) {
 	EsWindow *menu = (EsWindow *) EsWindowCreate(source->instance, ES_WINDOW_MENU);
 	if (!menu) return nullptr;
 	menu->flags |= flags;
@@ -6108,7 +6108,7 @@ void FileMenuRename(EsInstance *_instance, EsElement *, EsCommand *) {
 	instance->fileMenuNameTextbox->messageUser = FileMenuNameTextboxMessage;
 }
 
-void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint64_t menuFlags) {
+void EsFileMenuCreate(EsInstance *_instance, EsElement *element, uint32_t menuFlags) {
 	// TODO Make this user-customizable?
 
 	// const EsFileMenuSettings *settings = (const EsFileMenuSettings *) element->userData.p;

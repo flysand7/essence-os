@@ -88,7 +88,7 @@ typedef struct Entry {
 		} annotation;
 
 		struct {
-			char *definePrefix, *storageType;
+			char *definePrefix, *storageType, *parent;
 		} bitset;
 
 		char *oldTypeName;
@@ -434,6 +434,8 @@ void ParseFile(Entry *root, const char *name) {
 			assert(definePrefix.type == TOKEN_IDENTIFIER);
 			Token storageType = NextToken();
 			assert(storageType.type == TOKEN_IDENTIFIER);
+			Token parent = NextToken();
+			assert(parent.type == TOKEN_IDENTIFIER);
 			assert(NextToken().type == TOKEN_LEFT_BRACE);
 			Entry entry = ParseEnum();
 			entry.isPrivate = isPrivate;
@@ -441,6 +443,8 @@ void ParseFile(Entry *root, const char *name) {
 			entry.name = TokenToString(bitsetName);
 			entry.bitset.definePrefix = TokenToString(definePrefix);
 			entry.bitset.storageType = TokenToString(storageType);
+			entry.bitset.parent = TokenToString(parent);
+			if (0 == strcmp(entry.bitset.parent, "none")) entry.bitset.parent = NULL;
 			arrput(root->children, entry);
 		} else if (token.type == TOKEN_FUNCTION || token.type == TOKEN_FUNCTION_NOT_IN_KERNEL 
 				|| token.type == TOKEN_FUNCTION_POINTER) {
@@ -732,7 +736,7 @@ void OutputC(Entry *root) {
 			if (0 == strcmp(entry->bitset.storageType, "uint64_t")) maximumIndex = 64;
 			assert(maximumIndex);
 
-			FilePrintFormat(output, "typedef %s %s;\n", entry->bitset.storageType, entry->name);
+			FilePrintFormat(output, "typedef %s %s;\n", entry->bitset.parent ? entry->bitset.parent : entry->bitset.storageType, entry->name);
 
 			for (int i = 0; i < arrlen(entry->children); i++) {
 				if (entry->children[i].define.value) {
@@ -828,7 +832,8 @@ void OutputOdinType(Entry *entry) {
 		entry->variable.pointer--;
 	}
 
-	FilePrintFormat(output, "%c%s%c%.*s%s", entry->variable.isArray ? '[' : ' ', entry->variable.arraySize ? OdinReplaceTypes(entry->variable.arraySize, true) : "",
+	FilePrintFormat(output, "%c%s%c%.*s%s", 
+			entry->variable.isArray ? '[' : ' ', entry->variable.arraySize ? OdinReplaceTypes(entry->variable.arraySize, true) : "",
 			entry->variable.isArray ? ']' : ' ', entry->variable.pointer, "^^^^^^^^^^^^^^^^^", OdinReplaceTypes(entry->variable.type, true));
 }
 
@@ -1059,12 +1064,31 @@ void OutputOdin(Entry *root) {
 		} else if (entry->type == ENTRY_BITSET) {
 			FilePrintFormat(output, "_Bitset_%s :: enum {\n", TrimPrefix(entry->name));
 
-			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (entry->children[i].define.value) {
-					FilePrintFormat(output, "\t%s = %s,\n", TrimPrefix(entry->children[i].name), entry->children[i].define.value);
-				} else {
-					FilePrintFormat(output, "\t%s,\n", TrimPrefix(entry->children[i].name));
+			Entry *e = entry;
+
+			while (e) {
+				for (int i = 0; i < arrlen(e->children); i++) {
+					if (e->children[i].define.value) {
+						FilePrintFormat(output, "\t%s = %s,\n", TrimPrefix(e->children[i].name), e->children[i].define.value);
+					} else {
+						FilePrintFormat(output, "\t%s,\n", TrimPrefix(e->children[i].name));
+					}
 				}
+
+				if (!e->bitset.parent) {
+					break;
+				}
+
+				Entry *next = NULL;
+
+				for (int i = 0; i < arrlen(root->children); i++) {
+					if (root->children[i].name && 0 == strcmp(e->bitset.parent, root->children[i].name)) {
+						next = &root->children[i];
+					}
+				}
+
+				assert(next);
+				e = next;
 			}
 
 			FilePrintFormat(output, "}\n");
@@ -1909,6 +1933,25 @@ void Analysis(Entry *root) {
 	// TODO Array size computation: text run arrays, EsFileWriteAllGather, EsConstantBufferRead.
 	// TODO Generating constructors, getters and setters for @opaque() types like EsMessage, EsINIState, EsConnection, etc.
 	// TODO Check all the annotations have been used.
+
+	for (int i = 0; i < arrlen(root->children); i++) {
+		Entry *entry = root->children + i;
+		if (entry->type != ENTRY_BITSET) continue;
+		if (!entry->bitset.parent) continue;
+
+		bool foundParent = false;
+
+		for (int j = 0; j < arrlen(root->children); j++) {
+			if (root->children[j].name && 0 == strcmp(root->children[j].name, entry->bitset.parent)) {
+				assert(root->children[j].type == ENTRY_BITSET);
+				assert(0 == strcmp(root->children[j].bitset.storageType, entry->bitset.storageType));
+				foundParent = true;
+				break;
+			}
+		}
+
+		assert(foundParent);
+	}
 	
 	for (int i = 0; i < arrlen(root->children); i++) {
 		Entry *entry = root->children + i;

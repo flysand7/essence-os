@@ -275,7 +275,7 @@ define ES_SCANCODE_WWW_STOP			(0x10F)
 define ES_SCANCODE_WWW_REFRESH			(0x110)
 define ES_SCANCODE_WWW_STARRED			(0x111)
 
-bitset EsProcessStateFlags ES_PROCESS_STATE_ uint8_t {
+bitset EsProcessStateFlags ES_PROCESS_STATE_ uint8_t none {
 	ALL_THREADS_TERMINATED
 	TERMINATING
 	CRASHED
@@ -355,27 +355,31 @@ define ES_SYSTEM_SNAPSHOT_PROCESSES 		(1)
 define ES_HANDLED     (-1)
 define ES_REJECTED    (-2)
 
-define ES_TEXT_H_LEFT 	                   (1 <<  0)
-define ES_TEXT_H_CENTER                    (1 <<  1)
-define ES_TEXT_H_RIGHT 	                   (1 <<  2)
-define ES_TEXT_V_TOP 	                   (1 <<  3)
-define ES_TEXT_V_CENTER                    (1 <<  4)
-define ES_TEXT_V_BOTTOM                    (1 <<  5)
-define ES_TEXT_ELLIPSIS	                   (1 <<  6)
-define ES_TEXT_WRAP 	                   (1 <<  7)
+bitset EsTextFlags ES_TEXT_ uint32_t none {
+	H_LEFT = 0
+	H_CENTER = 1
+	H_RIGHT = 2
+	V_TOP = 3
+	V_CENTER = 4
+	V_BOTTOM = 5
+	ELLIPSIS = 6
+	WRAP = 7
+};
 
-define ES_TEXT_PLAN_SINGLE_USE             (1 <<  8)
-define ES_TEXT_PLAN_TRIM_SPACES            (1 <<  9)
-define ES_TEXT_PLAN_RTL	                   (1 << 10)
-define ES_TEXT_PLAN_CLIP_UNBREAKABLE_LINES (1 << 11)
-define ES_TEXT_PLAN_NO_FONT_SUBSTITUTION   (1 << 12)
-// ...plus alignment flags.
+bitset EsTextPlanFlags ES_TEXT_PLAN_ uint32_t none {
+	SINGLE_USE = 8
+	TRIM_SPACES = 9
+	RTL = 10
+	CLIP_UNBREAKABLE_LINES = 11
+	NO_FONT_SUBSTITUTION = 12
+};
 
-define ES_DRAW_CONTENT_TABULAR             (1 <<  8)
-define ES_DRAW_CONTENT_MARKER_DOWN_ARROW   (1 <<  9)
-define ES_DRAW_CONTENT_MARKER_UP_ARROW     (1 << 10)
-define ES_DRAW_CONTENT_RICH_TEXT           (1 << 12)
-// ...plus alignment flags.
+bitset EsDrawContentFlags ES_DRAW_CONTENT_ uint32_t none {
+	TABULAR = 8
+	MARKER_DOWN_ARROW = 9
+	MARKER_UP_ARROW = 10
+	RICH_TEXT = 11
+};
 
 define ES_LIST_VIEW_COLUMN_HAS_MENU           ( 1 << 16) // The header can be clicked to open a menu.
 define ES_LIST_VIEW_COLUMN_DATA_STRINGS       ( 0 << 22) // Data types for fixed items or GET_ITEM_DATA.
@@ -403,7 +407,7 @@ define ES_LIST_VIEW_COLUMN_FORMAT_MASK        (31 << 27)
 // ...plus draw content flags and alignment flags.
 
 // For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
-bitset EsListViewGetColumnSortFlags ES_LIST_VIEW_COLUMN_SORT_ uint32_t {
+bitset EsListViewGetColumnSortFlags ES_LIST_VIEW_COLUMN_SORT_ uint32_t none {
 	ASCENDING
 	DESCENDING
 };
@@ -412,7 +416,7 @@ define ES_NODE_FILE			(0)
 define ES_NODE_DIRECTORY		(0x10)
 define ES_NODE_INVALID			(0x20)
 
-bitset EsFileOpenFlags ES_ uint32_t {
+bitset EsFileOpenFlags ES_ uint32_t none {
 	// TODO Cleanup!
 
 	FILE_READ_SHARED = 0		 // Read-only. The file can still be opened for writing.
@@ -434,7 +438,7 @@ define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
 
 define ES_MEMORY_MAP_OBJECT_ALL (0) // Set size to this to map the entire object.
 
-bitset EsMemoryMapFlags ES_MEMORY_MAP_OBJECT_ uint32_t {
+bitset EsMemoryMapFlags ES_MEMORY_MAP_OBJECT_ uint32_t none {
 	READ_WRITE    
 	READ_ONLY     
 	COPY_ON_WRITE // Files only.
@@ -445,11 +449,12 @@ define ES_SHARED_MEMORY_READ_WRITE (1 << 0)
 define ES_STRING_FORMAT_ENOUGH_SPACE	(-1)
 
 // Flags set with %f.
-bitset EsStringFormatFlags ES_STRING_FORMAT_ uint32_t {
+bitset EsStringFormatFlags ES_STRING_FORMAT_ uint32_t none {
 	SIMPLE
 };
 
-bitset EsProcessPermissions ES_PERMISSION_ uint64_t {
+define ES_PERMISSION_ALL ((_EsLongConstant) (-1))
+bitset EsProcessPermissions ES_PERMISSION_ uint64_t none {
 	NETWORKING
 	PROCESS_CREATE
 	PROCESS_OPEN
@@ -461,128 +466,144 @@ bitset EsProcessPermissions ES_PERMISSION_ uint64_t {
 	POSIX_SUBSYSTEM
 	INHERIT = 63
 };
-define ES_PERMISSION_ALL				((_EsLongConstant) (-1))
 
 // Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
 
-define ES_ELEMENT_FOCUSABLE			((_EsLongConstant) (1) << 32)
-define ES_ELEMENT_HIDDEN			((_EsLongConstant) (1) << 33) // Hides the element and descendents. 
-									      // Also prevents the element and descendents from taking focus or being hovered/pressed.
-define ES_ELEMENT_DISABLED			((_EsLongConstant) (1) << 34) // Prevents the element from taking focus or being pressed.
-define ES_ELEMENT_DEBUG				((_EsLongConstant) (1) << 35) // Prints some extra debug information about the element.
-define ES_ELEMENT_NO_CLIP			((_EsLongConstant) (1) << 36) // Do not clip children to the element's bounds.
-define ES_ELEMENT_NO_HOVER			((_EsLongConstant) (1) << 37) // For z-stacked elements. Can still hover descendents and overlapped siblings/parent.
-									      // Override HIT_TEST to return false to prevent hovering descendents.
-define ES_ELEMENT_NO_HOVER_DESCENDENTS		((_EsLongConstant) (1) << 38) // Prevent hovering over any descendents.
-define ES_ELEMENT_BLOCK_FOCUS			((_EsLongConstant) (1) << 39) // This element and descendents cannot take focus.
-define ES_ELEMENT_NOT_TAB_TRAVERSABLE		((_EsLongConstant) (1) << 40) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
-define ES_ELEMENT_NO_FOCUS_ON_CLICK		((_EsLongConstant) (1) << 41) // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
-define ES_ELEMENT_LAYOUT_HINT_HORIZONTAL	((_EsLongConstant) (1) << 43) // Hint for autoCorners and autoBorders.
-define ES_ELEMENT_LAYOUT_HINT_REVERSE		((_EsLongConstant) (1) << 44) // Hint for autoCorners and autoBorders; and tab traversal.
-define ES_ELEMENT_STICKY_ACCESS_KEY		((_EsLongConstant) (1) << 45) // Don't exit access key mode after using the access key.
-define ES_ELEMENT_NON_CLIENT			((_EsLongConstant) (1) << 46) 
-define ES_ELEMENT_FREE_USER_DATA		((_EsLongConstant) (1) << 47) // Call EsHeapFree on userData when destroying the element.
-define ES_ELEMENT_AUTO_GROUP			((_EsLongConstant) (1) << 48) // Enables autoCorners and autoBorders.
+bitset EsElementFlags ES_ uint64_t none {
+	// Common element flags:
+	ELEMENT_FOCUSABLE = 32
+	ELEMENT_HIDDEN = 33 // Hides the element and descendents. Also prevents the element and descendents from taking focus or being hovered/pressed.
+	ELEMENT_DISABLED = 34 // Prevents the element from taking focus or being pressed.
+	ELEMENT_DEBUG = 35 // Prints some extra debug information about the element.
+	ELEMENT_NO_CLIP = 36 // Do not clip children to the element's bounds.
+	ELEMENT_NO_HOVER = 37 // For z-stacked elements. Can still hover descendents and overlapped siblings/parent. Override HIT_TEST to return false to prevent hovering descendents.
+	ELEMENT_NO_HOVER_DESCENDENTS = 38 // Prevent hovering over any descendents.
+	ELEMENT_BLOCK_FOCUS = 39 // This element and descendents cannot take focus.
+	ELEMENT_NOT_TAB_TRAVERSABLE = 40 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
+	ELEMENT_NO_FOCUS_ON_CLICK = 41 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
+	ELEMENT_LAYOUT_HINT_HORIZONTAL = 43 // Hint for autoCorners and autoBorders.
+	ELEMENT_LAYOUT_HINT_REVERSE = 44 // Hint for autoCorners and autoBorders; and tab traversal.
+	ELEMENT_STICKY_ACCESS_KEY = 45 // Don't exit access key mode after using the access key.
+	ELEMENT_NON_CLIENT = 46 
+	ELEMENT_FREE_USER_DATA = 47 // Call EsHeapFree on userData when destroying the element.
+	ELEMENT_AUTO_GROUP = 48 // Enables autoCorners and autoBorders.
 
-// For children of splitters:
-define ES_CELL_COLLAPSABLE	((_EsLongConstant) (1) << 51)
+	// For children of splitters:
+	CELL_COLLAPSABLE = 51
 
-define ES_CELL_H_PUSH           ((_EsLongConstant) (1) << 54)
-define ES_CELL_H_EXPAND         ((_EsLongConstant) (1) << 55)
-define ES_CELL_H_SHRINK		((_EsLongConstant) (1) << 56)
-define ES_CELL_H_LEFT           ((_EsLongConstant) (1) << 57)
-define ES_CELL_H_RIGHT          ((_EsLongConstant) (1) << 58)
-define ES_CELL_V_PUSH           ((_EsLongConstant) (1) << 59)
-define ES_CELL_V_EXPAND         ((_EsLongConstant) (1) << 60)
-define ES_CELL_V_SHRINK		((_EsLongConstant) (1) << 61)
-define ES_CELL_V_TOP            ((_EsLongConstant) (1) << 62)
-define ES_CELL_V_BOTTOM         ((_EsLongConstant) (1) << 63)
+	// Cell layout flags:
+	CELL_H_PUSH = 54
+	CELL_H_EXPAND = 55
+	CELL_H_SHRINK = 56
+	CELL_H_LEFT = 57
+	CELL_H_RIGHT = 58
+	CELL_V_PUSH = 59
+	CELL_V_EXPAND = 60
+	CELL_V_SHRINK = 61
+	CELL_V_TOP = 62
+	CELL_V_BOTTOM = 63
+};
 
 define ES_PANEL_BAND_SIZE_DEFAULT              (-1)
 
 define ES_PANEL_STACK			(0) // Default.
-define ES_PANEL_SWITCHER		(1 << 0)
-define ES_PANEL_Z_STACK			(1 << 1)
-define ES_PANEL_TABLE			(1 << 2)
-
-define ES_PANEL_H_SCROLL_FIXED		(1 << 4)
-define ES_PANEL_V_SCROLL_FIXED		(1 << 5)
-define ES_PANEL_H_SCROLL_AUTO		(1 << 6)
-define ES_PANEL_V_SCROLL_AUTO		(1 << 7)
-
-// For ES_PANEL_TABLE and ES_PANEL_STACK.
 define ES_PANEL_VERTICAL		(0) // Default.
-define ES_PANEL_HORIZONTAL		(1 << 8) 
-define ES_PANEL_REVERSE 		(1 << 9) // Reverse layout is not supported with ES_PANEL_TABLE yet.
+define ES_PANEL_SWITCHER_MEASURE_SHOWN  (0) // Use the shown child to determine size.
 
-// For ES_PANEL_SWITCHER.
-define ES_PANEL_SWITCHER_MEASURE_SHOWN   (0 << 15) // Use the shown child to determine size.
-define ES_PANEL_SWITCHER_MEASURE_LARGEST (1 << 15) // Use the largest child to determine size.
+bitset EsPanelFlags ES_PANEL_ uint64_t EsElementFlags {
+	SWITCHER = 0
+	Z_STACK = 1
+	TABLE = 2
 
-// For ES_PANEL_TABLE.
-define ES_PANEL_TABLE_H_JUSTIFY		(1 << 16)
-define ES_PANEL_TABLE_V_JUSTIFY		(1 << 17)
+	H_SCROLL_FIXED = 4
+	V_SCROLL_FIXED = 5
+	H_SCROLL_AUTO = 6
+	V_SCROLL_AUTO = 7
 
-define ES_PANEL_RADIO_GROUP		(1 << 30) // Determines how arrow keys/tabs behave.
+	// For ES_PANEL_TABLE and ES_PANEL_STACK.
+	HORIZONTAL = 8
+	REVERSE = 9 // Reverse layout is not supported with ES_PANEL_TABLE yet.
 
-define ES_TEXTBOX_MULTILINE			(1 << 0)
-define ES_TEXTBOX_EDIT_BASED			(1 << 1)
-define ES_TEXTBOX_MARGIN			(1 << 2)
-define ES_TEXTBOX_NO_SMART_CONTEXT_MENUS	(1 << 3)
-define ES_TEXTBOX_ALLOW_TABS			(1 << 4)
-define ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS	(1 << 5)
+	// For ES_PANEL_SWITCHER.
+	SWITCHER_MEASURE_LARGEST = 15 // Use the largest child to determine size.
 
-bitset EsTextboxFindFlags ES_TEXTBOX_FIND_ uint32_t {
+	// For ES_PANEL_TABLE.
+	TABLE_H_JUSTIFY = 16
+	TABLE_V_JUSTIFY = 17
+
+	RADIO_GROUP = 30 // Determines how arrow keys/tabs behave.
+};
+
+bitset EsTextboxFlags ES_TEXTBOX_ uint64_t EsElementFlags {
+	MULTILINE = 0
+	EDIT_BASED = 1
+	MARGIN = 2
+	NO_SMART_CONTEXT_MENUS = 3
+	ALLOW_TABS = 4
+	REJECT_EDIT_IF_LOST_FOCUS = 5
+}
+
+bitset EsTextboxFindFlags ES_TEXTBOX_FIND_ uint32_t none {
 	BACKWARDS
 };
 
-bitset EsTextboxGetContentsFlags ES_TEXTBOX_GET_CONTENTS_ uint32_t {
+bitset EsTextboxGetContentsFlags ES_TEXTBOX_GET_CONTENTS_ uint32_t none {
 	SELECTED_ONLY
 };
 
 // First few bits reserved for the check state.
-define ES_BUTTON_DEFAULT			(1 << 3)
-define ES_BUTTON_MENU_ITEM			(1 << 4)
-define ES_BUTTON_NOT_FOCUSABLE			(1 << 5)
-define ES_BUTTON_TOOLBAR			(1 << 6)
-define ES_BUTTON_DROPDOWN			(1 << 7)
-define ES_BUTTON_COMPACT			(1 << 8)
-define ES_MENU_ITEM_HEADER			(1 << 9)
-define ES_BUTTON_CHECKBOX			(1 << 10)
-define ES_BUTTON_RADIOBOX			(1 << 11)
-define ES_BUTTON_CANCEL				(1 << 12)
-define ES_BUTTON_PUSH				(1 << 13)
-define ES_MENU_ITEM_CHECKED			(ES_CHECK_CHECKED)
+define ES_MENU_ITEM_CHECKED (ES_CHECK_CHECKED)
+bitset EsButtonFlags ES_BUTTON_ uint64_t EsElementFlags {
+	DEFAULT = 3
+	MENU_ITEM = 4
+	NOT_FOCUSABLE = 5
+	TOOLBAR = 6
+	DROPDOWN = 7
+	COMPACT = 8
+	CHECKBOX = 9
+	RADIOBOX = 10
+	CANCEL = 11
+	PUSH = 12
+};
+bitset EsMenuItemFlags ES_MENU_ITEM_ uint64_t EsButtonFlags {
+	HEADER = 31
+};
 
-define ES_COLOR_WELL_HAS_OPACITY		(1 << 0)
+bitset EsColorWellFlags ES_COLOR_WELL_ uint64_t EsElementFlags {
+	HAS_OPACITY = 0
+};
 
 define ES_SCROLLBAR_VERTICAL			(0 << 0)
 define ES_SCROLLBAR_HORIZONTAL			(1 << 0)
 
-define ES_SPLITTER_VERTICAL			(0 << 0)
-define ES_SPLITTER_HORIZONTAL			(1 << 0)
+define ES_SPLITTER_VERTICAL (0)
+bitset EsSplitterFlags ES_SPLITTER_ uint64_t EsElementFlags {
+	HORIZONTAL = 0
+};
 
-define ES_LIST_VIEW_HORIZONTAL			(1 << 0) // Layout horizontally instead of vertically.
-define ES_LIST_VIEW_VARIABLE_SIZE		(1 << 1) // Each item can be a different size. 
-							 // You need to respond to the LIST_VIEW_MEASURE_ITEM message.
-							 // The size of items cannot depend on the size of the parent.
-define ES_LIST_VIEW_TILED			(1 << 2) // Multiple items per band. Incompatible with variable size items and columns mode.
-define ES_LIST_VIEW_SINGLE_SELECT		(1 << 3) // One item can be selected. By default, selections are disabled.
-define ES_LIST_VIEW_MULTI_SELECT		(1 << 4) // Multiple items can be selected.
-define ES_LIST_VIEW_CHOICE_SELECT		(1 << 5) // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
-define ES_LIST_VIEW_COLUMNS			(1 << 6) // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
-define ES_LIST_VIEW_FIXED_ITEMS			(1 << 7) // Use the fixed item API rather than the callback API.
-define ES_LIST_VIEW_CENTER_TILES                (1 << 8) // Center tiled items.
+bitset EsListViewFlags ES_LIST_VIEW_ uint64_t EsElementFlags {
+	HORIZONTAL = 0 // Layout horizontally instead of vertically.
+	VARIABLE_SIZE = 1 // Each item can be a different size. You need to respond to the LIST_VIEW_MEASURE_ITEM message. The size of items cannot depend on the size of the parent.
+	TILED = 2 // Multiple items per band. Incompatible with variable size items and columns mode.
+	SINGLE_SELECT = 3 // One item can be selected. By default, selections are disabled.
+	MULTI_SELECT = 4 // Multiple items can be selected.
+	CHOICE_SELECT = 5 // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
+	COLUMNS = 6 // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
+	FIXED_ITEMS = 7 // Use the fixed item API rather than the callback API.
+	CENTER_TILES = 8 // Center tiled items.
+};
 
-bitset EsListViewGroupFlags ES_LIST_VIEW_GROUP_ uint32_t {
+bitset EsListViewGroupFlags ES_LIST_VIEW_GROUP_ uint32_t none {
 	HAS_HEADER // The first item in the group is a header.
 	HAS_FOOTER // The last item in the group is a footer.
 	INDENT // Indent the group's items (excluding the header and footer).
 	COLLAPSABLE // The group can be collapsed.
 };
 
-define ES_MENU_AT_CURSOR			(1 << 0)
-define ES_MENU_MAXIMUM_HEIGHT			(1 << 1)
+bitset EsMenuFlags ES_MENU_ uint32_t none {
+	AT_CURSOR = 0
+	MAXIMUM_HEIGHT = 1
+};
 
 // Standard font families:
 define ES_FONT_SANS 		(0xFFFF)
@@ -594,7 +615,7 @@ define ES_FONT_REGULAR		(4)
 define ES_FONT_SEMIBOLD 	(6)
 define ES_FONT_BOLD 		(7)
 
-bitset EsFontFlags ES_FONT_ uint8_t {
+bitset EsFontFlags ES_FONT_ uint8_t none {
 	ITALIC
 };
 
@@ -602,24 +623,31 @@ define ES_TEXT_FIGURE_DEFAULT	(0)
 define ES_TEXT_FIGURE_OLD	(1)
 define ES_TEXT_FIGURE_TABULAR	(2)
 
-bitset EsTextDecorations ES_TEXT_DECORATION_ uint8_t {
+bitset EsTextDecorations ES_TEXT_DECORATION_ uint8_t none {
 	UNDERLINE
 	STRIKE_THROUGH
 };
 
-define ES_TEXT_DISPLAY_RICH_TEXT            (1 << 0)
-define ES_TEXT_DISPLAY_PREFORMATTED         (1 << 1) // Prevents trimming of trailing/leading whitespace.
-define ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION (1 << 2)
+bitset EsTextDisplayFlags ES_TEXT_DISPLAY_ uint64_t EsElementFlags {
+	RICH_TEXT = 0
+	PREFORMATTED = 1 // Prevents trimming of trailing/leading whitespace.
+	NO_FONT_SUBSTITUTION = 2
+};
 
+bitset EsListDisplayFlags ES_LIST_DISPLAY_ uint64_t EsElementFlags {
+	// First 8 bits reserved for the marker type (see below).
+};
 define ES_LIST_DISPLAY_BULLETED         (0 << 0) // Default.
 define ES_LIST_DISPLAY_NUMBERED         (1 << 0)
 define ES_LIST_DISPLAY_LOWER_ALPHA      (2 << 0)
 define ES_LIST_DISPLAY_CUSTOM_MARKER	(0xFF << 0) // Sends ES_MSG_LIST_DISPLAY_GET_MARKER.
 define ES_LIST_DISPLAY_MARKER_TYPE_MASK (0xFF << 0)
 
-define ES_IMAGE_DISPLAY_DECODE_WHEN_NEEDED (1 << 0) // The image is only kept in its decoded state when the display is on-screen.
-define ES_IMAGE_DISPLAY_MANUAL_SIZE        (1 << 1) // The display will be manually sized; its size does not depend on the loaded image.
-define ES_IMAGE_DISPLAY_FULLY_OPAQUE       (1 << 2) // The loaded image will always be fully opaque.
+bitset EsImageDisplayFlags ES_IMAGE_DISPLAY_ uint64_t EsElementFlags {
+	DECODE_WHEN_NEEDED = 0 // The image is only kept in its decoded state when the display is on-screen.
+	MANUAL_SIZE = 1 // The display will be manually sized; its size does not depend on the loaded image.
+	FULLY_OPAQUE = 2 // The loaded image will always be fully opaque.
+};
 
 define ES_COMMAND_SYSTEM_START		(0xF0000000)
 define ES_COMMAND_DELETE		(0xF0000001)
@@ -645,7 +673,7 @@ define ES_CELL_H_CENTER  (ES_CELL_H_LEFT | ES_CELL_H_RIGHT)
 define ES_CELL_V_CENTER  (ES_CELL_V_TOP | ES_CELL_V_BOTTOM)
 
 // Mask bits for EsThemeMetrics:
-bitset EsThemeMetricsMask ES_THEME_METRICS_ uint64_t {
+bitset EsThemeMetricsMask ES_THEME_METRICS_ uint64_t none {
 	INSETS
 	CLIP_INSETS
 	CLIP_ENABLED
@@ -702,32 +730,32 @@ define ES_GAME_CONTROLLER_MAX_COUNT (16)
 define ES_DOMAIN_NAME_MAX_LENGTH (255)
 define ES_ECHO_REQUEST_MAX_LENGTH (48)
 
-bitset EsConnectionOpenFlags ES_CONNECTION_OPEN_ uint32_t {
+bitset EsConnectionOpenFlags ES_CONNECTION_OPEN_ uint32_t none {
 	WAIT
 };
 
-bitset EsFileControlFlags ES_FILE_CONTROL_ uint32_t {
+bitset EsFileControlFlags ES_FILE_CONTROL_ uint32_t none {
 	FLUSH
 };
 
-bitset EsElementUpdateContentFlags ES_ELEMENT_UPDATE_CONTENT_ uint32_t {
+bitset EsElementUpdateContentFlags ES_ELEMENT_UPDATE_CONTENT_ uint32_t none {
 	WIDTH
 	HEIGHT
 };
 
-bitset EsDialogShowFlags ES_DIALOG_ uint32_t {
+bitset EsDialogShowFlags ES_DIALOG_ uint32_t none {
 	ALERT_OK_BUTTON
 };
 
-bitset EsMemoryReserveFlags ES_MEMORY_RESERVE_ uint32_t {
+bitset EsMemoryReserveFlags ES_MEMORY_RESERVE_ uint32_t none {
 	COMMIT_ALL
 };
 
-bitset EsPanelSwitchToFlags ES_PANEL_SWITCHER_ uint32_t {
+bitset EsPanelSwitchToFlags ES_PANEL_SWITCHER_ uint32_t none {
 	DESTROY_PREVIOUS_AFTER_TRANSITION
 };
 
-bitset EsElementTransitionFlags ES_ELEMENT_TRANSITION_ uint32_t {
+bitset EsElementTransitionFlags ES_ELEMENT_TRANSITION_ uint32_t none {
 	ENTRANCE
 	EXIT
 	HIDE_AFTER_COMPLETE
@@ -737,7 +765,7 @@ define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C      (1)
 define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI    (2)
 define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT (3)
 
-bitset EsDrawLineFlags ES_DRAW_LINE_ uint32_t {
+bitset EsDrawLineFlags ES_DRAW_LINE_ uint32_t none {
 	CAP_ROUND 
 	CAP_SQUARE
 };
@@ -753,24 +781,24 @@ define ES_DRIVE_TYPE_SSD              (2)
 define ES_DRIVE_TYPE_CDROM            (3)
 define ES_DRIVE_TYPE_USB_MASS_STORAGE (4)
 
-bitset EsElementFocusFlags ES_ELEMENT_FOCUS_ uint32_t {
+bitset EsElementFocusFlags ES_ELEMENT_FOCUS_ uint32_t none {
 	ENSURE_VISIBLE
 	FROM_KEYBOARD
 	ONLY_IF_NO_FOCUSED_ELEMENT
 };
 
-bitset EsApplicationStartupRequestFlags ES_APPLICATION_STARTUP_ uint32_t {
+bitset EsApplicationStartupRequestFlags ES_APPLICATION_STARTUP_ uint32_t none {
 	BACKGROUND_SERVICE
 	IN_SAME_CONTAINER
 	NO_DOCUMENT // The file path given in EsApplicationStartupRequest should be passed directly to the application, and should not be used to open a document.
 };
 
-bitset EsListViewInlineTextboxFlags ES_LIST_VIEW_INLINE_TEXTBOX_ uint32_t {
+bitset EsListViewInlineTextboxFlags ES_LIST_VIEW_INLINE_TEXTBOX_ uint32_t none {
 	COPY_EXISTING_TEXT
 	REJECT_EDIT_IF_FOCUS_LOST
 };
 
-bitset EsKeyboardModifiers ES_MODIFIER_ uint8_t {
+bitset EsKeyboardModifiers ES_MODIFIER_ uint8_t none {
 	CTRL	
 	SHIFT
 	ALT
@@ -778,7 +806,7 @@ bitset EsKeyboardModifiers ES_MODIFIER_ uint8_t {
 	ALT_GR
 };
 
-bitset EsProcessCreationFlags ES_PROCESS_CREATE_ uint32_t {
+bitset EsProcessCreationFlags ES_PROCESS_CREATE_ uint32_t none {
 	PAUSED
 };
 
@@ -800,20 +828,21 @@ define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
 define ES_DRAW_BITMAP_XOR    (0xFFFE)
 define ES_DRAW_BITMAP_BLEND  (0)
 
-bitset EsVolumeFlags ES_VOLUME_ uint32_t {
+bitset EsVolumeFlags ES_VOLUME_ uint32_t none {
 	READ_ONLY
 };
 
-bitset EsPathMoveFlags ES_PATH_MOVE_ uint32_t {
+bitset EsPathMoveFlags ES_PATH_MOVE_ uint32_t none {
 	// Copy and delete the file if a direct move is not possible (e.g. the files are on different volumes).
 	ALLOW_COPY_AND_DELETE 
 };
 
-bitset EsClipboardDataFlags ES_CLIPBOARD_ADD_ uint32_t {
+bitset EsClipboardDataFlags ES_CLIPBOARD_ADD_ uint32_t none {
 	// Only perform the deletion after pasting; often implemented as a move (e.g. files).
 	LAZY_CUT
-}
+};
 
+define ES_SCROLL_WHEEL_NOTCH (0x100)
 define ES_SCROLL_WHEEL_NOTCH (0x100)
 
 // Scroll view modes.
@@ -837,7 +866,21 @@ define ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK (4)
 define ES_SHUTDOWN_ACTION_POWER_OFF (1)
 define ES_SHUTDOWN_ACTION_RESTART (2)
 
-define ES_CANVAS_PANE_SHOW_SHADOW (1 << 0)
+bitset EsCanvasPaneFlags ES_CANVAS_PANE_ uint64_t EsElementFlags {
+	SHOW_SHADOW = 0
+};
+
+bitset EsSliderFlags ES_SLIDER_ uint64_t none {
+};
+
+bitset EsSpacerFlags ES_SPACER_ uint64_t none {
+};
+
+bitset EsIconDisplayFlags ES_ICON_DISPLAY_ uint64_t none {
+};
+
+bitset EsAnnouncementFlags ES_ANNOUNCEMENT_ uint64_t none {
+};
 
 include desktop/icons.header
 
@@ -1259,7 +1302,7 @@ struct EsElementPublic {
 	// These fields are read-only!
 	EsWindow *window;
 	ES_INSTANCE_TYPE *instance;
-	uint64_t flags; // Bits 0-31: specific to the type of element; bits 32-63: common to all elements.
+	EsElementFlags flags; // Bits 0-31: specific to the type of element; bits 32-63: common to all elements.
 } @opaque();
 
 private struct EsBatchCall {
@@ -1411,7 +1454,8 @@ struct EsThemeMetrics {
 	int32_t maximumWidth, maximumHeight;
 	int32_t gapMajor, gapMinor, gapWrap;
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
-	int32_t textAlign, textSize, fontFamily, fontWeight, iconSize;
+	EsTextFlags textAlign;
+	int32_t textSize, fontFamily, fontWeight, iconSize;
 	uint8_t textFigures;
 	bool isItalic, layoutVertical;
 };
@@ -1463,7 +1507,7 @@ struct EsTextRun {
 
 struct EsTextPlanProperties {
 	EsCString cLanguage;
-	uint32_t flags; 
+	EsTextPlanFlags flags; 
 	int maxLines; // Set to 0 for no limit.
 };
 
@@ -2221,7 +2265,7 @@ function void EsDrawBitmap(EsPainter *painter, EsRectangle region, const uint32_
 function void EsDrawBitmapScaled(EsPainter *painter, EsRectangle destinationRegion, EsRectangle sourceRegion, const uint32_t *bits, uintptr_t stride, uint16_t alpha) @matrix_in(bits, sourceRegion, stride); // Set alpha to 0xFFFF if source is opaque.
 function void EsDrawBlock(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor);
 function void EsDrawClear(EsPainter *painter, EsRectangle bounds);
-function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, uint32_t flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties);
+function void EsDrawContent(EsPainter *painter, EsElement *element, EsRectangle rectangle, STRING text, uint32_t iconID = 0, EsDrawContentFlags flags = ES_FLAGS_DEFAULT, const EsTextSelection *selectionProperties = ES_NULL) @in(selectionProperties);
 function void EsDrawInvert(EsPainter *painter, EsRectangle bounds);
 function void EsDrawLine(EsPainter *painter, const float *vertices, size_t vertexCount, EsDeviceColor color, float width, EsDrawLineFlags flags) @array_in(vertices, vertexCount); // Vertices are pairs of x,y coordinates.
 function void EsDrawRectangle(EsPainter *painter, EsRectangle bounds, EsDeviceColor mainColor, EsDeviceColor borderColor, EsRectangle borderSize);
@@ -2500,8 +2544,8 @@ function EsRectangle EsElementGetWindowBounds(EsElement *element, bool client = 
 function EsRectangle EsElementGetScreenBounds(EsElement *element, bool client = true);
 
 // TODO Rename these functions?
-function EsElement *EsCustomElementCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
-function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsElement *EsCustomElementCreate(EsElement *parent, EsElementFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, EsElementFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
 function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
 function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
@@ -2523,31 +2567,31 @@ function void EsWindowSetIcon(EsWindow *window, uint32_t iconID);
 function void EsWindowSetTitle(EsWindow *window, STRING title = BLANK_STRING);
 function void EsWindowAddSizeAlternative(EsWindow *window, EsElement *small, EsElement *big, int widthThreshold, int heightThreshold); // Switch between elements when the window size goes below a threshold.
 
-function EsMenu *EsMenuCreate(EsElement *source, uint64_t flags = ES_FLAGS_DEFAULT);
+function EsMenu *EsMenuCreate(EsElement *source, EsMenuFlags flags = ES_FLAGS_DEFAULT);
 function EsElement *EsMenuGetSource(EsMenu *menu); // TODO Public property?
-function void EsMenuAddItem(EsMenu *menu, uint64_t flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL) @todo();
-function void EsMenuAddCommand(EsMenu *menu, uint64_t flags, STRING label, EsCommand *command);
+function void EsMenuAddItem(EsMenu *menu, EsMenuItemFlags flags, STRING label = BLANK_STRING, EsMenuCallback callback = ES_NULL, EsGeneric context = ES_NULL) @todo();
+function void EsMenuAddCommand(EsMenu *menu, EsMenuItemFlags flags, STRING label, EsCommand *command);
 function void EsMenuAddSeparator(EsMenu *menu);
-function void EsMenuNextColumn(EsMenu *menu, uint64_t flags = ES_FLAGS_DEFAULT);
+function void EsMenuNextColumn(EsMenu *menu, EsElementFlags flags = ES_FLAGS_DEFAULT);
 function void EsMenuShow(EsMenu *menu, int fixedWidth = 0, int fixedHeight = 0);
 function void EsMenuClose(EsMenu *menu);
 function void EsMenuCloseAll();
 function void EsMenuAddCommandsFromToolbar(EsMenu *menu, EsElement *element);
 
 function EsDialog *EsDialogShow(EsWindow *window, STRING title, STRING content, uint32_t iconID, EsDialogShowFlags flags = ES_FLAGS_DEFAULT);
-function EsButton *EsDialogAddButton(EsDialog *dialog, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
+function EsButton *EsDialogAddButton(EsDialog *dialog, EsButtonFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING, EsCommandCallback callback = ES_NULL) @todo();
 function void EsDialogClose(EsDialog *dialog);
 function EsElement *EsDialogGetContentArea(EsDialog *dialog);
 
 function void EsFileMenuAddToToolbar(EsElement *toolbar, const EsFileMenuSettings *settings = ES_NULL) @in(settings);
-function void EsFileMenuCreate(ES_INSTANCE_TYPE *instance, EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT);
+function void EsFileMenuCreate(ES_INSTANCE_TYPE *instance, EsElement *parent, EsMenuFlags flags = ES_FLAGS_DEFAULT);
 
 private function EsHandle _EsWindowGetHandle(EsWindow *window); 
 private function void _EsUISetFont(EsFontFamily id);
 
 // Buttons.
 
-function EsButton *EsButtonCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
+function EsButton *EsButtonCreate(EsElement *parent, EsButtonFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsButtonSetIcon(EsButton *button, uint32_t iconID);
 function void EsButtonSetIconFromBits(EsButton *button, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height, stride);
 function void EsButtonSetCheck(EsButton *button, EsCheckState checkState = ES_CHECK_CHECKED, bool sendUpdatedMessage = true);
@@ -2558,7 +2602,7 @@ function EsElement *EsButtonGetCheckBuddy(EsButton *button);  // TODO Public pro
 
 // Textboxes.
 
-function EsTextbox *EsTextboxCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsTextbox *EsTextboxCreate(EsElement *parent, EsTextboxFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function bool EsTextboxFind(EsTextbox *textbox, STRING string, int32_t *line, int32_t *byte, EsTextboxFindFlags flags) @out(line) @out(byte);
 function void EsTextboxInsert(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Deletes existing selection first.
 function void EsTextboxAppend(EsTextbox *textbox, STRING string = BLANK_STRING, bool sendUpdatedMessage = true); // Ignores the user's selection.
@@ -2584,7 +2628,7 @@ function void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly); // Preven
 
 // Sliders.
 
-function EsSlider *EsSliderCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, double value = 0, uint32_t steps = 0);
+function EsSlider *EsSliderCreate(EsElement *parent, EsSliderFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, double value = 0, uint32_t steps = 0);
 function double EsSliderGetValue(EsSlider *slider);
 function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdatedMessage = true);
 
@@ -2603,10 +2647,10 @@ function void EsSliderSetValue(EsSlider *slider, double newValue, bool sendUpdat
 //		ES_STYLE_PANEL_WINDOW_BACKGROUND - gives the window a background color, same as ES_STYLE_PANEL_FILLED
 //		ES_STYLE_PANEL_WINDOW_WITH_STATUS_BAR_CONTENT - alternate version of ES_STYLE_PANEL_WINDOW_DIVIDER if the window has a status bar
 
-function EsPanel *EsPanelCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
-function EsSpacer *EsSpacerCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, int width = 0, int height = 0);
-function EsSplitter *EsSplitterCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
-function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsPanel *EsPanelCreate(EsElement *parent, EsPanelFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsSpacer *EsSpacerCreate(EsElement *parent, EsSpacerFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, int width = 0, int height = 0);
+function EsSplitter *EsSplitterCreate(EsElement *parent, EsSplitterFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, EsCanvasPaneFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
 function void EsPanelSetBands(EsPanel *panel, size_t columnCount, size_t rowCount = 0, const EsPanelBand *columns = ES_NULL, const EsPanelBand *rows = ES_NULL) @array_in(columns, columnCount) @array_in(rows, rowCount);
 function void EsPanelSetBandsAll(EsPanel *panel, const EsPanelBand *column = ES_NULL, const EsPanelBand *row = ES_NULL) @in(column) @in(row); // Set all the columns/rows to have the same properties. This must be called after the final number of bands has been determined/set!
@@ -2622,30 +2666,30 @@ function void EsSpacerChangeStyle(EsSpacer *spacer, EsStyleID newStyle);
 
 // Static displays.
 
-function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, uint32_t iconID = 0);
+function EsIconDisplay *EsIconDisplayCreate(EsElement *parent, EsIconDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, uint32_t iconID = 0);
 function void EsIconDisplaySetIcon(EsIconDisplay *display, uint32_t iconID);
 
-function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsImageDisplay *EsImageDisplayCreate(EsElement *parent, EsImageDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsImageDisplayLoadBits(EsImageDisplay *display, const uint32_t *bits, size_t width, size_t height, size_t stride) @matrix_in(bits, width, height);
 function void EsImageDisplayLoadFromMemory(EsImageDisplay *display, const void *buffer, size_t bufferBytes) @buffer_in(buffer, bufferBytes);
 function void EsImageDisplayPaint(EsImageDisplay *display, EsPainter *painter, EsRectangle bounds);
 function uint32_t EsImageDisplayGetImageWidth(EsImageDisplay *display);
 function uint32_t EsImageDisplayGetImageHeight(EsImageDisplay *display);
 
-function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
+function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, EsTextDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);
 function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount) @todo(); // See EsTextPlanCreate for how runCount works.
 function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 
-function EsListDisplay *EsListDisplayCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
+function EsListDisplay *EsListDisplayCreate(EsElement *parent, EsListDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsListDisplaySetCounterContinuation(EsListDisplay *display, EsListDisplay *previous);
 function void EsListDisplaySetCounterStart(EsListDisplay *display, uintptr_t index); // If index = 0, then the first item will be "1." or "(a)".
 
-function void EsAnnouncementShow(EsWindow *window, uint64_t flags, int32_t x, int32_t y, STRING text = BLANK_STRING);
+function void EsAnnouncementShow(EsWindow *window, EsAnnouncementFlags flags, int32_t x, int32_t y, STRING text = BLANK_STRING);
 
 // Color wells.
 
-function EsColorWell *EsColorWellCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, uint32_t colorRGB = 0);
+function EsColorWell *EsColorWellCreate(EsElement *parent, EsColorWellFlags flags = ES_FLAGS_DEFAULT, uint32_t colorRGB = 0);
 
 function uint32_t EsColorWellGetRGB(EsColorWell *well); // TODO Public property?
 function void EsColorWellSetRGB(EsColorWell *well, uint32_t colorRGB, bool sendChangedMessage);
@@ -2653,7 +2697,7 @@ function void EsColorWellSetIndeterminate(EsColorWell *well);
 
 // List views.
 
-function EsListView *EsListViewCreate(EsElement *parent, uint64_t flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, EsStyleID itemStyle = 0, EsStyleID headerItemStyle = 0, EsStyleID footerItemStyle = 0);
+function EsListView *EsListViewCreate(EsElement *parent, EsListViewFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, EsStyleID itemStyle = 0, EsStyleID headerItemStyle = 0, EsStyleID footerItemStyle = 0);
 
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL) @out(group);
 function EsListViewEnumeratedVisibleItem *EsListViewEnumerateVisibleItems(EsListView *view, size_t *count) @out(count) @heap_array_out(return, count*);
