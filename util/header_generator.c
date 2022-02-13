@@ -922,6 +922,7 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 			// FilePrintFormat(stderr, "initial value: %s\n", variable->variable.initialValue);
 
 			const char *initialValue = TrimPrefix(variable->variable.initialValue);
+			bool needLeadingDot = false;
 
 			if (0 == strcmp(initialValue, "NULL")) {
 				initialValue = "nil";
@@ -929,29 +930,27 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 				initialValue = "\"\"";
 			} else if (0 == strcmp(initialValue, "FLAGS_DEFAULT")) {
 				initialValue = "{}";
-			}
+			} else {
+				for (int i = 0; i < arrlen(root->children); i++) {
+					Entry *entry = root->children + i;
 
-			bool needLeadingDot = false;
-
-			for (int i = 0; i < arrlen(root->children); i++) {
-				Entry *entry = root->children + i;
-
-				if (entry->type == ENTRY_ENUM && 0 == strcmp(variable->variable.type, entry->name)) {
-					needLeadingDot = true;
-					break;
-				}
-			}
-			
-			for (int i = 0; i < arrlen(root->children); i++) {
-				Entry *entry = root->children + i;
-
-				if (entry->type == ENTRY_BITSET && 0 == strcmp(variable->variable.type, entry->name)) {
-					if (0 == memcmp(initialValue, entry->bitset.definePrefix + 3, strlen(entry->bitset.definePrefix) - 3)) {
+					if (entry->type == ENTRY_ENUM && 0 == strcmp(variable->variable.type, entry->name)) {
 						needLeadingDot = true;
-						initialValue += strlen(entry->bitset.definePrefix) - 3;
+						break;
 					}
+				}
 
-					break;
+				for (int i = 0; i < arrlen(root->children); i++) {
+					Entry *entry = root->children + i;
+
+					if (entry->type == ENTRY_BITSET && 0 == strcmp(variable->variable.type, entry->name)) {
+						if (0 == memcmp(initialValue, entry->bitset.definePrefix + 3, strlen(entry->bitset.definePrefix) - 3)) {
+							needLeadingDot = true;
+							initialValue += strlen(entry->bitset.definePrefix) - 3;
+						}
+
+						break;
+					}
 				}
 			}
 
