@@ -946,9 +946,8 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 				Entry *entry = root->children + i;
 
 				if (entry->type == ENTRY_BITSET && 0 == strcmp(variable->variable.type, entry->name)) {
-					needLeadingDot = true;
-
 					if (0 == memcmp(initialValue, entry->bitset.definePrefix + 3, strlen(entry->bitset.definePrefix) - 3)) {
+						needLeadingDot = true;
 						initialValue += strlen(entry->bitset.definePrefix) - 3;
 					}
 
