@@ -2139,7 +2139,10 @@ void OpenDocumentListUpdated() {
 
 void OpenDocumentCloseReference(EsObjectID id) {
 	OpenDocument *document = desktop.openDocuments.Get(&id);
+	EsAssert(document);
+	EsAssert(document->id == id);
 	EsAssert(document->referenceCount && document->referenceCount < 0x10000000 /* sanity check */);
+	EsPrint("OpenDocumentCloseReference ID %d path %s.\n", id, document->pathBytes, document->path);
 	document->referenceCount--;
 	if (document->referenceCount) return;
 	EsHeapFree(document->path);
@@ -2151,6 +2154,9 @@ void OpenDocumentCloseReference(EsObjectID id) {
 
 void OpenDocumentOpenReference(EsObjectID id) {
 	OpenDocument *document = desktop.openDocuments.Get(&id);
+	EsAssert(document);
+	EsAssert(document->id == id);
+	EsPrint("OpenDocumentOpenReference ID %d path %s.\n", id, document->pathBytes, document->path);
 	EsAssert(document->referenceCount && document->referenceCount < 0x10000000 /* sanity check */);
 	document->referenceCount++;
 }
@@ -2193,6 +2199,7 @@ void OpenDocumentWithApplication(EsApplicationStartupRequest *startupRequest, Co
 		document.id = ++desktop.currentDocumentID;
 		document.referenceCount = 1;
 		EsMemoryCopy(document.path, startupInformation.filePath, startupInformation.filePathBytes);
+		EsPrint("OpenDocumentWithApplication ID %d path %s.\n", document.id, document.pathBytes, document.path);
 		*desktop.openDocuments.Put(&document.id) = document;
 
 		startupInformation.readHandle = document.readHandle;
@@ -2272,6 +2279,7 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		document.readHandle = file.handle;
 		document.id = ++desktop.currentDocumentID;
 		document.referenceCount++;
+		EsPrint("ApplicationInstanceRequestSave ID %d path %s.\n", document.id, document.pathBytes, document.path);
 		*desktop.openDocuments.Put(&document.id) = document;
 
 		instance->documentID = document.id;

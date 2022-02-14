@@ -103,4 +103,5 @@
 	- Shared memory permissions
 	- Proper worker threads
 	- Read-write file systems: FAT, ext4, NTFS
+	- EsFS journal and crash recovery
 - Write documentation
