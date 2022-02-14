@@ -916,7 +916,15 @@ EsWindow *EsWindowCreate(EsInstance *instance, EsWindowStyle style) {
 		return nullptr;
 	}
 
-	window->instance = instance;
+	if (instance) {
+		window->instance = instance;
+
+		if (style == ES_WINDOW_NORMAL) {
+			// A handle to the instance is already open.
+		} else {
+			EsInstanceOpenReference(instance);
+		}
+	}
 
 	if (style == ES_WINDOW_NORMAL) {
 		window->handle = ((APIInstance *) instance->_private)->mainWindowHandle;
@@ -7736,8 +7744,11 @@ void UIProcessWindowManagerMessage(EsWindow *window, EsMessage *message, Process
 	// Check if the window has been destroyed.
 
 	if (message->type == ES_MSG_WINDOW_DESTROYED) {
-		if (window->instance && window->instance->window == window) {
-			window->instance->window = nullptr;
+		if (window->instance) {
+			if (window->instance->window == window) {
+				window->instance->window = nullptr;
+			}
+
 			EsInstanceCloseReference(window->instance);
 		}
 
