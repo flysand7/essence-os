@@ -29,7 +29,6 @@ opaque_type EsBundle           none;
 opaque_type EsDialog           none;
 
 type_name uint8_t EsNodeType;
-type_name intptr_t EsError;
 type_name uintptr_t EsHandle;
 type_name uint64_t EsFileOffset;
 type_name int64_t EsFileOffsetDifference;
@@ -41,307 +40,14 @@ type_name uint64_t EsObjectID;
 type_name uint32_t EsDeviceColor; // TODO Make this 64-bit?
 type_name uint32_t EsStyleID;
 
-define ES_SCANCODE_A				(0x04)
-define ES_SCANCODE_B				(0x05)
-define ES_SCANCODE_C				(0x06)
-define ES_SCANCODE_D				(0x07)
-define ES_SCANCODE_E				(0x08)
-define ES_SCANCODE_F				(0x09)
-define ES_SCANCODE_G				(0x0A)
-define ES_SCANCODE_H				(0x0B)
-define ES_SCANCODE_I				(0x0C)
-define ES_SCANCODE_J				(0x0D)
-define ES_SCANCODE_K				(0x0E)
-define ES_SCANCODE_L				(0x0F)
-define ES_SCANCODE_M				(0x10)
-define ES_SCANCODE_N				(0x11)
-define ES_SCANCODE_O				(0x12)
-define ES_SCANCODE_P				(0x13)
-define ES_SCANCODE_Q				(0x14)
-define ES_SCANCODE_R				(0x15)
-define ES_SCANCODE_S				(0x16)
-define ES_SCANCODE_T				(0x17)
-define ES_SCANCODE_U				(0x18)
-define ES_SCANCODE_V				(0x19)
-define ES_SCANCODE_W				(0x1A)
-define ES_SCANCODE_X				(0x1B)
-define ES_SCANCODE_Y				(0x1C)
-define ES_SCANCODE_Z				(0x1D)
-
-define ES_SCANCODE_1				(0x1E)
-define ES_SCANCODE_2				(0x1F)
-define ES_SCANCODE_3				(0x20)
-define ES_SCANCODE_4				(0x21)
-define ES_SCANCODE_5				(0x22)
-define ES_SCANCODE_6				(0x23)
-define ES_SCANCODE_7				(0x24)
-define ES_SCANCODE_8				(0x25)
-define ES_SCANCODE_9				(0x26)
-define ES_SCANCODE_0				(0x27)
-
-define ES_SCANCODE_ENTER 			(0x28)
-define ES_SCANCODE_ESCAPE			(0x29)
-define ES_SCANCODE_BACKSPACE			(0x2A)
-define ES_SCANCODE_TAB				(0x2B)
-define ES_SCANCODE_SPACE			(0x2C)
-
-define ES_SCANCODE_HYPHEN			(0x2D)
-define ES_SCANCODE_EQUALS			(0x2E)
-define ES_SCANCODE_LEFT_BRACE			(0x2F)
-define ES_SCANCODE_RIGHT_BRACE			(0x30)
-define ES_SCANCODE_COMMA			(0x36)
-define ES_SCANCODE_PERIOD			(0x37)
-define ES_SCANCODE_SLASH			(0x38)
-define ES_SCANCODE_PUNCTUATION_1		(0x31) // On US keyboard, \|
-define ES_SCANCODE_PUNCTUATION_2		(0x32) // Not on US keyboard
-define ES_SCANCODE_PUNCTUATION_3		(0x33) // On US keyboard, ;:
-define ES_SCANCODE_PUNCTUATION_4		(0x34) // On US keyboard, '"
-define ES_SCANCODE_PUNCTUATION_5		(0x35) // On US keyboard, `~
-define ES_SCANCODE_PUNCTUATION_6		(0x64) // Not on US keyboard
-
-define ES_SCANCODE_F1				(0x3A)
-define ES_SCANCODE_F2				(0x3B)
-define ES_SCANCODE_F3				(0x3C)
-define ES_SCANCODE_F4				(0x3D)
-define ES_SCANCODE_F5				(0x3E)
-define ES_SCANCODE_F6				(0x3F)
-define ES_SCANCODE_F7				(0x40)
-define ES_SCANCODE_F8				(0x41)
-define ES_SCANCODE_F9				(0x42)
-define ES_SCANCODE_F10				(0x43)
-define ES_SCANCODE_F11				(0x44)
-define ES_SCANCODE_F12				(0x45)
-define ES_SCANCODE_F13				(0x68)
-define ES_SCANCODE_F14				(0x69)
-define ES_SCANCODE_F15				(0x6A)
-define ES_SCANCODE_F16				(0x6B)
-define ES_SCANCODE_F17				(0x6C)
-define ES_SCANCODE_F18				(0x6D)
-define ES_SCANCODE_F19				(0x6E)
-define ES_SCANCODE_F20				(0x6F)
-define ES_SCANCODE_F21				(0x70)
-define ES_SCANCODE_F22				(0x71)
-define ES_SCANCODE_F23				(0x72)
-define ES_SCANCODE_F24				(0x73)
-
-define ES_SCANCODE_CAPS_LOCK			(0x39)
-define ES_SCANCODE_PRINT_SCREEN			(0x46)
-define ES_SCANCODE_SCROLL_LOCK			(0x47)
-define ES_SCANCODE_PAUSE			(0x48)
-define ES_SCANCODE_INSERT			(0x49)
-define ES_SCANCODE_HOME				(0x4A)
-define ES_SCANCODE_PAGE_UP			(0x4B)
-define ES_SCANCODE_DELETE			(0x4C)
-define ES_SCANCODE_END				(0x4D)
-define ES_SCANCODE_PAGE_DOWN			(0x4E)
-define ES_SCANCODE_RIGHT_ARROW			(0x4F)
-define ES_SCANCODE_LEFT_ARROW			(0x50)
-define ES_SCANCODE_DOWN_ARROW			(0x51)
-define ES_SCANCODE_UP_ARROW			(0x52)
-define ES_SCANCODE_NUM_LOCK			(0x53)
-define ES_SCANCODE_CONTEXT_MENU 		(0x65)
-define ES_SCANCODE_SYSTEM_REQUEST		(0x9A)
-
-define ES_SCANCODE_ACTION_EXECUTE		(0x74)
-define ES_SCANCODE_ACTION_HELP			(0x75)
-define ES_SCANCODE_ACTION_MENU			(0x76)
-define ES_SCANCODE_ACTION_SELECT		(0x77)
-define ES_SCANCODE_ACTION_STOP			(0x78)
-define ES_SCANCODE_ACTION_AGAIN			(0x79)
-define ES_SCANCODE_ACTION_UNDO			(0x7A)
-define ES_SCANCODE_ACTION_CUT			(0x7B)
-define ES_SCANCODE_ACTION_COPY			(0x7C)
-define ES_SCANCODE_ACTION_PASTE			(0x7D)
-define ES_SCANCODE_ACTION_FIND			(0x7E)
-define ES_SCANCODE_ACTION_CANCEL		(0x9B)
-define ES_SCANCODE_ACTION_CLEAR			(0x9C)
-define ES_SCANCODE_ACTION_PRIOR			(0x9D)
-define ES_SCANCODE_ACTION_RETURN		(0x9E)
-define ES_SCANCODE_ACTION_SEPARATOR		(0x9F)
-
-define ES_SCANCODE_MM_MUTE			(0x7F)
-define ES_SCANCODE_MM_LOUDER			(0x80)
-define ES_SCANCODE_MM_QUIETER			(0x81)
-define ES_SCANCODE_MM_NEXT			(0x103)
-define ES_SCANCODE_MM_PREVIOUS			(0x104)
-define ES_SCANCODE_MM_STOP			(0x105)
-define ES_SCANCODE_MM_PAUSE			(0x106)
-define ES_SCANCODE_MM_SELECT			(0x107)
-define ES_SCANCODE_MM_EMAIL			(0x108)
-define ES_SCANCODE_MM_CALC			(0x109)
-define ES_SCANCODE_MM_FILES			(0x10A)
-
-define ES_SCANCODE_INTERNATIONAL_1		(0x87)
-define ES_SCANCODE_INTERNATIONAL_2		(0x88)
-define ES_SCANCODE_INTERNATIONAL_3		(0x89)
-define ES_SCANCODE_INTERNATIONAL_4		(0x8A)
-define ES_SCANCODE_INTERNATIONAL_5		(0x8B)
-define ES_SCANCODE_INTERNATIONAL_6		(0x8C)
-define ES_SCANCODE_INTERNATIONAL_7		(0x8D)
-define ES_SCANCODE_INTERNATIONAL_8		(0x8E)
-define ES_SCANCODE_INTERNATIONAL_9		(0x8F)
-
-define ES_SCANCODE_HANGUL_ENGLISH_TOGGLE	(0x90)
-define ES_SCANCODE_HANJA_CONVERSION		(0x91)
-define ES_SCANCODE_KATAKANA			(0x92)
-define ES_SCANCODE_HIRAGANA			(0x93)
-define ES_SCANCODE_HANKAKU_ZENKAKU_TOGGLE	(0x94)
-define ES_SCANCODE_ALTERNATE_ERASE		(0x99)
-
-define ES_SCANCODE_THOUSANDS_SEPARATOR		(0xB2)
-define ES_SCANCODE_DECIMAL_SEPARATOR		(0xB3)
-define ES_SCANCODE_CURRENCY_UNIT		(0xB4)
-define ES_SCANCODE_CURRENCY_SUBUNIT		(0xB5)
-
-define ES_SCANCODE_NUM_DIVIDE			(0x54)
-define ES_SCANCODE_NUM_MULTIPLY			(0x55)
-define ES_SCANCODE_NUM_SUBTRACT			(0x56)
-define ES_SCANCODE_NUM_ADD			(0x57)
-define ES_SCANCODE_NUM_ENTER			(0x58)
-define ES_SCANCODE_NUM_1			(0x59)
-define ES_SCANCODE_NUM_2			(0x5A)
-define ES_SCANCODE_NUM_3			(0x5B)
-define ES_SCANCODE_NUM_4			(0x5C)
-define ES_SCANCODE_NUM_5			(0x5D)
-define ES_SCANCODE_NUM_6			(0x5E)
-define ES_SCANCODE_NUM_7			(0x5F)
-define ES_SCANCODE_NUM_8			(0x60)
-define ES_SCANCODE_NUM_9			(0x61)
-define ES_SCANCODE_NUM_0			(0x62)
-define ES_SCANCODE_NUM_POINT			(0x63)
-define ES_SCANCODE_NUM_EQUALS			(0x67)
-define ES_SCANCODE_NUM_COMMA			(0x82)
-define ES_SCANCODE_NUM_00			(0xB0)
-define ES_SCANCODE_NUM_000			(0xB1)
-define ES_SCANCODE_NUM_LEFT_PAREN		(0xB6)
-define ES_SCANCODE_NUM_RIGHT_PAREN		(0xB7)
-define ES_SCANCODE_NUM_LEFT_BRACE		(0xB8)
-define ES_SCANCODE_NUM_RIGHT_BRACE		(0xB9)
-define ES_SCANCODE_NUM_TAB			(0xBA)
-define ES_SCANCODE_NUM_BACKSPACE		(0xBB)
-define ES_SCANCODE_NUM_A			(0xBC)
-define ES_SCANCODE_NUM_B			(0xBD)
-define ES_SCANCODE_NUM_C			(0xBE)
-define ES_SCANCODE_NUM_D			(0xBF)
-define ES_SCANCODE_NUM_E			(0xC0)
-define ES_SCANCODE_NUM_F			(0xC1)
-define ES_SCANCODE_NUM_XOR			(0xC2)
-define ES_SCANCODE_NUM_CARET			(0xC3)
-define ES_SCANCODE_NUM_PERCENT			(0xC4)
-define ES_SCANCODE_NUM_LESS_THAN		(0xC5)
-define ES_SCANCODE_NUM_GREATER_THAN		(0xC6)
-define ES_SCANCODE_NUM_AMPERSAND		(0xC7)
-define ES_SCANCODE_NUM_DOUBLE_AMPERSAND		(0xC8)
-define ES_SCANCODE_NUM_BAR			(0xC9)
-define ES_SCANCODE_NUM_DOUBLE_BAR		(0xCA)
-define ES_SCANCODE_NUM_COLON			(0xCB)
-define ES_SCANCODE_NUM_HASH			(0xCC)
-define ES_SCANCODE_NUM_SPACE			(0xCD)
-define ES_SCANCODE_NUM_AT			(0xCE)
-define ES_SCANCODE_NUM_EXCLAMATION_MARK		(0xCF)
-define ES_SCANCODE_NUM_MEMORY_STORE		(0xD0)
-define ES_SCANCODE_NUM_MEMORY_RECALL		(0xD1)
-define ES_SCANCODE_NUM_MEMORY_CLEAR		(0xD2)
-define ES_SCANCODE_NUM_MEMORY_ADD		(0xD3)
-define ES_SCANCODE_NUM_MEMORY_SUBTRACT		(0xD4)
-define ES_SCANCODE_NUM_MEMORY_MULTIPLY		(0xD5)
-define ES_SCANCODE_NUM_MEMORY_DIVIDE		(0xD6)
-define ES_SCANCODE_NUM_NEGATE			(0xD7)
-define ES_SCANCODE_NUM_CLEAR_ALL		(0xD8)
-define ES_SCANCODE_NUM_CLEAR			(0xD9)
-define ES_SCANCODE_NUM_BINARY			(0xDA)
-define ES_SCANCODE_NUM_OCTAL			(0xDB)
-define ES_SCANCODE_NUM_DECIMAL			(0xDC)
-define ES_SCANCODE_NUM_HEXADECIMAL		(0xDD)
-
-define ES_SCANCODE_LEFT_CTRL			(0xE0)
-define ES_SCANCODE_LEFT_SHIFT			(0xE1)
-define ES_SCANCODE_LEFT_ALT			(0xE2)
-define ES_SCANCODE_LEFT_FLAG			(0xE3)
-define ES_SCANCODE_RIGHT_CTRL			(0xE4)
-define ES_SCANCODE_RIGHT_SHIFT			(0xE5)
-define ES_SCANCODE_RIGHT_ALT			(0xE6)
-define ES_SCANCODE_RIGHT_FLAG			(0xE7)
-
-define ES_SCANCODE_ACPI_POWER 			(0x100)
-define ES_SCANCODE_ACPI_SLEEP 			(0x101)
-define ES_SCANCODE_ACPI_WAKE  			(0x102)
-
-define ES_SCANCODE_WWW_SEARCH			(0x10B)
-define ES_SCANCODE_WWW_HOME			(0x10C)
-define ES_SCANCODE_WWW_BACK			(0x10D)
-define ES_SCANCODE_WWW_FORWARD			(0x10E)
-define ES_SCANCODE_WWW_STOP			(0x10F)
-define ES_SCANCODE_WWW_REFRESH			(0x110)
-define ES_SCANCODE_WWW_STARRED			(0x111)
-
-bitset EsProcessStateFlags ES_PROCESS_STATE_ uint8_t none {
-	ALL_THREADS_TERMINATED
-	TERMINATING
-	CRASHED
-	_PINGED
-	_PAUSED_FROM_CRASH
-};
-
 define ES_FLAGS_DEFAULT (0)
-define ES_SUCCESS 	(-1)
 
-// Networking errors:
-define ES_ERROR_NO_ADDRESS_FOR_DOMAIN_NAME	(-1000)
-define ES_ERROR_NO_CONNECTED_NETWORK_INTERFACES	(-1001)
-define ES_ERROR_BAD_DOMAIN_NAME			(-1002)
-define ES_ERROR_LOST_IP_ADDRESS			(-1003)
-define ES_ERROR_CONNECTION_RESET		(-1004)
-define ES_ERROR_CONNECTION_REFUSED		(-1005)
-define ES_ERROR_BUFFER_TOO_SMALL		(-1006)
+define ES_INVALID_HANDLE  ((EsHandle) (0))
+define ES_CURRENT_THREAD  ((EsHandle) (0x10))
+define ES_CURRENT_PROCESS ((EsHandle) (0x11))
 
-// File system errors:
-define ES_ERROR_OPERATION_BLOCKED		(-2000) // Somebody else has opened the node with flags blocking this operation.
-define ES_ERROR_ACCESS_NOT_WITHIN_FILE_BOUNDS	(-2001) 
-define ES_ERROR_DIRECTORY_NOT_EMPTY		(-2004)
-define ES_ERROR_NODE_DELETED			(-2005)
-define ES_ERROR_FILE_TOO_LARGE			(-2006) // Errors caused by the file being too large. For example, the file system might impose a maximum size limit on files, or it might impose a limit on how fragmented a file may become.
-define ES_ERROR_DRIVE_FULL			(-2007)
-define ES_ERROR_CORRUPT_DATA			(-2008)
-define ES_ERROR_INVALID_NAME			(-2009)
-define ES_ERROR_FILE_ON_READ_ONLY_VOLUME	(-2011)
-define ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME	(-2013)
-define ES_ERROR_PATH_NOT_TRAVERSABLE		(-2014)
-define ES_ERROR_DEVICE_REMOVED			(-2015)
-define ES_ERROR_INCORRECT_NODE_TYPE		(-2016)
-define ES_ERROR_FILE_DOES_NOT_EXIST		(-2017)
-define ES_ERROR_COULD_NOT_RESIZE_FILE		(-2018) // TODO Replace with ES_ERROR_HARDWARE_FAILURE/ES_ERROR_CORRUPT_DATA/ES_ERROR_DRIVE_FULL/ES_ERROR_FILE_TOO_LARGE.
-define ES_ERROR_VOLUME_MISMATCH			(-2019)
-define ES_ERROR_TARGET_WITHIN_SOURCE		(-2020)
-
-// General errors:
-define ES_ERROR_UNKNOWN 			(-3000)
-define ES_ERROR_ALREADY_EXISTS		        (-3001)
-define ES_ERROR_CANCELLED			(-3002)
-define ES_ERROR_INSUFFICIENT_RESOURCES		(-3003)
-define ES_ERROR_PERMISSION_NOT_GRANTED		(-3004)
-define ES_ERROR_UNSUPPORTED		        (-3005)
-define ES_ERROR_HARDWARE_FAILURE	     	(-3006) 
-
-// Internal errors (not be returned by any API function):
-define ES_ERROR_NODE_NOT_LOADED			(-4001)
-define ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED   (-4002)
-define ES_ERROR_COULD_NOT_RESOLVE_SYMBOL	(-4003)
-define ES_ERROR_NO_MESSAGES_AVAILABLE		(-4004)
-define ES_ERROR_INVALID_DIMENSIONS		(-4005)
-define ES_ERROR_TOO_MANY_FILES_WITH_NAME	(-4006)
-
-// Errors specific to a single function:
-define ES_ERROR_MESSAGE_QUEUE_FULL		(-5000) // EsMessagePost.
-define ES_ERROR_TIMEOUT_REACHED			(-5001) // EsWait.
-define ES_ERROR_BLOCK_ACCESS_INVALID		(-5002) // ES_DEVICE_CONTROL_BLOCK_READ/ES_DEVICE_CONTROL_BLOCK_WRITE.
-
-define ES_INVALID_HANDLE 		((EsHandle) (0))
-define ES_CURRENT_THREAD	 	((EsHandle) (0x10))
-define ES_CURRENT_PROCESS	 	((EsHandle) (0x11))
-
-define ES_WAIT_NO_TIMEOUT            (-1)
-define ES_MAX_WAIT_COUNT             (8)
+define ES_WAIT_NO_TIMEOUT (-1)
+define ES_MAX_WAIT_COUNT  (8)
 
 define ES_MAX_DIRECTORY_CHILD_NAME_LENGTH (256)
 
@@ -349,305 +55,40 @@ define ES_PROCESS_EXECUTABLE_NOT_LOADED     (0)
 define ES_PROCESS_EXECUTABLE_FAILED_TO_LOAD (1)
 define ES_PROCESS_EXECUTABLE_LOADED         (2)
 
-define ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH 	(31)
-define ES_SYSTEM_SNAPSHOT_PROCESSES 		(1)
+define ES_SNAPSHOT_MAX_PROCESS_NAME_LENGTH (31)
+define ES_SYSTEM_SNAPSHOT_PROCESSES        (1)
 
-define ES_HANDLED     (-1)
-define ES_REJECTED    (-2)
+// Message responses:
+// 0 is unhandled.
+define ES_HANDLED  (-1)
+define ES_REJECTED (-2)
 
-bitset EsTextFlags ES_TEXT_ uint32_t none {
-	H_LEFT = 0
-	H_CENTER = 1
-	H_RIGHT = 2
-	V_TOP = 3
-	V_CENTER = 4
-	V_BOTTOM = 5
-	ELLIPSIS = 6
-	WRAP = 7
-};
+define ES_NODE_FILE      (0x00)
+define ES_NODE_DIRECTORY (0x10)
+define ES_NODE_INVALID   (0x20)
 
-bitset EsTextPlanFlags ES_TEXT_PLAN_ uint32_t none {
-	SINGLE_USE = 8
-	TRIM_SPACES = 9
-	RTL = 10
-	CLIP_UNBREAKABLE_LINES = 11
-	NO_FONT_SUBSTITUTION = 12
-};
-
-bitset EsDrawContentFlags ES_DRAW_CONTENT_ uint32_t none {
-	TABULAR = 8
-	MARKER_DOWN_ARROW = 9
-	MARKER_UP_ARROW = 10
-	RICH_TEXT = 11
-};
-
-define ES_LIST_VIEW_COLUMN_HAS_MENU           ( 1 << 16) // The header can be clicked to open a menu.
-define ES_LIST_VIEW_COLUMN_DATA_STRINGS       ( 0 << 22) // Data types for fixed items or GET_ITEM_DATA.
-define ES_LIST_VIEW_COLUMN_DATA_INTEGERS      ( 1 << 22)
-define ES_LIST_VIEW_COLUMN_DATA_DOUBLES       ( 2 << 22)
-define ES_LIST_VIEW_COLUMN_DATA_MASK          ( 3 << 22)
-define ES_LIST_VIEW_COLUMN_SORT_DEFAULT       ( 0 << 24) // Sort types for fixed items or GET_ITEM_DATA.
-define ES_LIST_VIEW_COLUMN_SORT_TIME          ( 1 << 24)
-define ES_LIST_VIEW_COLUMN_SORT_SIZE          ( 2 << 24)
-define ES_LIST_VIEW_COLUMN_SORT_NONE          ( 3 << 24)
-define ES_LIST_VIEW_COLUMN_SORT_MASK          ( 7 << 24)
-define ES_LIST_VIEW_COLUMN_FORMAT_DEFAULT     ( 0 << 27) // Format types for fixed items or GET_ITEM_DATA.
-define ES_LIST_VIEW_COLUMN_FORMAT_YES_NO      ( 1 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_ON_OFF      ( 2 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_PERCENTAGE  ( 3 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_BYTES       ( 4 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_BITS        ( 5 << 27) 
-define ES_LIST_VIEW_COLUMN_FORMAT_BYTE_RATE   ( 6 << 27) // Bytes per second.
-define ES_LIST_VIEW_COLUMN_FORMAT_SECONDS     ( 7 << 27) 
-define ES_LIST_VIEW_COLUMN_FORMAT_HERTZ       ( 8 << 27) 
-define ES_LIST_VIEW_COLUMN_FORMAT_PIXELS      ( 9 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_DPI         (10 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING (11 << 27)
-define ES_LIST_VIEW_COLUMN_FORMAT_MASK        (31 << 27)
-// ...plus draw content flags and alignment flags.
-
-// For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
-bitset EsListViewGetColumnSortFlags ES_LIST_VIEW_COLUMN_SORT_ uint32_t none {
-	ASCENDING
-	DESCENDING
-};
-
-define ES_NODE_FILE			(0)
-define ES_NODE_DIRECTORY		(0x10)
-define ES_NODE_INVALID			(0x20)
-
-bitset EsFileOpenFlags ES_ uint32_t none {
-	// TODO Cleanup!
-
-	FILE_READ_SHARED = 0		 // Read-only. The file can still be opened for writing.
-	FILE_READ = 1			 // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
-	FILE_WRITE_SHARED = 2		 // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
-	FILE_WRITE = 3 			 // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
-
-	NODE_FAIL_IF_FOUND = 16
-	NODE_FAIL_IF_NOT_FOUND = 17
-	NODE_PREVENT_RESIZE = 18
-	NODE_CREATE_DIRECTORIES = 19 	// Create the directories leading to the file, if they don't already exist.
-
-	_NODE_FROM_WRITE_EXCLUSIVE = 21
-	_NODE_DIRECTORY_WRITE = 22
-	_NODE_NO_WRITE_BASE = 23
-};
-
-define ES_DIRECTORY_CHILDREN_UNKNOWN	((EsFileOffsetDifference) (-1))
+define ES_DIRECTORY_CHILDREN_UNKNOWN ((EsFileOffsetDifference) (-1))
 
 define ES_MEMORY_MAP_OBJECT_ALL (0) // Set size to this to map the entire object.
 
-bitset EsMemoryMapFlags ES_MEMORY_MAP_OBJECT_ uint32_t none {
-	READ_WRITE    
-	READ_ONLY     
-	COPY_ON_WRITE // Files only.
-};
-
 define ES_SHARED_MEMORY_READ_WRITE (1 << 0)
 
-define ES_STRING_FORMAT_ENOUGH_SPACE	(-1)
+define ES_STRING_FORMAT_ENOUGH_SPACE (-1)
 
-// Flags set with %f.
-bitset EsStringFormatFlags ES_STRING_FORMAT_ uint32_t none {
-	SIMPLE
-};
+define ES_PANEL_BAND_SIZE_DEFAULT (-1)
 
-define ES_PERMISSION_ALL ((_EsLongConstant) (-1))
-bitset EsProcessPermissions ES_PERMISSION_ uint64_t none {
-	NETWORKING
-	PROCESS_CREATE
-	PROCESS_OPEN
-	SCREEN_MODIFY
-	SHUTDOWN
-	TAKE_SYSTEM_SNAPSHOT
-	GET_VOLUME_INFORMATION
-	WINDOW_MANAGER
-	POSIX_SUBSYSTEM
-	INHERIT = 63
-};
-
-// Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
-
-bitset EsElementFlags ES_ uint64_t none {
-	// Common element flags:
-	ELEMENT_FOCUSABLE = 32
-	ELEMENT_HIDDEN = 33 // Hides the element and descendents. Also prevents the element and descendents from taking focus or being hovered/pressed.
-	ELEMENT_DISABLED = 34 // Prevents the element from taking focus or being pressed.
-	ELEMENT_DEBUG = 35 // Prints some extra debug information about the element.
-	ELEMENT_NO_CLIP = 36 // Do not clip children to the element's bounds.
-	ELEMENT_NO_HOVER = 37 // For z-stacked elements. Can still hover descendents and overlapped siblings/parent. Override HIT_TEST to return false to prevent hovering descendents.
-	ELEMENT_NO_HOVER_DESCENDENTS = 38 // Prevent hovering over any descendents.
-	ELEMENT_BLOCK_FOCUS = 39 // This element and descendents cannot take focus.
-	ELEMENT_NOT_TAB_TRAVERSABLE = 40 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
-	ELEMENT_NO_FOCUS_ON_CLICK = 41 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
-	ELEMENT_LAYOUT_HINT_HORIZONTAL = 43 // Hint for autoCorners and autoBorders.
-	ELEMENT_LAYOUT_HINT_REVERSE = 44 // Hint for autoCorners and autoBorders; and tab traversal.
-	ELEMENT_STICKY_ACCESS_KEY = 45 // Don't exit access key mode after using the access key.
-	ELEMENT_NON_CLIENT = 46 
-	ELEMENT_FREE_USER_DATA = 47 // Call EsHeapFree on userData when destroying the element.
-	ELEMENT_AUTO_GROUP = 48 // Enables autoCorners and autoBorders.
-
-	// For children of splitters:
-	CELL_COLLAPSABLE = 51
-
-	// Cell layout flags:
-	CELL_H_PUSH = 54
-	CELL_H_EXPAND = 55
-	CELL_H_SHRINK = 56
-	CELL_H_LEFT = 57
-	CELL_H_RIGHT = 58
-	CELL_V_PUSH = 59
-	CELL_V_EXPAND = 60
-	CELL_V_SHRINK = 61
-	CELL_V_TOP = 62
-	CELL_V_BOTTOM = 63
-};
-
-define ES_PANEL_BAND_SIZE_DEFAULT              (-1)
-
-define ES_PANEL_STACK			(0) // Default.
-define ES_PANEL_VERTICAL		(0) // Default.
-define ES_PANEL_SWITCHER_MEASURE_SHOWN  (0) // Use the shown child to determine size.
-
-bitset EsPanelFlags ES_PANEL_ uint64_t EsElementFlags {
-	SWITCHER = 0
-	Z_STACK = 1
-	TABLE = 2
-
-	H_SCROLL_FIXED = 4
-	V_SCROLL_FIXED = 5
-	H_SCROLL_AUTO = 6
-	V_SCROLL_AUTO = 7
-
-	// For ES_PANEL_TABLE and ES_PANEL_STACK.
-	HORIZONTAL = 8
-	REVERSE = 9 // Reverse layout is not supported with ES_PANEL_TABLE yet.
-
-	// For ES_PANEL_SWITCHER.
-	SWITCHER_MEASURE_LARGEST = 15 // Use the largest child to determine size.
-
-	// For ES_PANEL_TABLE.
-	TABLE_H_JUSTIFY = 16
-	TABLE_V_JUSTIFY = 17
-
-	RADIO_GROUP = 30 // Determines how arrow keys/tabs behave.
-};
-
-bitset EsTextboxFlags ES_TEXTBOX_ uint64_t EsElementFlags {
-	MULTILINE = 0
-	EDIT_BASED = 1
-	MARGIN = 2
-	NO_SMART_CONTEXT_MENUS = 3
-	ALLOW_TABS = 4
-	REJECT_EDIT_IF_LOST_FOCUS = 5
-}
-
-bitset EsTextboxFindFlags ES_TEXTBOX_FIND_ uint32_t none {
-	BACKWARDS
-};
-
-bitset EsTextboxGetContentsFlags ES_TEXTBOX_GET_CONTENTS_ uint32_t none {
-	SELECTED_ONLY
-};
-
-// First few bits reserved for the check state.
-define ES_MENU_ITEM_CHECKED (ES_CHECK_CHECKED)
-bitset EsButtonFlags ES_BUTTON_ uint64_t EsElementFlags {
-	DEFAULT = 3
-	MENU_ITEM = 4
-	NOT_FOCUSABLE = 5
-	TOOLBAR = 6
-	DROPDOWN = 7
-	COMPACT = 8
-	CHECKBOX = 9
-	RADIOBOX = 10
-	CANCEL = 11
-	PUSH = 12
-};
-bitset EsMenuItemFlags ES_MENU_ITEM_ uint64_t EsButtonFlags {
-	HEADER = 31
-};
-
-bitset EsColorWellFlags ES_COLOR_WELL_ uint64_t EsElementFlags {
-	HAS_OPACITY = 0
-};
-
-define ES_SCROLLBAR_VERTICAL			(0 << 0)
-define ES_SCROLLBAR_HORIZONTAL			(1 << 0)
-
-define ES_SPLITTER_VERTICAL (0)
-bitset EsSplitterFlags ES_SPLITTER_ uint64_t EsElementFlags {
-	HORIZONTAL = 0
-};
-
-bitset EsListViewFlags ES_LIST_VIEW_ uint64_t EsElementFlags {
-	HORIZONTAL = 0 // Layout horizontally instead of vertically.
-	VARIABLE_SIZE = 1 // Each item can be a different size. You need to respond to the LIST_VIEW_MEASURE_ITEM message. The size of items cannot depend on the size of the parent.
-	TILED = 2 // Multiple items per band. Incompatible with variable size items and columns mode.
-	SINGLE_SELECT = 3 // One item can be selected. By default, selections are disabled.
-	MULTI_SELECT = 4 // Multiple items can be selected.
-	CHOICE_SELECT = 5 // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
-	COLUMNS = 6 // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
-	FIXED_ITEMS = 7 // Use the fixed item API rather than the callback API.
-	CENTER_TILES = 8 // Center tiled items.
-};
-
-bitset EsListViewGroupFlags ES_LIST_VIEW_GROUP_ uint32_t none {
-	HAS_HEADER // The first item in the group is a header.
-	HAS_FOOTER // The last item in the group is a footer.
-	INDENT // Indent the group's items (excluding the header and footer).
-	COLLAPSABLE // The group can be collapsed.
-};
-
-bitset EsMenuFlags ES_MENU_ uint32_t none {
-	AT_CURSOR = 0
-	MAXIMUM_HEIGHT = 1
-};
+define ES_SCROLLBAR_VERTICAL   (0 << 0)
+define ES_SCROLLBAR_HORIZONTAL (1 << 0)
 
 // Standard font families:
-define ES_FONT_SANS 		(0xFFFF)
-define ES_FONT_SERIF 		(0xFFFE)
-define ES_FONT_MONOSPACED 	(0xFFFD)
+define ES_FONT_SANS       (0xFFFF)
+define ES_FONT_SERIF      (0xFFFE)
+define ES_FONT_MONOSPACED (0xFFFD)
 
 // Font weights:
-define ES_FONT_REGULAR		(4)
-define ES_FONT_SEMIBOLD 	(6)
-define ES_FONT_BOLD 		(7)
-
-bitset EsFontFlags ES_FONT_ uint8_t none {
-	ITALIC
-};
-
-define ES_TEXT_FIGURE_DEFAULT	(0)
-define ES_TEXT_FIGURE_OLD	(1)
-define ES_TEXT_FIGURE_TABULAR	(2)
-
-bitset EsTextDecorations ES_TEXT_DECORATION_ uint8_t none {
-	UNDERLINE
-	STRIKE_THROUGH
-};
-
-bitset EsTextDisplayFlags ES_TEXT_DISPLAY_ uint64_t EsElementFlags {
-	RICH_TEXT = 0
-	PREFORMATTED = 1 // Prevents trimming of trailing/leading whitespace.
-	NO_FONT_SUBSTITUTION = 2
-};
-
-bitset EsListDisplayFlags ES_LIST_DISPLAY_ uint64_t EsElementFlags {
-	// First 8 bits reserved for the marker type (see below).
-};
-define ES_LIST_DISPLAY_BULLETED         (0 << 0) // Default.
-define ES_LIST_DISPLAY_NUMBERED         (1 << 0)
-define ES_LIST_DISPLAY_LOWER_ALPHA      (2 << 0)
-define ES_LIST_DISPLAY_CUSTOM_MARKER	(0xFF << 0) // Sends ES_MSG_LIST_DISPLAY_GET_MARKER.
-define ES_LIST_DISPLAY_MARKER_TYPE_MASK (0xFF << 0)
-
-bitset EsImageDisplayFlags ES_IMAGE_DISPLAY_ uint64_t EsElementFlags {
-	DECODE_WHEN_NEEDED = 0 // The image is only kept in its decoded state when the display is on-screen.
-	MANUAL_SIZE = 1 // The display will be manually sized; its size does not depend on the loaded image.
-	FULLY_OPAQUE = 2 // The loaded image will always be fully opaque.
-};
+define ES_FONT_REGULAR  (4)
+define ES_FONT_SEMIBOLD (6)
+define ES_FONT_BOLD     (7)
 
 define ES_COMMAND_SYSTEM_START		(0xF0000000)
 define ES_COMMAND_DELETE		(0xF0000001)
@@ -659,35 +100,6 @@ define ES_COMMAND_UNDO			(0xF0000006)
 define ES_COMMAND_REDO			(0xF0000007)
 define ES_COMMAND_SAVE			(0xF0000008)
 define ES_COMMAND_SHOW_IN_FILE_MANAGER	(0xF0000009)
-
-// Mask bits for EsThemeMetrics:
-bitset EsThemeMetricsMask ES_THEME_METRICS_ uint64_t none {
-	INSETS
-	CLIP_INSETS
-	CLIP_ENABLED
-	CURSOR
-	PREFERRED_WIDTH
-	PREFERRED_HEIGHT
-	MINIMUM_WIDTH
-	MINIMUM_HEIGHT
-	MAXIMUM_WIDTH
-	MAXIMUM_HEIGHT
-	GAP_MAJOR
-	GAP_MINOR
-	GAP_WRAP
-	TEXT_COLOR
-	SELECTED_BACKGROUND
-	SELECTED_TEXT
-	ICON_COLOR
-	TEXT_ALIGN
-	TEXT_SIZE
-	FONT_FAMILY
-	FONT_WEIGHT
-	ICON_SIZE
-	IS_ITALIC
-	LAYOUT_VERTICAL
-	TEXT_FIGURES
-};
 
 define ES_WINDOW_MOVE_MAXIMIZED (1 << 0)
 define ES_WINDOW_MOVE_ADJUST_TO_FIT_SCREEN (1 << 1)
@@ -701,170 +113,779 @@ define ES_WINDOW_SOLID_TRUE (1 << 0)
 define ES_WINDOW_SOLID_NO_ACTIVATE (1 << 1)
 define ES_WINDOW_SOLID_NO_BRING_TO_FRONT (1 << 2)
 
-define ES_TEXTBOX_MOVE_CARET_SINGLE (2)
-define ES_TEXTBOX_MOVE_CARET_WORD (3)
-define ES_TEXTBOX_MOVE_CARET_LINE (4)
-define ES_TEXTBOX_MOVE_CARET_VERTICAL (5)
-define ES_TEXTBOX_MOVE_CARET_ALL (6)
-define ES_TEXTBOX_MOVE_CARET_FIRST_ONLY (1 << 8)
-define ES_TEXTBOX_MOVE_CARET_SECOND_ONLY (1 << 9)
-define ES_TEXTBOX_MOVE_CARET_BACKWARDS (1 << 10)
-define ES_TEXTBOX_MOVE_CARET_STRONG_WHITESPACE (1 << 11)
-
 define ES_GAME_CONTROLLER_MAX_COUNT (16)
 
 define ES_DOMAIN_NAME_MAX_LENGTH (255)
 define ES_ECHO_REQUEST_MAX_LENGTH (48)
-
-bitset EsConnectionOpenFlags ES_CONNECTION_OPEN_ uint32_t none {
-	WAIT
-};
-
-bitset EsFileControlFlags ES_FILE_CONTROL_ uint32_t none {
-	FLUSH
-};
-
-bitset EsElementUpdateContentFlags ES_ELEMENT_UPDATE_CONTENT_ uint32_t none {
-	WIDTH
-	HEIGHT
-};
-
-bitset EsDialogShowFlags ES_DIALOG_ uint32_t none {
-	ALERT_OK_BUTTON
-};
-
-bitset EsMemoryReserveFlags ES_MEMORY_RESERVE_ uint32_t none {
-	COMMIT_ALL
-};
-
-bitset EsPanelSwitchToFlags ES_PANEL_SWITCHER_ uint32_t none {
-	DESTROY_PREVIOUS_AFTER_TRANSITION
-};
-
-bitset EsElementTransitionFlags ES_ELEMENT_TRANSITION_ uint32_t none {
-	ENTRANCE
-	EXIT
-	HIDE_AFTER_COMPLETE
-};
-
-define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C      (1)
-define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI    (2)
-define ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT (3)
-
-bitset EsDrawLineFlags ES_DRAW_LINE_ uint32_t none {
-	CAP_ROUND 
-	CAP_SQUARE
-};
 
 define ES_INSTANCE_CLASS_VIEWER (0) // Default.
 define ES_INSTANCE_CLASS_EDITOR (1)
 
 define ES_MOUNT_POINT_MAX_COUNT (256)
 
-define ES_DRIVE_TYPE_OTHER            (0)
-define ES_DRIVE_TYPE_HDD              (1)
-define ES_DRIVE_TYPE_SSD              (2)
-define ES_DRIVE_TYPE_CDROM            (3)
-define ES_DRIVE_TYPE_USB_MASS_STORAGE (4)
-
-bitset EsElementFocusFlags ES_ELEMENT_FOCUS_ uint32_t none {
-	ENSURE_VISIBLE
-	FROM_KEYBOARD
-	ONLY_IF_NO_FOCUSED_ELEMENT
-};
-
-bitset EsApplicationStartupRequestFlags ES_APPLICATION_STARTUP_ uint32_t none {
-	BACKGROUND_SERVICE
-	IN_SAME_CONTAINER
-	NO_DOCUMENT // The file path given in EsApplicationStartupRequest should be passed directly to the application, and should not be used to open a document.
-};
-
-bitset EsListViewInlineTextboxFlags ES_LIST_VIEW_INLINE_TEXTBOX_ uint32_t none {
-	COPY_EXISTING_TEXT
-	REJECT_EDIT_IF_FOCUS_LOST
-};
-
-bitset EsKeyboardModifiers ES_MODIFIER_ uint8_t none {
-	CTRL	
-	SHIFT
-	ALT
-	FLAG
-	ALT_GR
-};
-
-bitset EsProcessCreationFlags ES_PROCESS_CREATE_ uint32_t none {
-	PAUSED
-};
-
 define ES_THREAD_EVENT_MUTEX_ACQUIRE (1)
 define ES_THREAD_EVENT_MUTEX_RELEASE (2)
 
-define ES_WINDOW_PROPERTY_SOLID              (0x01) // Standard window properties.
-define ES_WINDOW_PROPERTY_OPAQUE_BOUNDS      (0x02)
-define ES_WINDOW_PROPERTY_BLUR_BOUNDS        (0x03)
-define ES_WINDOW_PROPERTY_ALPHA              (0x04)
-define ES_WINDOW_PROPERTY_FOCUSED            (0x05)
-define ES_WINDOW_PROPERTY_MATERIAL           (0x06)
-define ES_WINDOW_PROPERTY_EMBED              (0x07)
-define ES_WINDOW_PROPERTY_EMBED_INSETS       (0x08)
-define ES_WINDOW_PROPERTY_OBJECT             (0x81) // Embedded window properties.
-define ES_WINDOW_PROPERTY_EMBED_OWNER        (0x82)
+define ES_WINDOW_PROPERTY_SOLID         (0x01) // Standard window properties.
+define ES_WINDOW_PROPERTY_OPAQUE_BOUNDS (0x02)
+define ES_WINDOW_PROPERTY_BLUR_BOUNDS   (0x03)
+define ES_WINDOW_PROPERTY_ALPHA         (0x04)
+define ES_WINDOW_PROPERTY_FOCUSED       (0x05)
+define ES_WINDOW_PROPERTY_MATERIAL      (0x06)
+define ES_WINDOW_PROPERTY_EMBED         (0x07)
+define ES_WINDOW_PROPERTY_EMBED_INSETS  (0x08)
+define ES_WINDOW_PROPERTY_OBJECT        (0x81) // Embedded window properties.
+define ES_WINDOW_PROPERTY_EMBED_OWNER   (0x82)
 
 define ES_DRAW_BITMAP_OPAQUE (0xFFFF)
 define ES_DRAW_BITMAP_XOR    (0xFFFE)
 define ES_DRAW_BITMAP_BLEND  (0)
 
-bitset EsVolumeFlags ES_VOLUME_ uint32_t none {
-	READ_ONLY
-};
-
-bitset EsPathMoveFlags ES_PATH_MOVE_ uint32_t none {
-	// Copy and delete the file if a direct move is not possible (e.g. the files are on different volumes).
-	ALLOW_COPY_AND_DELETE 
-};
-
-bitset EsClipboardDataFlags ES_CLIPBOARD_ADD_ uint32_t none {
-	// Only perform the deletion after pasting; often implemented as a move (e.g. files).
-	LAZY_CUT
-};
-
 define ES_SCROLL_WHEEL_NOTCH (0x100)
 
-// Scroll view modes.
-define ES_SCROLL_MODE_NONE   (0) // No scrolling takes place on this axis.
-define ES_SCROLL_MODE_HIDDEN (1) // Scrolling takes place, but there is no visible scrollbar.
-define ES_SCROLL_MODE_FIXED  (2) // The scrollbar is always visible.
-define ES_SCROLL_MODE_AUTO   (3) // The scrollbar is only visible if the content is larger than the viewport.
+define ES_SHUTDOWN_ACTION_POWER_OFF (1)
+define ES_SHUTDOWN_ACTION_RESTART (2)
+
+inttype EsScancode uint16_t none {
+	ES_SCANCODE_A = 			(0x04)
+	ES_SCANCODE_B = 			(0x05)
+	ES_SCANCODE_C = 			(0x06)
+	ES_SCANCODE_D = 			(0x07)
+	ES_SCANCODE_E = 			(0x08)
+	ES_SCANCODE_F = 			(0x09)
+	ES_SCANCODE_G = 			(0x0A)
+	ES_SCANCODE_H = 			(0x0B)
+	ES_SCANCODE_I = 			(0x0C)
+	ES_SCANCODE_J = 			(0x0D)
+	ES_SCANCODE_K = 			(0x0E)
+	ES_SCANCODE_L = 			(0x0F)
+	ES_SCANCODE_M = 			(0x10)
+	ES_SCANCODE_N = 			(0x11)
+	ES_SCANCODE_O = 			(0x12)
+	ES_SCANCODE_P = 			(0x13)
+	ES_SCANCODE_Q = 			(0x14)
+	ES_SCANCODE_R = 			(0x15)
+	ES_SCANCODE_S = 			(0x16)
+	ES_SCANCODE_T = 			(0x17)
+	ES_SCANCODE_U = 			(0x18)
+	ES_SCANCODE_V = 			(0x19)
+	ES_SCANCODE_W = 			(0x1A)
+	ES_SCANCODE_X = 			(0x1B)
+	ES_SCANCODE_Y = 			(0x1C)
+	ES_SCANCODE_Z = 			(0x1D)
+
+	ES_SCANCODE_1 = 			(0x1E)
+	ES_SCANCODE_2 = 			(0x1F)
+	ES_SCANCODE_3 = 			(0x20)
+	ES_SCANCODE_4 = 			(0x21)
+	ES_SCANCODE_5 = 			(0x22)
+	ES_SCANCODE_6 = 			(0x23)
+	ES_SCANCODE_7 = 			(0x24)
+	ES_SCANCODE_8 = 			(0x25)
+	ES_SCANCODE_9 = 			(0x26)
+	ES_SCANCODE_0 = 			(0x27)
+
+	ES_SCANCODE_ENTER =  			(0x28)
+	ES_SCANCODE_ESCAPE = 			(0x29)
+	ES_SCANCODE_BACKSPACE = 		(0x2A)
+	ES_SCANCODE_TAB = 			(0x2B)
+	ES_SCANCODE_SPACE = 			(0x2C)
+
+	ES_SCANCODE_HYPHEN = 			(0x2D)
+	ES_SCANCODE_EQUALS = 			(0x2E)
+	ES_SCANCODE_LEFT_BRACE = 		(0x2F)
+	ES_SCANCODE_RIGHT_BRACE = 		(0x30)
+	ES_SCANCODE_COMMA = 			(0x36)
+	ES_SCANCODE_PERIOD = 			(0x37)
+	ES_SCANCODE_SLASH = 			(0x38)
+	ES_SCANCODE_PUNCTUATION_1 = 		(0x31) // On US keyboard, \|
+	ES_SCANCODE_PUNCTUATION_2 = 		(0x32) // Not on US keyboard
+	ES_SCANCODE_PUNCTUATION_3 = 		(0x33) // On US keyboard, ;:
+	ES_SCANCODE_PUNCTUATION_4 = 		(0x34) // On US keyboard, '"
+	ES_SCANCODE_PUNCTUATION_5 = 		(0x35) // On US keyboard, `~
+	ES_SCANCODE_PUNCTUATION_6 = 		(0x64) // Not on US keyboard
+
+	ES_SCANCODE_F1 = 			(0x3A)
+	ES_SCANCODE_F2 = 			(0x3B)
+	ES_SCANCODE_F3 = 			(0x3C)
+	ES_SCANCODE_F4 = 			(0x3D)
+	ES_SCANCODE_F5 = 			(0x3E)
+	ES_SCANCODE_F6 = 			(0x3F)
+	ES_SCANCODE_F7 = 			(0x40)
+	ES_SCANCODE_F8 = 			(0x41)
+	ES_SCANCODE_F9 = 			(0x42)
+	ES_SCANCODE_F10 = 			(0x43)
+	ES_SCANCODE_F11 = 			(0x44)
+	ES_SCANCODE_F12 = 			(0x45)
+	ES_SCANCODE_F13 = 			(0x68)
+	ES_SCANCODE_F14 = 			(0x69)
+	ES_SCANCODE_F15 = 			(0x6A)
+	ES_SCANCODE_F16 = 			(0x6B)
+	ES_SCANCODE_F17 = 			(0x6C)
+	ES_SCANCODE_F18 = 			(0x6D)
+	ES_SCANCODE_F19 = 			(0x6E)
+	ES_SCANCODE_F20 = 			(0x6F)
+	ES_SCANCODE_F21 = 			(0x70)
+	ES_SCANCODE_F22 = 			(0x71)
+	ES_SCANCODE_F23 = 			(0x72)
+	ES_SCANCODE_F24 = 			(0x73)
+
+	ES_SCANCODE_CAPS_LOCK = 		(0x39)
+	ES_SCANCODE_PRINT_SCREEN = 		(0x46)
+	ES_SCANCODE_SCROLL_LOCK = 		(0x47)
+	ES_SCANCODE_PAUSE = 			(0x48)
+	ES_SCANCODE_INSERT = 			(0x49)
+	ES_SCANCODE_HOME = 			(0x4A)
+	ES_SCANCODE_PAGE_UP = 			(0x4B)
+	ES_SCANCODE_DELETE = 			(0x4C)
+	ES_SCANCODE_END = 			(0x4D)
+	ES_SCANCODE_PAGE_DOWN = 		(0x4E)
+	ES_SCANCODE_RIGHT_ARROW = 		(0x4F)
+	ES_SCANCODE_LEFT_ARROW = 		(0x50)
+	ES_SCANCODE_DOWN_ARROW = 		(0x51)
+	ES_SCANCODE_UP_ARROW = 			(0x52)
+	ES_SCANCODE_NUM_LOCK = 			(0x53)
+	ES_SCANCODE_CONTEXT_MENU =  		(0x65)
+	ES_SCANCODE_SYSTEM_REQUEST = 		(0x9A)
+
+	ES_SCANCODE_ACTION_EXECUTE = 		(0x74)
+	ES_SCANCODE_ACTION_HELP = 		(0x75)
+	ES_SCANCODE_ACTION_MENU = 		(0x76)
+	ES_SCANCODE_ACTION_SELECT = 		(0x77)
+	ES_SCANCODE_ACTION_STOP = 		(0x78)
+	ES_SCANCODE_ACTION_AGAIN = 		(0x79)
+	ES_SCANCODE_ACTION_UNDO = 		(0x7A)
+	ES_SCANCODE_ACTION_CUT = 		(0x7B)
+	ES_SCANCODE_ACTION_COPY = 		(0x7C)
+	ES_SCANCODE_ACTION_PASTE = 		(0x7D)
+	ES_SCANCODE_ACTION_FIND = 		(0x7E)
+	ES_SCANCODE_ACTION_CANCEL = 		(0x9B)
+	ES_SCANCODE_ACTION_CLEAR = 		(0x9C)
+	ES_SCANCODE_ACTION_PRIOR = 		(0x9D)
+	ES_SCANCODE_ACTION_RETURN = 		(0x9E)
+	ES_SCANCODE_ACTION_SEPARATOR = 		(0x9F)
+
+	ES_SCANCODE_MM_MUTE = 			(0x7F)
+	ES_SCANCODE_MM_LOUDER = 		(0x80)
+	ES_SCANCODE_MM_QUIETER = 		(0x81)
+	ES_SCANCODE_MM_NEXT = 			(0x103)
+	ES_SCANCODE_MM_PREVIOUS = 		(0x104)
+	ES_SCANCODE_MM_STOP = 			(0x105)
+	ES_SCANCODE_MM_PAUSE = 			(0x106)
+	ES_SCANCODE_MM_SELECT = 		(0x107)
+	ES_SCANCODE_MM_EMAIL = 			(0x108)
+	ES_SCANCODE_MM_CALC = 			(0x109)
+	ES_SCANCODE_MM_FILES = 			(0x10A)
+
+	ES_SCANCODE_INTERNATIONAL_1 = 		(0x87)
+	ES_SCANCODE_INTERNATIONAL_2 = 		(0x88)
+	ES_SCANCODE_INTERNATIONAL_3 = 		(0x89)
+	ES_SCANCODE_INTERNATIONAL_4 = 		(0x8A)
+	ES_SCANCODE_INTERNATIONAL_5 = 		(0x8B)
+	ES_SCANCODE_INTERNATIONAL_6 = 		(0x8C)
+	ES_SCANCODE_INTERNATIONAL_7 = 		(0x8D)
+	ES_SCANCODE_INTERNATIONAL_8 = 		(0x8E)
+	ES_SCANCODE_INTERNATIONAL_9 = 		(0x8F)
+
+	ES_SCANCODE_HANGUL_ENGLISH_TOGGLE = 	(0x90)
+	ES_SCANCODE_HANJA_CONVERSION = 		(0x91)
+	ES_SCANCODE_KATAKANA = 			(0x92)
+	ES_SCANCODE_HIRAGANA = 			(0x93)
+	ES_SCANCODE_HANKAKU_ZENKAKU_TOGGLE = 	(0x94)
+	ES_SCANCODE_ALTERNATE_ERASE = 		(0x99)
+
+	ES_SCANCODE_THOUSANDS_SEPARATOR = 	(0xB2)
+	ES_SCANCODE_DECIMAL_SEPARATOR = 	(0xB3)
+	ES_SCANCODE_CURRENCY_UNIT = 		(0xB4)
+	ES_SCANCODE_CURRENCY_SUBUNIT = 		(0xB5)
+
+	ES_SCANCODE_NUM_DIVIDE = 		(0x54)
+	ES_SCANCODE_NUM_MULTIPLY = 		(0x55)
+	ES_SCANCODE_NUM_SUBTRACT = 		(0x56)
+	ES_SCANCODE_NUM_ADD = 			(0x57)
+	ES_SCANCODE_NUM_ENTER = 		(0x58)
+	ES_SCANCODE_NUM_1 = 			(0x59)
+	ES_SCANCODE_NUM_2 = 			(0x5A)
+	ES_SCANCODE_NUM_3 = 			(0x5B)
+	ES_SCANCODE_NUM_4 = 			(0x5C)
+	ES_SCANCODE_NUM_5 = 			(0x5D)
+	ES_SCANCODE_NUM_6 = 			(0x5E)
+	ES_SCANCODE_NUM_7 = 			(0x5F)
+	ES_SCANCODE_NUM_8 = 			(0x60)
+	ES_SCANCODE_NUM_9 = 			(0x61)
+	ES_SCANCODE_NUM_0 = 			(0x62)
+	ES_SCANCODE_NUM_POINT = 		(0x63)
+	ES_SCANCODE_NUM_EQUALS = 		(0x67)
+	ES_SCANCODE_NUM_COMMA = 		(0x82)
+	ES_SCANCODE_NUM_00 = 			(0xB0)
+	ES_SCANCODE_NUM_000 = 			(0xB1)
+	ES_SCANCODE_NUM_LEFT_PAREN = 		(0xB6)
+	ES_SCANCODE_NUM_RIGHT_PAREN = 		(0xB7)
+	ES_SCANCODE_NUM_LEFT_BRACE = 		(0xB8)
+	ES_SCANCODE_NUM_RIGHT_BRACE = 		(0xB9)
+	ES_SCANCODE_NUM_TAB = 			(0xBA)
+	ES_SCANCODE_NUM_BACKSPACE = 		(0xBB)
+	ES_SCANCODE_NUM_A = 			(0xBC)
+	ES_SCANCODE_NUM_B = 			(0xBD)
+	ES_SCANCODE_NUM_C = 			(0xBE)
+	ES_SCANCODE_NUM_D = 			(0xBF)
+	ES_SCANCODE_NUM_E = 			(0xC0)
+	ES_SCANCODE_NUM_F = 			(0xC1)
+	ES_SCANCODE_NUM_XOR = 			(0xC2)
+	ES_SCANCODE_NUM_CARET = 		(0xC3)
+	ES_SCANCODE_NUM_PERCENT = 		(0xC4)
+	ES_SCANCODE_NUM_LESS_THAN = 		(0xC5)
+	ES_SCANCODE_NUM_GREATER_THAN = 		(0xC6)
+	ES_SCANCODE_NUM_AMPERSAND = 		(0xC7)
+	ES_SCANCODE_NUM_DOUBLE_AMPERSAND = 	(0xC8)
+	ES_SCANCODE_NUM_BAR = 			(0xC9)
+	ES_SCANCODE_NUM_DOUBLE_BAR = 		(0xCA)
+	ES_SCANCODE_NUM_COLON = 		(0xCB)
+	ES_SCANCODE_NUM_HASH = 			(0xCC)
+	ES_SCANCODE_NUM_SPACE = 		(0xCD)
+	ES_SCANCODE_NUM_AT = 			(0xCE)
+	ES_SCANCODE_NUM_EXCLAMATION_MARK = 	(0xCF)
+	ES_SCANCODE_NUM_MEMORY_STORE = 		(0xD0)
+	ES_SCANCODE_NUM_MEMORY_RECALL = 	(0xD1)
+	ES_SCANCODE_NUM_MEMORY_CLEAR = 		(0xD2)
+	ES_SCANCODE_NUM_MEMORY_ADD = 		(0xD3)
+	ES_SCANCODE_NUM_MEMORY_SUBTRACT = 	(0xD4)
+	ES_SCANCODE_NUM_MEMORY_MULTIPLY = 	(0xD5)
+	ES_SCANCODE_NUM_MEMORY_DIVIDE = 	(0xD6)
+	ES_SCANCODE_NUM_NEGATE = 		(0xD7)
+	ES_SCANCODE_NUM_CLEAR_ALL = 		(0xD8)
+	ES_SCANCODE_NUM_CLEAR = 		(0xD9)
+	ES_SCANCODE_NUM_BINARY = 		(0xDA)
+	ES_SCANCODE_NUM_OCTAL = 		(0xDB)
+	ES_SCANCODE_NUM_DECIMAL = 		(0xDC)
+	ES_SCANCODE_NUM_HEXADECIMAL = 		(0xDD)
+
+	ES_SCANCODE_LEFT_CTRL = 		(0xE0)
+	ES_SCANCODE_LEFT_SHIFT = 		(0xE1)
+	ES_SCANCODE_LEFT_ALT = 			(0xE2)
+	ES_SCANCODE_LEFT_FLAG = 		(0xE3)
+	ES_SCANCODE_RIGHT_CTRL = 		(0xE4)
+	ES_SCANCODE_RIGHT_SHIFT = 		(0xE5)
+	ES_SCANCODE_RIGHT_ALT = 		(0xE6)
+	ES_SCANCODE_RIGHT_FLAG = 		(0xE7)
+
+	ES_SCANCODE_ACPI_POWER =  		(0x100)
+	ES_SCANCODE_ACPI_SLEEP =  		(0x101)
+	ES_SCANCODE_ACPI_WAKE =   		(0x102)
+
+	ES_SCANCODE_WWW_SEARCH = 		(0x10B)
+	ES_SCANCODE_WWW_HOME = 			(0x10C)
+	ES_SCANCODE_WWW_BACK = 			(0x10D)
+	ES_SCANCODE_WWW_FORWARD = 		(0x10E)
+	ES_SCANCODE_WWW_STOP = 			(0x10F)
+	ES_SCANCODE_WWW_REFRESH = 		(0x110)
+	ES_SCANCODE_WWW_STARRED = 		(0x111)
+};
+
+inttype EsProcessStateFlags uint8_t none {
+	ES_PROCESS_STATE_ALL_THREADS_TERMINATED = bit 0
+	ES_PROCESS_STATE_TERMINATING = bit 1
+	ES_PROCESS_STATE_CRASHED = bit 2
+	ES_PROCESS_STATE__PINGED = bit 3
+	ES_PROCESS_STATE__PAUSED_FROM_CRASH = bit 4
+};
+
+inttype EsError intptr_t none {
+	ES_SUCCESS = -1
+
+	// Networking errors:
+	ES_ERROR_NO_ADDRESS_FOR_DOMAIN_NAME = -1000
+	ES_ERROR_NO_CONNECTED_NETWORK_INTERFACES = -1001
+	ES_ERROR_BAD_DOMAIN_NAME = -1002
+	ES_ERROR_LOST_IP_ADDRESS = -1003
+	ES_ERROR_CONNECTION_RESET = -1004
+	ES_ERROR_CONNECTION_REFUSED = -1005
+	ES_ERROR_BUFFER_TOO_SMALL = -1006
+
+	// File system errors:
+	ES_ERROR_OPERATION_BLOCKED = -2000 // Somebody else has opened the node with flags blocking this operation.
+	ES_ERROR_ACCESS_NOT_WITHIN_FILE_BOUNDS = -2001 
+	ES_ERROR_DIRECTORY_NOT_EMPTY = -2004
+	ES_ERROR_NODE_DELETED = -2005
+	ES_ERROR_FILE_TOO_LARGE = -2006 // Errors caused by the file being too large. For example, the file system might impose a maximum size limit on files, or it might impose a limit on how fragmented a file may become.
+	ES_ERROR_DRIVE_FULL = -2007
+	ES_ERROR_CORRUPT_DATA = -2008
+	ES_ERROR_INVALID_NAME = -2009
+	ES_ERROR_FILE_ON_READ_ONLY_VOLUME = -2011
+	ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME = -2013
+	ES_ERROR_PATH_NOT_TRAVERSABLE = -2014
+	ES_ERROR_DEVICE_REMOVED = -2015
+	ES_ERROR_INCORRECT_NODE_TYPE = -2016
+	ES_ERROR_FILE_DOES_NOT_EXIST = -2017
+	ES_ERROR_COULD_NOT_RESIZE_FILE = -2018 // TODO Replace with ERROR_HARDWARE_FAILURE/ERROR_CORRUPT_DATA/ERROR_DRIVE_FULL/ERROR_FILE_TOO_LARGE.
+	ES_ERROR_VOLUME_MISMATCH = -2019
+	ES_ERROR_TARGET_WITHIN_SOURCE = -2020
+
+	// General errors:
+	ES_ERROR_UNKNOWN = -3000
+	ES_ERROR_ALREADY_EXISTS = -3001
+	ES_ERROR_CANCELLED = -3002
+	ES_ERROR_INSUFFICIENT_RESOURCES = -3003
+	ES_ERROR_PERMISSION_NOT_GRANTED = -3004
+	ES_ERROR_UNSUPPORTED = -3005
+	ES_ERROR_HARDWARE_FAILURE = -3006 
+
+	// Internal errors (not be returned by any API function):
+	ES_ERROR_NODE_NOT_LOADED = -4001
+	ES_ERROR_DIRECTORY_ENTRY_BEING_REMOVED = -4002
+	ES_ERROR_COULD_NOT_RESOLVE_SYMBOL = -4003
+	ES_ERROR_NO_MESSAGES_AVAILABLE = -4004
+	ES_ERROR_INVALID_DIMENSIONS = -4005
+	ES_ERROR_TOO_MANY_FILES_WITH_NAME = -4006
+
+	// Errors specific to a single function:
+	ES_ERROR_MESSAGE_QUEUE_FULL = -5000 // EsMessagePost.
+	ES_ERROR_TIMEOUT_REACHED = -5001 // EsWait.
+	ES_ERROR_BLOCK_ACCESS_INVALID = -5002 // ES_DEVICE_CONTROL_BLOCK_READ/ES_DEVICE_CONTROL_BLOCK_WRITE.
+};
+
+inttype EsTextFlags uint32_t none {
+	ES_TEXT_H_LEFT = bit 0
+	ES_TEXT_H_CENTER = bit 1
+	ES_TEXT_H_RIGHT = bit 2
+	ES_TEXT_V_TOP = bit 3
+	ES_TEXT_V_CENTER = bit 4
+	ES_TEXT_V_BOTTOM = bit 5
+	ES_TEXT_ELLIPSIS = bit 6
+	ES_TEXT_WRAP = bit 7
+};
+
+inttype EsTextPlanFlags uint32_t EsTextFlags {
+	ES_TEXT_PLAN_SINGLE_USE = bit 8
+	ES_TEXT_PLAN_TRIM_SPACES = bit 9
+	ES_TEXT_PLAN_RTL = bit 10
+	ES_TEXT_PLAN_CLIP_UNBREAKABLE_LINES = bit 11
+	ES_TEXT_PLAN_NO_FONT_SUBSTITUTION = bit 12
+};
+
+inttype EsDrawContentFlags uint32_t EsTextFlags {
+	ES_DRAW_CONTENT_TABULAR = bit 8
+	ES_DRAW_CONTENT_MARKER_DOWN_ARROW = bit 9
+	ES_DRAW_CONTENT_MARKER_UP_ARROW = bit 10
+	ES_DRAW_CONTENT_RICH_TEXT = bit 11
+};
+
+inttype EsListViewColumnFlags uint32_t EsDrawContentFlags {
+	ES_LIST_VIEW_COLUMN_HAS_MENU           =    bit 16  // The header can be clicked to open a menu.
+	ES_LIST_VIEW_COLUMN_DATA_STRINGS       = ( 0 << 22) // Data types for fixed items or GET_ITEM_DATA.
+	ES_LIST_VIEW_COLUMN_DATA_INTEGERS      = ( 1 << 22)
+	ES_LIST_VIEW_COLUMN_DATA_DOUBLES       = ( 2 << 22)
+	ES_LIST_VIEW_COLUMN_DATA_MASK          = ( 3 << 22)
+	ES_LIST_VIEW_COLUMN_SORT_DEFAULT       = ( 0 << 24) // Sort types for fixed items or GET_ITEM_DATA.
+	ES_LIST_VIEW_COLUMN_SORT_TIME          = ( 1 << 24)
+	ES_LIST_VIEW_COLUMN_SORT_SIZE          = ( 2 << 24)
+	ES_LIST_VIEW_COLUMN_SORT_NONE          = ( 3 << 24)
+	ES_LIST_VIEW_COLUMN_SORT_MASK          = ( 7 << 24)
+	ES_LIST_VIEW_COLUMN_FORMAT_DEFAULT     = ( 0 << 27) // Format types for fixed items or GET_ITEM_DATA.
+	ES_LIST_VIEW_COLUMN_FORMAT_YES_NO      = ( 1 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_ON_OFF      = ( 2 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_PERCENTAGE  = ( 3 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_BYTES       = ( 4 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_BITS        = ( 5 << 27) 
+	ES_LIST_VIEW_COLUMN_FORMAT_BYTE_RATE   = ( 6 << 27) // Bytes per second.
+	ES_LIST_VIEW_COLUMN_FORMAT_SECONDS     = ( 7 << 27) 
+	ES_LIST_VIEW_COLUMN_FORMAT_HERTZ       = ( 8 << 27) 
+	ES_LIST_VIEW_COLUMN_FORMAT_PIXELS      = ( 9 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_DPI         = (10 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_ENUM_STRING = (11 << 27)
+	ES_LIST_VIEW_COLUMN_FORMAT_MASK        = (31 << 27)
+};
+
+// For ES_MSG_LIST_VIEW_GET_COLUMN_SORT.
+inttype EsListViewGetColumnSortFlags uint32_t none {
+	ES_LIST_VIEW_COLUMN_SORT_ASCENDING = bit 0
+	ES_LIST_VIEW_COLUMN_SORT_DESCENDING = bit 1
+};
+
+inttype EsFileOpenFlags uint32_t none {
+	// TODO Cleanup!
+
+	ES_FILE_READ_SHARED = bit 0		 // Read-only. The file can still be opened for writing.
+	ES_FILE_READ = bit 1			 // Read-only. The file will not openable for writing. This will fail if the file is already opened for writing.
+	ES_FILE_WRITE_SHARED = bit 2		 // Read-write. The file can still be opened for writing. This will fail if the file is already opened for exclusive writing.
+	ES_FILE_WRITE = bit 3 			 // Read-write. The file will not openable for writing. This will fail if the file is already opened for writing.
+
+	ES_NODE_FAIL_IF_FOUND = bit 16
+	ES_NODE_FAIL_IF_NOT_FOUND = bit 17
+	ES_NODE_PREVENT_RESIZE = bit 18
+	ES_NODE_CREATE_DIRECTORIES = bit 19 	// Create the directories leading to the file, if they don't already exist.
+
+	ES__NODE_FROM_WRITE_EXCLUSIVE = bit 21
+	ES__NODE_DIRECTORY_WRITE = bit 22
+	ES__NODE_NO_WRITE_BASE = bit 23
+};
+
+inttype EsMemoryMapFlags uint32_t none {
+	ES_MEMORY_MAP_OBJECT_READ_WRITE = bit 0
+	ES_MEMORY_MAP_OBJECT_READ_ONLY = bit 1
+	ES_MEMORY_MAP_OBJECT_COPY_ON_WRITE = bit 2 // Files only.
+};
+
+// Flags set with %f.
+inttype EsStringFormatFlags uint32_t none {
+	ES_STRING_FORMAT_SIMPLE = bit 0
+};
+
+define ES_PERMISSION_ALL ((_EsLongConstant) (-1))
+inttype EsProcessPermissions uint64_t none {
+	ES_PERMISSION_NETWORKING = bit 0
+	ES_PERMISSION_PROCESS_CREATE = bit 1
+	ES_PERMISSION_PROCESS_OPEN = bit 2
+	ES_PERMISSION_SCREEN_MODIFY = bit 3
+	ES_PERMISSION_SHUTDOWN = bit 4
+	ES_PERMISSION_TAKE_SYSTEM_SNAPSHOT = bit 5
+	ES_PERMISSION_GET_VOLUME_INFORMATION = bit 6
+	ES_PERMISSION_WINDOW_MANAGER = bit 7
+	ES_PERMISSION_POSIX_SUBSYSTEM = bit 8
+	ES_PERMISSION_INHERIT = bit 63
+};
+
+// Element flags - bits 0-31 for custom use; bits 32-63 common to all elements.
+
+inttype EsElementFlags uint64_t none {
+	// Common element flags:
+	ES_ELEMENT_FOCUSABLE = bit 32
+	ES_ELEMENT_HIDDEN = bit 33 // Hides the element and descendents. Also prevents the element and descendents from taking focus or being hovered/pressed.
+	ES_ELEMENT_DISABLED = bit 34 // Prevents the element from taking focus or being pressed.
+	ES_ELEMENT_DEBUG = bit 35 // Prints some extra debug information about the element.
+	ES_ELEMENT_NO_CLIP = bit 36 // Do not clip children to the element's bounds.
+	ES_ELEMENT_NO_HOVER = bit 37 // For z-stacked elements. Can still hover descendents and overlapped siblings/parent. Override HIT_TEST to return false to prevent hovering descendents.
+	ES_ELEMENT_NO_HOVER_DESCENDENTS = bit 38 // Prevent hovering over any descendents.
+	ES_ELEMENT_BLOCK_FOCUS = bit 39 // This element and descendents cannot take focus.
+	ES_ELEMENT_NOT_TAB_TRAVERSABLE = bit 40 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused from tab traversal.
+	ES_ELEMENT_NO_FOCUS_ON_CLICK = bit 41 // Use with ES_ELEMENT_FOCUSABLE to indicate the element cannot be focused by clicking it.
+	ES_ELEMENT_LAYOUT_HINT_HORIZONTAL = bit 43 // Hint for autoCorners and autoBorders.
+	ES_ELEMENT_LAYOUT_HINT_REVERSE = bit 44 // Hint for autoCorners and autoBorders; and tab traversal.
+	ES_ELEMENT_STICKY_ACCESS_KEY = bit 45 // Don't exit access key mode after using the access key.
+	ES_ELEMENT_NON_CLIENT = bit 46 
+	ES_ELEMENT_FREE_USER_DATA = bit 47 // Call EsHeapFree on userData when destroying the element.
+	ES_ELEMENT_AUTO_GROUP = bit 48 // Enables autoCorners and autoBorders.
+
+	// For children of splitters:
+	ES_CELL_COLLAPSABLE = bit 51
+
+	// Cell layout flags:
+	ES_CELL_H_PUSH = bit 54
+	ES_CELL_H_EXPAND = bit 55
+	ES_CELL_H_SHRINK = bit 56
+	ES_CELL_H_LEFT = bit 57
+	ES_CELL_H_RIGHT = bit 58
+	ES_CELL_V_PUSH = bit 59
+	ES_CELL_V_EXPAND = bit 60
+	ES_CELL_V_SHRINK = bit 61
+	ES_CELL_V_TOP = bit 62
+	ES_CELL_V_BOTTOM = bit 63
+};
+
+inttype EsPanelFlags uint64_t EsElementFlags {
+	// Defaults.
+	ES_PANEL_STACK			= 0
+	ES_PANEL_VERTICAL		= 0
+	ES_PANEL_SWITCHER_MEASURE_SHOWN = 0 // Use the shown child to determine size.
+
+	ES_PANEL_SWITCHER = bit 0
+	ES_PANEL_Z_STACK = bit 1
+	ES_PANEL_TABLE = bit 2
+
+	ES_PANEL_H_SCROLL_FIXED = bit 4
+	ES_PANEL_V_SCROLL_FIXED = bit 5
+	ES_PANEL_H_SCROLL_AUTO = bit 6
+	ES_PANEL_V_SCROLL_AUTO = bit 7
+
+	// For ES_PANEL_TABLE and ES_PANEL_STACK.
+	ES_PANEL_HORIZONTAL = bit 8
+	ES_PANEL_REVERSE = bit 9 // Reverse layout is not supported with ES_PANEL_TABLE yet.
+
+	// For ES_PANEL_SWITCHER.
+	ES_PANEL_SWITCHER_MEASURE_LARGEST = bit 15 // Use the largest child to determine size.
+
+	// For ES_PANEL_TABLE.
+	ES_PANEL_TABLE_H_JUSTIFY = bit 16
+	ES_PANEL_TABLE_V_JUSTIFY = bit 17
+
+	ES_PANEL_RADIO_GROUP = bit 30 // Determines how arrow keys/tabs behave.
+};
+
+inttype EsTextboxFlags uint64_t EsElementFlags {
+	ES_TEXTBOX_MULTILINE = bit 0
+	ES_TEXTBOX_EDIT_BASED = bit 1
+	ES_TEXTBOX_MARGIN = bit 2
+	ES_TEXTBOX_NO_SMART_CONTEXT_MENUS = bit 3
+	ES_TEXTBOX_ALLOW_TABS = bit 4
+	ES_TEXTBOX_REJECT_EDIT_IF_LOST_FOCUS = bit 5
+}
+
+inttype EsTextboxFindFlags uint32_t none {
+	ES_TEXTBOX_FIND_BACKWARDS = bit 0
+};
+
+inttype EsTextboxGetContentsFlags uint32_t none {
+	ES_TEXTBOX_GET_CONTENTS_SELECTED_ONLY = bit 0
+};
+
+// First few bits reserved for the check state.
+define ES_MENU_ITEM_CHECKED (ES_CHECK_CHECKED)
+inttype EsButtonFlags uint64_t EsElementFlags {
+	ES_BUTTON_DEFAULT = bit 3
+	ES_BUTTON_MENU_ITEM = bit 4
+	ES_BUTTON_NOT_FOCUSABLE = bit 5
+	ES_BUTTON_TOOLBAR = bit 6
+	ES_BUTTON_DROPDOWN = bit 7
+	ES_BUTTON_COMPACT = bit 8
+	ES_BUTTON_CHECKBOX = bit 9
+	ES_BUTTON_RADIOBOX = bit 10
+	ES_BUTTON_CANCEL = bit 11
+	ES_BUTTON_PUSH = bit 12
+};
+inttype EsMenuItemFlags uint64_t EsButtonFlags {
+	ES_MENU_ITEM_HEADER = bit 31
+};
+
+inttype EsColorWellFlags uint64_t EsElementFlags {
+	ES_COLOR_WELL_HAS_OPACITY = bit 0
+};
+
+inttype EsSplitterFlags uint64_t EsElementFlags {
+	ES_SPLITTER_VERTICAL = 0
+	ES_SPLITTER_HORIZONTAL = bit 0
+};
+
+inttype EsListViewFlags uint64_t EsElementFlags {
+	ES_LIST_VIEW_HORIZONTAL = bit 0 // Layout horizontally instead of vertically.
+	ES_LIST_VIEW_VARIABLE_SIZE = bit 1 // Each item can be a different size. You need to respond to the LIST_VIEW_MEASURE_ITEM message. The size of items cannot depend on the size of the parent.
+	ES_LIST_VIEW_TILED = bit 2 // Multiple items per band. Incompatible with variable size items and columns mode.
+	ES_LIST_VIEW_SINGLE_SELECT = bit 3 // One item can be selected. By default, selections are disabled.
+	ES_LIST_VIEW_MULTI_SELECT = bit 4 // Multiple items can be selected.
+	ES_LIST_VIEW_CHOICE_SELECT = bit 5 // Exactly one item is always selected. Dragging on the list view causes the selection to 'slide' between items.
+	ES_LIST_VIEW_COLUMNS = bit 6 // Display a column header and let items have multiple values. Incompatible with horizontal and tiled layouts.
+	ES_LIST_VIEW_FIXED_ITEMS = bit 7 // Use the fixed item API rather than the callback API.
+	ES_LIST_VIEW_CENTER_TILES = bit 8 // Center tiled items.
+};
+
+inttype EsListViewGroupFlags uint32_t none {
+	ES_LIST_VIEW_GROUP_HAS_HEADER = bit 0 // The first item in the group is a header.
+	ES_LIST_VIEW_GROUP_HAS_FOOTER = bit 1 // The last item in the group is a footer.
+	ES_LIST_VIEW_GROUP_INDENT = bit 2 // Indent the group's items (excluding the header and footer).
+	ES_LIST_VIEW_GROUP_COLLAPSABLE = bit 3 // The group can be collapsed.
+};
+
+inttype EsMenuFlags uint32_t none {
+	ES_MENU_AT_CURSOR = bit 0
+	ES_MENU_MAXIMUM_HEIGHT = bit 1
+};
+
+inttype EsFontFlags uint8_t none {
+	ES_FONT_ITALIC = bit 0
+};
+
+inttype EsTextFigures uint8_t none {
+	ES_TEXT_FIGURE_DEFAULT = 0
+	ES_TEXT_FIGURE_OLD     = 1
+	ES_TEXT_FIGURE_TABULAR = 2
+};
+
+inttype EsTextDecorations uint8_t none {
+	ES_TEXT_DECORATION_UNDERLINE = bit 0
+	ES_TEXT_DECORATION_STRIKE_THROUGH = bit 1
+};
+
+inttype EsTextDisplayFlags uint64_t EsElementFlags {
+	ES_TEXT_DISPLAY_RICH_TEXT = bit 0
+	ES_TEXT_DISPLAY_PREFORMATTED = bit 1 // Prevents trimming of trailing/leading whitespace.
+	ES_TEXT_DISPLAY_NO_FONT_SUBSTITUTION = bit 2
+};
+
+inttype EsListDisplayFlags uint64_t EsElementFlags {
+	// First 8 bits reserved for the marker type (see below).
+	ES_LIST_DISPLAY_BULLETED = 0
+	ES_LIST_DISPLAY_NUMBERED = 1
+	ES_LIST_DISPLAY_LOWER_ALPHA = 2
+	ES_LIST_DISPLAY_CUSTOM_MARKER = 0xFF // Sends ES_MSG_LIST_DISPLAY_GET_MARKER.
+};
+define ES_LIST_DISPLAY_MARKER_TYPE_MASK (0xFF << 0)
+
+inttype EsImageDisplayFlags uint64_t EsElementFlags {
+	ES_IMAGE_DISPLAY_DECODE_WHEN_NEEDED = bit 0 // The image is only kept in its decoded state when the display is on-screen.
+	ES_IMAGE_DISPLAY_MANUAL_SIZE = bit 1 // The display will be manually sized; its size does not depend on the loaded image.
+	ES_IMAGE_DISPLAY_FULLY_OPAQUE = bit 2 // The loaded image will always be fully opaque.
+};
+
+// Mask bits for EsThemeMetrics:
+inttype EsThemeMetricsMask uint64_t none {
+	ES_THEME_METRICS_INSETS = bit 0
+	ES_THEME_METRICS_CLIP_INSETS = bit 1
+	ES_THEME_METRICS_CLIP_ENABLED = bit 2
+	ES_THEME_METRICS_CURSOR = bit 3
+	ES_THEME_METRICS_PREFERRED_WIDTH = bit 4
+	ES_THEME_METRICS_PREFERRED_HEIGHT = bit 5
+	ES_THEME_METRICS_MINIMUM_WIDTH = bit 6
+	ES_THEME_METRICS_MINIMUM_HEIGHT = bit 7
+	ES_THEME_METRICS_MAXIMUM_WIDTH = bit 8
+	ES_THEME_METRICS_MAXIMUM_HEIGHT = bit 9
+	ES_THEME_METRICS_GAP_MAJOR = bit 10
+	ES_THEME_METRICS_GAP_MINOR = bit 11
+	ES_THEME_METRICS_GAP_WRAP = bit 12
+	ES_THEME_METRICS_TEXT_COLOR = bit 13
+	ES_THEME_METRICS_SELECTED_BACKGROUND = bit 14
+	ES_THEME_METRICS_SELECTED_TEXT = bit 15
+	ES_THEME_METRICS_ICON_COLOR = bit 16
+	ES_THEME_METRICS_TEXT_ALIGN = bit 17
+	ES_THEME_METRICS_TEXT_SIZE = bit 18
+	ES_THEME_METRICS_FONT_FAMILY = bit 19
+	ES_THEME_METRICS_FONT_WEIGHT = bit 20
+	ES_THEME_METRICS_ICON_SIZE = bit 21
+	ES_THEME_METRICS_IS_ITALIC = bit 22
+	ES_THEME_METRICS_LAYOUT_VERTICAL = bit 23
+	ES_THEME_METRICS_TEXT_FIGURES = bit 24
+};
+
+inttype EsTextboxMoveCaretRelativeFlags uint32_t none {
+	ES_TEXTBOX_MOVE_CARET_SINGLE = 2
+	ES_TEXTBOX_MOVE_CARET_WORD = 3
+	ES_TEXTBOX_MOVE_CARET_LINE = 4
+	ES_TEXTBOX_MOVE_CARET_VERTICAL = 5
+	ES_TEXTBOX_MOVE_CARET_ALL = 6
+	ES_TEXTBOX_MOVE_CARET_FIRST_ONLY = bit 8
+	ES_TEXTBOX_MOVE_CARET_SECOND_ONLY = bit 9
+	ES_TEXTBOX_MOVE_CARET_BACKWARDS = bit 10
+	ES_TEXTBOX_MOVE_CARET_STRONG_WHITESPACE = bit 11
+};
+
+inttype EsConnectionOpenFlags uint32_t none {
+	ES_CONNECTION_OPEN_WAIT = bit 0
+};
+
+inttype EsFileControlFlags uint32_t none {
+	ES_FILE_CONTROL_FLUSH = bit 0
+};
+
+inttype EsElementUpdateContentFlags uint32_t none {
+	ES_ELEMENT_UPDATE_CONTENT_WIDTH = bit 0
+	ES_ELEMENT_UPDATE_CONTENT_HEIGHT = bit 1
+};
+
+inttype EsDialogShowFlags uint32_t none {
+	ES_DIALOG_ALERT_OK_BUTTON = bit 0
+};
+
+inttype EsMemoryReserveFlags uint32_t none {
+	ES_MEMORY_RESERVE_COMMIT_ALL = bit 0
+};
+
+inttype EsPanelSwitchToFlags uint32_t none {
+	ES_PANEL_SWITCHER_DESTROY_PREVIOUS_AFTER_TRANSITION = bit 0
+};
+
+inttype EsElementTransitionFlags uint32_t none {
+	ES_ELEMENT_TRANSITION_ENTRANCE = bit 0
+	ES_ELEMENT_TRANSITION_EXIT = bit 1
+	ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE = bit 2
+};
+
+inttype EsSyntaxHighlightingLanguage uint32_t none {
+	ES_SYNTAX_HIGHLIGHTING_LANGUAGE_C      = 1
+	ES_SYNTAX_HIGHLIGHTING_LANGUAGE_INI    = 2
+	ES_SYNTAX_HIGHLIGHTING_LANGUAGE_SCRIPT = 3
+};
+
+inttype EsDrawLineFlags uint32_t none {
+	ES_DRAW_LINE_CAP_ROUND  = bit 0
+	ES_DRAW_LINE_CAP_SQUARE = bit 1
+};
+
+inttype EsDriveType uint8_t none {
+	ES_DRIVE_TYPE_OTHER            = 0
+	ES_DRIVE_TYPE_HDD              = 1
+	ES_DRIVE_TYPE_SSD              = 2
+	ES_DRIVE_TYPE_CDROM            = 3
+	ES_DRIVE_TYPE_USB_MASS_STORAGE = 4
+};
+
+inttype EsElementFocusFlags uint32_t none {
+	ES_ELEMENT_FOCUS_ENSURE_VISIBLE = bit 0
+	ES_ELEMENT_FOCUS_FROM_KEYBOARD = bit 1
+	ES_ELEMENT_FOCUS_ONLY_IF_NO_FOCUSED_ELEMENT = bit 2
+};
+
+inttype EsApplicationStartupRequestFlags uint32_t none {
+	ES_APPLICATION_STARTUP_BACKGROUND_SERVICE = bit 0
+	ES_APPLICATION_STARTUP_IN_SAME_CONTAINER = bit 1
+	ES_APPLICATION_STARTUP_NO_DOCUMENT = bit 2 // The file path given in EsApplicationStartupRequest should be passed directly to the application, and should not be used to open a document.
+};
+
+inttype EsListViewInlineTextboxFlags uint32_t none {
+	ES_LIST_VIEW_INLINE_TEXTBOX_COPY_EXISTING_TEXT = bit 0
+	ES_LIST_VIEW_INLINE_TEXTBOX_REJECT_EDIT_IF_FOCUS_LOST = bit 1
+};
+
+inttype EsKeyboardModifiers uint8_t none {
+	ES_MODIFIER_CTRL = bit 0
+	ES_MODIFIER_SHIFT = bit 1
+	ES_MODIFIER_ALT = bit 2
+	ES_MODIFIER_FLAG = bit 3
+	ES_MODIFIER_ALT_GR = bit 4
+};
+
+inttype EsProcessCreationFlags uint32_t none {
+	ES_PROCESS_CREATE_PAUSED = bit 0
+};
+
+inttype EsVolumeFlags uint32_t none {
+	ES_VOLUME_READ_ONLY = bit 0
+};
+
+inttype EsPathMoveFlags uint32_t none {
+	// Copy and delete the file if a direct move is not possible (e.g. the files are on different volumes).
+	ES_PATH_MOVE_ALLOW_COPY_AND_DELETE = bit 0
+};
+
+inttype EsClipboardDataFlags uint32_t none {
+	// Only perform the deletion after pasting; often implemented as a move (e.g. files).
+	ES_CLIPBOARD_ADD_LAZY_CUT = bit 0
+};
+
+inttype EsScrollViewMode uint8_t none {
+	ES_SCROLL_MODE_NONE   = 0 // No scrolling takes place on this axis.
+	ES_SCROLL_MODE_HIDDEN = 1 // Scrolling takes place, but there is no visible scrollbar.
+	ES_SCROLL_MODE_FIXED  = 2 // The scrollbar is always visible.
+	ES_SCROLL_MODE_AUTO   = 3 // The scrollbar is only visible if the content is larger than the viewport.
+};
 // Scroll view flags.
 define ES_SCROLL_X_DRAG (1 << 0)
 define ES_SCROLL_Y_DRAG (1 << 1)
 private define ES_SCROLL_MANUAL (1 << 2) // The parent is responsible for updating the position of the scroll bars.
 
-define ES_SUBSYSTEM_ID_NATIVE (0)
-define ES_SUBSYSTEM_ID_POSIX (1)
-
-define ES_LIST_VIEW_CHOOSE_ITEM_OTHER        (1)
-define ES_LIST_VIEW_CHOOSE_ITEM_ENTER        (2)
-define ES_LIST_VIEW_CHOOSE_ITEM_DOUBLE_CLICK (3)
-define ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK (4)
-
-define ES_SHUTDOWN_ACTION_POWER_OFF (1)
-define ES_SHUTDOWN_ACTION_RESTART (2)
-
-bitset EsCanvasPaneFlags ES_CANVAS_PANE_ uint64_t EsElementFlags {
-	SHOW_SHADOW = 0
+inttype EsSubsystemID uint8_t none {
+	ES_SUBSYSTEM_ID_NATIVE = 0
+	ES_SUBSYSTEM_ID_POSIX  = 1
 };
 
-bitset EsSliderFlags ES_SLIDER_ uint64_t none {
+inttype EsListViewChooseItemSource uint8_t none {
+	ES_LIST_VIEW_CHOOSE_ITEM_OTHER        = 1
+	ES_LIST_VIEW_CHOOSE_ITEM_ENTER        = 2
+	ES_LIST_VIEW_CHOOSE_ITEM_DOUBLE_CLICK = 3
+	ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK = 4
 };
 
-bitset EsSpacerFlags ES_SPACER_ uint64_t none {
+inttype EsCanvasPaneFlags uint64_t EsElementFlags {
+	ES_CANVAS_PANE_SHOW_SHADOW = bit 0
 };
 
-bitset EsIconDisplayFlags ES_ICON_DISPLAY_ uint64_t none {
+inttype EsSliderFlags uint64_t none {
 };
 
-bitset EsAnnouncementFlags ES_ANNOUNCEMENT_ uint64_t none {
+inttype EsSpacerFlags uint64_t none {
+};
+
+inttype EsIconDisplayFlags uint64_t none {
+};
+
+inttype EsAnnouncementFlags uint64_t none {
 };
 
 include desktop/icons.header
@@ -1390,7 +1411,7 @@ struct EsProcessCreateData {
 	EsHandle systemData;
 	EsHandle subsystemData;
 	EsGeneric userData;
-	uint8_t subsystemID;
+	EsSubsystemID subsystemID;
 };
 
 struct EsProcessStartupInformation {
@@ -1441,7 +1462,7 @@ struct EsThemeMetrics {
 	uint32_t textColor, selectedBackground, selectedText, iconColor;
 	EsTextFlags textAlign;
 	int32_t textSize, fontFamily, fontWeight, iconSize;
-	uint8_t textFigures;
+	EsTextFigures textFigures;
 	bool isItalic, layoutVertical;
 };
 
@@ -1617,7 +1638,7 @@ private struct _EsNodeInformation {
 struct EsVolumeInformation {
 	char label[64];
 	uint8_t labelBytes;
-	uint8_t driveType;
+	EsDriveType driveType;
 	EsVolumeFlags flags;
 	EsObjectID id;
 	EsFileOffset spaceTotal;
@@ -1777,7 +1798,7 @@ struct EsMessageSelectItem {
 struct EsMessageChooseItem {
 	EsListViewIndex group;
 	EsListViewIndex index;
-	uint8_t source;
+	EsListViewChooseItemSource source;
 };
 
 struct EsMessageSearchItem {
@@ -2533,7 +2554,7 @@ function EsElement *EsCustomElementCreate(EsElement *parent, EsElementFlags flag
 function EsScrollView *EsCustomScrollViewCreate(EsElement *parent, EsElementFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 
 function int EsScrollViewReceivedMessage(EsScrollView *view, EsMessage *message); // You *must* call this *before* handling any messages. If this returns non-zero, immediately return that value from your message handler.
-function void EsScrollViewSetup(EsScrollView *view, uint8_t xMode, uint8_t yMode, uint16_t flags);
+function void EsScrollViewSetup(EsScrollView *view, EsScrollViewMode xMode, EsScrollViewMode yMode, uint16_t flags);
 function void EsScrollViewSetPosition(EsScrollView *view, int axis, double newPosition, bool sendMovedMessage = true);
 function void EsScrollViewRefresh(EsScrollView *view);
 function int64_t EsScrollViewGetPosition(EsScrollView *view, int axis);
@@ -2601,12 +2622,12 @@ function void EsTextboxSelectAll(EsTextbox *textbox);
 function void EsTextboxClear(EsTextbox *textbox, bool sendUpdatedMessage);
 function void EsTextboxUseNumberOverlay(EsTextbox *textbox, bool defaultBehaviour);
 function void EsTextboxUseBreadcrumbOverlay(EsTextbox *textbox); 
-function void EsTextboxMoveCaretRelative(EsTextbox *textbox, uint32_t flags);
+function void EsTextboxMoveCaretRelative(EsTextbox *textbox, EsTextboxMoveCaretRelativeFlags flags);
 function void EsTextboxEnsureCaretVisible(EsTextbox *textbox, bool verticallyCenter = false);
 function void EsTextboxSetUndoManager(EsTextbox *textbox, EsUndoManager *manager);
 function void EsTextboxSetTextSize(EsTextbox *textbox, uint16_t size);
 function void EsTextboxSetFont(EsTextbox *textbox, EsFont font);
-function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
+function void EsTextboxSetupSyntaxHighlighting(EsTextbox *textbox, EsSyntaxHighlightingLanguage language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 function void EsTextboxStartEdit(EsTextbox *textbox);
 function void EsTextboxEnableSmartReplacement(EsTextbox *textbox, bool enabled); // e.g. smart quotes.
 function void EsTextboxSetReadOnly(EsTextbox *textbox, bool readOnly); // Prevents the user from modifying the contents of the textbox; EsTextboxInsert will still work. Incompatible with ES_TEXTBOX_EDIT_BASED. Undo events will not be created.
@@ -2664,7 +2685,7 @@ function uint32_t EsImageDisplayGetImageHeight(EsImageDisplay *display);
 function EsTextDisplay *EsTextDisplayCreate(EsElement *parent, EsTextDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0, STRING label = BLANK_STRING);
 function void EsTextDisplaySetContents(EsTextDisplay *display, STRING contents = BLANK_STRING);
 function void EsTextDisplaySetStyledContents(EsTextDisplay *display, const char *string, EsTextRun *runs, size_t runCount) @todo(); // See EsTextPlanCreate for how runCount works.
-function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, uint32_t language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
+function void EsTextDisplaySetupSyntaxHighlighting(EsTextDisplay *display, EsSyntaxHighlightingLanguage language, const uint32_t *customColors = ES_NULL, size_t customColorCount = 0) @array_in(customColors, customColorCount);
 
 function EsListDisplay *EsListDisplayCreate(EsElement *parent, EsListDisplayFlags flags = ES_FLAGS_DEFAULT, EsStyleID style = 0);
 function void EsListDisplaySetCounterContinuation(EsListDisplay *display, EsListDisplay *previous);
@@ -2687,7 +2708,7 @@ function EsListView *EsListViewCreate(EsElement *parent, EsListViewFlags flags =
 function EsListViewIndex EsListViewGetIndexFromItem(EsElement *element, EsListViewIndex *group = ES_NULL) @out(group);
 function EsListViewEnumeratedVisibleItem *EsListViewEnumerateVisibleItems(EsListView *view, size_t *count) @out(count) @heap_array_out(return, count*);
 
-function void EsListViewRegisterColumn(EsListView *view, uint32_t id, STRING title = BLANK_STRING, uint32_t flags = ES_FLAGS_DEFAULT, double initialWidth = 0);
+function void EsListViewRegisterColumn(EsListView *view, uint32_t id, STRING title = BLANK_STRING, EsListViewColumnFlags flags = ES_FLAGS_DEFAULT, double initialWidth = 0);
 function void EsListViewAddAllColumns(EsListView *view); // Call after registering the columns to add them to the header. Call again after EsListViewChangeStyles, as needed.
 function void EsListViewSetEmptyMessage(EsListView *view, STRING message = BLANK_STRING);
 function void EsListViewSetMaximumItemsPerBand(EsListView *view, int maximumItemsPerBand);

@@ -7,6 +7,7 @@
 // 	- Named optional arguments with default values.
 // 	- Accessing structs and functypes from inline modules.
 // 	- For each syntax: for type identifier; list block
+// 	- Error types.
 
 // TODO Larger missing features:
 // 	- Serialization.

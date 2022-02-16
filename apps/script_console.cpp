@@ -2,6 +2,9 @@
 #include <essence.h>
 #include <shared/array.cpp>
 
+// TODO REPL variables should be dynamically typed.
+// 	- When setting a variable, show the new value and give a link to scroll to the previous value (if it wasn't cleared).
+
 struct Instance : EsInstance {
 	EsCommand commandClearOutput;
 
