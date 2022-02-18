@@ -953,7 +953,7 @@ void AddressToLine(const char *symbolFile) {
 						putchar('0');
 						i = si;
 					} else {
-						free(file);
+						fclose(file);
 						fputs(strstr(result, "essence") ?: "", stdout);
 						system("rm -f bin/result.tmp");
 						i--;
