@@ -890,7 +890,7 @@ inttype EsAnnouncementFlags uint64_t none {
 
 include desktop/icons.header
 
-enum EsFatalError {
+inttype EsFatalError enum none {
 	ES_FATAL_ERROR_ABORT
 	ES_FATAL_ERROR_INCORRECT_FILE_ACCESS
 	ES_FATAL_ERROR_INCORRECT_NODE_TYPE
@@ -905,7 +905,7 @@ enum EsFatalError {
 	ES_FATAL_ERROR_COUNT
 }
 
-private enum EsSyscallType {
+private inttype EsSyscallType enum none {
 	// Memory.
 
 	ES_SYSCALL_MEMORY_ALLOCATE
@@ -1014,7 +1014,7 @@ private enum EsSyscallType {
 	ES_SYSCALL_COUNT
 }
 
-enum EsMessageType {
+inttype EsMessageType enum none {
 	ES_MSG_INVALID				= 0x0000
 		
 	// Window manager messages (don't rearrange; see SendMessageToWindow in kernel/window_manager.cpp):
@@ -1173,7 +1173,7 @@ enum EsMessageType {
 	ES_MSG_USER_END				= 0xBFFF
 }
 
-enum EsCursorStyle {
+inttype EsCursorStyle enum none {
 	ES_CURSOR_NORMAL 
 	ES_CURSOR_TEXT 
 	ES_CURSOR_RESIZE_VERTICAL 
@@ -1206,7 +1206,7 @@ enum EsCursorStyle {
 	ES_CURSOR_COUNT
 }
 
-enum EsWindowStyle {
+inttype EsWindowStyle enum none {
 	ES_WINDOW_NORMAL
 	ES_WINDOW_CONTAINER
 	ES_WINDOW_MENU
@@ -1215,13 +1215,13 @@ enum EsWindowStyle {
 	ES_WINDOW_INSPECTOR
 }
 
-enum EsCheckState {
+inttype EsCheckState enum none {
 	ES_CHECK_UNCHECKED = 0
 	ES_CHECK_CHECKED = 1
 	ES_CHECK_INDETERMINATE = 2
 }
 
-enum EsTransitionType {
+inttype EsTransitionType enum none {
 	ES_TRANSITION_NONE
 	ES_TRANSITION_SLIDE_UP
 	ES_TRANSITION_SLIDE_DOWN
@@ -1245,17 +1245,17 @@ enum EsTransitionType {
 	ES_TRANSITION_SLIDE_DOWN_UNDER
 }
 
-enum EsMemoryProtection {
+inttype EsMemoryProtection enum none {
 	ES_MEMORY_PROTECTION_READ_ONLY
 	ES_MEMORY_PROTECTION_READ_WRITE
 	ES_MEMORY_PROTECTION_EXECUTABLE
 }
 
-enum EsClipboard {
+inttype EsClipboard enum none {
 	ES_CLIPBOARD_PRIMARY
 }
 
-enum EsDeviceType {
+inttype EsDeviceType enum none {
 	ES_DEVICE_OTHER
 	ES_DEVICE_CONTROLLER
 	ES_DEVICE_FILE_SYSTEM
@@ -1271,13 +1271,13 @@ enum EsDeviceType {
 	ES_DEVICE_CLOCK
 }
 
-enum EsClipboardFormat {
+inttype EsClipboardFormat enum none {
 	ES_CLIPBOARD_FORMAT_INVALID
 	ES_CLIPBOARD_FORMAT_TEXT
 	ES_CLIPBOARD_FORMAT_PATH_LIST
 }
 
-enum EsDeviceControlType {
+inttype EsDeviceControlType enum none {
 	ES_DEVICE_CONTROL_BLOCK_GET_INFORMATION = 0x1001
 	ES_DEVICE_CONTROL_BLOCK_READ            = 0x1002
 	ES_DEVICE_CONTROL_BLOCK_WRITE           = 0x1003

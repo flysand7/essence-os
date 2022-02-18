@@ -1,5 +1,3 @@
-// TODO Merge enums and inttypes.
-
 const char **apiTableEntries;
 
 File output, outputAPIArray, outputSyscallArray, outputDependencies, outputEnumStringsArray;
@@ -48,7 +46,6 @@ typedef struct Token {
 #define ENTRY_ROOT (0)
 #define ENTRY_DEFINE (1)
 #define ENTRY_INTTYPE (2)
-#define ENTRY_ENUM (3)
 #define ENTRY_STRUCT (4)
 #define ENTRY_UNION (5)
 #define ENTRY_FUNCTION (6)
@@ -348,8 +345,8 @@ void ParseAnnotationsUntilSemicolon(Entry *entry) {
 	}
 }
 
-Entry ParseEnum(bool allowImplicitValue) {
-	Entry entry = { .type = ENTRY_ENUM };
+Entry ParseIntType() {
+	Entry entry = { .type = ENTRY_INTTYPE };
 	Token token = NextToken();
 
 	while (true) {
@@ -369,8 +366,6 @@ Entry ParseEnum(bool allowImplicitValue) {
 			while (isspace(*define.define.value)) define.define.value++;
 			position += length;
 			token = NextToken();
-		} else if (!allowImplicitValue) {
-			assert(false);
 		}
 
 		arrput(entry.children, define);
@@ -415,14 +410,6 @@ void ParseFile(Entry *root, const char *name) {
 			currentLine = oldCurrentLine;
 			buffer[position + length] = a;
 			position += length;
-		} else if (token.type == TOKEN_ENUM) {
-			Token name = NextToken();
-			assert(name.type == TOKEN_IDENTIFIER);
-			assert(NextToken().type == TOKEN_LEFT_BRACE);
-			Entry entry = ParseEnum(true);
-			entry.isPrivate = isPrivate;
-			entry.name = TokenToString(name);
-			arrput(root->children, entry);
 		} else if (token.type == TOKEN_STRUCT) {
 			Token structName = NextToken();
 			assert(structName.type == TOKEN_IDENTIFIER);
@@ -436,13 +423,12 @@ void ParseFile(Entry *root, const char *name) {
 			Token bitsetName = NextToken();
 			assert(bitsetName.type == TOKEN_IDENTIFIER);
 			Token storageType = NextToken();
-			assert(storageType.type == TOKEN_IDENTIFIER);
+			assert(storageType.type == TOKEN_IDENTIFIER || storageType.type == TOKEN_ENUM);
 			Token parent = NextToken();
 			assert(parent.type == TOKEN_IDENTIFIER);
 			assert(NextToken().type == TOKEN_LEFT_BRACE);
-			Entry entry = ParseEnum(false);
+			Entry entry = ParseIntType();
 			entry.isPrivate = isPrivate;
-			entry.type = ENTRY_INTTYPE;
 			entry.name = TokenToString(bitsetName);
 			entry.inttype.storageType = TokenToString(storageType);
 			entry.inttype.parent = TokenToString(parent);
@@ -698,46 +684,48 @@ void OutputC(Entry *root) {
 			OutputCRecord(entry, 0);
 			FilePrintFormat(output, "#ifdef %s_MEMBER_FUNCTIONS\n\t%s_MEMBER_FUNCTIONS\n#endif\n", entry->name, entry->name);
 			FilePrintFormat(output, "} %s;\n\n", entry->name);
-		} else if (entry->type == ENTRY_ENUM) {
-			bool isSyscallType = 0 == strcmp(entry->name, "EsSyscallType");
-			FilePrintFormat(output, "typedef enum %s {\n", entry->name);
+		} else if (entry->type == ENTRY_INTTYPE) {
+			if (0 == strcmp(entry->inttype.storageType, "enum")) {
+				bool isSyscallType = 0 == strcmp(entry->name, "EsSyscallType");
+				FilePrintFormat(output, "typedef enum %s {\n", entry->name);
 
-			if (outputEnumStringsArray.ready) {
-				FilePrintFormat(outputEnumStringsArray, "static const EnumString enumStrings_%s[] = {\n", entry->name);
-			}
-
-			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (entry->children[i].define.value) {
-					FilePrintFormat(output, "\t%s = %s,\n", entry->children[i].name, entry->children[i].define.value);
-				} else {
-					FilePrintFormat(output, "\t%s,\n", entry->children[i].name);
+				if (outputEnumStringsArray.ready) {
+					FilePrintFormat(outputEnumStringsArray, "static const EnumString enumStrings_%s[] = {\n", entry->name);
 				}
 
-				if (isSyscallType && outputSyscallArray.ready) {
-					FilePrintFormat(outputSyscallArray, "Do%s,\n", entry->children[i].name);
+				for (int i = 0; i < arrlen(entry->children); i++) {
+					if (entry->children[i].define.value) {
+						FilePrintFormat(output, "\t%s = %s,\n", entry->children[i].name, entry->children[i].define.value);
+					} else {
+						FilePrintFormat(output, "\t%s,\n", entry->children[i].name);
+					}
+
+					if (isSyscallType && outputSyscallArray.ready) {
+						FilePrintFormat(outputSyscallArray, "Do%s,\n", entry->children[i].name);
+					}
+
+					if (outputEnumStringsArray.ready) {
+						FilePrintFormat(outputEnumStringsArray, "\t{ \"%s\", %s },\n", entry->children[i].name, 
+								entry->children[i].define.value ?: "-1");
+					}
 				}
 
 				if (outputEnumStringsArray.ready) {
-					FilePrintFormat(outputEnumStringsArray, "\t{ \"%s\", %s },\n", entry->children[i].name, 
-							entry->children[i].define.value ?: "-1");
+					FilePrintFormat(outputEnumStringsArray, "\t{ nullptr, -1 },\n};\n\n");
 				}
-			}
 
-			if (outputEnumStringsArray.ready) {
-				FilePrintFormat(outputEnumStringsArray, "\t{ nullptr, -1 },\n};\n\n");
-			}
+				FilePrintFormat(output, "} %s;\n\n", entry->name);
+			} else {
+				FilePrintFormat(output, "typedef %s %s;\n", entry->inttype.parent ? entry->inttype.parent : entry->inttype.storageType, entry->name);
 
-			FilePrintFormat(output, "} %s;\n\n", entry->name);
-		} else if (entry->type == ENTRY_INTTYPE) {
-			FilePrintFormat(output, "typedef %s %s;\n", entry->inttype.parent ? entry->inttype.parent : entry->inttype.storageType, entry->name);
-
-			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
-					FilePrintFormat(output, "#define %s ((%s) 1 << %s)\n", 
-							entry->children[i].name, entry->name, entry->children[i].define.value + 4);
-				} else {
-					FilePrintFormat(output, "#define %s ((%s) (%s))\n", 
-							entry->children[i].name, entry->name, entry->children[i].define.value);
+				for (int i = 0; i < arrlen(entry->children); i++) {
+					if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
+						FilePrintFormat(output, "#define %s ((%s) 1 << %s)\n", 
+								entry->children[i].name, entry->name, entry->children[i].define.value + 4);
+					} else {
+						FilePrintFormat(output, "#define %s ((%s) (%s))\n", 
+								entry->children[i].name, entry->name, entry->children[i].define.value);
+					}
 				}
 			}
 		} else if (entry->type == ENTRY_API_TYPE) {
@@ -925,15 +913,6 @@ void OutputOdinFunction(Entry *entry, Entry *root) {
 				for (int i = 0; i < arrlen(root->children); i++) {
 					Entry *entry = root->children + i;
 
-					if (entry->type == ENTRY_ENUM && 0 == strcmp(variable->variable.type, entry->name)) {
-						needLeadingDot = true;
-						break;
-					}
-				}
-
-				for (int i = 0; i < arrlen(root->children); i++) {
-					Entry *entry = root->children + i;
-
 					if (entry->type == ENTRY_INTTYPE && 0 == strcmp(variable->variable.type, entry->name)) {
 						break;
 					}
@@ -1013,7 +992,6 @@ void OutputOdin(Entry *root) {
 			const char *name = TrimPrefix(entry->name);
 			const char *value = OdinReplaceTypes(entry->define.value, false);
 
-			const char *enumPrefix = NULL;
 			char e[64];
 			int ep = 0;
 
@@ -1027,44 +1005,23 @@ void OutputOdin(Entry *root) {
 				}
 			}
 
-			for (int i = 0; i < arrlen(root->children); i++) {
-				if (root->children[i].type == ENTRY_ENUM) {
-					for (int j = 0; j < arrlen(root->children[i].children); j++) {
-						const char *enumName = TrimPrefix(root->children[i].children[j].name);
-
-						if (0 == strcmp(enumName, e)) {
-							enumPrefix = TrimPrefix(root->children[i].name);
-							value = enumName;
-							goto gotEnumPrefix;
-						}
-					}
-				}
-			}
-
-			gotEnumPrefix:;
-			FilePrintFormat(output, "%s :: %s%s%s;\n", name, enumPrefix ? enumPrefix : "", enumPrefix ? "." : "", value);
+			FilePrintFormat(output, "%s :: %s;\n", name, value);
 		} else if (entry->type == ENTRY_STRUCT) {
 			FilePrintFormat(output, "%s :: struct {\n", TrimPrefix(entry->name));
 			OutputOdinRecord(entry, 0);
 			FilePrintFormat(output, "}\n");
-		} else if (entry->type == ENTRY_ENUM) {
-			FilePrintFormat(output, "%s :: enum i32 {\n", TrimPrefix(entry->name));
-
-			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (entry->children[i].define.value) {
-					FilePrintFormat(output, "\t%s = %s,\n", TrimPrefix(entry->children[i].name), entry->children[i].define.value);
-				} else {
-					FilePrintFormat(output, "\t%s,\n", TrimPrefix(entry->children[i].name));
-				}
-			}
-
-			FilePrintFormat(output, "}\n");
 		} else if (entry->type == ENTRY_INTTYPE) {
+			uint32_t autoIndex = 0;
+
 			FilePrintFormat(output, "%s :: %s;\n", TrimPrefix(entry->name), 
-					entry->inttype.parent ? TrimPrefix(entry->inttype.parent) : entry->inttype.storageType);
+					entry->inttype.parent ? TrimPrefix(entry->inttype.parent) 
+					: 0 == strcmp(entry->inttype.storageType, "enum") ? "i32" : entry->inttype.storageType);
 
 			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
+				if (!entry->children[i].define.value) {
+					FilePrintFormat(output, "%s :: %d;\n", 
+							TrimPrefix(entry->children[i].name), autoIndex++);
+				} else if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
 					FilePrintFormat(output, "%s :: 1 << %s;\n", 
 							TrimPrefix(entry->children[i].name), entry->children[i].define.value + 4);
 				} else {
@@ -1279,18 +1236,6 @@ void OutputZig(Entry *root) {
 			FilePrintFormat(output, "pub const %s = extern struct {\n", TrimPrefix(entry->name));
 			OutputZigRecord(entry, 0, false);
 			FilePrintFormat(output, "};\n");
-		} else if (entry->type == ENTRY_ENUM) {
-			FilePrintFormat(output, "pub const %s = extern enum {\n", TrimPrefix(entry->name));
-
-			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (entry->children[i].define.value) {
-					FilePrintFormat(output, "    %s = %s,\n", TrimPrefix(entry->children[i].name), ZigRemoveTabs(entry->children[i].define.value));
-				} else {
-					FilePrintFormat(output, "    %s,\n", TrimPrefix(entry->children[i].name));
-				}
-			}
-
-			FilePrintFormat(output, "};\n");
 		} else if (entry->type == ENTRY_API_TYPE) {
 			bool hasParent = 0 != strcmp(entry->apiType.parent, "none");
 			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), hasParent ? TrimPrefix(entry->apiType.parent) : "?*u8");
@@ -1299,14 +1244,20 @@ void OutputZig(Entry *root) {
 		} else if (entry->type == ENTRY_TYPE_NAME) {
 			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), TrimPrefix(ZigReplaceTypes(entry->oldTypeName, true)));
 		} else if (entry->type == ENTRY_INTTYPE) {
+			uint32_t autoIndex = 0;
+
 			FilePrintFormat(output, "pub const %s = %s;\n", TrimPrefix(entry->name), 
-					TrimPrefix(ZigReplaceTypes(entry->inttype.storageType, true)));
+					0 == strcmp(entry->inttype.storageType, "enum") ? "i32" 
+					: TrimPrefix(ZigReplaceTypes(entry->inttype.storageType, true)));
 
 			for (int i = 0; i < arrlen(entry->children); i++) {
-				if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
+				if (!entry->children[i].define.value) {
+					FilePrintFormat(output, "pub const %s = %d;\n", 
+							TrimPrefix(entry->children[i].name), autoIndex++);
+				} else if (0 == memcmp(entry->children[i].define.value, "bit ", 4)) {
 					FilePrintFormat(output, "pub const %s = 1 << %s;\n", 
 							TrimPrefix(entry->children[i].name), entry->children[i].define.value + 4);
-				} else {
+				} else if (entry->children[i].define.value) {
 					FilePrintFormat(output, "pub const %s = %s;\n", 
 							TrimPrefix(entry->children[i].name), entry->children[i].define.value);
 				}
@@ -1471,9 +1422,6 @@ void OutputScript(Entry *root) {
 									if (ScriptWriteBasicType(root->children[k].variable.type)) {
 										foundType = true;
 									}
-								} else if (root->children[k].type == ENTRY_ENUM) {
-									FilePrintFormat(output, "%s", root->children[k].name);
-									foundType = true;
 								} else if (root->children[k].type == ENTRY_STRUCT) {
 									FilePrintFormat(output, "%s", root->children[k].name);
 									foundType = true;
@@ -1576,9 +1524,6 @@ void OutputScript(Entry *root) {
 								if (ScriptWriteBasicType(root->children[k].variable.type)) {
 									foundType = true;
 								}
-							} else if (root->children[k].type == ENTRY_ENUM) {
-								FilePrintFormat(output, "%s", root->children[k].name);
-								foundType = true;
 							} else if (root->children[k].type == ENTRY_STRUCT) {
 								FilePrintFormat(output, "%s", root->children[k].name);
 								foundType = true;
@@ -1674,10 +1619,6 @@ void OutputScript(Entry *root) {
 							FilePrintFormat(output, "%s", root->children[k].name);
 							foundType = true;
 							break;
-						} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
-							FilePrintFormat(output, "%s", root->children[k].name);
-							foundType = true;
-							break;
 						} else if (root->children[k].type == ENTRY_STRUCT && e.variable.pointer == 0) {
 							FilePrintFormat(output, "%s", root->children[k].name);
 							foundType = true;
@@ -1760,8 +1701,6 @@ int AnalysisResolve(Entry *root, Entry e, Entry **unresolved, Entry *resolved, E
 		if (strcmp(e.variable.type, root->children[k].name)) continue;
 
 		if (root->children[k].type == ENTRY_TYPE_NAME && e.variable.pointer == 0) {
-			return 1;
-		} else if (root->children[k].type == ENTRY_ENUM && e.variable.pointer == 0) {
 			return 1;
 		} else if (root->children[k].type == ENTRY_INTTYPE && e.variable.pointer == 0) {
 			return 1;

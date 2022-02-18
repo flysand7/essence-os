@@ -1,4 +1,4 @@
-enum EsStandardIcon { // Taken from the elementary icon pack, see res/Icons for license.
+inttype EsStandardIcon enum none { // Taken from the elementary icon pack, see res/Icons for license.
 	ES_ICON_NONE
 	ES_ICON_ACTION_UNAVAILABLE_SYMBOLIC
 	ES_ICON_ADDRESS_BOOK_NEW

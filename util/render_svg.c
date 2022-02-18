@@ -164,7 +164,7 @@ void GenerateMainIconPack() {
 
 	{
 		FILE *f = fopen("desktop/icons.header", "wb");
-		fprintf(f, "%s", "enum EsStandardIcon { // Taken from the elementary icon pack, see res/Icons for license.\n\tES_ICON_NONE\n");
+		fprintf(f, "%s", "inttype EsStandardIcon enum none { // Taken from the elementary icon pack, see res/Icons for license.\n\tES_ICON_NONE\n");
 		fclose(f);
 	}
 
