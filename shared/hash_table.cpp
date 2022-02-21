@@ -87,8 +87,8 @@ HashTableSlot *_HashTableGetSlot(HashTable *table, HashTableKey *key, bool useLo
 		}
 	}
 
-	EsAssert(false);
-	return nullptr;
+	EsAssert(firstTombstone);
+	return firstTombstone;
 }
 
 HashTableSlot *HashTableGetSlot(HashTable *table, HashTableKey key, bool useLongKeys) {
