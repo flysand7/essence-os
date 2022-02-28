@@ -6,7 +6,6 @@
 // 	- Enums, bitsets.
 // 	- Named optional arguments with default values.
 // 	- Accessing structs and functypes from inline modules.
-// 	- For each syntax: for type identifier; list block
 // 	- Error types.
 
 // TODO Larger missing features:
@@ -75,26 +74,27 @@
 #define T_COLON               (67)
 #define T_LOGICAL_NOT         (68)
 
-#define T_ROOT                (80)
-#define T_FUNCBODY            (81)
-#define T_ARGUMENTS           (82)
-#define T_ARGUMENT            (83)
-#define T_FUNCTION            (84)
-#define T_BLOCK               (85)
-#define T_VARIABLE            (86)
-#define T_CALL                (87)
-#define T_DECLARE             (88)
-#define T_FUNCPTR             (89)
-#define T_STR_INTERPOLATE     (90)
-#define T_INDEX               (91)
-#define T_LIST                (92)
-#define T_IMPORT_PATH         (93)
-#define T_LIST_LITERAL        (94)
-#define T_REPL_RESULT         (95)
-#define T_RETURN_TUPLE        (96)
-#define T_DECLARE_GROUP       (97)
-#define T_DECL_GROUP_AND_SET  (98)
-#define T_SET_GROUP           (99)
+#define T_ROOT                (70)
+#define T_FUNCBODY            (71)
+#define T_ARGUMENTS           (72)
+#define T_ARGUMENT            (73)
+#define T_FUNCTION            (74)
+#define T_BLOCK               (75)
+#define T_VARIABLE            (76)
+#define T_CALL                (77)
+#define T_DECLARE             (78)
+#define T_FUNCPTR             (79)
+#define T_STR_INTERPOLATE     (80)
+#define T_INDEX               (81)
+#define T_LIST                (82)
+#define T_IMPORT_PATH         (83)
+#define T_LIST_LITERAL        (84)
+#define T_REPL_RESULT         (85)
+#define T_RETURN_TUPLE        (86)
+#define T_DECLARE_GROUP       (87)
+#define T_DECL_GROUP_AND_SET  (88)
+#define T_SET_GROUP           (89)
+#define T_FOR_EACH            (90)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -108,6 +108,7 @@
 #define T_DUP                 (109)
 #define T_SWAP                (110)
 #define T_INTERPOLATE_ILIST   (111)
+#define T_ROT3                (112)
 
 #define T_FLOAT_ADD           (120)
 #define T_FLOAT_MINUS         (121)
@@ -170,6 +171,7 @@
 #define T_INLINE              (181)
 #define T_AWAIT               (182)
 #define T_TUPLE               (183)
+#define T_IN                  (184)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -916,6 +918,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("for") token.type = T_FOR;
 			else if KEYWORD("functype") token.type = T_FUNCTYPE;
 			else if KEYWORD("if") token.type = T_IF;
+			else if KEYWORD("in") token.type = T_IN;
 			else if KEYWORD("int") token.type = T_INT;
 			else if KEYWORD("new") token.type = T_NEW;
 			else if KEYWORD("null") token.type = T_NULL;
@@ -1460,13 +1463,13 @@ Node *ParseIf(Tokenizer *tokenizer) {
 	return node;
 }
 
-Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) {
+Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode, bool allowIn) {
 	Tokenizer copy = *tokenizer;
 	bool isVariableDeclaration = false;
 
 	if (ParseType(tokenizer, true, false /* allow void */, false /* allow tuple */) && TokenNext(tokenizer).type == T_IDENTIFIER) {
 		Token token = TokenNext(tokenizer);
-		isVariableDeclaration = token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA;
+		isVariableDeclaration = token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA || token.type == T_IN;
 	}
 
 	if (tokenizer->error) {
@@ -1489,10 +1492,13 @@ Node *ParseVariableDeclarationOrExpression(Tokenizer *tokenizer, bool replMode) 
 		declaration->token = TokenNext(tokenizer);
 		Assert(declaration->token.type == T_IDENTIFIER);
 
+		Tokenizer copy = *tokenizer;
 		Token token = TokenNext(tokenizer);
-		Assert(token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA);
+		Assert(token.type == T_EQUALS || token.type == T_SEMICOLON || token.type == T_COMMA || token.type == T_IN);
 
-		if (token.type == T_EQUALS) {
+		if (token.type == T_IN && allowIn) {
+			*tokenizer = copy;
+		} else if (token.type == T_EQUALS) {
 			declaration->firstChild->sibling = ParseExpression(tokenizer, false, 0);
 			if (!declaration->firstChild->sibling) return NULL;
 			Token semicolon = TokenNext(tokenizer);
@@ -1628,20 +1634,35 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
 			node->type = T_FOR;
 			node->token = TokenNext(tokenizer);
-			node->firstChild = ParseVariableDeclarationOrExpression(tokenizer, false);
+			node->firstChild = ParseVariableDeclarationOrExpression(tokenizer, false /* replMode */, true /* allowIn */);
 			if (!node->firstChild) return NULL;
-			node->firstChild->sibling = ParseExpression(tokenizer, false, 0);
-			if (!node->firstChild->sibling) return NULL;
+			Node **siblingLink = NULL;
+			Token peek = TokenPeek(tokenizer);
 
-			Token token = TokenNext(tokenizer);
-
-			if (token.type != T_SEMICOLON) {
-				PrintError2(tokenizer, node, "Expected a semicolon.\n");
+			if (tokenizer->error) {
 				return NULL;
-			}
+			} else if (peek.type == T_IN) {
+				node->type = T_FOR_EACH;
+				TokenNext(tokenizer);
+				node->firstChild->sibling = ParseExpression(tokenizer, false, 0);
+				if (!node->firstChild->sibling) return NULL;
+				siblingLink = &node->firstChild->sibling->sibling;
+			} else {
+				node->firstChild->sibling = ParseExpression(tokenizer, false, 0);
+				if (!node->firstChild->sibling) return NULL;
 
-			node->firstChild->sibling->sibling = ParseExpression(tokenizer, true, 0);
-			if (!node->firstChild->sibling->sibling) return NULL;
+				Token token = TokenNext(tokenizer);
+
+				if (token.type != T_SEMICOLON) {
+					PrintError2(tokenizer, node, "Expected a semicolon.\n");
+					return NULL;
+				}
+
+				node->firstChild->sibling->sibling = ParseExpression(tokenizer, true, 0);
+				if (!node->firstChild->sibling->sibling) return NULL;
+
+				siblingLink = &node->firstChild->sibling->sibling->sibling;
+			}
 
 			token = TokenNext(tokenizer);
 
@@ -1651,11 +1672,11 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 			}
 
 			if (token.type == T_LEFT_FANCY) {
-				node->firstChild->sibling->sibling->sibling = ParseBlock(tokenizer, false);
-				if (!node->firstChild->sibling->sibling->sibling) return NULL;
+				*siblingLink = ParseBlock(tokenizer, false);
+				if (!(*siblingLink)) return NULL;
 			} else {
-				node->firstChild->sibling->sibling->sibling = (Node *) AllocateFixed(sizeof(Node));
-				node->firstChild->sibling->sibling->sibling->type = T_BLOCK;
+				*siblingLink = (Node *) AllocateFixed(sizeof(Node));
+				(*siblingLink)->type = T_BLOCK;
 			}
 
 			// Make sure that the for variable has its own scope.
@@ -1714,7 +1735,7 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 			*link = block;
 			link = &block->sibling;
 		} else {
-			Node *node = ParseVariableDeclarationOrExpression(tokenizer, replMode);
+			Node *node = ParseVariableDeclarationOrExpression(tokenizer, replMode, false /* allowIn */);
 			if (!node) return NULL;
 			*link = node;
 			link = &node->sibling;
@@ -2710,6 +2731,18 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			PrintError2(tokenizer, node, "The expression used for the condition must evaluate to a boolean.\n");
 			return false;
 		}
+	} else if (node->type == T_FOR_EACH) {
+		Node *listType = node->firstChild->sibling->expressionType;
+
+		if (!listType || listType->type != T_LIST) {
+			PrintError2(tokenizer, node, "The expression on the right of 'in' must be a list.\n");
+			return false;
+		}
+
+		if (!ASTMatching(node->firstChild->expressionType, listType->firstChild)) {
+			PrintError2(tokenizer, node, "The variable on the left of 'in' must match the type of the items in the list on the right.\n");
+			return false;
+		}
 	} else if (node->type == T_INDEX) {
 		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)
 				&& node->firstChild->expressionType->type != T_LIST) {
@@ -3278,6 +3311,127 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		FunctionBuilderAppend(builder, &delta, sizeof(delta));
 		delta = builder->dataBytes - writeOffset;
 		MemoryCopy(builder->data + writeOffset, &delta, sizeof(delta));
+		return true;
+	} else if (node->type == T_FOR_EACH) {
+		Node *declare = node->firstChild;
+		Node *list = node->firstChild->sibling;
+		Node *body = node->firstChild->sibling->sibling;
+
+		if (declare->type != T_DECLARE) {
+			PrintError2(tokenizer, node, "The left of a for-in statement must be a variable declaration.\n");
+			return false;
+		}
+
+		// Declare the iteration variable.
+		if (!FunctionBuilderRecurse(tokenizer, declare, builder, false)) return false;
+
+		// Push the starting index of 0.
+		uint8_t b = T_NUMERIC_LITERAL;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		Value v;
+		v.i = 0;
+		FunctionBuilderAppend(builder, &v, sizeof(v));
+
+		// Push the list.
+		if (!FunctionBuilderRecurse(tokenizer, list, builder, false)) return false;
+
+		int32_t start = builder->dataBytes;
+
+		// Check whether the index is less than the list length.
+		// Stack: list, index, ...
+		b = T_SWAP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, list, ...
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, index, list, ...
+		b = T_ROT3;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, index, index, ...
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, list, index, index, ...
+		b = T_OP_LEN;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: length, list, index, index, ...
+		b = T_ROT3;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, length, list, index, ...
+		b = T_GREATER_THAN;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: comparison, list, index, ...
+
+		FunctionBuilderAddLineNumber(builder, node);
+		b = T_IF;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		uintptr_t writeOffset = builder->dataBytes;
+		uint32_t zero = 0;
+		FunctionBuilderAppend(builder, &zero, sizeof(zero));
+
+		// Get the value out of the list.
+		// Stack: list, index, ...
+		b = T_SWAP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, list, ...
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, index, list, ...
+		b = T_ROT3;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, index, index, ...
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, list, index, index, ...
+		b = T_ROT3;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, list, list, index, ...
+		b = T_INDEX_LIST;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, index, ...
+
+		// Set the iteration variable.
+		Node *variableNode = (Node *) AllocateFixed(sizeof(Node));
+		variableNode->type = T_IDENTIFIER;
+		variableNode->token = declare->token;
+		variableNode->scope = node->scope;
+		variableNode->parent = node;
+		FunctionBuilderVariable(tokenizer, builder, variableNode, true);
+		b = T_EQUALS;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &builder->scopeIndex, sizeof(builder->scopeIndex));
+
+		// Output the body.
+		if (!FunctionBuilderRecurse(tokenizer, body, builder, false)) return false;
+
+		// Increment the index.
+		// Stack: list, index, ...
+		b = T_SWAP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: index, list, ...
+		b = T_NUMERIC_LITERAL;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		v.i = 1;
+		FunctionBuilderAppend(builder, &v, sizeof(v));
+		// Stack: 1, index, list, ...
+		b = T_ADD;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: new index, list, ...
+		b = T_SWAP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		// Stack: list, new index, ...
+
+		b = T_BRANCH;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		int32_t delta = start - builder->dataBytes;
+		FunctionBuilderAppend(builder, &delta, sizeof(delta));
+		delta = builder->dataBytes - writeOffset;
+		MemoryCopy(builder->data + writeOffset, &delta, sizeof(delta));
+
+		// Pop the list and index.
+		b = T_POP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+
 		return true;
 	} else if (node->type == T_IF) {
 		if (!FunctionBuilderRecurse(tokenizer, node->firstChild, builder, false)) return false;
@@ -4471,6 +4625,20 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stack[context->c->stackPointer - 2] = v1;
 			context->c->stackIsManaged[context->c->stackPointer - 1] = m2;
 			context->c->stackIsManaged[context->c->stackPointer - 2] = m1;
+		} else if (command == T_ROT3) {
+			if (context->c->stackPointer < 3) return -1;
+			Value v1 = context->c->stack[context->c->stackPointer - 1];
+			Value v2 = context->c->stack[context->c->stackPointer - 2];
+			Value v3 = context->c->stack[context->c->stackPointer - 3];
+			bool m1 = context->c->stackIsManaged[context->c->stackPointer - 1];
+			bool m2 = context->c->stackIsManaged[context->c->stackPointer - 2];
+			bool m3 = context->c->stackIsManaged[context->c->stackPointer - 3];
+			context->c->stack[context->c->stackPointer - 1] = v3;
+			context->c->stack[context->c->stackPointer - 2] = v1;
+			context->c->stack[context->c->stackPointer - 3] = v2;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = m3;
+			context->c->stackIsManaged[context->c->stackPointer - 2] = m1;
+			context->c->stackIsManaged[context->c->stackPointer - 3] = m2;
 		} else if (command == T_ASSERT) {
 			if (context->c->stackPointer < 1) return -1;
 			Value condition = context->c->stack[--context->c->stackPointer];
