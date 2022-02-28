@@ -156,6 +156,7 @@ void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const c
 	PrintLine(lineNumber.importData, lineNumber.lineNumber);
 	PrintDebug("Back trace:\n");
 	PrintBackTrace(context, instructionPointer, context->c, "");
+	va_end(arguments);
 }
 
 void *FileLoad(const char *path, size_t *length) {
