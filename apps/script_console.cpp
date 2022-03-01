@@ -163,6 +163,42 @@ void *FileLoad(const char *path, size_t *length) {
 	return EsFileReadAll(path, -1, length);
 }
 
+#define RETURN_ERROR(error) do { MakeError(context, returnValue, error); return EXTCALL_RETURN_ERR_ERROR; } while (0)
+
+void MakeError(ExecutionContext *context, Value *returnValue, EsError error) {
+	const char *text = nullptr;
+
+	if (error == ES_ERROR_OPERATION_BLOCKED) text = "OPERATION_BLOCKED";
+	if (error == ES_ERROR_ACCESS_NOT_WITHIN_FILE_BOUNDS) text = "ACCESS_NOT_WITHIN_FILE_BOUNDS";
+	if (error == ES_ERROR_DIRECTORY_NOT_EMPTY) text = "DIRECTORY_NOT_EMPTY";
+	if (error == ES_ERROR_NODE_DELETED) text = "NODE_DELETED";
+	if (error == ES_ERROR_FILE_TOO_LARGE) text = "FILE_TOO_LARGE";
+	if (error == ES_ERROR_DRIVE_FULL) text = "DRIVE_FULL";
+	if (error == ES_ERROR_CORRUPT_DATA) text = "CORRUPT_DATA";
+	if (error == ES_ERROR_INVALID_NAME) text = "INVALID_NAME";
+	if (error == ES_ERROR_FILE_ON_READ_ONLY_VOLUME) text = "FILE_ON_READ_ONLY_VOLUME";
+	if (error == ES_ERROR_PATH_NOT_WITHIN_MOUNTED_VOLUME) text = "PATH_NOT_WITHIN_MOUNTED_VOLUME";
+	if (error == ES_ERROR_PATH_NOT_TRAVERSABLE) text = "PATH_NOT_TRAVERSABLE";
+	if (error == ES_ERROR_DEVICE_REMOVED) text = "DEVICE_REMOVED";
+	if (error == ES_ERROR_INCORRECT_NODE_TYPE) text = "INCORRECT_NODE_TYPE";
+	if (error == ES_ERROR_FILE_DOES_NOT_EXIST) text = "FILE_DOES_NOT_EXIST";
+	if (error == ES_ERROR_VOLUME_MISMATCH) text = "VOLUME_MISMATCH";
+	if (error == ES_ERROR_TARGET_WITHIN_SOURCE) text = "TARGET_WITHIN_SOURCE";
+	if (error == ES_ERROR_UNKNOWN) text = "UNKNOWN";
+	if (error == ES_ERROR_ALREADY_EXISTS) text = "ALREADY_EXISTS";
+	if (error == ES_ERROR_CANCELLED) text = "CANCELLED";
+	if (error == ES_ERROR_INSUFFICIENT_RESOURCES) text = "INSUFFICIENT_RESOURCES";
+	if (error == ES_ERROR_PERMISSION_NOT_GRANTED) text = "PERMISSION_NOT_GRANTED";
+	if (error == ES_ERROR_UNSUPPORTED) text = "UNSUPPORTED";
+	if (error == ES_ERROR_HARDWARE_FAILURE) text = "HARDWARE_FAILURE";
+
+	if (text) {
+		RETURN_STRING_COPY(text, EsCStringLength(text));
+	} else {
+		returnValue->i = 0;
+	}
+}
+
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	(void) context;
 	EsAssert(false); // TODO.
@@ -173,21 +209,21 @@ int ExternalLog(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	AddLogOutput(scriptInstance, entryText, entryBytes);
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalLogOpenGroup(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	AddLogOpenGroup(scriptInstance, entryText, entryBytes);
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalLogClose(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	(void) returnValue;
 	AddLogClose(scriptInstance);
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char *mode) {
@@ -197,7 +233,7 @@ int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char
 	context->heap[index].bytes = EsStringFormat(buffer, 16, "%z", mode);
 	context->heap[index].text = buffer;
 	returnValue->i = index;
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalTextColorError    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "\a#DB002A]"); }
@@ -218,25 +254,25 @@ int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
 	if (context->c->stackPointer < 1) return -1;
 	int64_t ms = context->c->stack[--context->c->stackPointer].i;
 	if (ms > 0) EsSleep(ms); 
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	RETURN_STRING_COPY("Essence", 7);
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	returnValue->i = 0;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	returnValue->i = EsSystemGetOptimalWorkQueueThreadCount();
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
@@ -246,22 +282,21 @@ int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
 	if (max < min) { PrintError4(context, 0, "RandomInt() called with maximum limit (%ld) less than the minimum limit (%ld).\n", max, min); return 0; }
 	returnValue->i = EsRandomU64() % (max - min + 1) + min;
 	context->c->stackPointer -= 2;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	EsError error = EsPathCreate(entryText, entryBytes, ES_NODE_DIRECTORY, false);
-	returnValue->i = error == ES_SUCCESS || error == ES_ERROR_ALREADY_EXISTS;
-	return 2;
+	if (error == ES_SUCCESS || error == ES_ERROR_ALREADY_EXISTS) return EXTCALL_RETURN_ERR_UNMANAGED;
+	RETURN_ERROR(error);
 }
 
 int ExternalPathExists(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = EsPathExists(entryText, entryBytes) ? 1 : 0;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsFile(ExecutionContext *context, Value *returnValue) {
@@ -270,7 +305,7 @@ int ExternalPathIsFile(ExecutionContext *context, Value *returnValue) {
 	EsNodeType type;
 	returnValue->i = EsPathExists(entryText, entryBytes, &type) ? 1 : 0;
 	if (type != ES_NODE_FILE) returnValue->i = 0;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsDirectory(ExecutionContext *context, Value *returnValue) {
@@ -279,44 +314,46 @@ int ExternalPathIsDirectory(ExecutionContext *context, Value *returnValue) {
 	EsNodeType type;
 	returnValue->i = EsPathExists(entryText, entryBytes, &type) ? 1 : 0;
 	if (type != ES_NODE_DIRECTORY) returnValue->i = 0;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsLink(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
-	returnValue->i = EsPathMove(entryText, entryBytes, entry2Text, entry2Bytes) == ES_SUCCESS;
-	return 2;
+	EsError error = EsPathMove(entryText, entryBytes, entry2Text, entry2Bytes);
+	if (error != ES_SUCCESS) RETURN_ERROR(error);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = EsPathDelete(entryText, entryBytes) == ES_SUCCESS;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
 	size_t length = 0;
-	void *data = EsFileReadAll(entryText, entryBytes, &length); // Free with EsHeapFree.
-	if (!data) return 3;
+	EsError error;
+	void *data = EsFileReadAll(entryText, entryBytes, &length, &error); // Free with EsHeapFree.
+	if (!data) RETURN_ERROR(error);
 	RETURN_STRING_NO_COPY((char *) data, length);
-	return 3;
+	return EXTCALL_RETURN_ERR_MANAGED;
 }
 
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
-	returnValue->i = EsFileWriteAll(entryText, entryBytes, entry2Text, entry2Bytes) == ES_SUCCESS; 
-	return 2;
+	EsError error = EsFileWriteAll(entryText, entryBytes, entry2Text, entry2Bytes);
+	if (error != ES_SUCCESS) RETURN_ERROR(error);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
@@ -325,25 +362,34 @@ int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
 	EsFileInformation information = EsFileOpen(entryText, entryBytes, ES_FILE_WRITE);
 
 	if (information.error == ES_SUCCESS) {
-		returnValue->i = EsFileWriteSync(information.handle, information.size, entry2Bytes, entry2Text);
+		EsError error = EsFileWriteSync(information.handle, information.size, entry2Bytes, entry2Text);
 		EsHandleClose(information.handle);
+
+		if (ES_CHECK_ERROR(error)) {
+			RETURN_ERROR(error);
+		}
+	} else {
+		RETURN_ERROR(information.error);
 	}
 
-	return 2;
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	EsDirectoryChild information;
 	bool exists = EsPathQueryInformation(entryText, entryBytes, &information);
-	returnValue->i = exists && information.type == ES_NODE_FILE ? information.fileSize : -1;
-	return 2;
+	if (!exists) RETURN_ERROR(ES_ERROR_FILE_DOES_NOT_EXIST);
+	if (information.type != ES_NODE_FILE) RETURN_ERROR(ES_ERROR_INCORRECT_NODE_TYPE);
+	returnValue->i = information.fileSize;
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
-	returnValue->i = EsFileCopy(entryText, entryBytes, entry2Text, entry2Bytes) == ES_SUCCESS;
-	return 2;
+	EsError error = EsFileCopy(entryText, entryBytes, entry2Text, entry2Bytes);
+	if (error != ES_SUCCESS) RETURN_ERROR(error);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue) {
@@ -351,9 +397,9 @@ int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *r
 	EsHeapFree(directoryIterationBuffer);
 	EsError error;
 	directoryIterationBuffer = EsDirectoryEnumerateChildren(entryText, entryBytes, &directoryIterationBufferCount, &error);
-	returnValue->i = error == ES_SUCCESS ? 1 : 0;
 	directoryIterationBufferPosition = 0;
-	return 2;
+	if (error == ES_SUCCESS) return EXTCALL_RETURN_ERR_UNMANAGED;
+	RETURN_ERROR(error);
 }
 
 int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue) {
@@ -363,7 +409,7 @@ int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *ret
 	directoryIterationBuffer = nullptr;
 	directoryIterationBufferPosition = 0;
 	directoryIterationBufferCount = 0;
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue) {
@@ -377,7 +423,7 @@ int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *re
 		directoryIterationBufferPosition++;
 	}
 
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue) {
@@ -408,7 +454,7 @@ int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue)
 	EsAssert(!buffer.error);
 	returnValue->i = index;
 
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 #define EXTERNAL_STUB(name) int name(ExecutionContext *, Value *) { EsPrint("Unimplemented " #name "\n"); EsAssert(false); return -1; }
@@ -773,6 +819,31 @@ void AddREPLResult(ExecutionContext *context, EsElement *parent, Node *type, Val
 			EsHeapFree(buffer);
 		} else {
 			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), EsLiteral("Binary data string.\n"));
+		}
+	} else if (type->type == T_ERR) {
+		if (value.i) {
+			EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);
+			HeapEntry *entry = &context->heap[value.i];
+
+			if (entry->success) {
+				if (type->firstChild->type == T_VOID) {
+					EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
+							EsLiteral("Success.\n"));
+				} else {
+					AddREPLResult(context, parent, type->firstChild, entry->errorValue);
+				}
+			} else {
+				EsAssert(context->heapEntriesAllocated > (uint64_t) entry->errorValue.i);
+				const char *valueText;
+				size_t valueBytes;
+				ScriptHeapEntryToString(context, &context->heap[entry->errorValue.i], &valueText, &valueBytes);
+				char buffer[100];
+				size_t bytes = EsStringFormat(buffer, sizeof(buffer), "Error: %s.\n", valueBytes, valueText);
+				EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), buffer, bytes);
+			}
+		} else {
+			EsTextDisplayCreate(parent, ES_CELL_H_FILL, EsStyleIntern(&styleOutputParagraphItalic), 
+					EsLiteral("Error: UNKNOWN.\n"));
 		}
 	} else if (type->type == T_LIST && type->firstChild->type == T_STRUCT) {
 		EsAssert(context->heapEntriesAllocated > (uint64_t) value.i);

@@ -11,6 +11,7 @@
 // 	- Serialization.
 // 	- Debugging.
 // 	- Verbose mode, where every external call is logged, every variable modification is logged, every line is logged, etc? Saving output to file.
+// 	- Saving and showing the stack trace of where T_ERR values were created in assertion failure messages.
 
 // TODO Cleanup:
 // 	- Cleanup the code in External- functions and ScriptExecuteFunction using macros for common stack and heap operations.
@@ -36,6 +37,14 @@
 #include <stdbool.h>
 
 #define FUNCTION_MAX_ARGUMENTS (20) // Also the maximum number of return values in a tuple.
+
+#define EXTCALL_NO_RETURN            (1)
+#define EXTCALL_RETURN_UNMANAGED     (2)
+#define EXTCALL_RETURN_MANAGED       (3)
+#define EXTCALL_START_COROUTINE      (4)
+#define EXTCALL_RETURN_ERR_UNMANAGED (5)
+#define EXTCALL_RETURN_ERR_MANAGED   (6)
+#define EXTCALL_RETURN_ERR_ERROR     (7)
 
 #define T_ERROR               (0)
 #define T_EOF                 (1)
@@ -179,6 +188,7 @@
 #define T_IN                  (194)
 #define T_ERR                 (195)
 #define T_SUCCESS             (196)
+#define T_RETERR              (197)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -446,7 +456,7 @@ void ExternalPassREPLResult(ExecutionContext *context, Value value);
 char baseModuleSource[] = {
 	// TODO Temporary.
 	"struct DirectoryChild { str name; bool isDirectory; int size; };"
-	"DirectoryChild[] Dir() { str[] names = DirectoryEnumerateChildren(\"0:\"); DirectoryChild[] result = new DirectoryChild[]; result:resize(names:len()); for int i = 0; i < names:len(); i += 1 { result[i] = new DirectoryChild; result[i].name = names[i]; result[i].isDirectory = PathIsDirectory(\"0:/\"+names[i]); result[i].size = FileGetSize(\"0:/\"+names[i]); } return result;}"
+	"DirectoryChild[] Dir() { str[] names = DirectoryEnumerateChildren(\"0:\"):assert(); DirectoryChild[] result = new DirectoryChild[]; result:resize(names:len()); for int i = 0; i < names:len(); i += 1 { result[i] = new DirectoryChild; result[i].name = names[i]; result[i].isDirectory = PathIsDirectory(\"0:/\"+names[i]); result[i].size = FileGetSize(\"0:/\"+names[i]):default(-1); } return result;}"
 	"str[] OpenDocumentEnumerate() #extcall;"
 
 	// Logging:
@@ -541,22 +551,22 @@ char baseModuleSource[] = {
 	"bool PathIsFile(str source) #extcall;"
 	"bool PathIsDirectory(str source) #extcall;"
 	"bool PathIsLink(str source) #extcall;"
-	"bool PathCreateDirectory(str x) #extcall;" // TODO Replace the return value with a enum.
-	"bool PathDelete(str x) #extcall;" // TODO Replace the return value with a enum.
-	"bool PathMove(str source, str destination) #extcall;"
+	"err[void] PathCreateDirectory(str x) #extcall;"
+	"err[void] PathDelete(str x) #extcall;"
+	"err[void] PathMove(str source, str destination) #extcall;"
 	"str PathGetDefaultPrefix() #extcall;"
-	"bool PathSetDefaultPrefixToScriptSourceDirectory() #extcall;"
-	"str FileReadAll(str path) #extcall;" // TODO Returning an error?
-	"bool FileWriteAll(str path, str x) #extcall;" // TODO Returning an error?
-	"bool FileAppend(str path, str x) #extcall;" // TODO Returning an error?
-	"bool FileCopy(str source, str destination) #extcall;"
-	"int FileGetSize(str path) #extcall;" // Returns -1 on error. TODO Returning an error code.
+	"err[void] PathSetDefaultPrefixToScriptSourceDirectory() #extcall;"
+	"err[str] FileReadAll(str path) #extcall;"
+	"err[void] FileWriteAll(str path, str x) #extcall;"
+	"err[void] FileAppend(str path, str x) #extcall;"
+	"err[void] FileCopy(str source, str destination) #extcall;"
+	"err[int] FileGetSize(str path) #extcall;"
 					      
-	"bool _DirectoryInternalStartIteration(str path) #extcall;"
+	"err[void] _DirectoryInternalStartIteration(str path) #extcall;"
 	"str _DirectoryInternalNextIteration() #extcall;"
 	"void _DirectoryInternalEndIteration() #extcall;"
-	"bool _DirectoryInternalEnumerateChildren(str path, str prefix, str[] result, bool recurse) {"
-	"	if !_DirectoryInternalStartIteration(path) { return false; }"
+	"err[void] _DirectoryInternalEnumerateChildren(str path, str prefix, str[] result, bool recurse) {"
+	"	reterr _DirectoryInternalStartIteration(path);"
 	"	str child = _DirectoryInternalNextIteration();"
 	"	int start = result:len();"
 	"	while child != \"\" { result:add(child); child = _DirectoryInternalNextIteration(); }"
@@ -573,54 +583,60 @@ char baseModuleSource[] = {
 	"	for int i = start; i < end; i += 1 {"
 	"		result[i] = prefix + result[i];"
 	"	}"
-	"	return true;"
+	"	return #success;"
 	"}"
-	"str[] DirectoryEnumerateChildren(str path) {" // TODO Returning an error code.
+	"err[str[]] DirectoryEnumerateChildren(str path) {"
 	"	str[] result = new str[];"
-	"	if _DirectoryInternalEnumerateChildren(path, \"\", result, false) { return result; }"
-	"	return null;"
+	"	err[void] e = _DirectoryInternalEnumerateChildren(path, \"\", result, false);"
+	"	reterr e; return result;"
 	"}"
-	"str[] DirectoryEnumerateChildrenRecursively(str path) {" // TODO Returning an error code.
+	"err[str[]] DirectoryEnumerateChildrenRecursively(str path) {"
 	"	str[] result = new str[];"
-	"	if _DirectoryInternalEnumerateChildren(PathTrimTrailingSlash(path), \"\", result, true) { return result; }"
-	"	return null;"
+	"	err[void] e = _DirectoryInternalEnumerateChildren(PathTrimTrailingSlash(path), \"\", result, true);"
+	"	reterr e; return result;"
 	"}"
 
 	"str PathTrimTrailingSlash(str x) { if x:len() > 0 && x[x:len() - 1] == \"/\" { return StringSlice(x, 0, x:len() - 1); } return x; }"
 
-	"bool PathDeleteRecursively(str path) {"
-	"	str[] all = DirectoryEnumerateChildrenRecursively(path);"
-	"	if all == null { return false; }"
-	"	for int i = 0; i < all:len(); i += 1 {"
-	"		str p = path + \"/\" + all[i];"
-	"		if PathIsFile(p) || PathIsLink(p) {"
-	"			PathDelete(p);"
+	"err[void] PathDeleteRecursively(str path) {"
+	"	err[str[]] e = DirectoryEnumerateChildrenRecursively(path);"
+	"	if str[] all in e {"
+	"		for int i = 0; i < all:len(); i += 1 {"
+	"			str p = path + \"/\" + all[i];"
+	"			if PathIsFile(p) || PathIsLink(p) {"
+	"				PathDelete(p);"
+	"			}"
 	"		}"
-	"	}"
-	"	for int i = all:len(); i > 0; i -= 1 {"
-	"		str p = path + \"/\" + all[i - 1];"
-	"		if PathIsDirectory(p) {"
-	"			PathDelete(p);"
+	"		for int i = all:len(); i > 0; i -= 1 {"
+	"			str p = path + \"/\" + all[i - 1];"
+	"			if PathIsDirectory(p) {"
+	"				PathDelete(p);"
+	"			}"
 	"		}"
+	"		return PathDelete(path);"
+	"	} else {"
+	"		return new err[void] e:error();"
 	"	}"
-	"	return PathDelete(path);"
 	"}"
-	"bool PathCopyRecursively(str source, str destination) {"
-	"	str[] all = DirectoryEnumerateChildrenRecursively(source);"
-	"	if all == null { return false; }"
-	"	if !PathCreateDirectory(destination) { return false; }"
-	"	for int i = 0; i < all:len(); i += 1 {"
-	"		str sourceItem = source + \"/\" + all[i];"
-	"		str destinationItem = destination + \"/\" + all[i];"
-	"		if PathIsDirectory(sourceItem) {"
-	"			PathCreateDirectory(destinationItem);"
-	"		} else {"
-	"			if !FileCopy(sourceItem, destinationItem) { return false; }"
+	"err[void] PathCopyRecursively(str source, str destination) {"
+	"	err[str[]] e = DirectoryEnumerateChildrenRecursively(source);"
+	"	if str[] all in e {"
+	"		reterr PathCreateDirectory(destination);"
+	"		for int i = 0; i < all:len(); i += 1 {"
+	"			str sourceItem = source + \"/\" + all[i];"
+	"			str destinationItem = destination + \"/\" + all[i];"
+	"			if PathIsDirectory(sourceItem) {"
+	"				PathCreateDirectory(destinationItem);"
+	"			} else {"
+	"				reterr FileCopy(sourceItem, destinationItem);"
+	"			}"
 	"		}"
+	"		return #success;"
+	"	} else {"
+	"		return new err[void] e:error();"
 	"	}"
-	"	return true;"
 	"}"
-	"bool PathCopyInto(str sourceDirectory, str item, str destinationDirectory) {"
+	"err[void] PathCopyInto(str sourceDirectory, str item, str destinationDirectory) {"
 	"	str sourceItem = sourceDirectory + \"/\"+ item;"
 	"	str destinationItem = destinationDirectory + \"/\"+ item;"
 	"	PathCreateLeadingDirectories(PathGetLeadingDirectories(destinationItem));"
@@ -630,23 +646,27 @@ char baseModuleSource[] = {
 	"		return FileCopy(sourceItem, destinationItem);"
 	"	}"
 	"}"
-	"bool PathCopyAllInto(str sourceDirectory, str[] items, str destinationDirectory) {"
+	"err[void] PathCopyAllInto(str sourceDirectory, str[] items, str destinationDirectory) {"
 	"	for int i = 0; i < items:len(); i += 1 {"
-	"		if !PathCopyInto(sourceDirectory, items[i], destinationDirectory) { return false; }"
+	"		reterr PathCopyInto(sourceDirectory, items[i], destinationDirectory);"
 	"	}"
-	"	return true;"
+	"	return #success;"
 	"}"
-	"bool PathCopyFilteredInto(str sourceDirectory, str[] filter, int filterWildcard, str destinationDirectory) {"
-	"	str[] items;"
+	"err[void] PathCopyFilteredInto(str sourceDirectory, str[] filter, int filterWildcard, str destinationDirectory) {"
 	"	assert filter:len() > 0;"
-	"	if filterWildcard != -1 || filter:len() > 1 { items = DirectoryEnumerateChildrenRecursively(sourceDirectory); }"
-	"	else { items = DirectoryEnumerateChildren(sourceDirectory); }"
-	"	for int i = 0; i < items:len(); i += 1 {"
-	"		if PathMatchesFilter(items[i], filter, filterWildcard) {"
-	"			if !PathCopyInto(sourceDirectory, items[i], destinationDirectory) { return false; }"
+	"	err[str[]] e;"
+	"	if filterWildcard != -1 || filter:len() > 1 { e = DirectoryEnumerateChildrenRecursively(sourceDirectory); }"
+	"	else { e = DirectoryEnumerateChildren(sourceDirectory); }"
+	"	if str[] items in e {"
+	"		for int i = 0; i < items:len(); i += 1 {"
+	"			if PathMatchesFilter(items[i], filter, filterWildcard) {"
+	"				reterr PathCopyInto(sourceDirectory, items[i], destinationDirectory);"
+	"			}"
 	"		}"
+	"		return #success;"
+	"	} else {"
+	"		return new err[void] e:error();"
 	"	}"
-	"	return true;"
 	"}"
 
 	"bool PathMatchesFilter(str path, str[] filterComponents, int _filterWildcard) {"
@@ -693,7 +713,7 @@ char baseModuleSource[] = {
 	"	}"
 	"	return \"\";"
 	"}"
-	"bool PathCreateLeadingDirectories(str path) {"
+	"err[void] PathCreateLeadingDirectories(str path) {"
 	"	for int i = 0; i < path:len(); i += 1 {"
 	"		if path[i] == \"/\" {"
 	"			PathCreateDirectory(StringSlice(path, 0, i));"
@@ -709,11 +729,11 @@ char baseModuleSource[] = {
 	// Command line:
 
 	"str ConsoleGetLine() #extcall;"
-	"str SystemGetEnvironmentVariable(str name) #extcall;"
-	"bool SystemSetEnvironmentVariable(str name, str value) #extcall;"
+	"err[str] SystemGetEnvironmentVariable(str name) #extcall;"
+	"err[void] SystemSetEnvironmentVariable(str name, str value) #extcall;"
 	"bool SystemShellExecute(str x) #extcall;" // Returns true on success.
 	"bool SystemShellExecuteWithWorkingDirectory(str wd, str x) #extcall;" // Returns true on success.
-	"str SystemShellEvaluate(str x) #extcall;"
+	"str SystemShellEvaluate(str x) #extcall;" // Captures stdout.
 	"void SystemShellEnableLogging(bool x) #extcall;"
 };
 
@@ -830,6 +850,7 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_SLASH)           return 60;
 	if (t == T_LOGICAL_NOT)     return 70;
 	if (t == T_NEGATE)          return 70;
+	if (t == T_NEW)             return 75;
 	if (t == T_DOT)             return 80;
 	if (t == T_COLON)           return 80;
 	if (t == T_AWAIT)           return 90;
@@ -937,6 +958,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("int") token.type = T_INT;
 			else if KEYWORD("new") token.type = T_NEW;
 			else if KEYWORD("null") token.type = T_NULL;
+			else if KEYWORD("reterr") token.type = T_RETERR;
 			else if KEYWORD("return") token.type = T_RETURN;
 			else if KEYWORD("str") token.type = T_STR;
 			else if KEYWORD("struct") token.type = T_STRUCT;
@@ -1128,6 +1150,11 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid, bool allowTupl
 				if (!maybe) PrintError2(tokenizer, node, "Expected a ']' after the type of 'err'.\n");
 				return NULL;
 			}
+
+			if (n->type == T_ERR) {
+				if (!maybe) PrintError2(tokenizer, node, "Error types cannot be nested.\n");
+				return NULL;
+			}
 		}
 
 		bool first = true;
@@ -1304,7 +1331,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 		if (!node->firstChild) return NULL;
 
 		if (node->firstChild->type == T_ERR) {
-			node->firstChild->sibling = ParseExpression(tokenizer, false, 255);
+			node->firstChild->sibling = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->type));
 			if (!node->firstChild->sibling) return NULL;
 		}
 	} else if (node->token.type == T_LEFT_SQUARE) {
@@ -1767,10 +1794,10 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 
 			*link = wrapper;
 			link = &wrapper->sibling;
-		} else if (token.type == T_RETURN || token.type == T_ASSERT) {
+		} else if (token.type == T_RETURN || token.type == T_ASSERT || token.type == T_RETERR) {
 			if (replMode) {
 				PrintError2(tokenizer, node, "%s statements cannot be used in the console.\n", 
-						token.type == T_RETURN ? "Return" : "Assert");
+						token.type == T_RETURN || token.type == T_RETERR ? "Return" : "Assert");
 				return NULL;
 			}
 
@@ -1778,7 +1805,7 @@ Node *ParseBlock(Tokenizer *tokenizer, bool replMode) {
 			node->type = token.type;
 			node->token = TokenNext(tokenizer);
 
-			if (token.type == T_ASSERT || TokenPeek(tokenizer).type != T_SEMICOLON) {
+			if (token.type == T_ASSERT || token.type == T_RETERR || TokenPeek(tokenizer).type != T_SEMICOLON) {
 				node->firstChild = ParseExpression(tokenizer, false, 0);
 				if (!node->firstChild) return NULL;
 
@@ -2777,7 +2804,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			PrintError2(tokenizer, node, "The asserted expression must evaluate to a boolean or error value.\n");
 			return false;
 		}
-	} else if (node->type == T_RETURN) {
+	} else if (node->type == T_RETURN || node->type == T_RETERR) {
 		Node *expressionType = node->firstChild ? node->firstChild->expressionType : &globalExpressionTypeVoid;
 
 		Node *function = node->parent;
@@ -2793,9 +2820,29 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			return false;
 		}
 
-		if (!ASTMatching(expressionType, returnType)) {
-			PrintError2(tokenizer, node, "The type of the expression does not match the declared return type of the function.\n");
-			return false;
+		if (node->type == T_RETURN) {
+			if (!ASTMatching(expressionType, returnType)) {
+				if (returnType && returnType->type == T_ERR 
+						&& ASTMatching(returnType->firstChild, node->firstChild->expressionType)) {
+					// Allow the implicit cast to an error type.
+					Node *cast = ASTImplicitCastToErr(tokenizer, node, node->firstChild);
+					if (!cast) return false;
+					node->firstChild = cast;
+				} else {
+					PrintError2(tokenizer, node, "The type of the expression does not match the return type of the function.\n");
+					return false;
+				}
+			}
+		} else {
+			if (!returnType || returnType->type != T_ERR) {
+				PrintError2(tokenizer, node, "'reterr' can only be used in functions that return an error value.\n");
+				return false;
+			}
+
+			if (!expressionType || expressionType->type != T_ERR) {
+				PrintError2(tokenizer, node, "The expression must be an error value.\n");
+				return false;
+			}
 		}
 	} else if (node->type == T_RETURN_TUPLE) {
 		Node *expressionType = (Node *) AllocateFixed(sizeof(Node));
@@ -3809,6 +3856,29 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 	} else if (node->type == T_RETURN || node->type == T_RETURN_TUPLE) {
 		uint8_t b = T_END_FUNCTION;
 		FunctionBuilderAddLineNumber(builder, node);
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+	} else if (node->type == T_RETERR) {
+		uint8_t b;
+		FunctionBuilderAddLineNumber(builder, node);
+		b = T_DUP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_OP_SUCCESS;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_LOGICAL_NOT;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_IF;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		int32_t delta = 9;
+		FunctionBuilderAppend(builder, &delta, sizeof(delta));
+		b = T_OP_ERROR;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_NEW;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		int16_t newType = -3;
+		FunctionBuilderAppend(builder, &newType, sizeof(newType));
+		b = T_END_FUNCTION;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		b = T_POP;
 		FunctionBuilderAppend(builder, &b, sizeof(b));
 	} else if (node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT || node->type == T_ERR_CAST) {
 		FunctionBuilderAddLineNumber(builder, node);
@@ -5418,7 +5488,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					int result = externalFunctions[index].callback(context, &returnValue);
 					if (result <= 0) return result;
 
-					if (result == 4) {
+					if (result == EXTCALL_START_COROUTINE) {
 						context->externalCoroutineCount++;
 						context->c->externalCoroutine = true;
 						instructionPointer -= 3;
@@ -5430,13 +5500,34 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 						// PrintDebug("end external coroutine %ld\n", context->c->id);
 					}
 
-					if (result == 2 || result == 3) {
+					bool isErr = result == EXTCALL_RETURN_ERR_ERROR 
+						|| result == EXTCALL_RETURN_ERR_MANAGED 
+						|| result == EXTCALL_RETURN_ERR_UNMANAGED;
+
+					if (result == EXTCALL_RETURN_UNMANAGED || result == EXTCALL_RETURN_MANAGED || isErr) {
 						if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 							PrintDebug("Evaluation stack overflow.\n");
 							return -1;
 						}
 
-						context->c->stackIsManaged[context->c->stackPointer] = result == 3;
+						if (isErr) {
+							if (result != EXTCALL_RETURN_ERR_ERROR || returnValue.i) {
+								// TODO Handle memory allocation failures here.
+								uintptr_t index = HeapAllocate(context);
+								context->heap[index].type = T_ERR;
+								context->heap[index].success = result != EXTCALL_RETURN_ERR_ERROR;
+								context->heap[index].internalValuesAreManaged = result != EXTCALL_RETURN_ERR_UNMANAGED;
+								context->heap[index].errorValue = returnValue;
+								returnValue.i = index;
+							} else {
+								// Unknown error.
+								returnValue.i = 0;
+							}
+
+							result = EXTCALL_RETURN_MANAGED;
+						}
+
+						context->c->stackIsManaged[context->c->stackPointer] = result == EXTCALL_RETURN_MANAGED;
 						context->c->stack[context->c->stackPointer++] = returnValue;
 					}
 				} else {
@@ -5855,14 +5946,14 @@ int ExternalStringSlice(ExecutionContext *context, Value *returnValue) {
 	}
 
 	RETURN_STRING_COPY(string + start, end - start);
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = entryBytes ? entryText[0] : -1;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 // --------------------------------- Platform layer.
@@ -5915,6 +6006,31 @@ char *StringZeroTerminate(const char *text, size_t bytes) {
 	return buffer;
 }
 
+#define RETURN_ERROR(error) do { MakeError(context, returnValue, error); return EXTCALL_RETURN_ERR_ERROR; } while (0)
+
+void MakeError(ExecutionContext *context, Value *returnValue, int error) {
+	const char *text = NULL;
+
+	if (error == EAGAIN || error == EBUSY) text = "OPERATION_BLOCKED";
+	if (error == ENOTEMPTY) text = "DIRECTORY_NOT_EMPTY";
+	if (error == EFBIG) text = "FILE_TOO_LARGE";
+	if (error == ENOSPC || error == EDQUOT) text = "DRIVE_FULL";
+	if (error == EROFS) text = "FILE_ON_READ_ONLY_VOLUME";
+	if (error == ENOTDIR || error == EISDIR) text = "INCORRECT_NODE_TYPE";
+	if (error == ENOENT) text = "FILE_DOES_NOT_EXIST";
+	if (error == EEXIST) text = "ALREADY_EXISTS";
+	if (error == ENOMEM) text = "INSUFFICIENT_RESOURCES";
+	if (error == EPERM || error == EACCES) text = "PERMISSION_NOT_GRANTED";
+	if (error == EXDEV) text = "VOLUME_MISMATCH";
+	if (error == EIO) text = "HARDWARE_FAILURE";
+
+	if (text) {
+		RETURN_STRING_COPY(text, strlen(text));
+	} else {
+		returnValue->i = 0;
+	}
+}
+
 void ExternalCoroutineDone(CoroutineState *coroutine) {
 #ifdef __linux__
 	pthread_mutex_lock(&externalCoroutineMutex);
@@ -5938,7 +6054,7 @@ void *SystemShellExecuteThread(void *_coroutine) {
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 	if (context->c->externalCoroutine) {
 		*returnValue = context->c->externalCoroutineData;
-		return 2;
+		return EXTCALL_RETURN_UNMANAGED;
 	}
 
 	STACK_POP_STRING(text, bytes);
@@ -5951,16 +6067,16 @@ int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue) {
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteThread, context->c);
 		pthread_detach(thread);
-		return 4;
+		return EXTCALL_START_COROUTINE;
 #else
 		SystemShellExecuteThread(context->c);
 		*returnValue = context->c->externalCoroutineData;
-		return 2;
+		return EXTCALL_RETURN_UNMANAGED;
 #endif
 	} else {
 		fprintf(stderr, "Error in ExternalSystemShellExecute: Out of memory.\n");
 		returnValue->i = 0;
-		return 2;
+		return EXTCALL_RETURN_UNMANAGED;
 	}
 }
 
@@ -5984,15 +6100,15 @@ void *SystemShellExecuteWithWorkingDirectoryThread(void *_coroutine) {
 int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Value *returnValue) {
 	if (context->c->externalCoroutine) {
 		*returnValue = context->c->externalCoroutineData;
-		return 2;
+		return EXTCALL_RETURN_UNMANAGED;
 	}
 
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
+	if (!temporary) return EXTCALL_RETURN_MANAGED;
 	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
-	if (!temporary2) return 3;
+	if (!temporary2) return EXTCALL_RETURN_MANAGED;
 
 	if (systemShellLoggingEnabled) PrintDebug("\033[0;32m(%s) %s\033[0m\n", temporary, temporary2);
 	
@@ -6015,7 +6131,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 		pthread_t thread;
 		pthread_create(&thread, NULL, SystemShellExecuteWithWorkingDirectoryThread, context->c);
 		pthread_detach(thread);
-		return 4;
+		return EXTCALL_START_COROUTINE;
 	}
 #else
 	char *data = (char *) malloc(10000);
@@ -6034,7 +6150,7 @@ int ExternalSystemShellExecuteWithWorkingDirectory(ExecutionContext *context, Va
 	free(data);
 #endif
 
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
@@ -6080,7 +6196,7 @@ int ExternalSystemShellEvaluate(ExecutionContext *context, Value *returnValue) {
 		returnValue->i = 0;
 	}
 
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnValue) {
@@ -6088,7 +6204,7 @@ int ExternalSystemShellEnableLogging(ExecutionContext *context, Value *returnVal
 	if (context->c->stackPointer < 1) return -1;
 	systemShellLoggingEnabled = context->c->stack[--context->c->stackPointer].i;
 	if (context->c->stackIsManaged[context->c->stackPointer]) return -1;
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalLog(ExecutionContext *context, Value *returnValue) {
@@ -6096,20 +6212,20 @@ int ExternalLog(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	fprintf(stderr, "%.*s", (int) entryBytes, (char *) entryText);
 	fprintf(stderr, coloredOutput ? "\033[0;m\n" : "\n");
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalLogOpenGroup(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	if (context->c->stackPointer < 1) return -1;
 	context->c->stackPointer--;
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalLogClose(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	(void) returnValue;
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char *mode) {
@@ -6124,7 +6240,7 @@ int ExternalTextFormat(ExecutionContext *context, Value *returnValue, const char
 		returnValue->i = 0;
 	}
 
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalTextColorError    (ExecutionContext *context, Value *returnValue) { return ExternalTextFormat(context, returnValue, "31"); }
@@ -6138,12 +6254,9 @@ int ExternalTextWeight(ExecutionContext *context, Value *returnValue) {
 }
 
 int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
-	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 #ifdef _WIN32
 #pragma message ("ExternalPathCreateDirectory unimplemented")
 #else
@@ -6151,159 +6264,192 @@ int ExternalPathCreateDirectory(ExecutionContext *context, Value *returnValue) {
 	if (mkdir(temporary, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) returnValue->i = errno == EEXIST;
 #endif
 	free(temporary);
-	return 2;
+	if (!returnValue->i) RETURN_ERROR(errno);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalPathDelete(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	struct stat s = { 0 };
 	bool isDirectory = lstat(temporary, &s) == 0 && S_ISDIR(s.st_mode);
 	returnValue->i = isDirectory ? (rmdir(temporary) == 0) : (unlink(temporary) == 0);
 	free(temporary);
-	return 2;
+	if (!returnValue->i) RETURN_ERROR(errno);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalPathExists(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
+	if (entryBytes == 0) return EXTCALL_RETURN_UNMANAGED;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) return EXTCALL_RETURN_UNMANAGED;
 	struct stat s = { 0 };
 	returnValue->i = stat(temporary, &s) == 0;
 	free(temporary);
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsFile(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
+	if (entryBytes == 0) return EXTCALL_RETURN_UNMANAGED;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) return EXTCALL_RETURN_UNMANAGED;
 	struct stat s = { 0 };
 	returnValue->i = lstat(temporary, &s) == 0 && S_ISREG(s.st_mode);
 	free(temporary);
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsDirectory(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
+	if (entryBytes == 0) return EXTCALL_RETURN_UNMANAGED;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) return EXTCALL_RETURN_UNMANAGED;
 	struct stat s = { 0 };
 	returnValue->i = lstat(temporary, &s) == 0 && S_ISDIR(s.st_mode);
 	free(temporary);
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathIsLink(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
+	if (entryBytes == 0) return EXTCALL_RETURN_UNMANAGED;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) return EXTCALL_RETURN_UNMANAGED;
 	struct stat s = { 0 };
 	returnValue->i = lstat(temporary, &s) == 0 && S_ISLNK(s.st_mode);
 	free(temporary);
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPathMove(ExecutionContext *context, Value *returnValue) {
-	(void) returnValue;
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entryBytes == 0 || entry2Bytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
 	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
-	if (!temporary2) return 2;
-	returnValue->i = rename(temporary, temporary2) == 0;
+	bool success = temporary && temporary2 && rename(temporary, temporary2) == 0;
 	free(temporary);
 	free(temporary2);
-	return 2;
+	if (!temporary || !temporary2) RETURN_ERROR(ENOMEM);
+	if (!success) RETURN_ERROR(errno);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalFileCopy(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entryBytes == 0 || entry2Bytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
 	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
-	if (!temporary2) return 2;
+
+	if (!temporary || !temporary2) {
+		free(temporary);
+		free(temporary2);
+		RETURN_ERROR(ENOMEM);
+	}
+
+	if (0 == strcmp(temporary, temporary2)) {
+		free(temporary);
+		free(temporary2);
+		PrintError4(context, 0, "FileCopy called with the source and destination paths identical. Attempting to copy a file to itself is undefined behaviour!\n");
+		return 0;
+	}
+
 	FILE *f = fopen(temporary, "rb");
+	off_t inputFileSize = 0;
+
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		inputFileSize = ftell(f);
+		fseek(f, 0, SEEK_SET);
+	}
+
 	FILE *f2 = fopen(temporary2, "wb");
 	free(temporary);
 	free(temporary2);
 	bool okay = true;
+	bool modifiedDuringCopy = false;
 
 	if (f && f2) {
 		char buffer[4096];
+		off_t totalBytesRead = 0;
 
-		while (true) {
+		while (okay) {
 			intptr_t bytesRead = fread(buffer, 1, sizeof(buffer), f);
+			totalBytesRead += bytesRead;
+			if (totalBytesRead > inputFileSize) { modifiedDuringCopy = true; break; }
 			if (bytesRead < 0) okay = false;
 			if (bytesRead <= 0) break;
 			intptr_t bytesWritten = fwrite(buffer, 1, bytesRead, f2);
 			if (bytesWritten != bytesRead) okay = false;
 		}
-	} else okay = false;
+
+		if (totalBytesRead != inputFileSize) {
+			modifiedDuringCopy = true;
+		}
+	} else {
+		okay = false;
+	}
 	
 	if (f && fclose(f)) okay = false;
 	if (f2 && fclose(f2)) okay = false;
-	returnValue->i = okay;
-	return 2;
+
+	if (modifiedDuringCopy) {
+		RETURN_ERROR(-1);
+	} else if (okay) {
+		returnValue->i = 0;
+		return EXTCALL_RETURN_ERR_UNMANAGED;
+	} else {
+		RETURN_ERROR(errno);
+	}
 }
 
 int ExternalSystemGetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 3;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	char *data = getenv(temporary);
-	RETURN_STRING_COPY(data, data ? strlen(data) : 0);
 	free(temporary);
-	return 3;
+	if (!data) RETURN_ERROR(-1);
+	RETURN_STRING_COPY(data, data ? strlen(data) : 0);
+	return EXTCALL_RETURN_ERR_MANAGED;
 }
 
 int ExternalSystemSetEnvironmentVariable(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
-	returnValue->i = 0;
-	if (entryBytes == 0 || entry2Bytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
 	char *temporary2 = StringZeroTerminate(entry2Text, entry2Bytes);
-	if (!temporary2) return 3;
-	returnValue->i = setenv(temporary, temporary2, true) == 0;
+
+	bool success = temporary && temporary2 && setenv(temporary, temporary2, true) == 0;
 	free(temporary);
 	free(temporary2);
-	return 2;
+
+	if (!success) {
+		if (!temporary || !temporary2) RETURN_ERROR(ENOMEM);
+		RETURN_ERROR(errno);
+	}
+
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
-	if (directoryIterator) return 2;
+	if (!temporary) RETURN_ERROR(ENOMEM);
+	if (directoryIterator) RETURN_ERROR(-1);
 	directoryIterator = opendir(temporary);
 	free(temporary);
-	returnValue->i = directoryIterator != NULL;
-	return 2;
+	if (!directoryIterator) RETURN_ERROR(errno);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *returnValue) {
@@ -6312,7 +6458,7 @@ int External_DirectoryInternalEndIteration(ExecutionContext *context, Value *ret
 	if (!directoryIterator) return 0;
 	closedir(directoryIterator);
 	directoryIterator = NULL;
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *returnValue) {
@@ -6320,73 +6466,76 @@ int External_DirectoryInternalNextIteration(ExecutionContext *context, Value *re
 	if (!directoryIterator) return 0;
 	struct dirent *entry = readdir(directoryIterator);
 	while (entry && (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, ".."))) entry = readdir(directoryIterator);
-	if (!entry) { returnValue->i = 0; return 3; }
+	if (!entry) { returnValue->i = 0; return EXTCALL_RETURN_MANAGED; }
 	RETURN_STRING_COPY(entry->d_name, strlen(entry->d_name));
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalFileReadAll(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 3;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	size_t length = 0;
 	void *data = FileLoad(temporary, &length);
-	RETURN_STRING_NO_COPY(data, length);
 	free(temporary);
-	return 3;
+	if (!data) RETURN_ERROR(errno);
+	RETURN_STRING_NO_COPY(data, length);
+	return EXTCALL_RETURN_ERR_MANAGED;
 }
 
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
-	returnValue->i = -1;
+	returnValue->i = 0;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	FILE *file = fopen(temporary, "rb");
+	free(temporary);
 
 	if (file) {
 		fseek(file, 0, SEEK_END);
 		returnValue->i = ftell(file);
 		fclose(file);
+		return EXTCALL_RETURN_ERR_UNMANAGED;
+	} else {
+		RETURN_ERROR(errno);
 	}
-
-	free(temporary);
-	return 2;
 }
 
 int ExternalFileWriteAll(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	FILE *f = fopen(temporary, "wb");
+	free(temporary);
 
 	if (f) {
 		returnValue->i = entry2Bytes == fwrite(entry2Text, 1, entry2Bytes, f);
-		if (fclose(f)) returnValue->i = 0;
+		if (fclose(f)) RETURN_ERROR(errno);
+		if (!returnValue->i) RETURN_ERROR(errno);
+		return EXTCALL_RETURN_ERR_UNMANAGED;
+	} else {
+		RETURN_ERROR(errno);
 	}
-
-	free(temporary);
-	return 2;
 }
 
 int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING_2(entryText, entryBytes, entry2Text, entry2Bytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 3;
+	if (!temporary) RETURN_ERROR(ENOMEM);
 	FILE *f = fopen(temporary, "ab");
+	free(temporary);
 
 	if (f) {
 		returnValue->i = entry2Bytes == fwrite(entry2Text, 1, entry2Bytes, f);
-		if (fclose(f)) returnValue->i = 0;
+		if (fclose(f)) RETURN_ERROR(errno);
+		if (!returnValue->i) RETURN_ERROR(errno);
+		return EXTCALL_RETURN_ERR_UNMANAGED;
+	} else {
+		RETURN_ERROR(errno);
 	}
-
-	free(temporary);
-	return 2;
 }
 
 int ExternalPathGetDefaultPrefix(ExecutionContext *context, Value *returnValue) {
@@ -6400,22 +6549,23 @@ int ExternalPathGetDefaultPrefix(ExecutionContext *context, Value *returnValue) 
 	}
 
 	RETURN_STRING_NO_COPY(realloc(data, strlen(data) + 1), strlen(data));
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalPathSetDefaultPrefixToScriptSourceDirectory(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	returnValue->i = chdir(scriptSourceDirectory) == 0;
-	return 2;
+	if (!returnValue->i) RETURN_ERROR(errno);
+	return EXTCALL_RETURN_ERR_UNMANAGED;
 }
 
 int ExternalPersistRead(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	returnValue->i = 0;
-	if (entryBytes == 0) return 2;
+	if (entryBytes == 0) return EXTCALL_RETURN_UNMANAGED;
 	char *temporary = StringZeroTerminate(entryText, entryBytes);
-	if (!temporary) return 2;
+	if (!temporary) return EXTCALL_RETURN_UNMANAGED;
 	free(context->scriptPersistFile);
 	context->scriptPersistFile = temporary;
 	size_t length = 0;
@@ -6470,7 +6620,7 @@ int ExternalPersistRead(ExecutionContext *context, Value *returnValue) {
 	}
 
 	free(data);
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
@@ -6486,7 +6636,7 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 
 	if (!f) {
 		PrintDebug("\033[0;32mWarning: Persistent variables could not written. The file could not be opened.\033[0m\n");
-		return 1;
+		return EXTCALL_NO_RETURN;
 	}
 
 	uintptr_t k = context->mainModule->globalVariableOffset;
@@ -6535,10 +6685,10 @@ int ExternalPersistWrite(ExecutionContext *context, Value *returnValue) {
 
 	if (fclose(f)) {
 		PrintDebug("\033[0;32mWarning: Persistent variables could not written. The file could not be closed.\033[0m\n");
-		return 1;
+		return EXTCALL_NO_RETURN;
 	}
 
-	return 1;
+	return EXTCALL_NO_RETURN;
 }
 
 int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue) {
@@ -6555,7 +6705,7 @@ int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue) {
 	context->heap[index].bytes = strlen(line) - 1;
 	context->heap[index].text = line;
 	returnValue->i = index;
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 #endif
 }
 
@@ -6569,7 +6719,7 @@ int ExternalSystemGetProcessorCount(ExecutionContext *context, Value *returnValu
 #endif
 	if (returnValue->i < 1) returnValue->i = 1;
 	if (returnValue->i > 10000) returnValue->i = 1; // Values this large are obviously wrong.
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *returnValue) {
@@ -6580,7 +6730,7 @@ int ExternalSystemRunningAsAdministrator(ExecutionContext *context, Value *retur
 #else
 	returnValue->i = geteuid() == 0;
 #endif
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
@@ -6594,7 +6744,7 @@ int ExternalSystemGetHostName(ExecutionContext *context, Value *returnValue) {
 	name = buffer.sysname;
 #endif
 	RETURN_STRING_COPY(name, strlen(name));
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
@@ -6604,7 +6754,7 @@ int ExternalRandomInt(ExecutionContext *context, Value *returnValue) {
 	if (max < min) { PrintError4(context, 0, "RandomInt() called with maximum limit (%ld) less than the minimum limit (%ld).\n", max, min); return 0; }
 	returnValue->i = rand() % (max - min + 1) + min;
 	context->c->stackPointer -= 2;
-	return 2;
+	return EXTCALL_RETURN_UNMANAGED;
 }
 
 void *SystemSleepThread(void *_coroutine) {
@@ -6620,28 +6770,28 @@ void *SystemSleepThread(void *_coroutine) {
 
 int ExternalSystemSleepMs(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
-	if (context->c->externalCoroutine) return 1;
+	if (context->c->externalCoroutine) return EXTCALL_NO_RETURN;
 	if (context->c->stackPointer < 1) return -1;
 	context->c->externalCoroutineData = context->c->stack[--context->c->stackPointer];
 #ifdef __linux__
 	pthread_t thread;
 	pthread_create(&thread, NULL, SystemSleepThread, context->c);
 	pthread_detach(thread);
-	return 4;
+	return EXTCALL_START_COROUTINE;
 #else
 	struct timespec sleepTime;
 	uint64_t x = 1000000 * context->c->externalCoroutineData.i;
 	sleepTime.tv_sec = x / 1000000000;
 	sleepTime.tv_nsec = x % 1000000000;
 	nanosleep(&sleepTime, NULL);
-	return 1;
+	return EXTCALL_NO_RETURN;
 #endif
 }
 
 int ExternalOpenDocumentEnumerate(ExecutionContext *context, Value *returnValue) {
 	(void) context;
 	returnValue->i = 0;
-	return 3;
+	return EXTCALL_RETURN_MANAGED;
 }
 
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {

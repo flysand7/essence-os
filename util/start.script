@@ -58,11 +58,11 @@ void Start() {
 }
 
 void GenerateOVF() {
-	str[] template = StringSplitByCharacter(FileReadAll("util/automation/template.ovf"), "$", true);
+	str[] template = StringSplitByCharacter(FileReadAll("util/automation/template.ovf"):assert(), "$", true);
 	assert template:len() == 5;
 	str uuid1 = UUIDGenerate();
 	str uuid2 = UUIDGenerate();
-	int driveSize = FileGetSize("bin/drive");
+	int driveSize = FileGetSize("bin/drive"):assert();
 	assert driveSize > 0;
 	str result = template[0] + "%driveSize%" + template[1] + uuid1 + template[2] + uuid2 + template[3] + uuid1 + template[4];
 	assert FileWriteAll("bin/ova/Essence.ovf", result);
@@ -198,7 +198,7 @@ void AutomationBuildMinimal() {
 
 void AutomationRunTests() {
 	Setup(true);
-	str[] buildConfig = StringSplitByCharacter(FileReadAll("bin/build_config.ini"), "\n", true);
+	str[] buildConfig = StringSplitByCharacter(FileReadAll("bin/build_config.ini"):assert(), "\n", true);
 	buildConfig:find_and_delete("automated_build=1");
 	assert FileWriteAll("bin/build_config.ini", StringJoin(buildConfig, "\n", false));
 	assert FileWriteAll("bin/config.ini", "Flag.ENABLE_POSIX_SUBSYSTEM=1\n");

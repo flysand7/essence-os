@@ -119,12 +119,12 @@ void PortBusybox() {
 	str version = "1.33.1";
 
 	if SystemGetHostName() == "Darwin" {
-		SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"));
+		assert SystemSetEnvironmentVariable("PATH", "/usr/local/opt/gnu-sed/libexec/gnubin:" + SystemGetEnvironmentVariable("PATH"):assert());
 	}
 
 	get_source.Get("https://www.busybox.net/downloads/busybox-%version%.tar.bz2", "busybox-%version%",
 			"12cec6bd2b16d8a9446dd16130f2b92982f1819f6e1c5f5887b6db03f5660d28");
-	str[] config = StringSplitByCharacter(FileReadAll("ports/busybox/config"), "\n", true);
+	str[] config = StringSplitByCharacter(FileReadAll("ports/busybox/config"):assert(), "\n", true);
 	config:insert("CONFIG_BUSYBOX_EXEC_PATH=\"%posixPrefix%/bin/busybox\"", 34);
 	config:insert("CONFIG_SYSROOT=\"%posixDestDir%\"", 51);
 	assert FileWriteAll("bin/source/.config", StringJoin(config, "\n", false));
@@ -198,10 +198,10 @@ void PortGCC() {
 
 	if buildCross {
 		// Modify the path.
-		str path = compilerPath + ":" + SystemGetEnvironmentVariable("PATH");
-		SystemSetEnvironmentVariable("PATH", path);
+		str path = compilerPath + ":" + SystemGetEnvironmentVariable("PATH"):assert();
+		assert SystemSetEnvironmentVariable("PATH", path);
 		assert !StringContains(path, "::");
-		assert SystemGetEnvironmentVariable("PATH") == path;
+		assert SystemGetEnvironmentVariable("PATH"):assert() == path;
 
 		// Get the brew library path if we're running on Darwin.
 		str libraryPath = "";
@@ -335,7 +335,7 @@ void PortGCC() {
 			];
 
 			for str variable in variables {
-				SystemSetEnvironmentVariable(variable, "yes");
+				assert SystemSetEnvironmentVariable(variable, "yes");
 			}
 		}
 

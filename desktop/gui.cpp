@@ -2965,10 +2965,11 @@ int ScrollPane::ReceivedMessage(EsMessage *message) {
 		if (verticalScrollBarWillShow) message->measure.width += bar[1]->style->preferredWidth;
 		return ES_HANDLED;
 	} else if (message->type == ES_MSG_SCROLL_WHEEL) {
+		double oldPosition0 = position[0];
+		double oldPosition1 = position[1];
 		SetPosition(0, position[0] + 60 * message->scrollWheel.dx / ES_SCROLL_WHEEL_NOTCH, true);
 		SetPosition(1, position[1] - 60 * message->scrollWheel.dy / ES_SCROLL_WHEEL_NOTCH, true);
-		if (message->scrollWheel.dx && mode[0]) return ES_HANDLED;
-		if (message->scrollWheel.dy && mode[1]) return ES_HANDLED;
+		if (oldPosition0 != position[0] || oldPosition1 != position[1]) return ES_HANDLED;
 	}
 
 	return 0;
