@@ -334,8 +334,8 @@ void PortGCC() {
 				"gl_cv_func_working_mkstemp", "gl_cv_func_working_mktime", "gl_cv_func_working_strerror"
 			];
 
-			for int i = 0; i < variables:len(); i += 1 {
-				SystemSetEnvironmentVariable(variables[i], "yes");
+			for str variable in variables {
+				SystemSetEnvironmentVariable(variable, "yes");
 			}
 		}
 
@@ -486,10 +486,10 @@ void PortHarfBuzz() {
 		if SystemGetHostName() == "Darwin" sed = "gsed";
 		str[] headers = [ "assert", "atomic", "builtins", "float", "locale", "math", "stdio", "stdlib", "string", "unistd", "xlocale" ];
 
-		for int i = 0; i < headers:len(); i += 1 {
+		for str header in headers {
 			// TODO Replace this.
 			assert SystemShellExecuteWithWorkingDirectory("bin/harfbuzz/src", 
-					"find . -type f -exec %sed% -i 's/#include <%headers[i]%.h>/#include <essence.h>/g' {} \\;");
+					"find . -type f -exec %sed% -i 's/#include <%header%.h>/#include <essence.h>/g' {} \\;");
 		}
 	}
 
@@ -517,13 +517,13 @@ void PortHarfBuzz() {
 		str link = "%toolchainPrefix%-ar cr libharfbuzz.a ";
 		int[] tasks = new int[];
 
-		for int i = 0; i < sources:len(); i += 1 {
+		for str source in sources {
 			if tasks:len() == processorCount { tasks:find_and_delete(await tasks); }
-			str command = "%toolchainPrefix%-gcc -c %sources[i]%.cc -o %sources[i]%.o "
+			str command = "%toolchainPrefix%-gcc -c %source%.cc -o %source%.o "
 				+ "-DHAVE_CONFIG_H -I. -I.. -ffreestanding -fno-rtti -g -O3 -DHB_TINY -fno-exceptions -fno-threadsafe-statics "
 				+ "-fvisibility-inlines-hidden -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR -I%posixRoot%/include";
 			tasks:add(SystemShellExecuteWithWorkingDirectory:curry("bin/harfbuzz/src"):curry(command):assert():async());
-			link += sources[i] + ".o ";
+			link += source + ".o ";
 		}
 
 		while tasks:len() != 0 { tasks:find_and_delete(await tasks); }
@@ -620,8 +620,8 @@ void Start() {
 	if portName == "" {
 		LogInfo("Available ports:");
 
-		for int i = 0; i < portNames:len(); i += 1 {
-			Log("\t%portNames[i]%");
+		for str port in portNames {
+			Log("\t%port%");
 		}
 	} else {
 		assert targetName      != "";
