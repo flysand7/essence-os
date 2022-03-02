@@ -4038,6 +4038,11 @@ EsCanvasPane *EsCanvasPaneCreate(EsElement *parent, uint64_t flags, EsStyleID st
 // TODO Inline backgrounds.
 
 void TextDisplayFreeRuns(EsTextDisplay *display) {
+	if (display->plan) {
+		EsTextPlanDestroy(display->plan);
+		display->plan = nullptr;
+	}
+
 	if (display->usingSyntaxHighlighting) {
 		Array<EsTextRun> textRuns = { display->textRuns };
 		textRuns.Free();
@@ -4097,10 +4102,6 @@ int ProcessTextDisplayMessage(EsElement *element, EsMessage *message) {
 			display->measurementCache.Store(message);
 		}
 	} else if (message->type == ES_MSG_DESTROY) {
-		if (display->plan) {
-			EsTextPlanDestroy(display->plan);
-		}
-
 		TextDisplayFreeRuns(display);
 		EsHeapFree(display->contents);
 	} else if (message->type == ES_MSG_GET_INSPECTOR_INFORMATION) {

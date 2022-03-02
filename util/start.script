@@ -113,7 +113,7 @@ void GenerateAPISamples() {
 				if section == "[build]" && StringStartsWith(line, "source=") config[i] = "source=" + sourceFile;
 			}
 
-			FileWriteAll(folder + "make.build_core", StringJoin(config, "\n", false));
+			assert FileWriteAll(folder + "make.build_core", StringJoin(config, "\n", false));
 		}
 	}
 }
