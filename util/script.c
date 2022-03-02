@@ -3711,12 +3711,13 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		int32_t delta = builder->dataBytes - writeOffset;
 		MemoryCopy(builder->data + writeOffset, &delta, sizeof(delta));
 
+		b = T_POP;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+
 		if (node->firstChild->sibling->sibling->sibling) {
 			if (!FunctionBuilderRecurse(tokenizer, node->firstChild->sibling->sibling->sibling, builder, false)) return false;
 		}
 
-		b = T_POP;
-		FunctionBuilderAppend(builder, &b, sizeof(b));
 		delta = builder->dataBytes - writeOffsetElse;
 		MemoryCopy(builder->data + writeOffsetElse, &delta, sizeof(delta));
 
@@ -4365,7 +4366,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
-		// PrintDebug("--> %d, %ld, %ld\n", command, instructionPointer - 1, context->c->id);
+		PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
