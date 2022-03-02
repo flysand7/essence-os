@@ -58,7 +58,7 @@ void Start() {
 }
 
 void GenerateOVF() {
-	str[] template = StringSplitByCharacter(FileReadAll("util/automation/template.ovf"):assert(), "$", true);
+	str[] template = StringSplitByCharacter(FileReadAll("util/template.ovf"):assert(), "$", true);
 	assert template:len() == 5;
 	str uuid1 = UUIDGenerate();
 	str uuid2 = UUIDGenerate();
@@ -78,6 +78,44 @@ void DeleteUnneededDirectoriesForDebugInfo() {
 	PathDeleteRecursively("bin/musl");
 	PathDeleteRecursively("bin/root/Applications/POSIX/lib");
 	PathDeleteRecursively(".git");
+}
+
+void GenerateAPISamples() {
+	str sourceFolder = "apps/samples/";
+	str destinationFolder = "root/API Samples/";
+
+	for str configFile in DirectoryEnumerateChildren(sourceFolder):assert() {
+		if StringEndsWith(configFile, ".ini") {
+			str[] config = StringSplitByCharacter(FileReadAll(sourceFolder + configFile):assert(), "\n", false);
+			str sourceFile;
+			str applicationName;
+			str section;
+
+			for str line in config {
+				if line[0] == "[" section = line;
+				if section == "[general]" && StringStartsWith(line, "name=") applicationName = StringSlice(line, 5, line:len());
+				if section == "[build]" && StringStartsWith(line, "source=") sourceFile = StringSlice(line, 7, line:len());
+			}
+
+			assert applicationName != "";
+			assert StringStartsWith(sourceFile, "apps/samples/");
+			sourceFile = StringSlice(sourceFile, 13, sourceFile:len());
+
+			Log("%applicationName%, %sourceFile%, %configFile%");
+
+			str folder = destinationFolder + applicationName + "/";
+			assert PathCreateLeadingDirectories(folder);
+			assert FileCopy(sourceFolder + sourceFile, folder + sourceFile);
+
+			for int i = 0; i < config:len(); i += 1 {
+				str line = config[i];
+				if line[0] == "[" section = line;
+				if section == "[build]" && StringStartsWith(line, "source=") config[i] = "source=" + sourceFile;
+			}
+
+			FileWriteAll(folder + "make.build_core", StringJoin(config, "\n", false));
+		}
+	}
 }
 
 void AutomationBuild() {
@@ -113,9 +151,7 @@ void AutomationBuild() {
 	assert FileCopy("res/Flip.img", "root/Demo Content/Flip.img");
 	assert FileCopy("res/Teapot.obj", "root/Demo Content/Teapot.obj");
 	assert FileCopy("res/Fonts/Atkinson Hyperlegible Regular.ttf", "root/Demo Content/Atkinson Hyperlegible Regular.ttf");
-
-	// Copy API samples.
-	assert SystemShellExecute("python util/automation/genapisamples.py"); // TODO Replace.
+	GenerateAPISamples();
 
 	// Enable extra applications and build them.
 	assert FileWriteAll("bin/extra_applications.ini", "util/designer2.ini\n"

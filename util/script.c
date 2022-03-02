@@ -496,7 +496,7 @@ char baseModuleSource[] = {
 	"	return StringSlice(string, start, end);"
 	"}"
 	"str[] StringSplitByCharacter(str string, str character, bool includeEmptyString) {"
-	"\n	assert character:len() == 1;\n"
+	"	assert character:len() == 1;"
 	"	str[] list = new str[];"
 	"	int x = 0;"
 	"	for int i = 0; i < string:len(); i += 1 {"
@@ -516,6 +516,8 @@ char baseModuleSource[] = {
 	"	}"
 	"	return c;"
 	"}"
+	"bool StringEndsWith(str s, str x) { return s:len() >= x:len() && StringSlice(s, s:len() - x:len(), s:len()) == x; }"
+	"bool StringStartsWith(str s, str x) { return s:len() >= x:len() && StringSlice(s, 0, x:len()) == x; }"
 	"bool CharacterIsAlnum(str c) {"
 	"	int b = CharacterToByte(c);"
 	"	return (b >= CharacterToByte(\"A\") && b <= CharacterToByte(\"Z\")) || (b >= CharacterToByte(\"a\") && b <= CharacterToByte(\"z\"))"
@@ -4229,6 +4231,7 @@ uintptr_t HeapAllocate(ExecutionContext *context) {
 
 		for (uintptr_t i = 1; i < context->heapEntriesAllocated; i++) {
 			if (!context->heap[i].gcMark) {
+				// PrintDebug("\033[0;32mFreeing index %d...\033[0m\n", i);
 				HeapFreeEntry(context, i);
 				*link = i;
 				link = &context->heap[i].nextUnusedEntry;
@@ -4367,6 +4370,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
 		// PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
+		// PrintBackTrace(context, instructionPointer - 1, context->c, "");
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -5513,6 +5517,11 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 						if (isErr) {
 							if (result != EXTCALL_RETURN_ERR_ERROR || returnValue.i) {
+								// Temporarily put the return value on the stack in case garbage collection occurs 
+								// in the following HeapAllocate (i.e. before the return value has been wrapped).
+								context->c->stackIsManaged[context->c->stackPointer] = result != EXTCALL_RETURN_ERR_UNMANAGED;
+								context->c->stack[context->c->stackPointer++] = returnValue;
+								
 								// TODO Handle memory allocation failures here.
 								uintptr_t index = HeapAllocate(context);
 								context->heap[index].type = T_ERR;
@@ -5520,6 +5529,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 								context->heap[index].internalValuesAreManaged = result != EXTCALL_RETURN_ERR_UNMANAGED;
 								context->heap[index].errorValue = returnValue;
 								returnValue.i = index;
+
+								context->c->stackPointer--;
 							} else {
 								// Unknown error.
 								returnValue.i = 0;
