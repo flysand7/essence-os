@@ -4366,7 +4366,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
-		PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
+		// PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
