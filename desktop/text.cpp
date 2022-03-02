@@ -2362,6 +2362,9 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 		}
 
 		if (!entry->data) {
+			// EsPrint("Rendering '%c' in size %d\n", plan->string[glyphs[i].cluster], key.size);
+			FontSetSize(&key.font, key.size);
+
 			if (!FontRenderGlyph(key, entry)) {
 				EsHeapFree(entry);
 				goto nextCharacter;
@@ -2370,13 +2373,13 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 			}
 		}
 
+		EsAssert(0 == EsMemoryCompare(&entry->key, &key, sizeof(GlyphCacheKey)));
+
 		if (selection->caret0 != selection->caret1 && !selection->hideCaret 
 				&& (int32_t) glyphs[i].cluster >= selection->caret0 && (int32_t) glyphs[i].cluster < selection->caret1
 				&& selection->foreground) {
 			color = selection->foreground;
 		}
-
-		// EsPrint("\t%c at %i.%i\n", plan->string[glyphs[i].cluster], positionX, (glyphPositions[i].x_offset + cursorX) & 0x3F);
 
 		DrawSingleCharacter(entry->width, entry->height, entry->xoff, entry->yoff, 
 				ES_POINT(positionX, positionY + line->ascent / FREETYPE_UNIT_SCALE), 
