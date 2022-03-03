@@ -3,9 +3,9 @@
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, bitwise shifts, bitwise AND/OR/XOR/NOT, ternary.
-// 	- inttype.
 // 	- Named optional arguments with default values.
-// 	- Accessing structs and functypes from inline modules.
+// 	- Accessing structs and functypes from imported modules.
+// 	- inttype and struct inheritance.
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -105,6 +105,7 @@
 #define T_FOR_EACH            (90)
 #define T_ERR_CAST            (91)
 #define T_IF_ERR              (92)
+#define T_INTTYPE_CONSTANT    (93)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -189,6 +190,7 @@
 #define T_ERR                 (195)
 #define T_SUCCESS             (196)
 #define T_RETERR              (197)
+#define T_INTTYPE             (198)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -958,6 +960,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("if") token.type = T_IF;
 			else if KEYWORD("in") token.type = T_IN;
 			else if KEYWORD("int") token.type = T_INT;
+			else if KEYWORD("inttype") token.type = T_INTTYPE;
 			else if KEYWORD("new") token.type = T_NEW;
 			else if KEYWORD("null") token.type = T_NULL;
 			else if KEYWORD("reterr") token.type = T_RETERR;
@@ -2071,6 +2074,60 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 				PrintError2(tokenizer, node->firstChild->sibling, "Expected a semicolon after the argument list.\n");
 				return NULL;
 			}
+		} else if (token.type == T_INTTYPE) {
+			TokenNext(tokenizer);
+			Node *node = (Node *) AllocateFixed(sizeof(Node));
+			node->type = T_INTTYPE;
+			node->token = TokenNext(tokenizer);
+			*link = node;
+			link = &node->sibling;
+
+			if (node->token.type != T_IDENTIFIER) {
+				PrintError2(tokenizer, node, "Expected the name of the inttype.\n");
+				return NULL;
+			}
+
+			if (TokenNext(tokenizer).type != T_LEFT_FANCY) {
+				PrintError2(tokenizer, node, "Expected a '{' for the inttype contents after the name.\n");
+				return NULL;
+			}
+
+			Node **constantLink = &node->firstChild;
+
+			while (true) {
+				Token peek = TokenPeek(tokenizer);
+				if (peek.type == T_ERROR) return NULL;
+				if (peek.type == T_RIGHT_FANCY) break;
+				Node *constant = (Node *) AllocateFixed(sizeof(Node));
+				constant->token = TokenNext(tokenizer);
+				constant->type = T_INTTYPE_CONSTANT;
+				*constantLink = constant;
+				constantLink = &constant->sibling;
+
+				if (constant->token.type != T_IDENTIFIER) {
+					PrintError2(tokenizer, constant, "Expected an identifier for the constant.\n");
+					return NULL;
+				}
+
+				if (TokenNext(tokenizer).type != T_EQUALS) {
+					PrintError2(tokenizer, constant, "Expected '=' between the constant name and the value.\n");
+					return NULL;
+				}
+
+				constant->firstChild = ParseExpression(tokenizer, false, 0);
+
+				if (TokenNext(tokenizer).type != T_SEMICOLON) {
+					PrintError2(tokenizer, constant, "Expected a semicolon after the constant value.\n");
+					return NULL;
+				}
+			}
+
+			TokenNext(tokenizer);
+
+			if (TokenNext(tokenizer).type != T_SEMICOLON) {
+				PrintError2(tokenizer, node, "Expected a semicolon after the inttype body.\n");
+				return NULL;
+			}
 		} else if (token.type == T_STRUCT) {
 			TokenNext(tokenizer);
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
@@ -2344,7 +2401,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 		}
 	}
 
-	if ((node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_FUNCTYPE 
+	if ((node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_FUNCTYPE || node->type == T_INTTYPE || node->type == T_INTTYPE_CONSTANT
 			|| node->type == T_STRUCT || node->type == T_IMPORT) && node->parent->type != T_STRUCT) {
 		if (!ScopeAddEntry(tokenizer, scope, node)) {
 			return false;
@@ -2496,8 +2553,13 @@ bool ASTMatching(Node *left, Node *right) {
 	}
 }
 
+bool ASTIsIntType(Node *node) {
+	return node && node->type == T_INTTYPE;
+}
+
 bool ASTIsManagedType(Node *node) {
-	return node->type == T_STR || node->type == T_LIST || node->type == T_STRUCT || node->type == T_FUNCPTR || node->type == T_FUNCPTR || node->type == T_ERR;
+	return node->type == T_STR || node->type == T_LIST || node->type == T_STRUCT 
+		|| node->type == T_FUNCPTR || node->type == T_FUNCPTR || node->type == T_ERR;
 }
 
 int ASTGetTypePopCount(Node *node) {
@@ -2554,6 +2616,8 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 				MemoryCopy(node->expressionType, lookup->firstChild, sizeof(Node));
 			} else if (lookup->type == T_STRUCT) {
 				MemoryCopy(node->expressionType, lookup, sizeof(Node));
+			} else if (lookup->type == T_INTTYPE) {
+				MemoryCopy(node->expressionType, lookup, sizeof(Node));
 			} else {
 				PrintError2(tokenizer, node, "The identifier did not resolve to a type.\n");
 				return false;
@@ -2580,6 +2644,96 @@ Node *ASTImplicitCastToErr(Tokenizer *tokenizer, Node *parent, Node *expression)
 	return cast;
 }
 
+Value ASTNumericLiteralToValue(Node *node) {
+	// TODO Overflow checking.
+
+	Value v = { 0 };
+
+	if (node->expressionType == &globalExpressionTypeInt) {
+		v.i = 0;
+
+		for (uintptr_t i = 0; i < node->token.textBytes; i++) {
+			v.i *= 10;
+			v.i += node->token.text[i] - '0';
+		}
+	} else if (node->expressionType == &globalExpressionTypeFloat) {
+		bool dot = false;
+		v.f = 0;
+		double m = 0.1;
+
+		for (uintptr_t i = 0; i < node->token.textBytes; i++) {
+			if (node->token.text[i] == '.') {
+				dot = true;
+			} else if (dot) {
+				v.f += (node->token.text[i] - '0') * m;
+				m /= 10;
+			} else {
+				v.f *= 10;
+				v.f += node->token.text[i] - '0';
+			}
+		}
+	} else {
+		Assert(false);
+	}
+
+	return v;
+}
+
+int64_t ASTEvaluateIntConstant(Tokenizer *tokenizer, Node *node, bool *error) {
+	Assert(ASTMatching(node->expressionType, &globalExpressionTypeInt));
+
+	if (node->type == T_NUMERIC_LITERAL) {
+		return ASTNumericLiteralToValue(node).i;
+	} else if (node->type == T_ADD) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) + ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_MINUS) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) - ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_ASTERISK) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) * ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_SLASH) {
+		int64_t divisor = ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+
+		if (*error) {
+			return 0;
+		} else if (divisor == 0) {
+			*error = true;
+			PrintError2(tokenizer, node, "Integer division by zero.\n");
+			return 0;
+		} else {
+			return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) / divisor;
+		}
+	} else if (node->type == T_NEGATE) {
+		return -ASTEvaluateIntConstant(tokenizer, node->firstChild, error);
+	} else {
+		Assert(false);
+		return 0;
+	}
+}
+
+bool ASTIsIntegerConstant(Node *node) {
+	if (node->type != T_NUMERIC_LITERAL 
+			&& node->type != T_ADD 
+			&& node->type != T_MINUS 
+			&& node->type != T_ASTERISK 
+			&& node->type != T_SLASH 
+			&& node->type != T_NEGATE) {
+		return false;
+	}
+
+	if (!ASTMatching(node->expressionType, &globalExpressionTypeInt)) {
+		return false;
+	}
+
+	Node *child = node->firstChild;
+
+	while (child) {
+		if (!ASTIsIntegerConstant(child)) return false;
+		child = child->sibling;
+	}
+
+	return true;
+}
+
 bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 	Node *child = node->firstChild;
 
@@ -2594,7 +2748,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			|| node->type == T_LIST || node->type == T_TUPLE || node->type == T_ERR
 			|| node->type == T_BOOL || node->type == T_VOID || node->type == T_IDENTIFIER
 			|| node->type == T_ARGUMENTS || node->type == T_ARGUMENT
-			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT || node->type == T_IMPORT_PATH
+			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT || node->type == T_IMPORT_PATH || node->type == T_INTTYPE
 			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION
 			|| node->type == T_REPL_RESULT || node->type == T_DECLARE_GROUP) {
 	} else if (node->type == T_NUMERIC_LITERAL) {
@@ -2642,7 +2796,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeIntList)
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeStr)
 				&& !ASTMatching(expression->expressionType, &globalExpressionTypeFloat)
-				&& !ASTMatching(expression->expressionType, &globalExpressionTypeBool)) {
+				&& !ASTMatching(expression->expressionType, &globalExpressionTypeBool)
+				&& !ASTIsIntType(expression->expressionType)) {
 			PrintError2(tokenizer, expression, "The expression cannot be converted to a string.\n");
 			return false;
 		}
@@ -2656,6 +2811,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 		if (node->type == T_ADD) {
 			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
+					&& !ASTIsIntType(node->firstChild->expressionType)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)) {
 				PrintError2(tokenizer, node, "The add operator expects integers, floats or strings.\n");
@@ -2678,6 +2834,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			}
 		} else {
 			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
+					&& !ASTIsIntType(node->firstChild->expressionType)
 					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)) {
 				PrintError2(tokenizer, node, "This operator expects either integers or floats.\n");
 				return false;
@@ -3198,6 +3355,13 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		node->expressionType = &globalExpressionTypeInt;
+	} else if (node->type == T_INTTYPE_CONSTANT) {
+		if (!ASTIsIntegerConstant(node->firstChild)) {
+			PrintError2(tokenizer, node, "The expression is not a constant integer.\n");
+			return false;
+		}
+
+		node->expressionType = node->parent;
 	} else {
 		PrintDebug("ASTSetTypes %d\n", node->type);
 		Assert(false);
@@ -3301,6 +3465,8 @@ bool FunctionBuilderVariable(Tokenizer *tokenizer, FunctionBuilder *builder, Nod
 	Scope *rootScope = NULL;
 	uintptr_t globalVariableOffset = builder->globalVariableOffset;
 	bool inlineImport = false;
+	bool isIntConstant = false;
+	Value intConstantValue;
 
 	while (ancestor) {
 		if (ancestor->scope != scope) {
@@ -3328,6 +3494,11 @@ bool FunctionBuilderVariable(Tokenizer *tokenizer, FunctionBuilder *builder, Nod
 						Assert(index != -1);
 						globalVariableOffset = scope->entries[i]->importData->globalVariableOffset;
 						inlineImport = true;
+					} else if (scope->entries[i]->type == T_INTTYPE_CONSTANT) {
+						isIntConstant = true;
+						bool error = false;
+						intConstantValue.i = ASTEvaluateIntConstant(tokenizer, scope->entries[i]->firstChild, &error);
+						if (error) return false;
 					}
 
 					if (scope->entries[i]->type != T_DECLARE && forAssignment) {
@@ -3346,21 +3517,27 @@ bool FunctionBuilderVariable(Tokenizer *tokenizer, FunctionBuilder *builder, Nod
 		ancestor = ancestor->parent;
 	}
 
-	if (index >= (int32_t) rootScope->variableEntryCount && !inlineImport) {
-		index = rootScope->variableEntryCount - index - 1;
-	} else {
-		index += globalVariableOffset;
-	}
-
 	FunctionBuilderAddLineNumber(builder, node);
 
-	if (forAssignment) {
-		builder->scopeIndex = index;
-		builder->isDotAssignment = false;
-		builder->isListAssignment = false;
+	if (isIntConstant) {
+		uint8_t b = T_NUMERIC_LITERAL;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &intConstantValue, sizeof(intConstantValue));
 	} else {
-		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
-		FunctionBuilderAppend(builder, &index, sizeof(index));
+		if (index >= (int32_t) rootScope->variableEntryCount && !inlineImport) {
+			index = rootScope->variableEntryCount - index - 1;
+		} else {
+			index += globalVariableOffset;
+		}
+
+		if (forAssignment) {
+			builder->scopeIndex = index;
+			builder->isDotAssignment = false;
+			builder->isListAssignment = false;
+		} else {
+			FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
+			FunctionBuilderAppend(builder, &index, sizeof(index));
+		}
 	}
 
 	return true;
@@ -3906,7 +4083,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		Node *type = node->firstChild->sibling->expressionType;
 		uint8_t b = type->type == T_STR ? T_INTERPOLATE_STR
 			: type->type == T_FLOAT ? T_INTERPOLATE_FLOAT
-			: type->type == T_INT ? T_INTERPOLATE_INT
+			: (type->type == T_INT || ASTIsIntType(type)) ? T_INTERPOLATE_INT
 			: (type->type == T_LIST && type->firstChild->type == T_INT) ? T_INTERPOLATE_ILIST
 			: type->type == T_BOOL ? T_INTERPOLATE_BOOL : T_ERROR;
 		Assert(b != T_ERROR);
@@ -3986,35 +4163,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 	} else if (node->type == T_NUMERIC_LITERAL) {
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
-		Value v;
-
-		// TODO Overflow checking.
-
-		if (node->expressionType == &globalExpressionTypeInt) {
-			v.i = 0;
-
-			for (uintptr_t i = 0; i < node->token.textBytes; i++) {
-				v.i *= 10;
-				v.i += node->token.text[i] - '0';
-			}
-		} else if (node->expressionType == &globalExpressionTypeFloat) {
-			bool dot = false;
-			v.f = 0;
-			double m = 0.1;
-
-			for (uintptr_t i = 0; i < node->token.textBytes; i++) {
-				if (node->token.text[i] == '.') {
-					dot = true;
-				} else if (dot) {
-					v.f += (node->token.text[i] - '0') * m;
-					m /= 10;
-				} else {
-					v.f *= 10;
-					v.f += node->token.text[i] - '0';
-				}
-			}
-		}
-
+		Value v = ASTNumericLiteralToValue(node);
 		FunctionBuilderAppend(builder, &v, sizeof(v));
 	} else if (node->type == T_STRING_LITERAL) {
 		FunctionBuilderAddLineNumber(builder, node);
