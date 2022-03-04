@@ -2,7 +2,7 @@
 // 	- Other list operations: insert_many, delete_many.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
-// 	- Other operators: remainder, bitwise shifts, bitwise AND/OR/XOR/NOT, ternary.
+// 	- Other operators: remainder, ternary.
 // 	- Named optional arguments with default values.
 // 	- Accessing structs and functypes from imported modules.
 // 	- inttype and struct inheritance.
@@ -52,35 +52,41 @@
 #define T_STRING_LITERAL      (3)
 #define T_NUMERIC_LITERAL     (4)
 
-#define T_ADD                 (40)
-#define T_MINUS               (41)
-#define T_ASTERISK            (42)
-#define T_SLASH               (43)
-#define T_NEGATE              (44)
-#define T_LEFT_ROUND          (45)
-#define T_RIGHT_ROUND         (46)
-#define T_LEFT_SQUARE         (47)
-#define T_RIGHT_SQUARE        (48)
-#define T_LEFT_FANCY          (49)
-#define T_RIGHT_FANCY         (50)
-#define T_COMMA               (51)
-#define T_EQUALS              (52)
-#define T_SEMICOLON           (53)
-#define T_GREATER_THAN        (54)
-#define T_LESS_THAN           (55)
-#define T_GT_OR_EQUAL         (56)
-#define T_LT_OR_EQUAL         (57)
-#define T_DOUBLE_EQUALS       (58)
-#define T_NOT_EQUALS          (59)
-#define T_LOGICAL_AND         (60)
-#define T_LOGICAL_OR          (61)
-#define T_ADD_EQUALS          (62)
-#define T_MINUS_EQUALS        (63)
-#define T_ASTERISK_EQUALS     (64)
-#define T_SLASH_EQUALS        (65)
-#define T_DOT                 (66)
-#define T_COLON               (67)
-#define T_LOGICAL_NOT         (68)
+#define T_ADD                 (20)
+#define T_MINUS               (21)
+#define T_ASTERISK            (22)
+#define T_SLASH               (23)
+#define T_NEGATE              (24)
+#define T_LEFT_ROUND          (25)
+#define T_RIGHT_ROUND         (26)
+#define T_LEFT_SQUARE         (27)
+#define T_RIGHT_SQUARE        (28)
+#define T_LEFT_FANCY          (29)
+#define T_RIGHT_FANCY         (30)
+#define T_COMMA               (31)
+#define T_EQUALS              (32)
+#define T_SEMICOLON           (33)
+#define T_GREATER_THAN        (34)
+#define T_LESS_THAN           (35)
+#define T_GT_OR_EQUAL         (36)
+#define T_LT_OR_EQUAL         (37)
+#define T_DOUBLE_EQUALS       (38)
+#define T_NOT_EQUALS          (39)
+#define T_LOGICAL_AND         (40)
+#define T_LOGICAL_OR          (41)
+#define T_ADD_EQUALS          (42)
+#define T_MINUS_EQUALS        (43)
+#define T_ASTERISK_EQUALS     (44)
+#define T_SLASH_EQUALS        (45)
+#define T_DOT                 (46)
+#define T_COLON               (47)
+#define T_LOGICAL_NOT         (48)
+#define T_BIT_SHIFT_LEFT      (49)
+#define T_BIT_SHIFT_RIGHT     (50)
+#define T_BITWISE_OR          (51)
+#define T_BITWISE_AND         (52)
+#define T_BITWISE_NOT         (53)
+#define T_BITWISE_XOR         (54)
 
 #define T_ROOT                (70)
 #define T_FUNCBODY            (71)
@@ -419,6 +425,7 @@ size_t startFunctionBytes = 5;
 char **options;
 bool *optionsMatched;
 size_t optionCount;
+int debugBytecodeLevel;
 ImportData *importedModules;
 ImportData **importedModulesLink = &importedModules;
 
@@ -842,17 +849,23 @@ uint8_t TokenLookupPrecedence(uint8_t t) {
 	if (t == T_COMMA)           return 12;
 	if (t == T_LOGICAL_OR)      return 14;
 	if (t == T_LOGICAL_AND)     return 15;
-	if (t == T_GREATER_THAN)    return 20;
-	if (t == T_LESS_THAN)       return 20;
-	if (t == T_GT_OR_EQUAL)     return 20;
-	if (t == T_LT_OR_EQUAL)     return 20;
+	if (t == T_BITWISE_OR)      return 16;
+	if (t == T_BITWISE_XOR)     return 17;
+	if (t == T_BITWISE_AND)     return 18;
 	if (t == T_DOUBLE_EQUALS)   return 20;
 	if (t == T_NOT_EQUALS)      return 20;
+	if (t == T_GREATER_THAN)    return 25;
+	if (t == T_LESS_THAN)       return 25;
+	if (t == T_GT_OR_EQUAL)     return 25;
+	if (t == T_LT_OR_EQUAL)     return 25;
+	if (t == T_BIT_SHIFT_LEFT)  return 30;
+	if (t == T_BIT_SHIFT_RIGHT) return 30;
 	if (t == T_ADD)             return 50;
 	if (t == T_MINUS)           return 50;
 	if (t == T_ASTERISK)        return 60;
 	if (t == T_SLASH)           return 60;
 	if (t == T_LOGICAL_NOT)     return 70;
+	if (t == T_BITWISE_NOT)     return 70;
 	if (t == T_NEGATE)          return 70;
 	if (t == T_NEW)             return 75;
 	if (t == T_DOT)             return 80;
@@ -907,6 +920,9 @@ Token TokenNext(Tokenizer *tokenizer) {
 		else if (c == '-' && c1 == '=' && (tokenizer->position += 2)) token.type = T_MINUS_EQUALS;
 		else if (c == '*' && c1 == '=' && (tokenizer->position += 2)) token.type = T_ASTERISK_EQUALS;
 		else if (c == '/' && c1 == '=' && (tokenizer->position += 2)) token.type = T_SLASH_EQUALS;
+		else if (c == '<' && c1 == '<' && (tokenizer->position += 2)) token.type = T_BIT_SHIFT_LEFT;
+		else if (c == '>' && c1 == '>' && (tokenizer->position += 2)) token.type = T_BIT_SHIFT_RIGHT;
+		else if (c == '~' && c1 == '|' && (tokenizer->position += 2)) token.type = T_BITWISE_XOR;
 		else if (c == '+' && ++tokenizer->position) token.type = T_ADD;
 		else if (c == '-' && ++tokenizer->position) token.type = T_MINUS;
 		else if (c == '*' && ++tokenizer->position) token.type = T_ASTERISK;
@@ -926,6 +942,9 @@ Token TokenNext(Tokenizer *tokenizer) {
 		else if (c == '.' && ++tokenizer->position) token.type = T_DOT;
 		else if (c == ':' && ++tokenizer->position) token.type = T_COLON;
 		else if (c == '!' && ++tokenizer->position) token.type = T_LOGICAL_NOT;
+		else if (c == '|' && ++tokenizer->position) token.type = T_BITWISE_OR;
+		else if (c == '&' && ++tokenizer->position) token.type = T_BITWISE_AND;
+		else if (c == '~' && ++tokenizer->position) token.type = T_BITWISE_NOT;
 
 		else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= 0x80) || c == '#') {
 			token.textBytes = 0;
@@ -1315,8 +1334,8 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 	} else if (node->token.type == T_NUMERIC_LITERAL || node->token.type == T_SUCCESS
 			|| node->token.type == T_TRUE || node->token.type == T_FALSE || node->token.type == T_NULL) {
 		node->type = node->token.type;
-	} else if (node->token.type == T_LOGICAL_NOT || node->token.type == T_MINUS) {
-		node->type = node->token.type == T_MINUS ? T_NEGATE : T_LOGICAL_NOT;
+	} else if (node->token.type == T_LOGICAL_NOT || node->token.type == T_MINUS || node->token.type == T_BITWISE_NOT) {
+		node->type = node->token.type == T_MINUS ? T_NEGATE : node->token.type;
 		node->firstChild = ParseExpression(tokenizer, false, TokenLookupPrecedence(node->type));
 	} else if (node->token.type == T_LEFT_ROUND) {
 		node = ParseExpression(tokenizer, false, 0);
@@ -1412,12 +1431,14 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 			if (!node) return NULL;
 			node->type = T_COLON;
 			node->token = operationName;
-		} else if ((token.type == T_EQUALS || token.type == T_ADD || token.type == T_MINUS
-					|| token.type == T_ASTERISK || token.type == T_SLASH
-					|| token.type == T_GREATER_THAN || token.type == T_LESS_THAN
-					|| token.type == T_LT_OR_EQUAL || token.type == T_GT_OR_EQUAL
-					|| token.type == T_DOUBLE_EQUALS || token.type == T_NOT_EQUALS
-					|| token.type == T_LOGICAL_AND || token.type == T_LOGICAL_OR) 
+		} else if ((token.type == T_EQUALS || token.type == T_ADD || token.type == T_MINUS || token.type == T_BITWISE_XOR
+					|| token.type == T_ASTERISK       || token.type == T_SLASH
+					|| token.type == T_GREATER_THAN   || token.type == T_LESS_THAN
+					|| token.type == T_BIT_SHIFT_LEFT || token.type == T_BIT_SHIFT_RIGHT
+					|| token.type == T_BITWISE_OR     || token.type == T_BITWISE_AND
+					|| token.type == T_LT_OR_EQUAL    || token.type == T_GT_OR_EQUAL
+					|| token.type == T_DOUBLE_EQUALS  || token.type == T_NOT_EQUALS
+					|| token.type == T_LOGICAL_AND    || token.type == T_LOGICAL_OR) 
 				&& TokenLookupPrecedence(token.type) > precedence) {
 			Node *operation = (Node *) AllocateFixed(sizeof(Node));
 			operation->token = TokenNext(tokenizer);
@@ -2690,6 +2711,12 @@ int64_t ASTEvaluateIntConstant(Tokenizer *tokenizer, Node *node, bool *error) {
 		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) - ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
 	} else if (node->type == T_ASTERISK) {
 		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) * ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_BITWISE_OR) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) | ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_BITWISE_AND) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) & ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+	} else if (node->type == T_BITWISE_XOR) {
+		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) ^ ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
 	} else if (node->type == T_SLASH) {
 		int64_t divisor = ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
 
@@ -2702,8 +2729,24 @@ int64_t ASTEvaluateIntConstant(Tokenizer *tokenizer, Node *node, bool *error) {
 		} else {
 			return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) / divisor;
 		}
+	} else if (node->type == T_BIT_SHIFT_LEFT || node->type == T_BIT_SHIFT_RIGHT) {
+		int64_t shift = ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
+
+		if (*error) {
+			return 0;
+		} else if (shift < 0 || shift > 63) {
+			*error = true;
+			PrintError2(tokenizer, node, "Shift %d is out of range (0..63).\n", shift);
+			return 0;
+		} else if (node->type == T_BIT_SHIFT_LEFT) {
+			return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) << shift;
+		} else {
+			return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) >> shift;
+		}
 	} else if (node->type == T_NEGATE) {
 		return -ASTEvaluateIntConstant(tokenizer, node->firstChild, error);
+	} else if (node->type == T_BITWISE_NOT) {
+		return ~ASTEvaluateIntConstant(tokenizer, node->firstChild, error);
 	} else {
 		Assert(false);
 		return 0;
@@ -2716,7 +2759,13 @@ bool ASTIsIntegerConstant(Node *node) {
 			&& node->type != T_MINUS 
 			&& node->type != T_ASTERISK 
 			&& node->type != T_SLASH 
-			&& node->type != T_NEGATE) {
+			&& node->type != T_NEGATE
+			&& node->type != T_BIT_SHIFT_LEFT
+			&& node->type != T_BIT_SHIFT_RIGHT
+			&& node->type != T_BITWISE_OR
+			&& node->type != T_BITWISE_AND
+			&& node->type != T_BITWISE_XOR
+			&& node->type != T_BITWISE_NOT) {
 		return false;
 	}
 
@@ -2803,7 +2852,9 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH
 			|| node->type == T_GREATER_THAN || node->type == T_LESS_THAN || node->type == T_LT_OR_EQUAL || node->type == T_GT_OR_EQUAL
-			|| node->type == T_DOUBLE_EQUALS || node->type == T_NOT_EQUALS || node->type == T_LOGICAL_AND || node->type == T_LOGICAL_OR) {
+			|| node->type == T_DOUBLE_EQUALS || node->type == T_NOT_EQUALS || node->type == T_LOGICAL_AND || node->type == T_LOGICAL_OR
+			|| node->type == T_BIT_SHIFT_LEFT || node->type == T_BIT_SHIFT_RIGHT 
+			|| node->type == T_BITWISE_OR || node->type == T_BITWISE_AND || node->type == T_BITWISE_XOR) {
 		if (!ASTMatching(node->firstChild->expressionType, node->firstChild->sibling->expressionType)) {
 			PrintError2(tokenizer, node, "The expression on the left and right side of a binary operator must have the same type.\n");
 			return false;
@@ -3317,10 +3368,10 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		}
 
 		node->expressionType = &globalExpressionTypeBool;
-	} else if (node->type == T_NEGATE) {
+	} else if (node->type == T_NEGATE || node->type == T_BITWISE_NOT) {
 		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
 				&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)) {
-			PrintError2(tokenizer, node, "Expected a int or float for the unary negate '-' operator.\n");
+			PrintError2(tokenizer, node, "Expected a int or float for the %s operator.\n", node->type == T_NEGATE ? "unary negate '-'" : "bitwise not '~'");
 			return false;
 		}
 
@@ -4074,7 +4125,9 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		} else {
 			FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
 		}
-	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH || node->type == T_NEGATE) {
+	} else if (node->type == T_ADD || node->type == T_MINUS || node->type == T_ASTERISK || node->type == T_SLASH || node->type == T_NEGATE || node->type == T_BITWISE_NOT
+			|| node->type == T_BIT_SHIFT_LEFT || node->type == T_BIT_SHIFT_RIGHT 
+			|| node->type == T_BITWISE_OR || node->type == T_BITWISE_AND || node->type == T_BITWISE_XOR) {
 		uint8_t b = node->expressionType->type == T_FLOAT ? node->type - T_ADD + T_FLOAT_ADD 
 			: node->expressionType->type == T_STR ? T_CONCAT : node->type;
 		FunctionBuilderAddLineNumber(builder, node);
@@ -4518,8 +4571,11 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 	while (true) {
 		uint8_t command = functionData[instructionPointer++];
-		// PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
-		// PrintBackTrace(context, instructionPointer - 1, context->c, "");
+
+		if (debugBytecodeLevel >= 1) {
+			PrintDebug("--> %d, %ld, %ld, %ld\n", command, instructionPointer - 1, context->c->id, context->c->stackPointer);
+			if (debugBytecodeLevel >= 2) PrintBackTrace(context, instructionPointer - 1, context->c, "");
+		}
 
 		if (command == T_BLOCK || command == T_FUNCBODY) {
 			uint16_t newVariableCount = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
@@ -4854,6 +4910,26 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 
 			context->c->stack[context->c->stackPointer - 1] = entry->fields[fieldIndex];
 			context->c->stackIsManaged[context->c->stackPointer - 1] = isManaged;
+		} else if (command == T_BIT_SHIFT_LEFT) {
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i << context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
+		} else if (command == T_BIT_SHIFT_RIGHT) {
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i >> context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
+		} else if (command == T_BITWISE_OR) {
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i | context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
+		} else if (command == T_BITWISE_AND) {
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i & context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
+		} else if (command == T_BITWISE_XOR) {
+			if (context->c->stackPointer < 2) return -1;
+			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i ^ context->c->stack[context->c->stackPointer - 1].i;
+			context->c->stackPointer--;
 		} else if (command == T_ADD) {
 			if (context->c->stackPointer < 2) return -1;
 			context->c->stack[context->c->stackPointer - 2].i = context->c->stack[context->c->stackPointer - 2].i + context->c->stack[context->c->stackPointer - 1].i;
@@ -4879,6 +4955,9 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 		} else if (command == T_NEGATE) {
 			if (context->c->stackPointer < 1) return -1;
 			context->c->stack[context->c->stackPointer - 1].i = -context->c->stack[context->c->stackPointer - 1].i;
+		} else if (command == T_BITWISE_NOT) {
+			if (context->c->stackPointer < 1) return -1;
+			context->c->stack[context->c->stackPointer - 1].i = ~context->c->stack[context->c->stackPointer - 1].i;
 		} else if (command == T_FLOAT_ADD) {
 			if (context->c->stackPointer < 2) return -1;
 			context->c->stack[context->c->stackPointer - 2].f = context->c->stack[context->c->stackPointer - 2].f + context->c->stack[context->c->stackPointer - 1].f;
@@ -7123,6 +7202,11 @@ int main(int argc, char **argv) {
 		} else if (0 == memcmp(argv[i], "--start=", 8)) {
 			startFunction = argv[i] + 8;
 			startFunctionBytes = strlen(argv[i]) - 8;
+		} else if (0 == memcmp(argv[i], "--debug-bytecode=", 17)) {
+			debugBytecodeLevel = atoi(argv[i] + 17);
+		} else {
+			fprintf(stderr, "Unrecognised engine option: '%s'.\n", argv[i]);
+			return 1;
 		}
 	}
 
