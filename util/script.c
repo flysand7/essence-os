@@ -1,5 +1,4 @@
 // TODO Basic missing features:
-// 	- Other list operations: insert_many, delete_many.
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
 // 	- Other operators: remainder, ternary.
@@ -31,6 +30,7 @@
 // 	- Setting the initial values of global variables.
 // 	- Better handling of memory allocation failures.
 // 	- Operation arguments are evaluated in the opposite order to functions?
+// 	- Shrink lists during garbage collection.
 
 #include <stdint.h>
 #include <stddef.h>
@@ -5452,6 +5452,109 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			entry->list[insertIndex] = context->c->stack[context->c->stackPointer - 2];
 
 			context->c->stackPointer -= 3;
+		} else if (command == T_OP_INSERT_MANY) {
+			if (context->c->stackPointer < 3) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 3]) return -1;
+
+			uint64_t index = context->c->stack[context->c->stackPointer - 3].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			int64_t insertCount = context->c->stack[context->c->stackPointer - 1].i;
+			int64_t newLength = (int64_t) entry->length + insertCount;
+
+			if (insertCount < 0) {
+				PrintError4(context, instructionPointer - 1, "The number of items to insert is negative (%ld).\n", insertCount);
+				return 0;
+			} else if (newLength < 0 || newLength >= 1000000000) {
+				PrintError4(context, instructionPointer - 1, "The new length of the list (%ld + %ld = %ld) "
+						"is out of the supported range (0..1000000000).\n", (int64_t) entry->length, insertCount, newLength);
+				return 0;
+			}
+
+			uint32_t oldLength = context->heap[index].length;
+			entry->length = newLength;
+
+			if (entry->length > entry->allocated) {
+				// TODO Handling out of memory errors.
+				entry->allocated = entry->allocated ? entry->allocated * 2 : 4;
+				if (entry->length > entry->allocated) entry->allocated = entry->length + 5;
+				entry->list = (Value *) AllocateResize(entry->list, entry->allocated * sizeof(Value));
+				Assert(entry->length <= entry->allocated);
+			}
+
+			if (context->c->stackIsManaged[context->c->stackPointer - 2]) return -1;
+			int64_t insertIndex = context->c->stack[context->c->stackPointer - 2].i;
+
+			if (insertIndex < 0 || insertIndex > oldLength) {
+				PrintError4(context, instructionPointer - 1, "Cannot insert at index %ld. The list has length %ld.\n",
+						insertIndex, oldLength);
+				return 0;
+			}
+
+			for (int64_t i = oldLength - 1; i >= insertIndex; i--) {
+				entry->list[i + insertCount] = entry->list[i];
+			}
+
+			for (uintptr_t i = 0; i < (uintptr_t) insertCount; i++) {
+				entry->list[i + insertIndex].i = 0;
+			}
+
+			context->c->stackPointer -= 3;
+		} else if (command == T_OP_DELETE || command == T_OP_DELETE_MANY) {
+			int stackIndexList = command == T_OP_DELETE ? 2 : 3;
+			int stackIndexIndex = command == T_OP_DELETE ? 1 : 2;
+			if (context->c->stackPointer < (uintptr_t) stackIndexList) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - stackIndexList]) return -1;
+			uint64_t index = context->c->stack[context->c->stackPointer - stackIndexList].i;
+
+			if (!index) {
+				PrintError4(context, instructionPointer - 1, "The list is null.\n");
+				return 0;
+			}
+
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_LIST) return -1;
+
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			int64_t deleteCount = command == T_OP_DELETE ? 1 : context->c->stack[context->c->stackPointer - 1].i;
+			int64_t newLength = (int64_t) entry->length - deleteCount;
+
+			if (deleteCount < 0) {
+				PrintError4(context, instructionPointer - 1, "The number of items to delete is negative (%ld).\n", deleteCount);
+				return 0;
+			} else if (newLength < 0 || newLength >= 1000000000) {
+				PrintError4(context, instructionPointer - 1, "The new length of the list (%ld - %ld = %ld) "
+						"is out of the supported range (0..1000000000).\n", (int64_t) entry->length, deleteCount, newLength);
+				return 0;
+			}
+
+			// TODO Maybe shrink the list storage, if it will save a lot of memory.
+
+			if (context->c->stackIsManaged[context->c->stackPointer - stackIndexIndex]) return -1;
+			int64_t deleteIndex = context->c->stack[context->c->stackPointer - stackIndexIndex].i;
+
+			if (deleteIndex < 0 || deleteIndex > newLength) {
+				PrintError4(context, instructionPointer - 1, "Cannot delete %ld items starting at index %ld. The list has length %ld.\n",
+						deleteCount, deleteIndex, (int64_t) entry->length);
+				return 0;
+			}
+
+			for (int64_t i = deleteIndex; i < newLength; i++) {
+				entry->list[i] = entry->list[i + deleteCount];
+			}
+
+			entry->length = newLength;
+			context->c->stackPointer -= command == T_OP_DELETE ? 2 : 3;
 		} else if (command == T_OP_DELETE_ALL) {
 			if (context->c->stackPointer < 1) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
