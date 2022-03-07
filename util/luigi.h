@@ -69,9 +69,6 @@
 
 // Callback to allow the application to process messages.
 void _UIMessageProcess(EsMessage *message);
-
-// Callback for instances.
-int _UIInstanceCallback(ES_INSTANCE_TYPE *instance, EsMessage *message);
 #endif
 
 #ifdef UI_DEBUG
@@ -319,6 +316,7 @@ extern const int UI_KEYCODE_RIGHT;
 extern const int UI_KEYCODE_SPACE;
 extern const int UI_KEYCODE_TAB;
 extern const int UI_KEYCODE_UP;
+extern const int UI_KEYCODE_INSERT;
 extern const int UI_KEYCODE_0;
 
 #define UI_KEYCODE_LETTER(x) (UI_KEYCODE_A + (x) - 'A')
@@ -339,6 +337,7 @@ typedef struct UIElement {
 #define UI_ELEMENT_DESTROY_DESCENDENT (1 << 31)
 
 	uint32_t flags; // First 16 bits are element specific.
+	uint32_t id;
 
 	struct UIElement *parent;
 	struct UIElement *next;
@@ -352,10 +351,7 @@ typedef struct UIElement {
 	int (*messageClass)(struct UIElement *element, UIMessage message, int di /* data integer */, void *dp /* data pointer */);
 	int (*messageUser)(struct UIElement *element, UIMessage message, int di, void *dp);
 
-#ifdef UI_DEBUG
 	const char *cClassName;
-	int id;
-#endif
 } UIElement;
 
 #define UI_SHORTCUT(code, ctrl, shift, alt, invoke, cp) ((UIShortcut) { (code), (ctrl), (shift), (alt), (invoke), (cp) })
@@ -592,6 +588,10 @@ typedef struct UIImageDisplay {
 	int previousPanPointX, previousPanPointY;
 } UIImageDisplay;
 
+typedef struct UIWrapPanel {
+	UIElement e;
+} UIWrapPanel;
+
 void UIInitialise();
 int UIMessageLoop();
 
@@ -611,6 +611,7 @@ UISlider *UISliderCreate(UIElement *parent, uint32_t flags);
 UISpacer *UISpacerCreate(UIElement *parent, uint32_t flags, int width, int height);
 UISplitPane *UISplitPaneCreate(UIElement *parent, uint32_t flags, float weight);
 UITabPane *UITabPaneCreate(UIElement *parent, uint32_t flags, const char *tabs /* separate with \t, terminate with \0 */);
+UIWrapPanel *UIWrapPanelCreate(UIElement *parent, uint32_t flags);
 
 UILabel *UILabelCreate(UIElement *parent, uint32_t flags, const char *label, ptrdiff_t labelBytes);
 void UILabelSetContent(UILabel *code, const char *content, ptrdiff_t byteCount);
@@ -623,6 +624,7 @@ void UIWindowRegisterShortcut(UIWindow *window, UIShortcut shortcut);
 void UIWindowPostMessage(UIWindow *window, UIMessage message, void *dp); // Thread-safe.
 void UIWindowPack(UIWindow *window, int width); // Change the size of the window to best match its contents.
 
+typedef void (*UIDialogUserCallback)(UIElement *);
 const char *UIDialogShow(UIWindow *window, uint32_t flags, const char *format, ...);
 
 UIMenu *UIMenuCreate(UIElement *parent, uint32_t flags);
@@ -648,6 +650,8 @@ void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount,
 void UIDrawBlock(UIPainter *painter, UIRectangle rectangle, uint32_t color);
 void UIDrawInvert(UIPainter *painter, UIRectangle rectangle);
 bool UIDrawLine(UIPainter *painter, int x0, int y0, int x1, int y1, uint32_t color); // Returns false if the line was not visible.
+void UIDrawTriangle(UIPainter *painter, int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color);
+void UIDrawTriangleOutline(UIPainter *painter, int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color);
 void UIDrawGlyph(UIPainter *painter, int x, int y, int c, uint32_t color);
 void UIDrawRectangle(UIPainter *painter, UIRectangle r, uint32_t mainColor, uint32_t borderColor, UIRectangle borderSize);
 void UIDrawBorder(UIPainter *painter, UIRectangle r, uint32_t borderColor, UIRectangle borderSize);
@@ -722,7 +726,10 @@ struct {
 	XIM xim;
 	Atom windowClosedID, primaryID, uriListID, plainTextID;
 	Atom dndEnterID, dndPositionID, dndStatusID, dndActionCopyID, dndDropID, dndSelectionID, dndFinishedID, dndAwareID;
+	Atom clipboardID, xSelectionDataID, textID, targetID, incrID;
 	Cursor cursors[UI_CURSOR_COUNT];
+	char *pasteText;
+	XEvent copyEvent;
 #endif
 
 #ifdef UI_WINDOWS
@@ -732,7 +739,7 @@ struct {
 #endif
 
 #ifdef UI_ESSENCE
-	ES_INSTANCE_TYPE *instance;
+	EsInstance *instance;
 
 	void *menuData[256]; // HACK This limits the number of menu items to 128.
 	uintptr_t menuIndex;
@@ -841,6 +848,9 @@ void _UIWindowEndPaint(UIWindow *window, UIPainter *painter);
 void _UIWindowSetCursor(UIWindow *window, int cursor);
 void _UIWindowGetScreenPosition(UIWindow *window, int *x, int *y);
 void _UIWindowSetPressed(UIWindow *window, UIElement *element, int button);
+void _UIClipboardWriteText(UIWindow *window, char *text);
+char *_UIClipboardReadTextStart(UIWindow *window, size_t *bytes);
+void _UIClipboardReadTextEnd(UIWindow *window, char *text);
 bool _UIMessageLoopSingle(int *result);
 void _UIInspectorRefresh();
 void _UIUpdate();
@@ -1200,6 +1210,56 @@ bool UIDrawLine(UIPainter *painter, int x0, int y0, int x1, int y1, uint32_t col
 	return true;
 }
 
+void UIDrawTriangle(UIPainter *painter, int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color) {
+	// Step 1: Sort the points by their y-coordinate.
+	if (y1 < y0) { int xt = x0; x0 = x1, x1 = xt; int yt = y0; y0 = y1, y1 = yt; }
+	if (y2 < y1) { int xt = x1; x1 = x2, x2 = xt; int yt = y1; y1 = y2, y2 = yt; }
+	if (y1 < y0) { int xt = x0; x0 = x1, x1 = xt; int yt = y0; y0 = y1, y1 = yt; }
+	if (y2 == y0) return;
+
+	// Step 2: Clip the triangle.
+	if (x0 < painter->clip.l && x1 < painter->clip.l && x2 < painter->clip.l) return;
+	if (x0 >= painter->clip.r && x1 >= painter->clip.r && x2 >= painter->clip.r) return;
+	if (y2 < painter->clip.t || y0 >= painter->clip.b) return;
+	bool needsXClip = x0 < painter->clip.l + 1 || x0 >= painter->clip.r - 1
+		|| x1 < painter->clip.l + 1 || x1 >= painter->clip.r - 1
+		|| x2 < painter->clip.l + 1 || x2 >= painter->clip.r - 1;
+	bool needsYClip = y0 < painter->clip.t + 1 || y2 >= painter->clip.b - 1;
+#define _UI_DRAW_TRIANGLE_APPLY_CLIP(xo, yo) \
+	if (needsYClip && (yi + yo < painter->clip.t || yi + yo >= painter->clip.b)) continue; \
+	if (needsXClip && xf + xo < painter->clip.l) xf = painter->clip.l - xo; \
+	if (needsXClip && xt + xo > painter->clip.r) xt = painter->clip.r - xo;
+
+	// Step 3: Split into 2 triangles with bases aligned with the x-axis.
+	float xm0 = (x2 - x0) * (y1 - y0) / (y2 - y0), xm1 = x1 - x0;
+	if (xm1 < xm0) { float xmt = xm0; xm0 = xm1, xm1 = xmt; }
+	float xe0 = xm0 + x0 - x2, xe1 = xm1 + x0 - x2;
+	int ym = y1 - y0, ye = y2 - y1;
+	float ymr = 1.0f / ym, yer = 1.0f / ye;
+
+	// Step 4: Draw the top part.
+	for (float y = 0; y < ym; y++) {
+		int xf = xm0 * y * ymr, xt = xm1 * y * ymr, yi = (int) y;
+		_UI_DRAW_TRIANGLE_APPLY_CLIP(x0, y0);
+		uint32_t *b = &painter->bits[(yi + y0) * painter->width + x0];
+		for (int x = xf; x < xt; x++) b[x] = color;
+	}
+
+	// Step 5: Draw the bottom part.
+	for (float y = 0; y < ye; y++) {
+		int xf = xe0 * (ye - y) * yer, xt = xe1 * (ye - y) * yer, yi = (int) y;
+		_UI_DRAW_TRIANGLE_APPLY_CLIP(x2, y1);
+		uint32_t *b = &painter->bits[(yi + y1) * painter->width + x2];
+		for (int x = xf; x < xt; x++) b[x] = color;
+	}
+}
+
+void UIDrawTriangleOutline(UIPainter *painter, int x0, int y0, int x1, int y1, int x2, int y2, uint32_t color) {
+	UIDrawLine(painter, x0, y0, x1, y1, color);
+	UIDrawLine(painter, x1, y1, x2, y2, color);
+	UIDrawLine(painter, x2, y2, x0, y0, color);
+}
+
 void UIDrawInvert(UIPainter *painter, UIRectangle rectangle) {
 	rectangle = UIRectangleIntersection(painter->clip, rectangle);
 
@@ -1509,10 +1569,11 @@ UIElement *UIElementCreate(size_t bytes, UIElement *parent, uint32_t flags, int 
 		UI_ASSERT(~parent->flags & UI_ELEMENT_DESTROY);
 	}
 
-#ifdef UI_DEBUG
 	element->cClassName = cClassName;
-	static int id = 0;
+	static uint32_t id = 0;
 	element->id = ++id;
+
+#ifdef UI_DEBUG
 	_UIInspectorRefresh();
 #endif
 
@@ -1709,6 +1770,67 @@ UIPanel *UIPanelCreate(UIElement *parent, uint32_t flags) {
 	return panel;
 }
 
+void _UIWrapPanelLayoutRow(UIWrapPanel *panel, UIElement *child, UIElement *rowEnd, int rowY, int rowHeight) {
+	int rowPosition = 0;
+
+	while (child != rowEnd) {
+		int height = UIElementMessage(child, UI_MSG_GET_HEIGHT, 0, 0);
+		int width = UIElementMessage(child, UI_MSG_GET_WIDTH, 0, 0);
+		UIRectangle relative = UI_RECT_4(rowPosition, rowPosition + width, rowY + rowHeight / 2 - height / 2, rowY + rowHeight / 2 + height / 2);
+		UIElementMove(child, UIRectangleTranslate(relative, panel->e.bounds), false);
+		child = child->next;
+		rowPosition += width;
+	}
+}
+
+int _UIWrapPanelMessage(UIElement *element, UIMessage message, int di, void *dp) {
+	UIWrapPanel *panel = (UIWrapPanel *) element;
+
+	if (message == UI_MSG_LAYOUT || message == UI_MSG_GET_HEIGHT) {
+		int totalHeight = 0;
+		int rowPosition = 0;
+		int rowHeight = 0;
+		int rowLimit = message == UI_MSG_LAYOUT ? UI_RECT_WIDTH(element->bounds) : di;
+
+		UIElement *child = panel->e.children;
+		UIElement *rowStart = child;
+
+		while (child) {
+			if (~child->flags & UI_ELEMENT_HIDE) {
+				int height = UIElementMessage(child, UI_MSG_GET_HEIGHT, 0, 0);
+				int width = UIElementMessage(child, UI_MSG_GET_WIDTH, 0, 0);
+
+				if (rowLimit && rowPosition + width > rowLimit) {
+					_UIWrapPanelLayoutRow(panel, rowStart, child, totalHeight, rowHeight);
+					totalHeight += rowHeight;
+					rowPosition = rowHeight = 0;
+					rowStart = child;
+				}
+
+				if (height > rowHeight) {
+					rowHeight = height;
+				}
+
+				rowPosition += width;
+			}
+
+			child = child->next;
+		}
+
+		if (message == UI_MSG_GET_HEIGHT) {
+			return totalHeight + rowHeight;
+		} else {
+			_UIWrapPanelLayoutRow(panel, rowStart, child, totalHeight, rowHeight);
+		}
+	}
+
+	return 0;
+}
+
+UIWrapPanel *UIWrapPanelCreate(UIElement *parent, uint32_t flags) {
+	return (UIWrapPanel *) UIElementCreate(sizeof(UIWrapPanel), parent, flags, _UIWrapPanelMessage, "Wrap Panel");
+}
+
 void _UIButtonCalculateColors(UIElement *element, uint32_t *color, uint32_t *textColor) {
 	bool disabled = element->flags & UI_ELEMENT_DISABLED;
 	bool focused = element == element->window->focused;
@@ -1721,6 +1843,7 @@ void _UIButtonCalculateColors(UIElement *element, uint32_t *color, uint32_t *tex
 	*textColor = disabled ? ui.theme.textDisabled 
 		: *color == ui.theme.selected ? ui.theme.textSelected : ui.theme.text;
 }
+
 
 int _UIButtonMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	UIButton *button = (UIButton *) element;
@@ -2280,6 +2403,7 @@ int UICodeHitTest(UICode *code, int x, int y) {
 
 	UIFont *previousFont = UIFontActivate(code->font);
 	int lineHeight = UIMeasureStringHeight();
+	bool inMargin = x < UI_SIZE_CODE_MARGIN + UI_SIZE_CODE_MARGIN_GAP / 2 && (~code->e.flags & UI_CODE_NO_MARGIN);
 	UIFontActivate(previousFont);
 
 	if (y < 0 || y >= lineHeight * code->lineCount) {
@@ -2287,12 +2411,7 @@ int UICodeHitTest(UICode *code, int x, int y) {
 	}
 
 	int line = y / lineHeight + 1;
-
-	if (x < UI_SIZE_CODE_MARGIN && (~code->e.flags & UI_CODE_NO_MARGIN)) {
-		return -line;
-	} else {
-		return line;
-	}
+	return inMargin ? -line : line;
 }
 
 int UIDrawStringHighlighted(UIPainter *painter, UIRectangle lineBounds, const char *string, ptrdiff_t bytes, int tabSize) {
@@ -2480,6 +2599,8 @@ void UICodeFocusLine(UICode *code, int index) {
 }
 
 void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount, bool replace) {
+	UIFont *previousFont = UIFontActivate(code->font);
+
 	if (byteCount == -1) {
 		byteCount = _UIStringLength(content);
 	}
@@ -2502,8 +2623,6 @@ void UICodeInsertContent(UICode *code, const char *content, ptrdiff_t byteCount,
 	if (!byteCount) {
 		return;
 	}
-
-	UIFont *previousFont = UIFontActivate(code->font);
 
 	int lineCount = content[byteCount - 1] != '\n';
 
@@ -2980,6 +3099,26 @@ int _UITextboxMessage(UIElement *element, UIMessage message, int di, void *dp) {
 			textbox->carets[0] = textbox->bytes;
 		} else if (m->textBytes && !element->window->alt && !element->window->ctrl && m->text[0] >= 0x20) {
 			UITextboxReplace(textbox, m->text, m->textBytes, true);
+		} else if ((m->code == UI_KEYCODE_LETTER('C') || m->code == UI_KEYCODE_LETTER('X') || m->code == UI_KEYCODE_INSERT) 
+				&& element->window->ctrl && !element->window->alt && !element->window->shift) {
+			int   to = textbox->carets[0] > textbox->carets[1] ? textbox->carets[0] : textbox->carets[1];
+			int from = textbox->carets[0] < textbox->carets[1] ? textbox->carets[0] : textbox->carets[1];
+
+			if (from != to) {
+				char *pasteText = (char *) UI_CALLOC(to - from + 1);
+				for (int i = from; i < to; i++) pasteText[i - from] = textbox->string[i];
+				_UIClipboardWriteText(element->window, pasteText);
+			}
+			
+			if (m->code == UI_KEYCODE_LETTER('X')) {
+				UITextboxReplace(textbox, NULL, 0, true);
+			}
+		} else if ((m->code == UI_KEYCODE_LETTER('V') && element->window->ctrl && !element->window->alt && !element->window->shift)
+				|| (m->code == UI_KEYCODE_INSERT && !element->window->ctrl && !element->window->alt && element->window->shift)) {
+			size_t bytes;
+			char *text = _UIClipboardReadTextStart(element->window, &bytes);
+			if (text) UITextboxReplace(textbox, text, bytes, true);
+			_UIClipboardReadTextEnd(element->window, text);
 		} else {
 			handled = false;
 		}
@@ -3677,7 +3816,7 @@ const char *UIDialogShow(UIWindow *window, uint32_t flags, const char *format, .
 			} else if (format[i] == 'l' /* horizontal line */) {
 				UISpacerCreate(&row->e, UI_SPACER_LINE | UI_ELEMENT_H_FILL, 0, 1);
 			} else if (format[i] == 'u' /* user */) {
-				void (*callback)(UIElement *) = va_arg(arguments, void (*)(UIElement *));
+				UIDialogUserCallback callback = va_arg(arguments, UIDialogUserCallback);
 				callback(&row->e);
 			}
 		} else {
@@ -4448,12 +4587,93 @@ void _UIInspectorRefresh() {}
 
 #endif
 
+#ifdef UI_AUTOMATION_TESTS
+
+int UIAutomationRunTests();
+
+void UIAutomationProcessMessage() {
+	int result;
+	_UIMessageLoopSingle(&result);
+}
+
+void UIAutomationKeyboardTypeSingle(intptr_t code, bool ctrl, bool shift, bool alt) {
+	UIWindow *window = ui.windows; // TODO Get the focused window.
+	UIKeyTyped m = { 0 };
+	m.code = code;
+	window->ctrl = ctrl;
+	window->alt = alt;
+	window->shift = shift;
+	_UIWindowInputEvent(window, UI_MSG_KEY_TYPED, 0, &m);
+	window->ctrl = false;
+	window->alt = false;
+	window->shift = false;
+}
+
+void UIAutomationKeyboardType(const char *string) {
+	UIWindow *window = ui.windows; // TODO Get the focused window.
+
+	UIKeyTyped m = { 0 };
+	char c[2];
+	m.text = c;
+	m.textBytes = 1;
+	c[1] = 0;
+
+	for (int i = 0; string[i]; i++) {
+		window->ctrl = false;
+		window->alt = false;
+		window->shift = (c[0] >= 'A' && c[0] <= 'Z');
+		c[0] = string[i];
+		m.code = (c[0] >= 'A' && c[0] <= 'Z') ? UI_KEYCODE_LETTER(c[0]) 
+			: c[0] == '\n' ? UI_KEYCODE_ENTER 
+			: c[0] == '\t' ? UI_KEYCODE_TAB 
+			: c[0] == ' ' ? UI_KEYCODE_SPACE 
+			: (c[0] >= '0' && c[0] <= '9') ? UI_KEYCODE_DIGIT(c[0]) : 0;
+		_UIWindowInputEvent(window, UI_MSG_KEY_TYPED, 0, &m);
+	}
+
+	window->ctrl = false;
+	window->alt = false;
+	window->shift = false;
+}
+
+bool UIAutomationCheckCodeLineMatches(UICode *code, int lineIndex, const char *input) {
+	if (lineIndex < 1 || lineIndex > code->lineCount) return false;
+	int bytes = 0;
+	for (int i = 0; input[i]; i++) bytes++;
+	if (bytes != code->lines[lineIndex - 1].bytes) return false;
+	for (int i = 0; input[i]; i++) if (code->content[code->lines[lineIndex - 1].offset + i] != input[i]) return false;
+	return true;
+}
+
+bool UIAutomationCheckTableItemMatches(UITable *table, int row, int column, const char *input) {
+	int bytes = 0;
+	for (int i = 0; input[i]; i++) bytes++;
+	if (row < 0 || row >= table->itemCount) return false;
+	if (column < 0 || column >= table->columnCount) return false;
+	char *buffer = (char *) UI_MALLOC(bytes + 1);
+	UITableGetItem m = { 0 };
+	m.buffer = buffer;
+	m.bufferBytes = bytes + 1;
+	m.column = column;
+	m.index = row;
+	int length = UIElementMessage(&table->e, UI_MSG_TABLE_GET_ITEM, 0, &m);
+	if (length != bytes) return false;
+	for (int i = 0; input[i]; i++) if (buffer[i] != input[i]) return false;
+	return true;
+}
+
+#endif
+
 int UIMessageLoop() {
 	_UIInspectorCreate();
 	_UIUpdate();
+#ifdef UI_AUTOMATION_TESTS
+	return UIAutomationRunTests();
+#else
 	int result = 0;
 	while (!ui.quit && _UIMessageLoopSingle(&result)) ui.dialogResult = NULL;
 	return result;
+#endif
 }
 
 #ifdef UI_LINUX
@@ -4472,6 +4692,7 @@ const int UI_KEYCODE_RIGHT = XK_Right;
 const int UI_KEYCODE_SPACE = XK_space;
 const int UI_KEYCODE_TAB = XK_Tab;
 const int UI_KEYCODE_UP = XK_Up;
+const int UI_KEYCODE_INSERT = XK_Insert;
 const int UI_KEYCODE_0 = XK_0;
 
 int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
@@ -4505,7 +4726,7 @@ UIWindow *UIWindowCreate(UIWindow *owner, uint32_t flags, const char *cTitle, in
 	if (cTitle) XStoreName(ui.display, window->window, cTitle);
 	XSelectInput(ui.display, window->window, SubstructureNotifyMask | ExposureMask | PointerMotionMask 
 		| ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask | StructureNotifyMask
-		| EnterWindowMask | LeaveWindowMask | ButtonMotionMask | KeymapStateMask | FocusChangeMask);
+		| EnterWindowMask | LeaveWindowMask | ButtonMotionMask | KeymapStateMask | FocusChangeMask | PropertyChangeMask);
 
 	if (flags & UI_WINDOW_MAXIMIZE) {
 		Atom atoms[2] = { XInternAtom(ui.display, "_NET_WM_STATE_MAXIMIZED_HORZ", 0), XInternAtom(ui.display, "_NET_WM_STATE_MAXIMIZED_VERT", 0) };
@@ -4537,6 +4758,117 @@ Display *_UIX11GetDisplay() {
 	return ui.display;
 }
 
+UIWindow *_UIFindWindow(Window window) {
+	UIWindow *w = ui.windows;
+
+	while (w) {
+		if (w->window == window) {
+			return w;
+		}
+
+		w = w->next;
+	}
+
+	return NULL;
+}
+
+void _UIClipboardWriteText(UIWindow *window, char *text) {
+	UI_FREE(ui.pasteText);
+	ui.pasteText = text;
+	XSetSelectionOwner(ui.display, ui.clipboardID, window->window, 0);
+}
+
+char *_UIClipboardReadTextStart(UIWindow *window, size_t *bytes) {
+	Window clipboardOwner = XGetSelectionOwner(ui.display, ui.clipboardID);
+
+	if (clipboardOwner == None) {
+		return NULL;
+	}
+
+	if (_UIFindWindow(clipboardOwner)) {
+		*bytes = strlen(ui.pasteText);
+		char *copy = (char *) UI_MALLOC(*bytes);
+		memcpy(copy, ui.pasteText, *bytes);
+		return copy;
+	}
+
+	XConvertSelection(ui.display, ui.clipboardID, XA_STRING, ui.xSelectionDataID, window->window, CurrentTime);
+	XSync(ui.display, 0);
+	XNextEvent(ui.display, &ui.copyEvent);
+
+	// Hack to get around the fact that PropertyNotify arrives before SelectionNotify.
+	// We need PropertyNotify for incremental transfers.
+	while (ui.copyEvent.type == PropertyNotify) {
+		XNextEvent(ui.display, &ui.copyEvent);
+	}
+
+	if (ui.copyEvent.type == SelectionNotify && ui.copyEvent.xselection.selection == ui.clipboardID && ui.copyEvent.xselection.property) {
+		Atom target;
+		// This `itemAmount` is actually `bytes_after_return`
+		unsigned long size, itemAmount;
+		char *data;
+		int format;
+		XGetWindowProperty(ui.copyEvent.xselection.display, ui.copyEvent.xselection.requestor, ui.copyEvent.xselection.property, 0L, ~0L, 0, 
+				AnyPropertyType, &target, &format, &size, &itemAmount, (unsigned char **) &data);
+
+		// We have to allocate for incremental transfers but we don't have to allocate for non-incremental transfers.
+		// I'm allocating for both here to make _UIClipboardReadTextEnd work the same for both
+		if (target != ui.incrID) {
+			*bytes = size;
+			char *copy = (char *) UI_MALLOC(*bytes);
+			memcpy(copy, data, *bytes);
+			XFree(data);
+			XDeleteProperty(ui.copyEvent.xselection.display, ui.copyEvent.xselection.requestor, ui.copyEvent.xselection.property);
+			return copy;
+		}
+
+		XFree(data);
+		XDeleteProperty(ui.display, ui.copyEvent.xselection.requestor, ui.copyEvent.xselection.property);
+		XSync(ui.display, 0);
+
+		*bytes = 0;
+		char *fullData = NULL;
+
+		while (true) {
+			// TODO Timeout.
+			XNextEvent(ui.display, &ui.copyEvent);
+
+			if (ui.copyEvent.type == PropertyNotify) {
+				// The other case - PropertyDelete would be caused by us and can be ignored
+				if (ui.copyEvent.xproperty.state == PropertyNewValue) {
+					unsigned long chunkSize;
+
+					// Note that this call deletes the property.
+					XGetWindowProperty(ui.display, ui.copyEvent.xproperty.window, ui.copyEvent.xproperty.atom, 0L, ~0L, 
+						True, AnyPropertyType, &target, &format, &chunkSize, &itemAmount, (unsigned char **) &data);
+					
+					if (chunkSize == 0) {
+						return fullData;
+					} else {
+						ptrdiff_t currentOffset = *bytes;
+						*bytes += chunkSize;
+						fullData = (char *) UI_REALLOC(fullData, *bytes);
+						memcpy(fullData + currentOffset, data, chunkSize);
+					}
+
+					XFree(data);
+				}
+			}
+		}
+	} else {
+		// TODO What should happen in this case? Is the next event always going to be the selection event?
+		return NULL;
+	}
+}
+
+void _UIClipboardReadTextEnd(UIWindow *window, char *text) {
+	if (text) {
+		//XFree(text);
+		//XDeleteProperty(ui.copyEvent.xselection.display, ui.copyEvent.xselection.requestor, ui.copyEvent.xselection.property);
+		UI_FREE(text);
+	}
+}
+
 void UIInitialise() {
 	_UIInitialiseCommon();
 
@@ -4557,6 +4889,11 @@ void UIInitialise() {
 	ui.dndAwareID = XInternAtom(ui.display, "XdndAware", 0);
 	ui.uriListID = XInternAtom(ui.display, "text/uri-list", 0);
 	ui.plainTextID = XInternAtom(ui.display, "text/plain", 0);
+	ui.clipboardID = XInternAtom(ui.display, "CLIPBOARD", 0);
+	ui.xSelectionDataID = XInternAtom(ui.display, "XSEL_DATA", 0);
+	ui.textID = XInternAtom(ui.display, "TEXT", 0);
+	ui.targetID = XInternAtom(ui.display, "TARGETS", 0);
+	ui.incrID = XInternAtom(ui.display, "INCR", 0);
 
 	ui.cursors[UI_CURSOR_ARROW] = XCreateFontCursor(ui.display, XC_left_ptr);
 	ui.cursors[UI_CURSOR_TEXT] = XCreateFontCursor(ui.display, XC_xterm);
@@ -4582,20 +4919,6 @@ void UIInitialise() {
 		XSetLocaleModifiers("@im=none");
 		ui.xim = XOpenIM(ui.display, 0, 0, 0);
 	}
-}
-
-UIWindow *_UIFindWindow(Window window) {
-	UIWindow *w = ui.windows;
-
-	while (w) {
-		if (w->window == window) {
-			return w;
-		}
-
-		w = w->next;
-	}
-
-	return NULL;
 }
 
 void _UIWindowSetCursor(UIWindow *window, int cursor) {
@@ -4918,6 +5241,44 @@ bool _UIProcessEvent(XEvent *event) {
 
 		window->dragSource = 0; // Drag complete.
 		_UIUpdate();
+	} else if (event->type == SelectionRequest) {
+		UIWindow *window = _UIFindWindow(event->xclient.window);
+		if (!window) return false;
+
+		if ((XGetSelectionOwner(ui.display, ui.clipboardID) == window->window) 
+				&& (event->xselectionrequest.selection == ui.clipboardID)) {
+			XSelectionRequestEvent requestEvent = event->xselectionrequest;
+			Atom utf8ID = XInternAtom(ui.display, "UTF8_STRING", 1);
+			if (utf8ID == None) utf8ID = XA_STRING;
+
+			Atom type = requestEvent.target;
+			type = (type == ui.textID) ? XA_STRING : type;
+			int changePropertyResult = 0;
+
+			if(requestEvent.target == XA_STRING || requestEvent.target == ui.textID || requestEvent.target == utf8ID) {
+				changePropertyResult = XChangeProperty(requestEvent.display, requestEvent.requestor, requestEvent.property, 
+						type, 8, PropModeReplace, (const unsigned char *) ui.pasteText, strlen(ui.pasteText));
+			} else if (requestEvent.target == ui.targetID) {
+				changePropertyResult = XChangeProperty(requestEvent.display, requestEvent.requestor, requestEvent.property, 
+						XA_ATOM, 32, PropModeReplace, (unsigned char *) &utf8ID, 1);
+			}
+
+			if(changePropertyResult == 0 || changePropertyResult == 1) {
+				XSelectionEvent sendEvent = {
+					.type = SelectionNotify,
+					.serial = requestEvent.serial,
+					.send_event = requestEvent.send_event,
+					.display = requestEvent.display,
+					.requestor = requestEvent.requestor,
+					.selection = requestEvent.selection,
+					.target = requestEvent.target,
+					.property = requestEvent.property,
+					.time = requestEvent.time
+				};
+
+				XSendEvent(ui.display, requestEvent.requestor, 0, 0, (XEvent *) &sendEvent);
+			}
+		}
 	}
 
 	return false;
@@ -5012,6 +5373,7 @@ const int UI_KEYCODE_RIGHT = VK_RIGHT;
 const int UI_KEYCODE_SPACE = VK_SPACE;
 const int UI_KEYCODE_TAB = VK_TAB;
 const int UI_KEYCODE_UP = VK_UP;
+const int UI_KEYCODE_INSERT = VK_INSERT;
 
 int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_DESTROY) {
@@ -5165,6 +5527,8 @@ LRESULT CALLBACK _UIWindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPAR
 }
 
 void UIInitialise() {
+	ui.heap = GetProcessHeap();
+	
 	_UIInitialiseCommon();
 
 	ui.cursors[UI_CURSOR_ARROW] = LoadCursor(NULL, IDC_ARROW);
@@ -5182,8 +5546,6 @@ void UIInitialise() {
 	ui.cursors[UI_CURSOR_RESIZE_RIGHT] = LoadCursor(NULL, IDC_SIZEWE);
 	ui.cursors[UI_CURSOR_RESIZE_DOWN_LEFT] = LoadCursor(NULL, IDC_SIZENESW);
 	ui.cursors[UI_CURSOR_RESIZE_DOWN_RIGHT] = LoadCursor(NULL, IDC_SIZENWSE);
-
-	ui.heap = GetProcessHeap();
 
 	WNDCLASS windowClass = { 0 };
 	windowClass.lpfnWndProc = _UIWindowProcedure;
@@ -5305,6 +5667,20 @@ void *_UIHeapReAlloc(void *pointer, size_t size) {
 	}
 }
 
+void _UIClipboardWriteText(UIWindow *window, char *text) {
+	// TODO.
+	UI_FREE(text);
+}
+
+char *_UIClipboardReadTextStart(UIWindow *window, size_t *bytes) {
+	// TODO.
+	return NULL;
+}
+
+void _UIClipboardReadTextEnd(UIWindow *window, char *text) {
+	// TODO.
+}
+
 #endif
 
 #ifdef UI_ESSENCE
@@ -5324,12 +5700,13 @@ const int UI_KEYCODE_RIGHT = ES_SCANCODE_RIGHT_ARROW;
 const int UI_KEYCODE_SPACE = ES_SCANCODE_SPACE;
 const int UI_KEYCODE_TAB = ES_SCANCODE_TAB;
 const int UI_KEYCODE_UP = ES_SCANCODE_UP_ARROW;
+const int UI_KEYCODE_INSERT = ES_SCANCODE_INSERT;
 
 int _UIWindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 	if (message == UI_MSG_DESTROY) {
 		// TODO Non-main windows.
 		element->window = NULL;
-		EsInstanceClose(ui.instance);
+		EsInstanceCloseReference(ui.instance);
 	}
 
 	return _UIWindowMessageCommon(element, message, di, dp);
@@ -5343,7 +5720,6 @@ void UIInitialise() {
 
 		if (message->type == ES_MSG_INSTANCE_CREATE) {
 			ui.instance = EsInstanceCreate(message, NULL, 0);
-			ui.instance->callback = _UIInstanceCallback;
 			break;
 		}
 	}
@@ -5493,6 +5869,19 @@ void UIWindowPostMessage(UIWindow *window, UIMessage message, void *_dp) {
 	m.user.context1.u = message;
 	m.user.context2.p = _dp;
 	EsMessagePost(window->canvas, &m);
+}
+
+void _UIClipboardWriteText(UIWindow *window, char *text) {
+	EsClipboardAddText(ES_CLIPBOARD_PRIMARY, text, -1);
+	UI_FREE(text);
+}
+
+char *_UIClipboardReadTextStart(UIWindow *window, size_t *bytes) {
+	return EsClipboardReadText(ES_CLIPBOARD_PRIMARY, bytes, NULL);
+}
+
+void _UIClipboardReadTextEnd(UIWindow *window, char *text) {
+	EsHeapFree(text);
 }
 
 #endif
