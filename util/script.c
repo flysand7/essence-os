@@ -167,6 +167,8 @@
 #define T_OP_SUCCESS          (160)
 #define T_OP_ERROR            (161)
 #define T_OP_DEFAULT          (162)
+#define T_OP_INT_TO_FLOAT     (163)
+#define T_OP_FLOAT_TRUNCATE   (164)
 
 #define T_IF                  (170)
 #define T_WHILE               (171)
@@ -197,6 +199,7 @@
 #define T_SUCCESS             (196)
 #define T_RETERR              (197)
 #define T_INTTYPE             (198)
+#define T_HANDLETYPE          (199)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -254,7 +257,7 @@ typedef struct Scope {
 
 typedef struct Node {
 	uint8_t type;
-	bool referencesRootScope, isExternalCall, isPersistentVariable, isOptionVariable;
+	bool referencesRootScope, isExternalCall, isPersistentVariable, isOptionVariable, cycleCheck;
 	uint8_t operationType;
 	int32_t inlineImportVariableIndex;
 	Token token;
@@ -976,6 +979,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("float") token.type = T_FLOAT;
 			else if KEYWORD("for") token.type = T_FOR;
 			else if KEYWORD("functype") token.type = T_FUNCTYPE;
+			else if KEYWORD("handletype") token.type = T_HANDLETYPE;
 			else if KEYWORD("if") token.type = T_IF;
 			else if KEYWORD("in") token.type = T_IN;
 			else if KEYWORD("int") token.type = T_INT;
@@ -1422,7 +1426,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 			TokenNext(tokenizer);
 			Token operationName = TokenNext(tokenizer);
 
-			if (operationName.type != T_IDENTIFIER && operationName.type != T_ASSERT) {
+			if (operationName.type != T_IDENTIFIER && operationName.type != T_ASSERT && operationName.type != T_FLOAT) {
 				PrintError2(tokenizer, node, "Expected an identifier for the operation name after ':'.\n");
 				return NULL;
 			}
@@ -2095,6 +2099,31 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 				PrintError2(tokenizer, node->firstChild->sibling, "Expected a semicolon after the argument list.\n");
 				return NULL;
 			}
+		} else if (token.type == T_HANDLETYPE) {
+			TokenNext(tokenizer);
+			Node *node = (Node *) AllocateFixed(sizeof(Node));
+			node->type = T_HANDLETYPE;
+			node->token = TokenNext(tokenizer);
+			*link = node;
+			link = &node->sibling;
+
+			if (node->token.type != T_IDENTIFIER) {
+				PrintError2(tokenizer, node, "Expected the name of the handletype.\n");
+				return NULL;
+			}
+
+			Token semicolon = TokenNext(tokenizer);
+
+			if (semicolon.type == T_COLON) {
+				node->firstChild = ParseType(tokenizer, false, false, false);
+				if (!node->firstChild) return NULL;
+				semicolon = TokenNext(tokenizer);
+			}
+
+			if (semicolon.type != T_SEMICOLON) {
+				PrintError2(tokenizer, node, "Expected a semicolon after the handletype identifier.\n");
+				return NULL;
+			}
 		} else if (token.type == T_INTTYPE) {
 			TokenNext(tokenizer);
 			Node *node = (Node *) AllocateFixed(sizeof(Node));
@@ -2423,7 +2452,7 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 	}
 
 	if ((node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_FUNCTYPE || node->type == T_INTTYPE || node->type == T_INTTYPE_CONSTANT
-			|| node->type == T_STRUCT || node->type == T_IMPORT) && node->parent->type != T_STRUCT) {
+			|| node->type == T_STRUCT || node->type == T_IMPORT || node->type == T_HANDLETYPE) && node->parent->type != T_STRUCT) {
 		if (!ScopeAddEntry(tokenizer, scope, node)) {
 			return false;
 		}
@@ -2551,8 +2580,8 @@ bool ASTMatching(Node *left, Node *right) {
 		return true;
 	} else if (left->type != right->type) {
 		return false;
-	} else if ((left->type == T_IDENTIFIER || left->type == T_STRUCT) 
-			&& (left->token.textBytes != right->token.textBytes 
+	} else if ((left->type == T_IDENTIFIER || left->type == T_STRUCT || left->type == T_HANDLETYPE || left->type == T_INTTYPE) 
+			&& (left->token.module != right->token.module || left->token.textBytes != right->token.textBytes 
 				|| MemoryCompare(left->token.text, right->token.text, right->token.textBytes))) {
 		return false;
 	} else {
@@ -2615,17 +2644,22 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 		}
 	}
 
-	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST) {
+	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST || node->type == T_HANDLETYPE) {
 		Node *type = node->firstChild;
 
-		if (type->type == T_IDENTIFIER) {
+		if (type && type->type == T_IDENTIFIER) {
 			Node *lookup = ScopeLookup(tokenizer, type, false);
 
 			if (!lookup) {
 				return false;
 			}
 
-			if (!node->expressionType) {
+			if (node->type == T_HANDLETYPE) {
+				if (lookup->type != T_HANDLETYPE) {
+					PrintError2(tokenizer, lookup, "handletypes can only inherit from other handletypes.\n");
+					return false;
+				}
+			} else if (!node->expressionType) {
 				node->expressionType = node->firstChild;
 			}
 
@@ -2635,12 +2669,24 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 				return false;
 			} else if (lookup->type == T_FUNCTYPE) {
 				MemoryCopy(node->expressionType, lookup->firstChild, sizeof(Node));
-			} else if (lookup->type == T_STRUCT) {
-				MemoryCopy(node->expressionType, lookup, sizeof(Node));
-			} else if (lookup->type == T_INTTYPE) {
-				MemoryCopy(node->expressionType, lookup, sizeof(Node));
+			} else if (lookup->type == T_STRUCT || lookup->type == T_INTTYPE || lookup->type == T_HANDLETYPE) {
+				if (node->type == T_HANDLETYPE) {
+					if (lookup->cycleCheck) {
+						PrintError2(tokenizer, lookup, "Cyclic handletype inheritance.\n");
+						return false;
+					}
+
+					Node *copy = (Node *) AllocateFixed(sizeof(Node));
+					*copy = *lookup;
+					copy->sibling = NULL;
+					node->firstChild = copy;
+					node->cycleCheck = true;
+					if (!ASTLookupTypeIdentifiers(tokenizer, copy)) return false;
+				} else {
+					MemoryCopy(node->expressionType, lookup, sizeof(Node));
+				}
 			} else {
-				PrintError2(tokenizer, node, "The identifier did not resolve to a type.\n");
+				PrintError2(tokenizer, lookup, "The identifier did not resolve to a type.\n");
 				return false;
 			}
 
@@ -2651,18 +2697,38 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 	return true;
 }
 
-Node *ASTImplicitCastToErr(Tokenizer *tokenizer, Node *parent, Node *expression) {
-	if (!expression->expressionType || ASTMatching(expression->expressionType, &globalExpressionTypeVoid)) {
-		PrintError2(tokenizer, parent, "You cannot assign a value of 'void' to 'err[void]'.\nInstead, use the constant '#success'.\n");
+bool ASTImplicitCastIsPossible(Node *targetType, Node *expressionType) {
+	if (!expressionType || !targetType) {
+		return false;
+	} else if (targetType->type == T_ERR && ASTMatching(targetType->firstChild, expressionType)) {
+		return true;
+	} else if (targetType->type == T_HANDLETYPE && expressionType->type == T_HANDLETYPE) {
+		Node *inherit = expressionType->firstChild;
+		return inherit && (ASTMatching(targetType, inherit) || ASTImplicitCastIsPossible(targetType, inherit));
+	} else {
+		return false;
+	}
+}
+
+Node *ASTImplicitCastApply(Tokenizer *tokenizer, Node *parent, Node *target, Node *expression) {
+	if (target->type == T_ERR && ASTMatching(target->firstChild, expression->expressionType)) {
+		if (!expression->expressionType || ASTMatching(expression->expressionType, &globalExpressionTypeVoid)) {
+			PrintError2(tokenizer, parent, "You cannot assign a value of 'void' to 'err[void]'.\nInstead, use the constant '#success'.\n");
+			return NULL;
+		}
+
+		Node *cast = (Node *) AllocateFixed(sizeof(Node));
+		cast->type = T_ERR_CAST;
+		cast->scope = parent->scope;
+		cast->parent = parent;
+		cast->firstChild = expression;
+		return cast;
+	} else if (target->type == T_HANDLETYPE && expression->expressionType->type == T_HANDLETYPE) {
+		return expression; // Nothing needs to be done to cast between handletypes.
+	} else {
+		Assert(false);
 		return NULL;
 	}
-
-	Node *cast = (Node *) AllocateFixed(sizeof(Node));
-	cast->type = T_ERR_CAST;
-	cast->scope = parent->scope;
-	cast->parent = parent;
-	cast->firstChild = expression;
-	return cast;
 }
 
 Value ASTNumericLiteralToValue(Node *node) {
@@ -2787,6 +2853,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 	Node *child = node->firstChild;
 
 	while (child) {
+		if (child == node) Assert(false);
 		if (!ASTSetTypes(tokenizer, child)) return false;
 		child->parent = node;
 		child = child->sibling;
@@ -2797,7 +2864,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			|| node->type == T_LIST || node->type == T_TUPLE || node->type == T_ERR
 			|| node->type == T_BOOL || node->type == T_VOID || node->type == T_IDENTIFIER
 			|| node->type == T_ARGUMENTS || node->type == T_ARGUMENT
-			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT || node->type == T_IMPORT_PATH || node->type == T_INTTYPE
+			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT 
+			|| node->type == T_IMPORT_PATH || node->type == T_INTTYPE || node->type == T_HANDLETYPE
 			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION
 			|| node->type == T_REPL_RESULT || node->type == T_DECLARE_GROUP) {
 	} else if (node->type == T_NUMERIC_LITERAL) {
@@ -2899,10 +2967,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			node->expressionType = node->firstChild->expressionType;
 		}
 	} else if (node->type == T_DECLARE) {
-		if (node->firstChild->sibling && node->firstChild && node->firstChild->type == T_ERR 
-				&& ASTMatching(node->firstChild->firstChild, node->firstChild->sibling->expressionType)) {
-			// Allow the implicit cast to an error type.
-			Node *cast = ASTImplicitCastToErr(tokenizer, node, node->firstChild->sibling);
+		if (node->firstChild->sibling && ASTImplicitCastIsPossible(node->firstChild, node->firstChild->sibling->expressionType)) {
+			Node *cast = ASTImplicitCastApply(tokenizer, node, node->firstChild, node->firstChild->sibling);
 			if (!cast) return false;
 			node->firstChild->sibling = cast;
 		} else if (node->firstChild->sibling && !ASTMatching(node->firstChild, node->firstChild->sibling->expressionType)) {
@@ -2967,10 +3033,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			return false;
 		}
 	} else if (node->type == T_EQUALS) {
-		if (node->firstChild->expressionType && node->firstChild->expressionType->type == T_ERR 
-				&& ASTMatching(node->firstChild->expressionType->firstChild, node->firstChild->sibling->expressionType)) {
-			// Allow the implicit cast to an error type.
-			Node *cast = ASTImplicitCastToErr(tokenizer, node, node->firstChild->sibling);
+		if (ASTImplicitCastIsPossible(node->firstChild->expressionType, node->firstChild->sibling->expressionType)) {
+			Node *cast = ASTImplicitCastApply(tokenizer, node, node->firstChild->expressionType, node->firstChild->sibling);
 			if (!cast) return false;
 			node->firstChild->sibling = cast;
 		} else if (!ASTMatching(node->firstChild->expressionType, node->firstChild->sibling->expressionType)) {
@@ -3032,10 +3096,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 		if (node->type == T_RETURN) {
 			if (!ASTMatching(expressionType, returnType)) {
-				if (returnType && returnType->type == T_ERR 
-						&& ASTMatching(returnType->firstChild, node->firstChild->expressionType)) {
-					// Allow the implicit cast to an error type.
-					Node *cast = ASTImplicitCastToErr(tokenizer, node, node->firstChild);
+				if (ASTImplicitCastIsPossible(returnType, node->firstChild->expressionType)) {
+					Node *cast = ASTImplicitCastApply(tokenizer, node, returnType, node->firstChild);
 					if (!cast) return false;
 					node->firstChild = cast;
 				} else {
@@ -3205,19 +3267,26 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 	} else if (node->type == T_COLON) {
 		Node *expressionType = node->firstChild->expressionType;
 
+		if (!expressionType) {
+			PrintError2(tokenizer, node, "This is not an expression.\n");
+			return false;
+		}
+
 		bool isList = expressionType->type == T_LIST;
 		bool isStr = expressionType->type == T_STR;
 		bool isFuncPtr = expressionType->type == T_FUNCPTR;
 		bool isErr = expressionType->type == T_ERR;
+		bool isInt = expressionType->type == T_INT;
+		bool isFloat = expressionType->type == T_FLOAT;
 
-		if (!isList && !isStr & !isFuncPtr && !isErr) {
+		if (!isList && !isStr & !isFuncPtr && !isErr && !isInt && !isFloat) {
 			PrintError2(tokenizer, node, "This type does not have any ':' operations.\n");
 			return false;
 		}
 
 		Token token = node->token;
 		Node *arguments[2] = { 0 };
-		bool returnsItem = false, returnsInt = false, returnsBool = false, returnsStr = false, simple = true;
+		bool returnsItem = false, returnsInt = false, returnsBool = false, returnsStr = false, returnsFloat = false, simple = true;
 		uint8_t op;
 
 		if (isList && KEYWORD("resize")) arguments[0] = &globalExpressionTypeInt, op = T_OP_RESIZE;
@@ -3233,6 +3302,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		else if (isList && KEYWORD("first")) returnsItem = true, op = T_OP_FIRST;
 		else if (isList && KEYWORD("last")) returnsItem = true, op = T_OP_LAST;
 		else if ((isList || isStr) && KEYWORD("len")) returnsInt = true, op = T_OP_LEN;
+		else if (isInt && KEYWORD("float")) returnsFloat = true, op = T_OP_INT_TO_FLOAT;
+		else if (isFloat && KEYWORD("truncate")) returnsInt = true, op = T_OP_FLOAT_TRUNCATE;
 		else if (isErr && KEYWORD("success")) returnsBool = true, op = T_OP_SUCCESS;
 		else if (isErr && KEYWORD("assert")) returnsItem = true, op = T_OP_ASSERT_ERR;
 		else if (isErr && KEYWORD("error")) returnsStr = true, op = T_OP_ERROR;
@@ -3357,6 +3428,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			node->expressionType = returnsItem ? expressionType->firstChild 
 				: returnsInt ? &globalExpressionTypeInt 
 				: returnsStr ? &globalExpressionTypeStr 
+				: returnsFloat ? &globalExpressionTypeFloat 
 				: returnsBool ? &globalExpressionTypeBool : NULL;
 		}
 
@@ -5289,6 +5361,14 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stack[context->c->stackPointer - 2] = context->c->stack[context->c->stackPointer - 1];
 			context->c->stackIsManaged[context->c->stackPointer - 2] = context->c->stackIsManaged[context->c->stackPointer - 1];
 			context->c->stackPointer--;
+		} else if (command == T_OP_INT_TO_FLOAT) {
+			if (context->c->stackPointer < 1) return -1;
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			context->c->stack[context->c->stackPointer - 1].f = context->c->stack[context->c->stackPointer - 1].i;
+		} else if (command == T_OP_FLOAT_TRUNCATE) {
+			if (context->c->stackPointer < 1) return -1;
+			if (context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			context->c->stack[context->c->stackPointer - 1].i = context->c->stack[context->c->stackPointer - 1].f;
 		} else if (command == T_PERSIST) {
 			if (!ExternalPersistWrite(context, NULL)) {
 				return 0;
