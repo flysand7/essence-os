@@ -2631,9 +2631,11 @@ bool ASTMatching(Node *left, Node *right) {
 		return true;
 	} else if (!left || !right) {
 		return false;
-	} else if (left->type == T_NULL && (right->type == T_STRUCT || right->type == T_LIST)) {
+	} else if (left->type == T_NULL && (right->type == T_STRUCT || right->type == T_LIST || right->type == T_HANDLETYPE 
+				|| right->type == T_FUNCTYPE || right->type == T_INTTYPE)) {
 		return true;
-	} else if (right->type == T_NULL && (left->type == T_STRUCT || left->type == T_LIST)) {
+	} else if (right->type == T_NULL && (left->type == T_STRUCT || left->type == T_LIST || left->type == T_HANDLETYPE 
+				|| left->type == T_FUNCTYPE || left->type == T_INTTYPE)) {
 		return true;
 	} else if (left->type != right->type) {
 		return false;
@@ -2705,7 +2707,7 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 			|| node->type == T_CAST_TYPE_WRAPPER || node->hasTypeInheritanceParent) {
 		Node *type = node->firstChild;
 
-		if (node->hasTypeInheritanceParent && type && type->type != T_IDENTIFIER) {
+		if (node->hasTypeInheritanceParent && type && type->type != T_IDENTIFIER && type->type != node->type) {
 			PrintError2(tokenizer, node, "Types can only inherit from similar types.\n");
 			return false;
 		}
@@ -5403,6 +5405,12 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (context->c->stackPointer < 1) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
 			uintptr_t index = context->c->stack[context->c->stackPointer - 1].i;
+
+			if (index == 0) {
+				PrintError4(context, instructionPointer - 1, "The object is null.\n");
+				return 0;
+			}
+
 			if (context->heapEntriesAllocated <= index) return -1;
 			HeapEntry *entry = &context->heap[index];
 			if (entry->type != T_ANYTYPE) return -1;
