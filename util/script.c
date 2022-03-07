@@ -4,7 +4,8 @@
 // 	- Other operators: remainder, ternary.
 // 	- Named optional arguments with default values.
 // 	- Accessing structs and functypes from imported modules.
-// 	- inttype and struct inheritance.
+// 	- struct inheritance.
+// 	- Allow implicit casts when passing functions parameters
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -257,7 +258,7 @@ typedef struct Scope {
 
 typedef struct Node {
 	uint8_t type;
-	bool referencesRootScope, isExternalCall, isPersistentVariable, isOptionVariable, cycleCheck;
+	bool referencesRootScope, isExternalCall, isPersistentVariable, isOptionVariable, cycleCheck, hasTypeInheritanceParent;
 	uint8_t operationType;
 	int32_t inlineImportVariableIndex;
 	Token token;
@@ -2118,6 +2119,7 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 				node->firstChild = ParseType(tokenizer, false, false, false);
 				if (!node->firstChild) return NULL;
 				semicolon = TokenNext(tokenizer);
+				node->hasTypeInheritanceParent = true;
 			}
 
 			if (semicolon.type != T_SEMICOLON) {
@@ -2131,18 +2133,32 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 			node->token = TokenNext(tokenizer);
 			*link = node;
 			link = &node->sibling;
+			Node **contentLink = &node->firstChild;
 
 			if (node->token.type != T_IDENTIFIER) {
 				PrintError2(tokenizer, node, "Expected the name of the inttype.\n");
 				return NULL;
 			}
 
-			if (TokenNext(tokenizer).type != T_LEFT_FANCY) {
+			Token token = TokenNext(tokenizer);
+
+			if (token.type == T_ERROR) {
+				return NULL;
+			} else if (token.type == T_COLON) {
+				Node *parent = ParseType(tokenizer, false, false, false);
+				if (!parent) return NULL;
+				*contentLink = parent;
+				contentLink = &parent->sibling;
+				token = TokenNext(tokenizer);
+				node->hasTypeInheritanceParent = true;
+			}
+
+			if (token.type == T_ERROR) {
+				return NULL;
+			} else if (token.type != T_LEFT_FANCY) {
 				PrintError2(tokenizer, node, "Expected a '{' for the inttype contents after the name.\n");
 				return NULL;
 			}
-
-			Node **constantLink = &node->firstChild;
 
 			while (true) {
 				Token peek = TokenPeek(tokenizer);
@@ -2151,8 +2167,8 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 				Node *constant = (Node *) AllocateFixed(sizeof(Node));
 				constant->token = TokenNext(tokenizer);
 				constant->type = T_INTTYPE_CONSTANT;
-				*constantLink = constant;
-				constantLink = &constant->sibling;
+				*contentLink = constant;
+				contentLink = &constant->sibling;
 
 				if (constant->token.type != T_IDENTIFIER) {
 					PrintError2(tokenizer, constant, "Expected an identifier for the constant.\n");
@@ -2644,8 +2660,13 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 		}
 	}
 
-	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST || node->type == T_HANDLETYPE) {
+	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST || node->hasTypeInheritanceParent) {
 		Node *type = node->firstChild;
+
+		if (node->hasTypeInheritanceParent && type && type->type != T_IDENTIFIER) {
+			PrintError2(tokenizer, node, "Types can only inherit from similar types.\n");
+			return false;
+		}
 
 		if (type && type->type == T_IDENTIFIER) {
 			Node *lookup = ScopeLookup(tokenizer, type, false);
@@ -2654,9 +2675,9 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 				return false;
 			}
 
-			if (node->type == T_HANDLETYPE) {
-				if (lookup->type != T_HANDLETYPE) {
-					PrintError2(tokenizer, lookup, "handletypes can only inherit from other handletypes.\n");
+			if (node->hasTypeInheritanceParent) {
+				if (lookup->type != node->type) {
+					PrintError2(tokenizer, node, "Types can only inherit from similar types.\n");
 					return false;
 				}
 			} else if (!node->expressionType) {
@@ -2670,18 +2691,19 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 			} else if (lookup->type == T_FUNCTYPE) {
 				MemoryCopy(node->expressionType, lookup->firstChild, sizeof(Node));
 			} else if (lookup->type == T_STRUCT || lookup->type == T_INTTYPE || lookup->type == T_HANDLETYPE) {
-				if (node->type == T_HANDLETYPE) {
+				if (node->hasTypeInheritanceParent) {
 					if (lookup->cycleCheck) {
-						PrintError2(tokenizer, lookup, "Cyclic handletype inheritance.\n");
+						PrintError2(tokenizer, lookup, "Cyclic type inheritance.\n");
 						return false;
 					}
 
 					Node *copy = (Node *) AllocateFixed(sizeof(Node));
 					*copy = *lookup;
-					copy->sibling = NULL;
+					copy->sibling = node->firstChild->sibling;
 					node->firstChild = copy;
 					node->cycleCheck = true;
 					if (!ASTLookupTypeIdentifiers(tokenizer, copy)) return false;
+					node->cycleCheck = false;
 				} else {
 					MemoryCopy(node->expressionType, lookup, sizeof(Node));
 				}
@@ -2703,8 +2725,13 @@ bool ASTImplicitCastIsPossible(Node *targetType, Node *expressionType) {
 	} else if (targetType->type == T_ERR && ASTMatching(targetType->firstChild, expressionType)) {
 		return true;
 	} else if (targetType->type == T_HANDLETYPE && expressionType->type == T_HANDLETYPE) {
+		// Only allow implicit casts to the inherited type.
 		Node *inherit = expressionType->firstChild;
 		return inherit && (ASTMatching(targetType, inherit) || ASTImplicitCastIsPossible(targetType, inherit));
+	} else if (targetType->type == T_INTTYPE && expressionType->type == T_INTTYPE) {
+		// Only allow implicit casts to a type that inherits from this.
+		Node *inherit = targetType->firstChild;
+		return inherit && inherit->type != T_INTTYPE_CONSTANT && (ASTMatching(inherit, expressionType) || ASTImplicitCastIsPossible(inherit, expressionType));
 	} else {
 		return false;
 	}
@@ -2723,8 +2750,9 @@ Node *ASTImplicitCastApply(Tokenizer *tokenizer, Node *parent, Node *target, Nod
 		cast->parent = parent;
 		cast->firstChild = expression;
 		return cast;
-	} else if (target->type == T_HANDLETYPE && expression->expressionType->type == T_HANDLETYPE) {
-		return expression; // Nothing needs to be done to cast between handletypes.
+	} else if ((target->type == T_HANDLETYPE && expression->expressionType->type == T_HANDLETYPE)
+			|| (target->type == T_INTTYPE && expression->expressionType->type == T_INTTYPE)) {
+		return expression; // Nothing needs to be done to cast between handletypes or inttypes.
 	} else {
 		Assert(false);
 		return NULL;
