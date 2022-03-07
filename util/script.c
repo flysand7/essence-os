@@ -113,6 +113,8 @@
 #define T_ERR_CAST            (91)
 #define T_IF_ERR              (92)
 #define T_INTTYPE_CONSTANT    (93)
+#define T_ANYTYPE_CAST        (94)
+#define T_CAST_TYPE_WRAPPER   (95)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -170,6 +172,7 @@
 #define T_OP_DEFAULT          (162)
 #define T_OP_INT_TO_FLOAT     (163)
 #define T_OP_FLOAT_TRUNCATE   (164)
+#define T_OP_CAST             (165)
 
 #define T_IF                  (170)
 #define T_WHILE               (171)
@@ -201,6 +204,7 @@
 #define T_RETERR              (197)
 #define T_INTTYPE             (198)
 #define T_HANDLETYPE          (199)
+#define T_ANYTYPE             (200)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -311,39 +315,44 @@ typedef struct HeapEntry {
 	bool internalValuesAreManaged;
 
 	union {
-		struct {
+		struct { // T_STR
 			// TODO Inlining small strings.
 			size_t bytes;
 			char *text;
 		};
 
-		struct {
+		struct { // T_STRUCT
 			uint16_t fieldCount;
 			Value *fields; // Managed bools placed before this.
 		};
 
-		struct {
+		struct { // T_LIST
 			uint32_t length, allocated;
 			Value *list;
 		};
 
-		struct {
+		struct { // Unused entry.
 			uintptr_t nextUnusedEntry;
 		};
 
-		struct {
+		struct { // Various function pointers.
 			int64_t lambdaID;
 			Value curryValue;
 		};
 
-		struct {
+		struct { // T_CONCAT
 			uint32_t concat1, concat2;
 			size_t concatBytes;
 		};
 
-		struct {
+		struct { // T_ERR
 			bool success;
 			Value errorValue;
+		};
+
+		struct { // T_ANYTYPE
+			Node *anyType;
+			Value anyValue;
 		};
 	};
 } HeapEntry;
@@ -971,6 +980,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("#option") token.type = T_OPTION;
 			else if KEYWORD("#persist") token.type = T_PERSIST;
 			else if KEYWORD("#success") token.type = T_SUCCESS;
+			else if KEYWORD("anytype") token.type = T_ANYTYPE;
 			else if KEYWORD("assert") token.type = T_ASSERT;
 			else if KEYWORD("await") token.type = T_AWAIT;
 			else if KEYWORD("bool") token.type = T_BOOL;
@@ -1098,6 +1108,7 @@ Node *ParseType(Tokenizer *tokenizer, bool maybe, bool allowVoid, bool allowTupl
 			|| node->token.type == T_VOID 
 			|| node->token.type == T_TUPLE
 			|| node->token.type == T_ERR
+			|| node->token.type == T_ANYTYPE
 			|| node->token.type == T_IDENTIFIER) {
 		node->type = node->token.type;
 
@@ -1432,8 +1443,38 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 				return NULL;
 			}
 
-			node = ParseCall(tokenizer, node);
-			if (!node) return NULL;
+			if (operationName.textBytes == 4 && 0 == MemoryCompare(operationName.text, "cast", 4)) {
+				Node *n = node;
+				node = (Node *) AllocateFixed(sizeof(Node));
+				node->token = TokenNext(tokenizer);
+
+				if (node->token.type == T_ERROR) {
+					return NULL;
+				} else if (node->token.type != T_LEFT_ROUND) {
+					PrintError2(tokenizer, node, "Expected a '(' before the type to cast to.\n");
+					return NULL;
+				}
+
+				node->firstChild = n;
+				Node *type = ParseType(tokenizer, false, false, false);
+				if (!type) return NULL;
+				node->firstChild->sibling = (Node *) AllocateFixed(sizeof(Node));
+				node->firstChild->sibling->type = T_CAST_TYPE_WRAPPER;
+				node->firstChild->sibling->firstChild = type;
+
+				Token token = TokenNext(tokenizer);
+
+				if (token.type == T_ERROR) {
+					return NULL;
+				} else if (token.type != T_RIGHT_ROUND) {
+					PrintError2(tokenizer, node, "Expected a ')' after the type to cast to.\n");
+					return NULL;
+				}
+			} else {
+				node = ParseCall(tokenizer, node);
+				if (!node) return NULL;
+			}
+
 			node->type = T_COLON;
 			node->token = operationName;
 		} else if ((token.type == T_EQUALS || token.type == T_ADD || token.type == T_MINUS || token.type == T_BITWISE_XOR
@@ -2625,7 +2666,7 @@ bool ASTIsIntType(Node *node) {
 
 bool ASTIsManagedType(Node *node) {
 	return node->type == T_STR || node->type == T_LIST || node->type == T_STRUCT 
-		|| node->type == T_FUNCPTR || node->type == T_FUNCPTR || node->type == T_ERR;
+		|| node->type == T_FUNCPTR || node->type == T_FUNCPTR || node->type == T_ERR || node->type == T_ANYTYPE;
 }
 
 int ASTGetTypePopCount(Node *node) {
@@ -2660,7 +2701,8 @@ bool ASTLookupTypeIdentifiers(Tokenizer *tokenizer, Node *node) {
 		}
 	}
 
-	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST || node->hasTypeInheritanceParent) {
+	if (node->type == T_DECLARE || node->type == T_ARGUMENT || node->type == T_NEW || node->type == T_LIST 
+			|| node->type == T_CAST_TYPE_WRAPPER || node->hasTypeInheritanceParent) {
 		Node *type = node->firstChild;
 
 		if (node->hasTypeInheritanceParent && type && type->type != T_IDENTIFIER) {
@@ -2732,31 +2774,40 @@ bool ASTImplicitCastIsPossible(Node *targetType, Node *expressionType) {
 		// Only allow implicit casts to a type that inherits from this.
 		Node *inherit = targetType->firstChild;
 		return inherit && inherit->type != T_INTTYPE_CONSTANT && (ASTMatching(inherit, expressionType) || ASTImplicitCastIsPossible(inherit, expressionType));
+	} else if (targetType->type == T_ANYTYPE && expressionType->type != T_VOID) {
+		return true;
 	} else {
 		return false;
 	}
 }
 
 Node *ASTImplicitCastApply(Tokenizer *tokenizer, Node *parent, Node *target, Node *expression) {
+	Node *cast = NULL;
+
 	if (target->type == T_ERR && ASTMatching(target->firstChild, expression->expressionType)) {
 		if (!expression->expressionType || ASTMatching(expression->expressionType, &globalExpressionTypeVoid)) {
 			PrintError2(tokenizer, parent, "You cannot assign a value of 'void' to 'err[void]'.\nInstead, use the constant '#success'.\n");
 			return NULL;
 		}
 
-		Node *cast = (Node *) AllocateFixed(sizeof(Node));
+		cast = (Node *) AllocateFixed(sizeof(Node));
 		cast->type = T_ERR_CAST;
-		cast->scope = parent->scope;
-		cast->parent = parent;
-		cast->firstChild = expression;
-		return cast;
 	} else if ((target->type == T_HANDLETYPE && expression->expressionType->type == T_HANDLETYPE)
 			|| (target->type == T_INTTYPE && expression->expressionType->type == T_INTTYPE)) {
 		return expression; // Nothing needs to be done to cast between handletypes or inttypes.
+	} else if (target->type == T_ANYTYPE) {
+		cast = (Node *) AllocateFixed(sizeof(Node));
+		cast->type = T_ANYTYPE_CAST;
 	} else {
 		Assert(false);
 		return NULL;
 	}
+
+	cast->scope = parent->scope;
+	cast->parent = parent;
+	cast->firstChild = expression;
+	cast->expressionType = target;
+	return cast;
 }
 
 Value ASTNumericLiteralToValue(Node *node) {
@@ -2889,13 +2940,13 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 	if (node->type == T_ROOT || node->type == T_BLOCK
 			|| node->type == T_INT || node->type == T_FLOAT || node->type == T_STR 
-			|| node->type == T_LIST || node->type == T_TUPLE || node->type == T_ERR
+			|| node->type == T_LIST || node->type == T_TUPLE || node->type == T_ERR || node->type == T_ANYTYPE
 			|| node->type == T_BOOL || node->type == T_VOID || node->type == T_IDENTIFIER
 			|| node->type == T_ARGUMENTS || node->type == T_ARGUMENT
 			|| node->type == T_STRUCT || node->type == T_FUNCTYPE || node->type == T_IMPORT 
 			|| node->type == T_IMPORT_PATH || node->type == T_INTTYPE || node->type == T_HANDLETYPE
 			|| node->type == T_FUNCPTR || node->type == T_FUNCBODY || node->type == T_FUNCTION
-			|| node->type == T_REPL_RESULT || node->type == T_DECLARE_GROUP) {
+			|| node->type == T_REPL_RESULT || node->type == T_DECLARE_GROUP || node->type == T_CAST_TYPE_WRAPPER) {
 	} else if (node->type == T_NUMERIC_LITERAL) {
 		size_t dotCount = 0;
 
@@ -3306,8 +3357,9 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		bool isErr = expressionType->type == T_ERR;
 		bool isInt = expressionType->type == T_INT;
 		bool isFloat = expressionType->type == T_FLOAT;
+		bool isAnyType = expressionType->type == T_ANYTYPE;
 
-		if (!isList && !isStr & !isFuncPtr && !isErr && !isInt && !isFloat) {
+		if (!isList && !isStr & !isFuncPtr && !isErr && !isInt && !isFloat && !isAnyType) {
 			PrintError2(tokenizer, node, "This type does not have any ':' operations.\n");
 			return false;
 		}
@@ -3402,6 +3454,13 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			node->expressionType->firstChild->firstChild = node->expressionType->firstChild->firstChild->sibling;
 			node->expressionType->firstChild->sibling = expressionType->firstChild->sibling;
 			op = T_OP_CURRY;
+			simple = false;
+		}
+
+		else if (isAnyType && KEYWORD("cast")) {
+			Assert(node->firstChild->sibling->type == T_CAST_TYPE_WRAPPER);
+			node->expressionType = node->firstChild->sibling->firstChild;
+			op = T_OP_CAST;
 			simple = false;
 		}
 
@@ -4094,15 +4153,22 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 	} else if (node->type == T_COLON) {
 		FunctionBuilderRecurse(tokenizer, node->firstChild, builder, false);
 
-		Node *argument = node->firstChild->sibling->firstChild;
+		if (node->operationType != T_OP_CAST) {
+			Node *argument = node->firstChild->sibling->firstChild;
 
-		while (argument) {
-			FunctionBuilderRecurse(tokenizer, argument, builder, false);
-			argument = argument->sibling;
+			while (argument) {
+				FunctionBuilderRecurse(tokenizer, argument, builder, false);
+				argument = argument->sibling;
+			}
 		}
 
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->operationType, sizeof(node->operationType));
+
+		if (node->operationType == T_OP_CAST) {
+			FunctionBuilderAppend(builder, &node->expressionType, sizeof(node->expressionType));
+		}
+
 		return true;
 	} else if (node->type == T_LIST_LITERAL) {
 		// Step 1: Create the list.
@@ -4214,6 +4280,10 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 	} else if (node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT || node->type == T_ERR_CAST) {
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
+	} else if (node->type == T_ANYTYPE_CAST) {
+		FunctionBuilderAddLineNumber(builder, node);
+		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
+		FunctionBuilderAppend(builder, &node->firstChild->expressionType, sizeof(node->firstChild->expressionType));
 	} else if (node->type == T_ASSERT) {
 		FunctionBuilderAddLineNumber(builder, node);
 
@@ -4474,6 +4544,10 @@ void HeapGarbageCollectMark(ExecutionContext *context, uintptr_t index) {
 		if (context->heap[index].internalValuesAreManaged) {
 			HeapGarbageCollectMark(context, context->heap[index].errorValue.i);
 		}
+	} else if (context->heap[index].type == T_ANYTYPE) {
+		if (context->heap[index].internalValuesAreManaged) {
+			HeapGarbageCollectMark(context, context->heap[index].anyValue.i);
+		}
 	} else {
 		Assert(false);
 	}
@@ -4488,7 +4562,8 @@ void HeapFreeEntry(ExecutionContext *context, uintptr_t i) {
 		AllocateResize(context->heap[i].list, 0);
 	} else if (context->heap[i].type == T_OP_DISCARD || context->heap[i].type == T_OP_ASSERT 
 			|| context->heap[i].type == T_FUNCPTR || context->heap[i].type == T_OP_CURRY
-			|| context->heap[i].type == T_CONCAT || context->heap[i].type == T_ERR) {
+			|| context->heap[i].type == T_CONCAT || context->heap[i].type == T_ERR
+			|| context->heap[i].type == T_ANYTYPE) {
 	} else {
 		Assert(false);
 	}
@@ -5308,6 +5383,41 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			v.i = index;
 			context->c->stackIsManaged[context->c->stackPointer - 1] = true;
 			context->c->stack[context->c->stackPointer - 1] = v;
+		} else if (command == T_ANYTYPE_CAST) {
+			if (context->c->stackPointer < 1) return -1;
+
+			// TODO Handle memory allocation failures here.
+			uintptr_t index = HeapAllocate(context);
+			context->heap[index].type = T_ANYTYPE;
+			MemoryCopy(&context->heap[index].anyType, &functionData[instructionPointer], sizeof(context->heap[index].anyType));
+			context->heap[index].internalValuesAreManaged = ASTIsManagedType(context->heap[index].anyType);
+			context->heap[index].anyValue = context->c->stack[context->c->stackPointer - 1];
+
+			Value v;
+			v.i = index;
+			context->c->stackIsManaged[context->c->stackPointer - 1] = true;
+			context->c->stack[context->c->stackPointer - 1] = v;
+
+			instructionPointer += sizeof(context->heap[index].anyType);
+		} else if (command == T_OP_CAST) {
+			if (context->c->stackPointer < 1) return -1;
+			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
+			uintptr_t index = context->c->stack[context->c->stackPointer - 1].i;
+			if (context->heapEntriesAllocated <= index) return -1;
+			HeapEntry *entry = &context->heap[index];
+			if (entry->type != T_ANYTYPE) return -1;
+			Node *expressionType;
+			MemoryCopy(&expressionType, &functionData[instructionPointer], sizeof(expressionType));
+
+			if (!ASTMatching(expressionType, entry->anyType)) {
+				PrintError4(context, instructionPointer - 1, "Invalid cast.\n");
+				return 0;
+			}
+
+			Assert(ASTIsManagedType(expressionType) == entry->internalValuesAreManaged);
+			context->c->stackIsManaged[context->c->stackPointer - 1] = entry->internalValuesAreManaged;
+			context->c->stack[context->c->stackPointer - 1] = entry->anyValue;
+			instructionPointer += sizeof(expressionType);
 		} else if (command == T_OP_SUCCESS) {
 			if (context->c->stackPointer < 1) return -1;
 			if (!context->c->stackIsManaged[context->c->stackPointer - 1]) return -1;
