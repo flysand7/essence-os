@@ -476,6 +476,20 @@ EXTERNAL_STUB(ExternalSystemShellEnableLogging);
 EXTERNAL_STUB(ExternalSystemGetEnvironmentVariable);
 EXTERNAL_STUB(ExternalSystemSetEnvironmentVariable);
 
+void *LibraryLoad(const char *cName) {
+	// TODO.
+	(void) cName;
+	AddLogOutput(scriptInstance, EsLiteral("(LibraryLoad has not been implemented yet)"));
+	return nullptr;
+}
+
+void *LibraryGetAddress(void *library, const char *cName) {
+	// TODO.
+	(void) library;
+	(void) cName;
+	return nullptr;
+}
+
 // --------------------------------- User interface.
 
 #define COLOR_BACKGROUND (0xFFFDFDFD)

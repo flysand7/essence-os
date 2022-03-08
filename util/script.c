@@ -1,11 +1,10 @@
 // TODO Basic missing features:
 // 	- Maps: T[int], T[str].
 // 	- Control flow: break, continue.
-// 	- Other operators: remainder, ternary.
+// 	- Other operators: integer modulo.
 // 	- Named optional arguments with default values.
-// 	- Accessing structs and functypes from imported modules.
+// 	- Using declared types from imported modules.
 // 	- struct inheritance.
-// 	- Allow implicit casts when passing functions parameters
 
 // TODO Larger missing features:
 // 	- Serialization.
@@ -115,6 +114,7 @@
 #define T_INTTYPE_CONSTANT    (93)
 #define T_ANYTYPE_CAST        (94)
 #define T_CAST_TYPE_WRAPPER   (95)
+#define T_ZERO                (96)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -129,6 +129,7 @@
 #define T_SWAP                (110)
 #define T_INTERPOLATE_ILIST   (111)
 #define T_ROT3                (112)
+#define T_LIBCALL             (113)
 
 #define T_FLOAT_ADD           (120)
 #define T_FLOAT_MINUS         (121)
@@ -205,6 +206,7 @@
 #define T_INTTYPE             (198)
 #define T_HANDLETYPE          (199)
 #define T_ANYTYPE             (200)
+#define T_LIBRARY             (201)
 
 #define STACK_READ_STRING(textVariable, bytesVariable, stackIndex) \
 	if (context->c->stackPointer < stackIndex) return -1; \
@@ -271,7 +273,7 @@ typedef struct Node {
 	struct Node *parent; // Set in ASTSetScopes.
 	Scope *scope; // Set in ASTSetScopes.
 	struct Node *expressionType; // Set in ASTSetTypes.
-	struct ImportData *importData;
+	struct ImportData *importData; // The module being imported by this node.
 } Node;
 
 typedef struct Value {
@@ -385,6 +387,11 @@ typedef struct CoroutineState {
 	uintptr_t variableBase;
 	Value externalCoroutineData;
 	void *externalCoroutineData2;
+
+	// Data stored for library calls:
+	uintptr_t parameterCount;
+	Value returnValue;
+	int returnValueType;
 } CoroutineState;
 
 typedef struct ExecutionContext {
@@ -422,6 +429,7 @@ typedef struct ImportData {
 	struct ImportData *nextImport;
 	struct ImportData *parentImport;
 	Node *rootNode;
+	void *library;
 } ImportData;
 
 Node globalExpressionTypeVoid = { .type = T_VOID };
@@ -472,6 +480,8 @@ void PrintBackTrace(ExecutionContext *context, uint32_t instructionPointer, Coro
 void *FileLoad(const char *path, size_t *length);
 CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context);
 void ExternalPassREPLResult(ExecutionContext *context, Value value);
+void *LibraryLoad(const char *name);
+void *LibraryGetAddress(void *library, const char *name);
 
 // --------------------------------- Base module.
 
@@ -977,6 +987,7 @@ Token TokenNext(Tokenizer *tokenizer) {
 			else if KEYWORD("#extcall") token.type = T_EXTCALL;
 			else if KEYWORD("#import") token.type = T_IMPORT;
 			else if KEYWORD("#inline") token.type = T_INLINE;
+			else if KEYWORD("#library") token.type = T_LIBRARY;
 			else if KEYWORD("#option") token.type = T_OPTION;
 			else if KEYWORD("#persist") token.type = T_PERSIST;
 			else if KEYWORD("#success") token.type = T_SUCCESS;
@@ -1024,6 +1035,10 @@ Token TokenNext(Tokenizer *tokenizer) {
 				token.textBytes++;
 				if (tokenizer->position == tokenizer->inputBytes) break;
 				c = tokenizer->input[tokenizer->position];
+			}
+
+			if (token.textBytes == 1 && token.text[0] == '0') {
+				token.type = T_ZERO;
 			}
 		} else if (c == '"') {
 			// TODO Escape sequence to insert an arbitrary codepoint.
@@ -1347,7 +1362,7 @@ Node *ParseExpression(Tokenizer *tokenizer, bool allowAssignment, uint8_t preced
 				string->token.textBytes++;
 			}
 		}
-	} else if (node->token.type == T_NUMERIC_LITERAL || node->token.type == T_SUCCESS
+	} else if (node->token.type == T_NUMERIC_LITERAL || node->token.type == T_SUCCESS || node->token.type == T_ZERO
 			|| node->token.type == T_TRUE || node->token.type == T_FALSE || node->token.type == T_NULL) {
 		node->type = node->token.type;
 	} else if (node->token.type == T_LOGICAL_NOT || node->token.type == T_MINUS || node->token.type == T_BITWISE_NOT) {
@@ -2306,7 +2321,40 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 			link = &node->sibling;
 
 			if (TokenNext(tokenizer).type != T_SEMICOLON) {
-				PrintError2(tokenizer, node, "Expected a semicolon after the import statement.\n");
+				PrintError2(tokenizer, node, "Expected a semicolon after the #import statement.\n");
+				return NULL;
+			}
+		} else if (token.type == T_LIBRARY) {
+			if (tokenizer->module->library) {
+				PrintError(tokenizer, "The library has already been set for this module.\n");
+				return NULL;
+			} else {
+				TokenNext(tokenizer);
+				Token token = TokenNext(tokenizer);
+
+				if (token.type != T_STRING_LITERAL) {
+					if (token.type != T_ERROR) PrintError(tokenizer, "Expected a string literal for the library name.\n");
+					return NULL;
+				}
+
+				char name[256];
+
+				if (token.textBytes > sizeof(name) - 1) {
+					PrintError(tokenizer, "The library name is too long.\n");
+					return NULL;
+				}
+
+				MemoryCopy(name, token.text, token.textBytes);
+				name[token.textBytes] = 0;
+				tokenizer->module->library = LibraryLoad(name);
+
+				if (!tokenizer->module->library) {
+					return NULL;
+				}
+			}
+
+			if (TokenNext(tokenizer).type != T_SEMICOLON) {
+				PrintError(tokenizer, "Expected a semicolon after the #library statement.\n");
 				return NULL;
 			}
 		} else {
@@ -2631,11 +2679,13 @@ bool ASTMatching(Node *left, Node *right) {
 		return true;
 	} else if (!left || !right) {
 		return false;
-	} else if (left->type == T_NULL && (right->type == T_STRUCT || right->type == T_LIST || right->type == T_HANDLETYPE 
-				|| right->type == T_FUNCTYPE || right->type == T_INTTYPE)) {
+	} else if (left->type == T_NULL && (right->type == T_STRUCT || right->type == T_LIST || right->type == T_FUNCTYPE)) {
 		return true;
-	} else if (right->type == T_NULL && (left->type == T_STRUCT || left->type == T_LIST || left->type == T_HANDLETYPE 
-				|| left->type == T_FUNCTYPE || left->type == T_INTTYPE)) {
+	} else if (right->type == T_NULL && (left->type == T_STRUCT || left->type == T_LIST || left->type == T_FUNCTYPE)) {
+		return true;
+	} else if (left->type == T_ZERO && (right->type == T_INT || right->type == T_INTTYPE || right->type == T_HANDLETYPE)) {
+		return true;
+	} else if (right->type == T_ZERO && (left->type == T_INT || left->type == T_INTTYPE || left->type == T_HANDLETYPE)) {
 		return true;
 	} else if (left->type != right->type) {
 		return false;
@@ -2852,6 +2902,8 @@ int64_t ASTEvaluateIntConstant(Tokenizer *tokenizer, Node *node, bool *error) {
 
 	if (node->type == T_NUMERIC_LITERAL) {
 		return ASTNumericLiteralToValue(node).i;
+	} else if (node->type == T_ZERO) {
+		return 0;
 	} else if (node->type == T_ADD) {
 		return ASTEvaluateIntConstant(tokenizer, node->firstChild, error) + ASTEvaluateIntConstant(tokenizer, node->firstChild->sibling, error);
 	} else if (node->type == T_MINUS) {
@@ -2902,6 +2954,7 @@ int64_t ASTEvaluateIntConstant(Tokenizer *tokenizer, Node *node, bool *error) {
 
 bool ASTIsIntegerConstant(Node *node) {
 	if (node->type != T_NUMERIC_LITERAL 
+			&& node->type != T_ZERO
 			&& node->type != T_ADD 
 			&& node->type != T_MINUS 
 			&& node->type != T_ASTERISK 
@@ -2970,7 +3023,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 		node->expressionType = &globalExpressionTypeBool;
 	} else if (node->type == T_SUCCESS) {
 		node->expressionType = &globalExpressionTypeErrVoid;
-	} else if (node->type == T_NULL) {
+	} else if (node->type == T_NULL || node->type == T_ZERO) {
 		node->expressionType = node;
 	} else if (node->type == T_STRING_LITERAL) {
 		node->expressionType = &globalExpressionTypeStr;
@@ -3004,38 +3057,49 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 			|| node->type == T_DOUBLE_EQUALS || node->type == T_NOT_EQUALS || node->type == T_LOGICAL_AND || node->type == T_LOGICAL_OR
 			|| node->type == T_BIT_SHIFT_LEFT || node->type == T_BIT_SHIFT_RIGHT 
 			|| node->type == T_BITWISE_OR || node->type == T_BITWISE_AND || node->type == T_BITWISE_XOR) {
-		if (!ASTMatching(node->firstChild->expressionType, node->firstChild->sibling->expressionType)) {
-			PrintError2(tokenizer, node, "The expression on the left and right side of a binary operator must have the same type.\n");
-			return false;
+		Node *leftType = node->firstChild->expressionType;
+		Node *rightType = node->firstChild->sibling->expressionType;
+		bool useRightType = false;
+
+		if (!ASTMatching(leftType, rightType)) {
+			if (leftType && rightType && leftType->type == T_INTTYPE && rightType->type == T_INTTYPE
+					&& (ASTImplicitCastIsPossible(leftType, rightType) || ASTImplicitCastIsPossible(rightType, leftType))) {
+				// If both expressions are inttypes with one inheriting from the other, allow an implicit cast.
+				// Nothing needs to be done to cast between inttypes.
+				useRightType = ASTImplicitCastIsPossible(rightType, leftType);
+			} else {
+				PrintError2(tokenizer, node, "The expression on the left and right side of a binary operator must have the same type.\n");
+				return false;
+			}
 		}
 
 		if (node->type == T_ADD) {
-			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
-					&& !ASTIsIntType(node->firstChild->expressionType)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)) {
+			if (!ASTMatching(leftType, &globalExpressionTypeInt)
+					&& !ASTIsIntType(leftType)
+					&& !ASTMatching(leftType, &globalExpressionTypeFloat)
+					&& !ASTMatching(leftType, &globalExpressionTypeStr)) {
 				PrintError2(tokenizer, node, "The add operator expects integers, floats or strings.\n");
 				return false;
 			}
 		} else if (node->type == T_LOGICAL_AND || node->type == T_LOGICAL_OR) {
-			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeBool)) {
+			if (!ASTMatching(leftType, &globalExpressionTypeBool)) {
 				PrintError2(tokenizer, node, "This operator expects boolean expressions.\n");
 				return false;
 			}
 		} else if (node->type == T_DOUBLE_EQUALS || node->type == T_NOT_EQUALS) {
-			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeBool)
-					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_LIST)
-					&& (!node->firstChild->expressionType || node->firstChild->expressionType->type != T_STRUCT)) {
+			if (!ASTMatching(leftType, &globalExpressionTypeInt)
+					&& !ASTMatching(leftType, &globalExpressionTypeFloat)
+					&& !ASTMatching(leftType, &globalExpressionTypeStr)
+					&& !ASTMatching(leftType, &globalExpressionTypeBool)
+					&& (!leftType || leftType->type != T_LIST)
+					&& (!leftType || leftType->type != T_STRUCT)) {
 				PrintError2(tokenizer, node, "These types cannot be compared.\n");
 				return false;
 			}
 		} else {
-			if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeInt)
-					&& !ASTIsIntType(node->firstChild->expressionType)
-					&& !ASTMatching(node->firstChild->expressionType, &globalExpressionTypeFloat)) {
+			if (!ASTMatching(leftType, &globalExpressionTypeInt)
+					&& !ASTIsIntType(leftType)
+					&& !ASTMatching(leftType, &globalExpressionTypeFloat)) {
 				PrintError2(tokenizer, node, "This operator expects either integers or floats.\n");
 				return false;
 			}
@@ -3045,7 +3109,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				|| node->type == T_DOUBLE_EQUALS || node->type == T_NOT_EQUALS) {
 			node->expressionType = &globalExpressionTypeBool;
 		} else {
-			node->expressionType = node->firstChild->expressionType;
+			node->expressionType = useRightType ? rightType : leftType;
 		}
 	} else if (node->type == T_DECLARE) {
 		if (node->firstChild->sibling && ASTImplicitCastIsPossible(node->firstChild, node->firstChild->sibling->expressionType)) {
@@ -3133,7 +3197,8 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 
 		node->expressionType = expressionType->firstChild->sibling;
 		Node *match = expressionType->firstChild->firstChild;
-		Node *argument = node->firstChild->sibling->firstChild;
+		Node **argumentLink = &node->firstChild->sibling->firstChild;
+		Node *argument = *argumentLink;
 		size_t index = 1;
 
 		while (true) {
@@ -3143,13 +3208,18 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				PrintError2(tokenizer, node, "The function has a different number of arguments to this.\n");
 				return false;
 			} else {
-				if (!ASTMatching(argument->expressionType, match->firstChild)) {
+				if (ASTImplicitCastIsPossible(match->firstChild, argument->expressionType)) {
+					Node *cast = ASTImplicitCastApply(tokenizer, node, match->firstChild, argument);
+					if (!cast) return false;
+					*argumentLink = cast;
+				} else if (!ASTMatching(argument->expressionType, match->firstChild)) {
 					PrintError2(tokenizer, node, "The types for argument %d do not match.\n", index);
 					return false;
 				}
 
 				match = match->sibling;
-				argument = argument->sibling;
+				argumentLink = &argument->sibling;
+				argument = *argumentLink;
 				index++;
 			}
 		}
@@ -3926,11 +3996,8 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		if (!FunctionBuilderRecurse(tokenizer, declare, builder, false)) return false;
 
 		// Push the starting index of 0.
-		uint8_t b = T_NUMERIC_LITERAL;
+		uint8_t b = T_ZERO;
 		FunctionBuilderAppend(builder, &b, sizeof(b));
-		Value v;
-		v.i = 0;
-		FunctionBuilderAppend(builder, &v, sizeof(v));
 
 		// Push the list.
 		if (!FunctionBuilderRecurse(tokenizer, list, builder, false)) return false;
@@ -4010,6 +4077,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		// Stack: index, list, ...
 		b = T_NUMERIC_LITERAL;
 		FunctionBuilderAppend(builder, &b, sizeof(b));
+		Value v;
 		v.i = 1;
 		FunctionBuilderAppend(builder, &v, sizeof(v));
 		// Stack: 1, index, list, ...
@@ -4279,7 +4347,7 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		FunctionBuilderAppend(builder, &b, sizeof(b));
 		b = T_POP;
 		FunctionBuilderAppend(builder, &b, sizeof(b));
-	} else if (node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT || node->type == T_ERR_CAST) {
+	} else if (node->type == T_NULL || node->type == T_LOGICAL_NOT || node->type == T_AWAIT || node->type == T_ERR_CAST || node->type == T_ZERO) {
 		FunctionBuilderAddLineNumber(builder, node);
 		FunctionBuilderAppend(builder, &node->type, sizeof(node->type));
 	} else if (node->type == T_ANYTYPE_CAST) {
@@ -4375,14 +4443,28 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 			} else {
 				Node *importStatement = node->firstChild->expressionType->parent;
 				Assert(importStatement->type == T_IMPORT);
-				uint32_t index = ScopeLookupIndex(node, importStatement->importData->rootNode->scope, false, false);
-				index += importStatement->importData->globalVariableOffset;
+				uint32_t realIndex = ScopeLookupIndex(node, importStatement->importData->rootNode->scope, false, true);
+				Node *declarationNode = importStatement->importData->rootNode->scope->entries[realIndex];
+
 				FunctionBuilderAddLineNumber(builder, node);
 				uint8_t b = T_POP;
 				FunctionBuilderAppend(builder, &b, sizeof(b));
-				b = T_VARIABLE;
-				FunctionBuilderAppend(builder, &b, sizeof(b));
-				FunctionBuilderAppend(builder, &index, sizeof(index));
+
+				if (declarationNode->type == T_INTTYPE_CONSTANT) {
+					bool error = false;
+					Value intConstantValue;
+					intConstantValue.i = ASTEvaluateIntConstant(tokenizer, declarationNode->firstChild, &error);
+					if (error) return false;
+					uint8_t b = T_NUMERIC_LITERAL;
+					FunctionBuilderAppend(builder, &b, sizeof(b));
+					FunctionBuilderAppend(builder, &intConstantValue, sizeof(intConstantValue));
+				} else {
+					uint32_t index = ScopeLookupIndex(node, importStatement->importData->rootNode->scope, false, false);
+					index += importStatement->importData->globalVariableOffset;
+					b = T_VARIABLE;
+					FunctionBuilderAppend(builder, &b, sizeof(b));
+					FunctionBuilderAppend(builder, &index, sizeof(index));
+				}
 			}
 		}
 	} else if (node->type == T_NUMERIC_LITERAL) {
@@ -4452,7 +4534,23 @@ bool ASTGenerate(Tokenizer *tokenizer, Node *root, ExecutionContext *context) {
 			context->heap[heapIndex].lambdaID = context->functionData->dataBytes;
 			context->globalVariables[variableIndex].i = heapIndex;
 
-			if (child->isExternalCall) {
+			if (child->isExternalCall && child->token.module->library) {
+				char name[256];
+
+				if (child->token.textBytes > sizeof(name) - 1) {
+					PrintError2(tokenizer, child, "The function name is too long to be loaded from a library.\n");
+					return NULL;
+				}
+
+				MemoryCopy(name, child->token.text, child->token.textBytes);
+				name[child->token.textBytes] = 0;
+
+				void *address = LibraryGetAddress(child->token.module->library, name);
+				if (!address) return false;
+				uint8_t b = T_LIBCALL;
+				FunctionBuilderAppend(context->functionData, &b, sizeof(b));
+				FunctionBuilderAppend(context->functionData, &address, sizeof(address));
+			} else if (child->isExternalCall) {
 				uint8_t b = T_EXTCALL;
 
 				uint16_t index = 0xFFFF;
@@ -4793,13 +4891,13 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			context->c->stackIsManaged[context->c->stackPointer] = false;
 			MemoryCopy(&context->c->stack[context->c->stackPointer++], &functionData[instructionPointer], sizeof(Value));
 			instructionPointer += sizeof(Value);
-		} else if (command == T_NULL) {
+		} else if (command == T_NULL || command == T_ZERO) {
 			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
 				PrintError4(context, instructionPointer - 1, "Stack overflow.\n");
 				return 0;
 			}
 
-			context->c->stackIsManaged[context->c->stackPointer] = true;
+			context->c->stackIsManaged[context->c->stackPointer] = command == T_NULL;
 			context->c->stack[context->c->stackPointer++].i = 0;
 		} else if (command == T_STRING_LITERAL) {
 			if (context->c->stackPointer == context->c->stackEntriesAllocated) {
@@ -6040,7 +6138,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 		} else if (command == T_REPL_RESULT) {
 			if (context->c->stackPointer < 1) return -1;
 			ExternalPassREPLResult(context, context->c->stack[--context->c->stackPointer]);
-		} else if (command == T_END_FUNCTION || command == T_EXTCALL) {
+		} else if (command == T_END_FUNCTION || command == T_EXTCALL || command == T_LIBCALL) {
 			if (command == T_EXTCALL) {
 				uint16_t index = functionData[instructionPointer + 0] + (functionData[instructionPointer + 1] << 8); 
 				instructionPointer += 2;
@@ -6102,6 +6200,29 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 				} else {
 					return -1;
 				}
+			} else if (command == T_LIBCALL) {
+				context->c->parameterCount = 0;
+				context->c->returnValueType = EXTCALL_NO_RETURN;
+
+				void *address;
+				MemoryCopy(&address, &functionData[instructionPointer], sizeof(address));
+				instructionPointer += sizeof(address);
+
+				if (!((bool (*)(void *)) address)(context)) {
+					return 0;
+				}
+
+				context->c->stackPointer -= context->c->parameterCount;
+
+				if (context->c->returnValueType != EXTCALL_NO_RETURN) {
+					if (context->c->stackPointer == context->c->stackEntriesAllocated) {
+						PrintDebug("Evaluation stack overflow.\n");
+						return -1;
+					}
+
+					context->c->stackIsManaged[context->c->stackPointer] = context->c->returnValueType == EXTCALL_RETURN_MANAGED;
+					context->c->stack[context->c->stackPointer++] = context->c->returnValue;
+				}
 			}
 
 			context->c->localVariableCount = variableBase + 1;
@@ -6109,7 +6230,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			if (context->c->backTracePointer) {
 				BackTraceItem *item = &context->c->backTrace[context->c->backTracePointer - 1];
 
-				if (command == T_EXTCALL) {
+				if (command == T_EXTCALL || command == T_LIBCALL) {
 					context->c->backTracePointer--;
 					instructionPointer = item->instructionPointer;
 					variableBase = item->variableBase;
@@ -6128,7 +6249,7 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 					}
 				}
 
-				if (command != T_EXTCALL) {
+				if (command != T_EXTCALL && command != T_LIBCALL) {
 					context->c->backTracePointer--;
 					instructionPointer = item->instructionPointer;
 					variableBase = item->variableBase;
@@ -6244,6 +6365,53 @@ bool ScriptParseOptions(ExecutionContext *context) {
 	}
 
 	return true;
+}
+
+bool ScriptParameterCString(void *engine, char **output) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	context->c->parameterCount++;
+	if (context->c->stackPointer < context->c->parameterCount) return false;
+	if (!context->c->stackIsManaged[context->c->stackPointer - context->c->parameterCount]) return false;
+	uint64_t index = context->c->stack[context->c->stackPointer - context->c->parameterCount].i;
+	if (context->heapEntriesAllocated <= index) return false;
+	const char *text;
+	size_t bytes;
+	HeapEntry *entry = &context->heap[index];
+	ScriptHeapEntryToString(context, entry, &text, &bytes);
+	*output = (char *) AllocateResize(NULL, bytes + 1);
+	MemoryCopy(*output, text, bytes);
+	(*output)[bytes] = 0;
+	return true;
+}
+
+bool ScriptParameterInt64(void *engine, int64_t *output) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	context->c->parameterCount++;
+	if (context->c->stackPointer < context->c->parameterCount) return false;
+	*output = context->c->stack[context->c->stackPointer - context->c->parameterCount].i;
+	return true;
+}
+
+bool ScriptParameterUint32(void *engine, uint32_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
+bool ScriptParameterUint64(void *engine, uint64_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
+bool ScriptParameterInt32 (void *engine,  int32_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
+
+void ScriptReturnInt(void *engine, int64_t input) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	Assert(context->c->returnValueType == EXTCALL_NO_RETURN);
+	context->c->returnValueType = EXTCALL_RETURN_UNMANAGED;
+	context->c->returnValue.i = input;
+}
+
+bool ScriptParameterPointer(void *engine, void **output) {
+	int64_t i; 
+	if (!ScriptParameterInt64(engine, &i)) return false;
+	*output = (void *) (intptr_t) i; 
+	return true;
+}
+
+void ScriptReturnPointer(void *engine, void *input) {
+	ScriptReturnInt(engine, (int64_t) (intptr_t) input);
 }
 
 bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData, bool replMode) {
@@ -6537,6 +6705,7 @@ int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue) {
 #define pclose _pclose
 #define setenv(x, y, z) !SetEnvironmentVariable(x, y)
 #else
+#include <dlfcn.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/utsname.h>
@@ -7492,6 +7661,38 @@ void PrintError4(ExecutionContext *context, uint32_t instructionPointer, const c
 	PrintLine(lineNumber.importData, lineNumber.lineNumber);
 	fprintf(stderr, "Back trace:\n");
 	PrintBackTrace(context, instructionPointer, context->c, "");
+}
+
+void *LibraryLoad(const char *name) {
+	Assert(strlen(name) < 256);
+	char name2[256 + 20];
+	strcpy(name2, "l");
+	strcat(name2, name);
+	strcat(name2, ".so");
+
+	void *library = dlopen(name2, RTLD_NOW);
+
+	if (!library) {
+		PrintError3("The library \"%s\" could not be found or loaded.\n", name2);
+	}
+
+	return library;
+}
+
+void *LibraryGetAddress(void *library, const char *name) {
+	Assert(strlen(name) < 256);
+	Assert(library);
+	char name2[256 + 20];
+	strcpy(name2, "ScriptExt");
+	strcat(name2, name);
+
+	void *address = dlsym(library, name2);
+
+	if (!address) {
+		PrintError3("The library symbol \"%s\" could not be found.\n", name2);
+	}
+
+	return address;
 }
 
 void *FileLoad(const char *path, size_t *length) {
