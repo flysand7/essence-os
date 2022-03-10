@@ -153,7 +153,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 			}
 		}
 
-		InstanceRefreshViewType(instance);
+		InstanceRefreshViewType(instance, false);
 
 		// Update the user interface.
 
@@ -168,7 +168,11 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 	return true;
 }
 
-void InstanceRefreshViewType(Instance *instance) {
+void InstanceRefreshViewType(Instance *instance, bool startTransition) {
+	if (startTransition) {
+		EsElementStartTransition(instance->list, ES_TRANSITION_FADE, ES_ELEMENT_TRANSITION_CONTENT_ONLY, 1.0f);
+	}
+
 	EsCommandSetCheck(&instance->commandViewDetails,    instance->viewSettings.viewType == VIEW_DETAILS    ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 	EsCommandSetCheck(&instance->commandViewTiles,      instance->viewSettings.viewType == VIEW_TILES      ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 	EsCommandSetCheck(&instance->commandViewThumbnails, instance->viewSettings.viewType == VIEW_THUMBNAILS ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);

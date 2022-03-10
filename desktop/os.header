@@ -785,6 +785,7 @@ inttype EsElementTransitionFlags uint32_t none {
 	ES_ELEMENT_TRANSITION_ENTRANCE = bit 0
 	ES_ELEMENT_TRANSITION_EXIT = bit 1
 	ES_ELEMENT_TRANSITION_HIDE_AFTER_COMPLETE = bit 2
+	ES_ELEMENT_TRANSITION_CONTENT_ONLY = bit 3 // Don't apply the transition to the background.
 };
 
 inttype EsSyntaxHighlightingLanguage uint32_t none {

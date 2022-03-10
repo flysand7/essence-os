@@ -499,20 +499,23 @@ void InstanceRegisterCommands(Instance *instance) {
 	EsCommandRegister(&instance->commandRename, instance, INTERFACE_STRING(FileManagerRenameAction), CommandRename, stableCommandID++, "F2");
 
 	EsCommandRegister(&instance->commandViewDetails, instance, INTERFACE_STRING(CommonListViewTypeDetails), [] (Instance *instance, EsElement *, EsCommand *) {
+		uint8_t old = instance->viewSettings.viewType;
 		instance->viewSettings.viewType = VIEW_DETAILS;
-		InstanceRefreshViewType(instance);
+		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
 	EsCommandRegister(&instance->commandViewTiles, instance, INTERFACE_STRING(CommonListViewTypeTiles), [] (Instance *instance, EsElement *, EsCommand *) {
+		uint8_t old = instance->viewSettings.viewType;
 		instance->viewSettings.viewType = VIEW_TILES;
-		InstanceRefreshViewType(instance);
+		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
 	EsCommandRegister(&instance->commandViewThumbnails, instance, INTERFACE_STRING(CommonListViewTypeThumbnails), [] (Instance *instance, EsElement *, EsCommand *) {
+		uint8_t old = instance->viewSettings.viewType;
 		instance->viewSettings.viewType = VIEW_THUMBNAILS;
-		InstanceRefreshViewType(instance);
+		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 

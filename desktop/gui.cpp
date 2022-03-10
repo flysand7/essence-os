@@ -251,6 +251,7 @@ struct EsElement : EsElementPublic {
 #define PAINT_NO_OFFSET     (1 << 1) // Don't add the element's offset to the painter.
 #define PAINT_NO_TRANSITION (1 << 2) // Ignore entrance/exit transitions.
 #define PAINT_OVERLAY       (1 << 3) // Paint the overlay layers.
+#define PAINT_NO_BACKGROUND (1 << 4) // Don't paint the background.
 	void InternalPaint(EsPainter *painter, int flags);
 
 	void InternalMove(int _width, int _height, int _offsetX, int _offsetY); // Non-client offset.
@@ -1374,7 +1375,8 @@ void EsElementStartTransition(EsElement *element, EsTransitionType transitionTyp
 			painter.offsetX = paintOutsets.l;
 			painter.offsetY = paintOutsets.t;
 			painter.target = element->previousTransitionFrame;
-			element->InternalPaint(&painter, PAINT_NO_TRANSITION | PAINT_NO_OFFSET);
+			element->InternalPaint(&painter, PAINT_NO_TRANSITION | PAINT_NO_OFFSET 
+					| ((flags & ES_ELEMENT_TRANSITION_CONTENT_ONLY) ? PAINT_NO_BACKGROUND : 0));
 		}
 	}
 
@@ -1522,6 +1524,16 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 		bounds.l -= paintOutsets.l, bounds.r += paintOutsets.r;
 		bounds.t -= paintOutsets.t, bounds.b += paintOutsets.b;
 
+		if (transitionFlags & ES_ELEMENT_TRANSITION_CONTENT_ONLY) {
+			EsMessage m;
+			m.type = ES_MSG_PAINT_BACKGROUND;
+			m.painter = painter;
+
+			if (!EsMessageSend(this, &m)) {
+				interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_BACKGROUND);
+			}
+		}
+
 		if (previousTransitionFrame) {
 			UIDrawTransitionEffect(painter, previousTransitionFrame, bounds, (EsTransitionType) transitionType, progress, false);
 		}
@@ -1533,7 +1545,8 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 				p.offsetX = paintOutsets.l;
 				p.offsetY = paintOutsets.t;
 				p.target = &target;
-				InternalPaint(&p, PAINT_NO_TRANSITION | PAINT_NO_OFFSET);
+				InternalPaint(&p, PAINT_NO_TRANSITION | PAINT_NO_OFFSET 
+						| ((transitionFlags & ES_ELEMENT_TRANSITION_CONTENT_ONLY) ? PAINT_NO_BACKGROUND : 0));
 				UIDrawTransitionEffect(painter, &target, bounds, (EsTransitionType) transitionType, progress, true);
 				EsPaintTargetReturn(&target);
 			} else {
@@ -1542,16 +1555,16 @@ void EsElement::InternalPaint(EsPainter *painter, int paintFlags) {
 		}
 	} else {
 		paintBackground:;
-
-		// Paint the background.
-
 		EsMessage m;
-		m.type = ES_MSG_PAINT_BACKGROUND;
-		m.painter = painter;
 
-		if (!EsMessageSend(this, &m)) {
-			// TODO Optimisation: don't paint if overlapped by an opaque child.
-			interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_BACKGROUND);
+		if (~paintFlags & PAINT_NO_BACKGROUND) {
+			m.type = ES_MSG_PAINT_BACKGROUND;
+			m.painter = painter;
+
+			if (!EsMessageSend(this, &m)) {
+				// TODO Optimisation: don't paint if overlapped by an opaque child.
+				interpolatedStyle->PaintLayers(painter, ES_RECT_2S(painter->width, painter->height), childType, THEME_LAYER_MODE_BACKGROUND);
+			}
 		}
 		
 		// Apply the clipping insets.

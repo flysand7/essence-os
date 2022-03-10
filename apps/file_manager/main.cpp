@@ -227,7 +227,7 @@ void InstanceReportError(struct Instance *instance, int error, EsError code);
 bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, int historyMode = 0);
 void InstanceUpdateStatusString(Instance *instance);
 void InstanceViewSettingsUpdated(Instance *instance);
-void InstanceRefreshViewType(Instance *instance);
+void InstanceRefreshViewType(Instance *instance, bool startTransition);
 void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder);
 void InstanceAddContents(struct Instance *instance, HashTable *newEntries);
 void InstanceAddSingle(struct Instance *instance, ListEntry newEntry);
