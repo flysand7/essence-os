@@ -130,6 +130,7 @@
 #define T_INTERPOLATE_ILIST   (111)
 #define T_ROT3                (112)
 #define T_LIBCALL             (113)
+#define T_END_CALLBACK        (114)
 
 #define T_FLOAT_ADD           (120)
 #define T_FLOAT_MINUS         (121)
@@ -315,6 +316,7 @@ typedef struct HeapEntry {
 	uint8_t type;
 	bool gcMark;
 	bool internalValuesAreManaged;
+	uint32_t externalReferenceCount;
 
 	union {
 		struct { // T_STR
@@ -4707,7 +4709,7 @@ uintptr_t HeapAllocate(ExecutionContext *context) {
 		uintptr_t reclaimed = 0;
 
 		for (uintptr_t i = 1; i < context->heapEntriesAllocated; i++) {
-			if (!context->heap[i].gcMark) {
+			if (!context->heap[i].gcMark && !context->heap[i].externalReferenceCount) {
 				// PrintDebug("\033[0;32mFreeing index %d...\033[0m\n", i);
 				HeapFreeEntry(context, i);
 				*link = i;
@@ -6257,6 +6259,8 @@ int ScriptExecuteFunction(uintptr_t instructionPointer, ExecutionContext *contex
 			} else {
 				break;
 			}
+		} else if (command == T_END_CALLBACK) {
+			break;
 		} else {
 			PrintDebug("Unknown command %d.\n", command);
 			return -1;
@@ -6384,6 +6388,25 @@ bool ScriptParameterCString(void *engine, char **output) {
 	return true;
 }
 
+void ScriptHeapRefClose(void *engine, intptr_t index) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	Assert(index >= 0 || index < (intptr_t) context->heapEntriesAllocated);
+	Assert(context->heap[index].externalReferenceCount);
+	context->heap[index].externalReferenceCount--;
+}
+
+bool ScriptParameterHeapRef(void *engine, intptr_t *output) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	context->c->parameterCount++;
+	if (context->c->stackPointer < context->c->parameterCount) return false;
+	intptr_t index = context->c->stack[context->c->stackPointer - context->c->parameterCount].i;
+	if (index < 0 || index >= (intptr_t) context->heapEntriesAllocated) return false;
+	if (context->heap[index].externalReferenceCount == 0xFFFFFFFF) return false;
+	context->heap[index].externalReferenceCount++;
+	*output = index;
+	return true;
+}
+
 bool ScriptParameterInt64(void *engine, int64_t *output) {
 	ExecutionContext *context = (ExecutionContext *) engine;
 	context->c->parameterCount++;
@@ -6392,6 +6415,15 @@ bool ScriptParameterInt64(void *engine, int64_t *output) {
 	return true;
 }
 
+bool ScriptParameterDouble(void *engine, double *output) {
+	ExecutionContext *context = (ExecutionContext *) engine;
+	context->c->parameterCount++;
+	if (context->c->stackPointer < context->c->parameterCount) return false;
+	*output = context->c->stack[context->c->stackPointer - context->c->parameterCount].f;
+	return true;
+}
+
+bool ScriptParameterBool  (void *engine,     bool *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
 bool ScriptParameterUint32(void *engine, uint32_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
 bool ScriptParameterUint64(void *engine, uint64_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
 bool ScriptParameterInt32 (void *engine,  int32_t *output) { int64_t i; if (!ScriptParameterInt64(engine, &i)) return false; *output = i; return true; }
@@ -6414,6 +6446,33 @@ void ScriptReturnPointer(void *engine, void *input) {
 	ScriptReturnInt(engine, (int64_t) (intptr_t) input);
 }
 
+bool ScriptRunCallback(void *engine, intptr_t functionPointer, int64_t *parameters, bool *managedParameters, size_t parameterCount) {
+	// TODO Do this in a separate coroutine?
+
+	ExecutionContext *context = (ExecutionContext *) engine;
+
+	for (intptr_t i = parameterCount - 1; i >= -1; i--) {
+		if (context->c->stackPointer == context->c->stackEntriesAllocated) {
+			PrintError4(context, 0, "Stack overflow.\n");
+			return false;
+		}
+
+		if (i == -1) {
+			context->c->stack[context->c->stackPointer].i = functionPointer;
+			context->c->stackIsManaged[context->c->stackPointer] = true;
+		} else {
+			context->c->stack[context->c->stackPointer].i = parameters[i];
+			context->c->stackIsManaged[context->c->stackPointer] = managedParameters[i];
+		}
+
+		context->c->stackPointer++;
+	}
+
+	int result = ScriptExecuteFunction(2, context);
+	if (result == -1) PrintError3("The script was malformed.\n");
+	return result > 0;
+}
+
 bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *importData, bool replMode) {
 	Node *previousRootNode = context->rootNode;
 	ImportData *previousImportData = context->functionData->importData;
@@ -6424,6 +6483,10 @@ bool ScriptLoad(Tokenizer tokenizer, ExecutionContext *context, ImportData *impo
 	uint8_t b = 0; // Make sure no function can start at 0.
 	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
 	b = T_AWAIT; // Put a T_AWAIT command at address 1.
+	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
+	b = T_CALL; // Put a T_CALL command at address 2 (for ScriptRunCallback).
+	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
+	b = T_END_CALLBACK; // Put a T_END_CALLBACK command at address 3 (for ScriptRunCallback).
 	FunctionBuilderAppend(context->functionData, &b, sizeof(b));
 
 	bool success = context->rootNode 
@@ -7670,7 +7733,7 @@ void *LibraryLoad(const char *name) {
 	strcat(name2, name);
 	strcat(name2, ".so");
 
-	void *library = dlopen(name2, RTLD_NOW);
+	void *library = dlopen(name2, RTLD_LAZY);
 
 	if (!library) {
 		PrintError3("The library \"%s\" could not be found or loaded.\n", name2);
