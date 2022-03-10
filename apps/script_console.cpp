@@ -396,7 +396,7 @@ int External_DirectoryInternalStartIteration(ExecutionContext *context, Value *r
 	STACK_POP_STRING(entryText, entryBytes);
 	EsHeapFree(directoryIterationBuffer);
 	EsError error;
-	directoryIterationBuffer = EsDirectoryEnumerateChildren(entryText, entryBytes, &directoryIterationBufferCount, &error);
+	directoryIterationBuffer = EsDirectoryEnumerate(entryText, entryBytes, &directoryIterationBufferCount, &error);
 	directoryIterationBufferPosition = 0;
 	if (error == ES_SUCCESS) return EXTCALL_RETURN_ERR_UNMANAGED;
 	RETURN_ERROR(error);

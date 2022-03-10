@@ -271,7 +271,7 @@ EsError CommandPasteFile(String source, String destinationBase, void **copyBuffe
 
 	if (error == ES_ERROR_INCORRECT_NODE_TYPE) {
 		uintptr_t childCount;
-		EsDirectoryChild *buffer = EsDirectoryEnumerateChildren(STRING(source), &childCount, &error);
+		EsDirectoryChild *buffer = EsDirectoryEnumerate(STRING(source), &childCount, &error);
 
 		if (error == ES_SUCCESS) {
 			error = EsPathCreate(STRING(destination), ES_NODE_DIRECTORY, false);

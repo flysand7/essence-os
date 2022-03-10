@@ -490,7 +490,7 @@ void *LibraryGetAddress(void *library, const char *name);
 char baseModuleSource[] = {
 	// TODO Temporary.
 	"struct DirectoryChild { str name; bool isDirectory; int size; };"
-	"DirectoryChild[] Dir() { str[] names = DirectoryEnumerateChildren(\"0:\"):assert(); DirectoryChild[] result = new DirectoryChild[]; result:resize(names:len()); for int i = 0; i < names:len(); i += 1 { result[i] = new DirectoryChild; result[i].name = names[i]; result[i].isDirectory = PathIsDirectory(\"0:/\"+names[i]); result[i].size = FileGetSize(\"0:/\"+names[i]):default(-1); } return result;}"
+	"DirectoryChild[] Dir() { str[] names = DirectoryEnumerate(\"0:\"):assert(); DirectoryChild[] result = new DirectoryChild[]; result:resize(names:len()); for int i = 0; i < names:len(); i += 1 { result[i] = new DirectoryChild; result[i].name = names[i]; result[i].isDirectory = PathIsDirectory(\"0:/\"+names[i]); result[i].size = FileGetSize(\"0:/\"+names[i]):default(-1); } return result;}"
 	"str[] OpenDocumentEnumerate() #extcall;"
 
 	// Logging:
@@ -621,12 +621,12 @@ char baseModuleSource[] = {
 	"	}"
 	"	return #success;"
 	"}"
-	"err[str[]] DirectoryEnumerateChildren(str path) {"
+	"err[str[]] DirectoryEnumerate(str path) {"
 	"	str[] result = new str[];"
 	"	err[void] e = _DirectoryInternalEnumerateChildren(path, \"\", result, false);"
 	"	reterr e; return result;"
 	"}"
-	"err[str[]] DirectoryEnumerateChildrenRecursively(str path) {"
+	"err[str[]] DirectoryEnumerateRecursively(str path) {"
 	"	str[] result = new str[];"
 	"	err[void] e = _DirectoryInternalEnumerateChildren(PathTrimTrailingSlash(path), \"\", result, true);"
 	"	reterr e; return result;"
@@ -635,7 +635,7 @@ char baseModuleSource[] = {
 	"str PathTrimTrailingSlash(str x) { if x:len() > 0 && x[x:len() - 1] == \"/\" { return StringSlice(x, 0, x:len() - 1); } return x; }"
 
 	"err[void] PathDeleteRecursively(str path) {"
-	"	err[str[]] e = DirectoryEnumerateChildrenRecursively(path);"
+	"	err[str[]] e = DirectoryEnumerateRecursively(path);"
 	"	if str[] all in e {"
 	"		for int i = 0; i < all:len(); i += 1 {"
 	"			str p = path + \"/\" + all[i];"
@@ -655,7 +655,7 @@ char baseModuleSource[] = {
 	"	}"
 	"}"
 	"err[void] PathCopyRecursively(str source, str destination) {"
-	"	err[str[]] e = DirectoryEnumerateChildrenRecursively(source);"
+	"	err[str[]] e = DirectoryEnumerateRecursively(source);"
 	"	if str[] all in e {"
 	"		reterr PathCreateDirectory(destination);"
 	"		for int i = 0; i < all:len(); i += 1 {"
@@ -691,8 +691,8 @@ char baseModuleSource[] = {
 	"err[void] PathCopyFilteredInto(str sourceDirectory, str[] filter, int filterWildcard, str destinationDirectory) {"
 	"	assert filter:len() > 0;"
 	"	err[str[]] e;"
-	"	if filterWildcard != -1 || filter:len() > 1 { e = DirectoryEnumerateChildrenRecursively(sourceDirectory); }"
-	"	else { e = DirectoryEnumerateChildren(sourceDirectory); }"
+	"	if filterWildcard != -1 || filter:len() > 1 { e = DirectoryEnumerateRecursively(sourceDirectory); }"
+	"	else { e = DirectoryEnumerate(sourceDirectory); }"
 	"	if str[] items in e {"
 	"		for int i = 0; i < items:len(); i += 1 {"
 	"			if PathMatchesFilter(items[i], filter, filterWildcard) {"

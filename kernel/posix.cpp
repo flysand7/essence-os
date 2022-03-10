@@ -707,7 +707,7 @@ namespace POSIX {
 						return -ENOMEM;
 					}
 
-					size_t count = FSDirectoryEnumerateChildren(file->node, buffer, bufferSize);
+					size_t count = FSDirectoryEnumerate(file->node, buffer, bufferSize);
 
 					if (ES_CHECK_ERROR(count)) {
 						EsHeapFree(buffer, sizeof(EsDirectoryChild) * bufferSize, K_FIXED);

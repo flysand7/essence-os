@@ -84,7 +84,7 @@ void GenerateAPISamples() {
 	str sourceFolder = "apps/samples/";
 	str destinationFolder = "root/API Samples/";
 
-	for str configFile in DirectoryEnumerateChildren(sourceFolder):assert() {
+	for str configFile in DirectoryEnumerate(sourceFolder):assert() {
 		if StringEndsWith(configFile, ".ini") {
 			str[] config = StringSplitByCharacter(FileReadAll(sourceFolder + configFile):assert(), "\n", false);
 			str sourceFile;

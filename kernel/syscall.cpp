@@ -1183,7 +1183,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DIRECTORY_ENUMERATE) {
 	if (argument2 > SYSCALL_BUFFER_LIMIT / sizeof(EsDirectoryChild)) SYSCALL_RETURN(ES_FATAL_ERROR_INVALID_BUFFER, true);
 	SYSCALL_BUFFER(argument1, argument2 * sizeof(EsDirectoryChild), 1, true /* write */);
 
-	SYSCALL_RETURN(FSDirectoryEnumerateChildren(node, (K_USER_BUFFER EsDirectoryChild *) argument1, argument2), false);
+	SYSCALL_RETURN(FSDirectoryEnumerate(node, (K_USER_BUFFER EsDirectoryChild *) argument1, argument2), false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_CONTROL) {

@@ -98,12 +98,12 @@ EsError EsFileControl(EsHandle file, uint32_t flags) {
 	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, flags, 0, 0);
 }
 
-ptrdiff_t DirectoryEnumerateChildrenFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
+ptrdiff_t DirectoryEnumerateFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
 	if (!size) return 0;
 	return EsSyscall(ES_SYSCALL_DIRECTORY_ENUMERATE, directory, (uintptr_t) buffer, size, 0);
 }
 
-EsDirectoryChild *EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathBytes, size_t *countOut, EsError *errorOut) {
+EsDirectoryChild *EsDirectoryEnumerate(const char *path, ptrdiff_t pathBytes, size_t *countOut, EsError *errorOut) {
 	*countOut = 0;
 	*errorOut = ES_ERROR_UNKNOWN;
 
@@ -131,7 +131,7 @@ EsDirectoryChild *EsDirectoryEnumerateChildren(const char *path, ptrdiff_t pathB
 	EsDirectoryChild *buffer = (EsDirectoryChild *) EsHeapAllocate(sizeof(EsDirectoryChild) * node.directoryChildren, true);
 
 	if (buffer) {
-		ptrdiff_t result = DirectoryEnumerateChildrenFromHandle(node.handle, buffer, node.directoryChildren);
+		ptrdiff_t result = DirectoryEnumerateFromHandle(node.handle, buffer, node.directoryChildren);
 
 		if (ES_CHECK_ERROR(result)) { 
 			EsHeapFree(buffer); 

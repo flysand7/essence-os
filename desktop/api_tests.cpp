@@ -550,10 +550,10 @@ struct {
 
 const int testVariable = 3;
 
-bool DirectoryEnumerateChildrenRecursive(const char *path, size_t pathBytes) {
+bool DirectoryEnumerateRecursive(const char *path, size_t pathBytes) {
 	size_t count;
 	EsError error;
-	EsDirectoryChild *buffer = EsDirectoryEnumerateChildren(path, pathBytes, &count, &error);
+	EsDirectoryChild *buffer = EsDirectoryEnumerate(path, pathBytes, &count, &error);
 
 	if (error != ES_SUCCESS) {
 		EsPrint("Error %i enumerating at path \"%s\".\n", error, pathBytes, path);
@@ -575,14 +575,14 @@ bool DirectoryEnumerateChildrenRecursive(const char *path, size_t pathBytes) {
 			}
 
 			if (dataBytes != (size_t) buffer[i].fileSize) {
-				EsPrint("File size mismatch reading path \"%s\" (got %d from EsFileReadAll, got %d from EsDirectoryEnumerateChildren).\n", 
+				EsPrint("File size mismatch reading path \"%s\" (got %d from EsFileReadAll, got %d from EsDirectoryEnumerate).\n", 
 						childPathBytes, childPath, dataBytes, buffer[i].fileSize);
 				return false;
 			}
 
 			EsHeapFree(data);
 		} else if (buffer[i].type == ES_NODE_DIRECTORY) {
-			if (!DirectoryEnumerateChildrenRecursive(childPath, childPathBytes)) {
+			if (!DirectoryEnumerateRecursive(childPath, childPathBytes)) {
 				return false;
 			}
 		}
@@ -603,7 +603,7 @@ bool OldTests2018() {
 	CHECK(testStruct.b == 2);
 	CHECK(testVariable == 3);
 
-	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("|Settings:")));
+	CHECK(DirectoryEnumerateRecursive(EsLiteral("|Settings:")));
 
 	for (int count = 16; count < 100; count += 30) {
 		EsHandle handles[100];
@@ -647,7 +647,7 @@ bool OldTests2018() {
 		CHECK(EsPathExists(EsLiteral("|Settings:/a.txt")));
 	}
 
-	CHECK(DirectoryEnumerateChildrenRecursive(EsLiteral("|Settings:")));
+	CHECK(DirectoryEnumerateRecursive(EsLiteral("|Settings:")));
 
 	{
 		void *a = EsCRTmalloc(0x100000);

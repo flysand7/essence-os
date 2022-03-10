@@ -414,7 +414,7 @@ void CreateImportNode(const char *path, ImportNode *node) {
 	char *path2 = EsPOSIXConvertPath(path, &path2Bytes, true);
 	EsError error;
 	uintptr_t childCount;
-	EsDirectoryChild *children = EsDirectoryEnumerateChildren(path2, path2Bytes, &childCount, &error);
+	EsDirectoryChild *children = EsDirectoryEnumerate(path2, path2Bytes, &childCount, &error);
 	EsAssert(error == ES_SUCCESS);
 	EsHeapFree(path2, 0, NULL);
 

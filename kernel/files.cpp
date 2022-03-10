@@ -66,7 +66,7 @@ void FSNodeCloseHandle(KNode *node, uint32_t flags);
 EsError FSNodeDelete(KNode *node);
 EsError FSNodeMove(KNode *node, KNode *destination, const char *newName, size_t nameNameBytes);
 EsError FSFileResize(KNode *node, EsFileOffset newSizeBytes);
-ptrdiff_t FSDirectoryEnumerateChildren(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize);
+ptrdiff_t FSDirectoryEnumerate(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize);
 EsError FSFileControl(KNode *node, uint32_t flags);
 bool FSTrimCachedNode(MMObjectCache *);
 bool FSTrimCachedDirectoryEntry(MMObjectCache *);
@@ -650,7 +650,7 @@ EsError FSNodeMove(KNode *node, KNode *_newParent, const char *newName, size_t n
 	return error;
 }
 
-void _FSDirectoryEnumerateChildrenVisit(AVLItem<FSDirectoryEntry> *item, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize, uintptr_t *position) {
+void _FSDirectoryEnumerateVisit(AVLItem<FSDirectoryEntry> *item, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize, uintptr_t *position) {
 	if (!item || *position == bufferSize) {
 		return;
 	}
@@ -660,7 +660,7 @@ void _FSDirectoryEnumerateChildrenVisit(AVLItem<FSDirectoryEntry> *item, K_USER_
 	*position = *position + 1;
 
 	if (entry->node && (entry->node->flags & NODE_DELETED)) {
-		KernelPanic("_FSDirectoryEnumerateChildrenVisit - Deleted node %x found in directory tree.\n");
+		KernelPanic("_FSDirectoryEnumerateVisit - Deleted node %x found in directory tree.\n");
 	}
 
 	size_t nameBytes = entry->item.key.longKeyBytes > ES_MAX_DIRECTORY_CHILD_NAME_LENGTH ? ES_MAX_DIRECTORY_CHILD_NAME_LENGTH : entry->item.key.longKeyBytes;
@@ -670,15 +670,15 @@ void _FSDirectoryEnumerateChildrenVisit(AVLItem<FSDirectoryEntry> *item, K_USER_
 	output->directoryChildren = entry->directoryChildren;
 	output->nameBytes = nameBytes;
 
-	_FSDirectoryEnumerateChildrenVisit(item->children[0], buffer, bufferSize, position);
-	_FSDirectoryEnumerateChildrenVisit(item->children[1], buffer, bufferSize, position);
+	_FSDirectoryEnumerateVisit(item->children[0], buffer, bufferSize, position);
+	_FSDirectoryEnumerateVisit(item->children[1], buffer, bufferSize, position);
 }
 
-ptrdiff_t FSDirectoryEnumerateChildren(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize) {
+ptrdiff_t FSDirectoryEnumerate(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize) {
 	// uint64_t start = ProcessorReadTimeStamp();
 
 	if (node->directoryEntry->type != ES_NODE_DIRECTORY) {
-		KernelPanic("FSDirectoryEnumerateChildren - Node %x is not a directory.\n", node);
+		KernelPanic("FSDirectoryEnumerate - Node %x is not a directory.\n", node);
 	}
 
 	FSDirectory *directory = (FSDirectory *) node;
@@ -699,12 +699,12 @@ ptrdiff_t FSDirectoryEnumerateChildren(KNode *node, K_USER_BUFFER EsDirectoryChi
 	}
 
 	uintptr_t position = 0;
-	_FSDirectoryEnumerateChildrenVisit(directory->entries.root, buffer, bufferSize, &position);
+	_FSDirectoryEnumerateVisit(directory->entries.root, buffer, bufferSize, &position);
 
 	KWriterLockReturn(&directory->writerLock, K_LOCK_EXCLUSIVE);
 
 	// uint64_t end = ProcessorReadTimeStamp();
-	// EsPrint("FSDirectoryEnumerateChildren took %dmcs for %d items.\n", (end - start) / KGetTimeStampTicksPerUs(), position);
+	// EsPrint("FSDirectoryEnumerate took %dmcs for %d items.\n", (end - start) / KGetTimeStampTicksPerUs(), position);
 
 	return position;
 }
