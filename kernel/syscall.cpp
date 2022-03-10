@@ -1359,14 +1359,42 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_PROCESS_GET_TLS) {
 	SYSCALL_RETURN(currentThread->tlsAddress, false);
 }
 
+SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_GET_BITS) {
+	SYSCALL_PERMISSION(ES_PERMISSION_SCREEN_MODIFY);
+	EsRectangle rectangle;
+	SYSCALL_READ(&rectangle, argument1, sizeof(EsRectangle));
+	SYSCALL_BUFFER(argument2, Width(rectangle) * Height(rectangle) * 4, 1, false);
+
+	KMutexAcquire(&windowManager.mutex);
+
+	EsRectangle source = EsRectangleIntersection(rectangle, ES_RECT_2S(graphics.frameBuffer.width, graphics.frameBuffer.height));
+	uint32_t *bits = (uint32_t *) graphics.frameBuffer.bits;
+	uint32_t *destination = (uint32_t *) argument2;
+
+	if (ES_RECT_VALID(source)) {
+		for (int32_t y = source.t; y < source.b; y++) {
+			for (int32_t x = source.l; x < source.r; x++) {
+				uint32_t p = bits[x + y * graphics.frameBuffer.stride / sizeof(uint32_t)];
+				destination[(x - (source.l - rectangle.l)) + (y - (source.t - rectangle.t)) * (rectangle.r - rectangle.l)] = p;
+			}
+		}
+	}
+
+	KMutexRelease(&windowManager.mutex);
+
+	SYSCALL_RETURN(ES_SUCCESS, false);
+}
+
 SYSCALL_IMPLEMENT(ES_SYSCALL_SCREEN_BOUNDS_GET) {
 	EsRectangle rectangle;
 	EsMemoryZero(&rectangle, sizeof(EsRectangle));
 
+	KMutexAcquire(&windowManager.mutex);
 	rectangle.l = 0;
 	rectangle.t = 0;
 	rectangle.r = graphics.width;
 	rectangle.b = graphics.height;
+	KMutexRelease(&windowManager.mutex);
 
 	SYSCALL_WRITE(argument1, &rectangle, sizeof(EsRectangle));
 	SYSCALL_RETURN(ES_SUCCESS, false);

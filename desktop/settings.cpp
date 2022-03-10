@@ -58,17 +58,17 @@ const EsStyle styleSettingsGroupContainer2 = {
 	},
 };
 
-const uint32_t windowColors[][7] = {
-	{ 0xFF67EFC4, 0xFFA9E7D3, 0xFF94D1BD, 0xFF6BA996, 0xFFD0E2DD, 0xFFD1EAE2, 0xFFBAD1C9 },
-	{ 0xFF54ACE5, 0xFF9BC3DD, 0xFF87AEC8, 0xFF6784A2, 0xFFC5D1D9, 0xFFC6D6E0, 0xFFB0BEC8 },
-	{ 0xFF448CF5, 0xFF9CBDED, 0xFF87A7D6, 0xFF5E7FB8, 0xFFD0DAE8, 0xFFD0DDF0, 0xFFB9C4D6 },
-	{ 0xFF044CF5, 0xFF7FA0ED, 0xFF6A8AD6, 0xFF4065B4, 0xFFC8D1E8, 0xFFC4D1F0, 0xFFAEBAD6 },
-	{ 0xFFAC00FF, 0xFFD183F7, 0xFFB96DDF, 0xFF8F41B5, 0xFFE6D0F2, 0xFFEBCCFA, 0xFFD1B5DF },
-	{ 0xFFFF0032, 0xFFF78399, 0xFFDF6D83, 0xFFC0436B, 0xFFF2D0D6, 0xFFFACCD5, 0xFFDFB5BD },
-	{ 0xFFFF6042, 0xFFF7AEA1, 0xFFDF978A, 0xFFB5525F, 0xFFF2DCD8, 0xFFFADDD7, 0xFFDFC4BF },
-	{ 0xFFFF7F24, 0xFFF7BC93, 0xFFDFA57D, 0xFFC7825F, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
-	{ 0xFFE8ECF9, 0xFFE9EBF1, 0xFFD2D3D9, 0xFFA9AAB0, 0xFFEAEAEC, 0xFFF1F1F4, 0xFFD6D7D9 },
-	{ 0xFFB7BBC5, 0xFFB8BABE, 0xFF9A9BA0, 0xFF85878B, 0xFFE9E9EA, 0xFFDEDFE1, 0xFFB9BABC },
+const uint32_t windowColors[][8] = {
+	{ 0xFF67EFC4, 0xCEF2E6, 0xFFA9E7D3, 0xFF94D1BD, 0xFF6BA996, 0xFFD0E2DD, 0xFFD1EAE2, 0xFFBAD1C9 },
+	{ 0xFF54ACE5, 0xB1CEE1, 0xFF9BC3DD, 0xFF87AEC8, 0xFF6784A2, 0xFFC5D1D9, 0xFFC6D6E0, 0xFFB0BEC8 },
+	{ 0xFF448CF5, 0x77B9F9, 0xFF9CBDED, 0xFF87A7D6, 0xFF5E7FB8, 0xFFD0DAE8, 0xFFD0DDF0, 0xFFB9C4D6 },
+	{ 0xFF044CF5, 0x8FABEB, 0xFF7FA0ED, 0xFF6A8AD6, 0xFF4065B4, 0xFFC8D1E8, 0xFFC4D1F0, 0xFFAEBAD6 },
+	{ 0xFFAC00FF, 0xD899F6, 0xFFD183F7, 0xFFB96DDF, 0xFF8F41B5, 0xFFE6D0F2, 0xFFEBCCFA, 0xFFD1B5DF },
+	{ 0xFFFF0032, 0xF9A0B1, 0xFFF78399, 0xFFDF6D83, 0xFFC0436B, 0xFFF2D0D6, 0xFFFACCD5, 0xFFDFB5BD },
+	{ 0xFFFF6042, 0xF9BBAF, 0xFFF7AEA1, 0xFFDF978A, 0xFFB5525F, 0xFFF2DCD8, 0xFFFADDD7, 0xFFDFC4BF },
+	{ 0xFFFF7F24, 0xF5C5A3, 0xFFF7BC93, 0xFFDFA57D, 0xFFC7825F, 0xFFF2E0D4, 0xFFFAE2D2, 0xFFDFC9BA },
+	{ 0xFFE8ECF9, 0xE5E7ED, 0xFFE9EBF1, 0xFFD2D3D9, 0xFFA9AAB0, 0xFFEAEAEC, 0xFFF1F1F4, 0xFFD6D7D9 },
+	{ 0xFFB7BBC5, 0xA4A5AA, 0xFFB8BABE, 0xFF9A9BA0, 0xFF85878B, 0xFFE9E9EA, 0xFFDEDFE1, 0xFFB9BABC },
 };
 
 const EsStyle styleSettingsCheckboxGroup = {
@@ -710,20 +710,84 @@ int SettingsColorButtonMessage(EsElement *element, EsMessage *message) {
 	return 0;
 }
 
+int SettingsTransitionWindowMessage(EsElement *element, EsMessage *message) {
+	EsWindow *window = element->window;
+
+	if (message->type == ES_MSG_ANIMATE) {
+		window->animationTime += message->animate.deltaMs;
+		double progress = window->animationTime / GetConstantNumber("settingsTransitionDuration");
+
+		if (progress > 1) {
+			EsElementDestroy(window);
+		} else {
+			EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, window->handle, 0xFF * (1 - progress), 0, ES_WINDOW_PROPERTY_ALPHA);
+			EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, true, 0, 0, 0);
+			message->animate.complete = false;
+			message->animate.waitMs = 10;
+			return ES_HANDLED;
+		}
+	}
+
+	return 0;
+}
+
+void SettingsCreateTransitionWindow() {
+	if (!desktop.setupDesktopUIComplete) {
+		return;
+	}
+
+	EsRectangle screen;
+	EsSyscall(ES_SYSCALL_SCREEN_BOUNDS_GET, 0, (uintptr_t) &screen, 0, 0);
+	EsRectangle region = ES_RECT_2S(ES_RECT_WIDTH(screen), ES_RECT_HEIGHT(screen));
+
+	uint32_t *screenshot = (uint32_t *) EsHeapAllocate(region.r * region.b * 4, false);
+
+	if (!screenshot) {
+		return;
+	}
+
+	EsSyscall(ES_SYSCALL_SCREEN_GET_BITS, 0, (uintptr_t) &region, (uintptr_t) screenshot, 0);
+
+	for (intptr_t i = 0; i < region.r * region.b; i++) {
+		screenshot[i] |= 0xFF000000;
+	}
+
+	EsWindow *transition = EsWindowCreate(nullptr, ES_WINDOW_PLAIN);
+
+	if (transition) {
+		transition->messageUser = SettingsTransitionWindowMessage;
+		transition->doNotPaint = true;
+		transition->StartAnimating();
+		EsSyscall(ES_SYSCALL_WINDOW_MOVE, transition->handle, (uintptr_t) &screen, 0, ES_WINDOW_MOVE_ALWAYS_ON_TOP);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_PROPERTY, transition->handle, 0, 0, ES_WINDOW_PROPERTY_SOLID);
+		EsSyscall(ES_SYSCALL_WINDOW_SET_BITS, transition->handle, (uintptr_t) &region, (uintptr_t) screenshot, 0);
+		EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, true, 0, 0, 0);
+	}
+
+	EsHeapFree(screenshot);
+}
+
 void SettingsWindowColorUpdated() {
+	SettingsCreateTransitionWindow();
+
 	uint8_t index = EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("window_color"));
 
 	if (index > sizeof(windowColors) / sizeof(windowColors[0])) {
 		index = 0;
 	}
 
-	EsMemoryCopy(theming.windowColors, &windowColors[index][1], sizeof(theming.windowColors));
+	EsMemoryCopy(theming.windowColors, &windowColors[index][2], sizeof(theming.windowColors));
+	desktop.wallpaperBackgroundColor = windowColors[index][1];
 
 	for (uintptr_t i = 0; i < gui.allWindows.Length(); i++) {
 		if (gui.allWindows[i]->windowStyle == ES_WINDOW_CONTAINER) {
 			gui.allWindows[i]->Repaint(true);
 			UIWindowNeedsUpdate(gui.allWindows[i]);
 		}
+	}
+
+	if (desktop.isWallpaperBackgroundColorVisible) {
+		EsThreadCreate(WallpaperLoad, nullptr, 0);
 	}
 }
 

@@ -499,9 +499,12 @@ struct EsWindow : EsElement {
 	Array<EsElement *> checkVisible;
 	bool processCheckVisible;
 
+	double animationTime;
+
 	EsRectangle beforeMaximiseBounds, targetBounds, animateFromBounds;
 	bool animateToTargetBoundsAfterResize;
-	double animateToTargetBoundsTimeMs;
+
+	EsPoint announcementBase;
 
 	EsRectangle updateRegion;
 	EsRectangle updateRegionInProgress; // For visualizePaintSteps.
@@ -511,9 +514,6 @@ struct EsWindow : EsElement {
 
 	EsElement *source; // Menu source.
 	EsWindow *targetMenu; // The menu that keyboard events should be sent to.
-
-	EsPoint announcementBase;
-	double announcementTimeMs;
 };
 
 struct UpdateAction {
@@ -634,7 +634,7 @@ void WindowChangeBounds(int direction, int newX, int newY, int *originalX, int *
 
 	window->isMaximised = false;
 	window->animateToTargetBoundsAfterResize = false;
-	window->animateToTargetBoundsTimeMs = -1;
+	window->animationTime = -1;
 
 	if (direction == RESIZE_MOVE) {
 		if (newY < screen.t + windowSnapRange && canSnap) {
@@ -758,14 +758,14 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 		}
 
 		if (window->animateToTargetBoundsAfterResize) {
-			window->animateToTargetBoundsTimeMs = 0;
+			window->animationTime = 0;
 			window->StartAnimating();
 		}
 
 		gui.resizing = false;
 	} else if (message->type == ES_MSG_ANIMATE && window->animateToTargetBoundsAfterResize) {
-		double progress = window->animateToTargetBoundsTimeMs / 100.0;
-		window->animateToTargetBoundsTimeMs += message->animate.deltaMs;
+		double progress = window->animationTime / 100.0;
+		window->animationTime += message->animate.deltaMs;
 
 		if (progress > 1 || progress < 0) {
 			message->animate.complete = true;
@@ -4318,9 +4318,9 @@ int AnnouncementMessage(EsElement *element, EsMessage *message) {
 	EsWindow *window = (EsWindow *) element;
 
 	if (message->type == ES_MSG_ANIMATE) {
-		window->announcementTimeMs += message->animate.deltaMs;
+		window->animationTime += message->animate.deltaMs;
 
-		double progress = window->announcementTimeMs / GetConstantNumber("announcementDuration");
+		double progress = window->animationTime / GetConstantNumber("announcementDuration");
 
 		if (progress > 1) {
 			EsElementDestroy(window);

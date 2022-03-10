@@ -201,8 +201,11 @@ struct {
 	HashStore<EsObjectID, OpenDocument> openDocuments;
 
 	TaskBar taskBar;
-	EsWindow *wallpaperWindow;
 	EsButton *tasksButton;
+
+	EsWindow *wallpaperWindow;
+	uint32_t wallpaperBackgroundColor;
+	bool isWallpaperBackgroundColorVisible; // If true, then the wallpaper needs to be reloaded when the background color changes.
 
 	bool setupDesktopUIComplete;
 	uint8_t installationState;
@@ -634,8 +637,8 @@ int CursorLocatorMessage(EsElement *element, EsMessage *message) {
 	EsWindow *window = element->window;
 
 	if (message->type == ES_MSG_ANIMATE) {
-		window->announcementTimeMs += message->animate.deltaMs;
-		double progress = window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
+		window->animationTime += message->animate.deltaMs;
+		double progress = window->animationTime / GetConstantNumber("cursorLocatorDuration");
 
 		if (progress > 1) {
 			EsElementDestroy(window);
@@ -646,7 +649,7 @@ int CursorLocatorMessage(EsElement *element, EsMessage *message) {
 		}
 	} else if (message->type == ES_MSG_LAYOUT) {
 		EsElement *child = element->GetChild(0);
-		double progress = 1.0 - window->announcementTimeMs / GetConstantNumber("cursorLocatorDuration");
+		double progress = 1.0 - window->animationTime / GetConstantNumber("cursorLocatorDuration");
 		int width = progress * child->GetWidth(0), height = progress * child->GetHeight(0);
 		child->InternalMove(width, height, (element->width - width) / 2, (element->height - height) / 2);
 	}
@@ -2600,17 +2603,23 @@ void WallpaperLoad(EsGeneric) {
 	size_t pathBytes;
 	char *path = EsSystemConfigurationReadString(EsLiteral("general"), EsLiteral("wallpaper"), &pathBytes);
 
-	if (path) {
-		void *buffer = EsHeapAllocate(desktop.wallpaperWindow->windowWidth * desktop.wallpaperWindow->windowHeight * 4, false);
-		LoadImage(path, pathBytes, buffer, desktop.wallpaperWindow->windowWidth, desktop.wallpaperWindow->windowHeight, false);
-		EsHeapFree(path);
+	void *buffer = EsHeapAllocate(desktop.wallpaperWindow->windowWidth * desktop.wallpaperWindow->windowHeight * 4, false);
 
-		EsRectangle region = ES_RECT_2S(desktop.wallpaperWindow->windowWidth, desktop.wallpaperWindow->windowHeight);
-		EsSyscall(ES_SYSCALL_WINDOW_SET_BITS, desktop.wallpaperWindow->handle, (uintptr_t) &region, (uintptr_t) buffer, 0);
-		EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, true, 0, 0, 0);
+	for (uintptr_t i = 0; i < desktop.wallpaperWindow->windowWidth * desktop.wallpaperWindow->windowHeight; i++) {
+		((uint32_t *) buffer)[i] = desktop.wallpaperBackgroundColor;
 	}
 
+	bool coversDestination;
+	if (path) LoadImage(path, pathBytes, buffer, desktop.wallpaperWindow->windowWidth, desktop.wallpaperWindow->windowHeight, false, &coversDestination);
+	desktop.isWallpaperBackgroundColorVisible = !coversDestination;
+
+	EsRectangle region = ES_RECT_2S(desktop.wallpaperWindow->windowWidth, desktop.wallpaperWindow->windowHeight);
+	EsSyscall(ES_SYSCALL_WINDOW_SET_BITS, desktop.wallpaperWindow->handle, (uintptr_t) &region, (uintptr_t) buffer, 0);
+	EsSyscall(ES_SYSCALL_SCREEN_FORCE_UPDATE, true, 0, 0, 0);
+
 	// TODO Fade wallpaper in.
+
+	EsHeapFree(path);
 }
 
 //////////////////////////////////////////////////////

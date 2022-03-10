@@ -1608,7 +1608,8 @@ uint8_t *EsImageLoad(const void *file, size_t fileSize, uint32_t *imageX, uint32
 #endif
 }
 
-void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int destinationWidth, int destinationHeight, bool fromMemory) {
+void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int destinationWidth, int destinationHeight, 
+		bool fromMemory, bool *_coversDestination = nullptr) {
 	int width = 0, height = 0;
 	uint32_t *image = nullptr;
 
@@ -1625,19 +1626,21 @@ void LoadImage(const void *path, ptrdiff_t pathBytes, void *destination, int des
 	}
 
 	int cx = destinationWidth / 2 - width / 2, cy = destinationHeight / 2 - height / 2;
+	bool coversDestination = true;
 
 	for (int j = 0; j < destinationHeight; j++) {
 		uint32_t *pixel = (uint32_t *) ((uint8_t *) destination + j * destinationWidth * 4);
 
 		for (int i = 0; i < destinationWidth; i++, pixel++) {
-			if (i - cx < 0 || i - cx >= width || j - cy < 0 || j - cy >= height) {
-				*pixel = 0x77B9F9;
-			} else {
+			if (i - cx >= 0 && i - cx < width && j - cy >= 0 && j - cy < height) {
 				*pixel = image[i - cx + (j - cy) * width];
+			} else {
+				coversDestination = false;
 			}
 		}
 	}
 
+	if (_coversDestination) *_coversDestination = coversDestination;
 	EsHeapFree(image);
 }
 #endif
