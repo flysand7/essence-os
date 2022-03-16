@@ -148,8 +148,9 @@ Each `[driver]` section should contain:
 - `source` The source file of the driver. This must be C/C++.
 - `builtin` Set to 1 if the driver should be linked directly into the kernel. Set to 0 if the driver should be built as a loadable module.
 
-`[font:<name>]` sections specify the fonts that are to be bundled in the desktop executable. Each section should contain:
+`[font]` sections specify the fonts that are to be bundled in the desktop executable. Each section should contain:
 
+- `name` The name of the font.
 - `category` One of `Sans`, `Serif` or `Mono`. More categories will likely be added in the future.
 - `scripts` The scripts supported by the font. See `hb_script_t` in `bin/harfbuzz/src/hb-common.h` for a list of scripts. Separate each script with a `,`.
 - `license` The license file to bundle. This is a path relative to `res/Fonts/`.

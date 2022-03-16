@@ -287,12 +287,8 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 		while (EsINIParse(&s)) {
 			EsINIZeroTerminate(&s);
 
-			if (memcmp(s.section, "driver:", 7)) {
-				continue;
-			}
-
-			name = s.section + 7;
-
+			if (strcmp(s.section, "driver")) continue;
+			if (0 == strcmp(s.key, "name")) name = s.value;
 			if (0 == strcmp(s.key, "source")) source = s.value;
 			if (0 == strcmp(s.key, "builtin")) builtin = !!atoi(s.value);
 
@@ -336,7 +332,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 			continue;
 		}
 
-		fprintf(f, "[font:%s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
+		fprintf(f, "[font]\nname=%s\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
 		fileIndex = 0;
 
 		while (font->files[fileIndex].path) {

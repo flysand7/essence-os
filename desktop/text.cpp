@@ -587,36 +587,17 @@ void FontInitialise() {
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		SystemConfigurationGroup *g = &api.systemConfigurationGroups[i];
 
-		if (g->sectionBytes > 5 && 0 == EsMemoryCompare(g->section, "font:", 5)) {
-			const char *name = g->section + 5;
-			size_t nameBytes = g->sectionBytes - 5;
-
-			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.sansName))) {
-				fontManagement.sans = fontManagement.database.Length();
-			}
-
-			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.serifName))) {
-				fontManagement.serif = fontManagement.database.Length();
-			}
-
-			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.monospacedName))) {
-				fontManagement.monospaced = fontManagement.database.Length();
-			}
-
-			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.fallbackName))) {
-				fontManagement.fallback = fontManagement.database.Length();
-			}
-
+		if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral("font"))) {
 			FontDatabaseEntry entry = {};
-
-			entry.nameBytes = MinimumInteger(nameBytes, sizeof(entry.name));
-			EsMemoryCopy(entry.name, name, entry.nameBytes);
-			entry.id = fontManagement.database.Length();
+			const char *name = nullptr;
+			size_t nameBytes = 0;
 
 			for (uintptr_t i = 0; i < g->itemCount; i++) {
 				SystemConfigurationItem *item = g->items + i;
 
-				if (0 == EsStringCompareRaw(item->key, item->keyBytes, EsLiteral("category"))) {
+				if (0 == EsStringCompareRaw(item->key, item->keyBytes, EsLiteral("name"))) {
+					name = item->value, nameBytes = item->valueBytes;
+				} else if (0 == EsStringCompareRaw(item->key, item->keyBytes, EsLiteral("category"))) {
 					entry.categoryBytes = MinimumInteger(item->valueBytes, sizeof(entry.category));
 					EsMemoryCopy(entry.category, item->value, entry.categoryBytes);
 				} else if (0 == EsStringCompareRaw(item->key, item->keyBytes, EsLiteral("scripts"))) {
@@ -642,6 +623,26 @@ void FontInitialise() {
 					}
 				}
 			}
+
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.sansName))) {
+				fontManagement.sans = fontManagement.database.Length();
+			}
+
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.serifName))) {
+				fontManagement.serif = fontManagement.database.Length();
+			}
+
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.monospacedName))) {
+				fontManagement.monospaced = fontManagement.database.Length();
+			}
+
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.fallbackName))) {
+				fontManagement.fallback = fontManagement.database.Length();
+			}
+
+			entry.nameBytes = MinimumInteger(nameBytes, sizeof(entry.name));
+			EsMemoryCopy(entry.name, name, entry.nameBytes);
+			entry.id = fontManagement.database.Length();
 
 			fontManagement.database.Add(entry);
 		}

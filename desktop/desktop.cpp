@@ -2535,14 +2535,7 @@ void ConfigurationWriteSectionsToBuffer(const char *section, bool includeComment
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		SystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
-
-		if (section) {
-			if (section[EsCStringLength(section) - 1] == ':') {
-				if (group->sectionBytes <= EsCStringLength(section) || EsMemoryCompare(group->section, section, EsCStringLength(section))) continue;
-			} else {
-				if (EsStringCompareRaw(group->section, group->sectionBytes, section, -1)) continue;
-			}
-		}
+		if (section && EsStringCompareRaw(group->section, group->sectionBytes, section, -1)) continue;
 
 		EsINIState s = {};
 		s.section = group->section, s.sectionBytes = group->sectionBytes;
@@ -2902,7 +2895,7 @@ bool /* returns false on fatal error */ DesktopSyscall(EsObjectID windowID, Appl
 		EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
 		EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
-		ConfigurationWriteSectionsToBuffer("font:", false, pipe);
+		ConfigurationWriteSectionsToBuffer("font", false, pipe);
 		ConfigurationWriteSectionsToBuffer("ui_fonts", false, pipe);
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {

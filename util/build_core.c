@@ -1007,17 +1007,15 @@ void ParseKernelConfiguration() {
 	s.buffer = (char *) kernelConfig;
 	s.bytes = kernelConfigBytes;
 
-	EsINIState previous = s;
+	char *moduleName = NULL, *parentName = NULL, *dataStart = s.buffer;
+	size_t moduleNameBytes = 0, parentNameBytes = 0;
+	bool builtin = false;
+	bool foundMatchingArchitecture = false, anyArchitecturesListed = false;
 
 	while (EsINIParse(&s)) {
-		if (!(s.sectionBytes > 7 && 0 == memcmp(s.section, "driver:", 7))
-				|| (previous.sectionBytes == s.sectionBytes && 0 == memcmp(previous.section, s.section, s.sectionBytes))
-				|| !IsModuleEnabled(s.section + 7, s.sectionBytes - 7)) {
-			continue;
-		}
-
-		FilePrintFormat(f, "extern \"C\" KDriver driver%.*s;\n", (int) s.sectionBytes - 7, s.section + 7);
-		previous = s;
+		if (!IsStringEqual(s.section, s.sectionBytes, "driver")) continue;
+		if (IsStringEqual(s.key, s.keyBytes, "name")) moduleName = s.value, moduleNameBytes = s.valueBytes;
+		if (!EsINIPeek(&s) || !s.keyBytes) FilePrintFormat(f, "extern \"C\" KDriver driver%.*s;\n", (int) moduleNameBytes, moduleName);
 	}
 
 	FilePrintFormat(f, "#ifdef K_IN_CORE_KERNEL\n");
@@ -1026,18 +1024,14 @@ void ParseKernelConfiguration() {
 	s.buffer = (char *) kernelConfig;
 	s.bytes = kernelConfigBytes;
 
-	char *moduleName = NULL, *parentName = NULL, *dataStart = s.buffer;
-	size_t moduleNameBytes = 0, parentNameBytes = 0;
-	bool builtin = false;
-	bool foundMatchingArchitecture = false, anyArchitecturesListed = false;
-
 	while (EsINIParse(&s)) {
-		if (!(s.sectionBytes > 7 && 0 == memcmp(s.section, "driver:", 7))) {
+		if (!IsStringEqual(s.section, s.sectionBytes, "driver")) {
 			continue;
 		}
 
-		moduleName = s.section + 7;
-		moduleNameBytes = s.sectionBytes - 7;
+		if (IsStringEqual(s.key, s.keyBytes, "name")) {
+			moduleName = s.value, moduleNameBytes = s.valueBytes;
+		}
 
 		if (IsStringEqual(s.key, s.keyBytes, "parent")) {
 			parentName = s.value, parentNameBytes = s.valueBytes;
@@ -1469,7 +1463,7 @@ int main(int argc, char **argv) {
 				} else if (0 == strcmp(s.key, "partition_size")) {
 					partitionSize = atoi(s.value) * 1048576UL;
 				}
-			} else if (0 == memcmp(s.section, "font:", 5)) {
+			} else if (0 == strcmp(s.section, "font")) {
 				arrput(fontLines, s);
 			} else if (0 == strcmp(s.section, "driver")) {
 				if (0 == strcmp(s.key, "name")) driverName = s.value;
