@@ -6,6 +6,10 @@
 // 	- Using declared types from imported modules.
 // 	- struct inheritance.
 
+// TODO Syntax sugar: (ideas)
+// 	- Pipe operator? e.g. <e := expression> | <f := function pointer> (...) ==> f(e, ...)
+// 	- Dot operator for functions? e.g. <f := function pointer> . ==> f()
+
 // TODO Larger missing features:
 // 	- Serialization.
 // 	- Debugging.
@@ -115,6 +119,7 @@
 #define T_ANYTYPE_CAST        (94)
 #define T_CAST_TYPE_WRAPPER   (95)
 #define T_ZERO                (96)
+#define T_PLACEHOLDER         (97)
 
 #define T_EXIT_SCOPE          (100)
 #define T_END_FUNCTION        (101)
@@ -1620,7 +1625,7 @@ Node *ParseIf(Tokenizer *tokenizer) {
 		Token semicolon = TokenNext(tokenizer);
 
 		if (semicolon.type != T_SEMICOLON) {
-			PrintError2(tokenizer, (*link)->sibling, "Expected a semicolon at the end of the expression.\n");
+			PrintError2(tokenizer, wrapper->firstChild, "Expected a semicolon at the end of the expression.\n");
 			return NULL;
 		}
 	}
@@ -2371,7 +2376,7 @@ Node *ParseRoot(Tokenizer *tokenizer) {
 // --------------------------------- Scope management.
 
 bool ScopeIsVariableType(Node *node) {
-	return node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_ARGUMENT;
+	return node->type == T_DECLARE || node->type == T_FUNCTION || node->type == T_ARGUMENT || node->type == T_PLACEHOLDER;
 }
 
 intptr_t ScopeLookupIndex(Node *node, Scope *scope, bool maybe, bool real /* if false, the variable index is returned */) {
@@ -2442,7 +2447,8 @@ bool ScopeCheckNotAlreadyUsed(Tokenizer *tokenizer, Node *node) {
 			for (uintptr_t i = 0; i < scope->entryCount; i++) {
 				if (scope->entries[i]->token.textBytes == node->token.textBytes
 						&& 0 == MemoryCompare(scope->entries[i]->token.text, node->token.text, node->token.textBytes)
-						&& (!scope->isRoot || node->scope == scope)) {
+						&& (!scope->isRoot || node->scope == scope)
+						&& scope->entries[i]->type != T_PLACEHOLDER) {
 					PrintError2(tokenizer, node, "The identifier '%.*s' was already used in this scope.\n", 
 							node->token.textBytes, node->token.text);
 
@@ -2563,6 +2569,16 @@ bool ASTSetScopes(Tokenizer *tokenizer, ExecutionContext *context, Node *node, S
 		if (!ScopeAddEntry(tokenizer, scope, node)) {
 			return false;
 		}
+	}
+
+	if (node->type == T_FOR_EACH) {
+		Node *placeholder;
+		placeholder = (Node *) AllocateFixed(sizeof(Node));
+		placeholder->type = T_PLACEHOLDER;
+		Assert(ScopeAddEntry(tokenizer, scope, placeholder));
+		placeholder = (Node *) AllocateFixed(sizeof(Node));
+		placeholder->type = T_PLACEHOLDER;
+		Assert(ScopeAddEntry(tokenizer, scope, placeholder));
 	}
 
 	if (node->type == T_IMPORT) {
@@ -3093,6 +3109,7 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 					&& !ASTMatching(leftType, &globalExpressionTypeFloat)
 					&& !ASTMatching(leftType, &globalExpressionTypeStr)
 					&& !ASTMatching(leftType, &globalExpressionTypeBool)
+					&& !ASTIsIntType(leftType)
 					&& (!leftType || leftType->type != T_LIST)
 					&& (!leftType || leftType->type != T_STRUCT)) {
 				PrintError2(tokenizer, node, "These types cannot be compared.\n");
@@ -3349,6 +3366,11 @@ bool ASTSetTypes(Tokenizer *tokenizer, Node *node) {
 				return false;
 			}
 		}
+
+		Assert(node->scope->entryCount == 3 && node->scope->variableEntryCount == 3 
+				&& node->scope->entries[1]->type == T_PLACEHOLDER && node->scope->entries[2]->type == T_PLACEHOLDER);
+		node->scope->entries[1]->expressionType = listType;
+		node->scope->entries[2]->expressionType = &globalExpressionTypeInt;
 	} else if (node->type == T_INDEX) {
 		if (!ASTMatching(node->firstChild->expressionType, &globalExpressionTypeStr)
 				&& node->firstChild->expressionType->type != T_LIST) {
@@ -3994,6 +4016,17 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 			return false;
 		}
 
+		// Get the scope index base.
+		Node *variableNode = (Node *) AllocateFixed(sizeof(Node));
+		variableNode->type = T_IDENTIFIER;
+		variableNode->token = declare->token;
+		variableNode->scope = node->scope;
+		variableNode->parent = node;
+		size_t oldDataBytes = builder->dataBytes;
+		FunctionBuilderVariable(tokenizer, builder, variableNode, true);
+		Assert(oldDataBytes == builder->dataBytes);
+		int32_t scopeIndexBase = builder->scopeIndex;
+
 		// Declare the iteration variable.
 		if (!FunctionBuilderRecurse(tokenizer, declare, builder, false)) return false;
 
@@ -4059,18 +4092,28 @@ bool FunctionBuilderRecurse(Tokenizer *tokenizer, Node *node, FunctionBuilder *b
 		// Stack: list, index, ...
 
 		// Set the iteration variable.
-		Node *variableNode = (Node *) AllocateFixed(sizeof(Node));
-		variableNode->type = T_IDENTIFIER;
-		variableNode->token = declare->token;
-		variableNode->scope = node->scope;
-		variableNode->parent = node;
-		FunctionBuilderVariable(tokenizer, builder, variableNode, true);
 		b = T_EQUALS;
 		FunctionBuilderAppend(builder, &b, sizeof(b));
-		FunctionBuilderAppend(builder, &builder->scopeIndex, sizeof(builder->scopeIndex));
+		FunctionBuilderAppend(builder, &scopeIndexBase, sizeof(scopeIndexBase));
+
+		// Save the list and index.
+		int32_t scopeIndexList = scopeIndexBase - 1;
+		int32_t scopeIndexIndex = scopeIndexBase - 2;
+		b = T_EQUALS;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &scopeIndexList, sizeof(scopeIndexList));
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &scopeIndexIndex, sizeof(scopeIndexIndex));
 
 		// Output the body.
 		if (!FunctionBuilderRecurse(tokenizer, body, builder, false)) return false;
+
+		// Load the list and index.
+		b = T_VARIABLE;
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &scopeIndexIndex, sizeof(scopeIndexIndex));
+		FunctionBuilderAppend(builder, &b, sizeof(b));
+		FunctionBuilderAppend(builder, &scopeIndexList, sizeof(scopeIndexList));
 
 		// Increment the index.
 		// Stack: list, index, ...

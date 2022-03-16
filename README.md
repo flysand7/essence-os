@@ -24,9 +24,11 @@ You can download and test the latest nightly build from https://github.com/nakst
 
 These builds are configured to run on emulators only, to make testing easier. Builds for real hardware are coming soon :)
 
-## Building
+## Source
 
-See `help/Building.md` for a description of how to build and test the system.
+See `help/Building.md` for a description of how to build and test the system from source.
+
+For an overview of the files in the source tree, see help/Source Map.md.
 
 ## Features
 
