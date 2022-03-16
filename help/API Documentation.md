@@ -233,8 +233,8 @@ When a thread is waiting for a spinlock to be released so that it may acquire it
 
 ```c
 struct EsINIState {
-	char *buffer, *sectionClass, *section, *key, *value;
-	size_t bytes, sectionClassBytes, sectionBytes, keyBytes, valueBytes;
+	char *buffer, *section, *key, *value;
+	size_t bytes, sectionBytes, keyBytes, valueBytes;
 };
 
 bool EsINIParse(EsINIState *s);
@@ -247,11 +247,11 @@ void EsINIZeroTerminate(EsINIState *s);
 
 To parse an INI file, first initialise a blank EsINIState structure. Set `buffer` to point to the INI data, and set `bytes` to the byte count of the data. Then, call `EsINIParse` repeatedly, until it returns false, indicating it has reached the end of the data. After each call to `EsINIParse`, the fields of `EsINIState` are updated to give the information about the last parsed line in the INI file. `EsINIPeek` is the same as `EsINIParse` except it does not advance to the next line in the INI data. Fields in `EsINIState` that are not applicable to the parsed line are set to empty strings. Comment lines set `key` to `;` and `value` contains the comment itself. Aside for empty strings, the fields in `EsINIState` will always point into the provided buffer.
 
-For example, the line `[@hello world]` will set `sectionClass` to `"hello"`, `section` to `"world"`, and `key` and `value` to empty strings. When followed by the line `k=v`, `sectionClass` and `section` will retain their previous values, and `key` will be set to `"k"` and `value` will be set to `"v"`.
+For example, the line `[world]` will set `section` to `"world"`, and `key` and `value` to empty strings. When followed by the line `k=v`, `section` will retain its previous value, and `key` will be set to `"k"` and `value` will be set to `"v"`.
 
 `EsINIFormat` formats the contents of `EsINIState` into a buffer. `bytes` gives the size of `buffer`. The return value gives the number of bytes written to `buffer`; this is clipped to the end of the buffer.
 
-`EsINIZeroTerminate` zero-terminates `sectionClass`, `section`, `key` and `value` in the `EsINIState`. It cannot be used after calling `EsINIPeek`. 
+`EsINIZeroTerminate` zero-terminates `section`, `key` and `value` in the `EsINIState`. It cannot be used after calling `EsINIPeek`. 
 
 ## Example
 

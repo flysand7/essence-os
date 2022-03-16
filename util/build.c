@@ -287,18 +287,18 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 		while (EsINIParse(&s)) {
 			EsINIZeroTerminate(&s);
 
-			if (strcmp(s.sectionClass, "driver")) {
+			if (memcmp(s.section, "driver:", 7)) {
 				continue;
 			}
 
-			name = s.section;
+			name = s.section + 7;
 
 			if (0 == strcmp(s.key, "source")) source = s.value;
 			if (0 == strcmp(s.key, "builtin")) builtin = !!atoi(s.value);
 
 			if (!EsINIPeek(&s) || !s.keyBytes) {
 				if (IsDriverEnabled(name)) {
-					fprintf(f, "[@driver]\nname=%s\nsource=%s\nbuiltin=%d\n\n", name, source ?: "", builtin);
+					fprintf(f, "[driver]\nname=%s\nsource=%s\nbuiltin=%d\n\n", name, source ?: "", builtin);
 				}
 
 				source = name = NULL;
@@ -336,7 +336,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 			continue;
 		}
 
-		fprintf(f, "[@font %s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
+		fprintf(f, "[font:%s]\ncategory=%s\nscripts=%s\nlicense=%s\n", font->name, font->category, font->scripts, font->license);
 		fileIndex = 0;
 
 		while (font->files[fileIndex].path) {
@@ -360,7 +360,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 				continue;
 			}
 
-			fprintf(f, "[@application]\nmanifest=apps/%s\n\n", entry->d_name);
+			fprintf(f, "[application]\nmanifest=apps/%s\n\n", entry->d_name);
 		}
 
 		closedir(root);
@@ -369,7 +369,7 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 
 		while (s.buffer && EsINIParse(&s)) {
 			if (!s.keyBytes || s.valueBytes || (s.keyBytes >= 1 && s.key[0] == ';')) continue;
-			fprintf(f, "[@application]\nmanifest=%.*s\n\n", (int) s.keyBytes, s.key);
+			fprintf(f, "[application]\nmanifest=%.*s\n\n", (int) s.keyBytes, s.key);
 		}
 	}
 
@@ -1576,7 +1576,7 @@ int main(int _argc, char **_argv) {
 		path[0] = 0;
 
 		while (EsINIParse(&s)) {
-			if (s.sectionClassBytes || s.sectionBytes) continue;
+			if (s.sectionBytes) continue;
 			EsINIZeroTerminate(&s);
 
 			INI_READ_BOOL(accepted_license, acceptedLicense);

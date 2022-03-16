@@ -587,27 +587,30 @@ void FontInitialise() {
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		SystemConfigurationGroup *g = &api.systemConfigurationGroups[i];
 
-		if (0 == EsStringCompareRaw(g->sectionClass, g->sectionClassBytes, EsLiteral("font"))) {
-			if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral(fontManagement.sansName))) {
+		if (g->sectionBytes > 5 && 0 == EsMemoryCompare(g->section, "font:", 5)) {
+			const char *name = g->section + 5;
+			size_t nameBytes = g->sectionBytes - 5;
+
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.sansName))) {
 				fontManagement.sans = fontManagement.database.Length();
 			}
 
-			if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral(fontManagement.serifName))) {
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.serifName))) {
 				fontManagement.serif = fontManagement.database.Length();
 			}
 
-			if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral(fontManagement.monospacedName))) {
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.monospacedName))) {
 				fontManagement.monospaced = fontManagement.database.Length();
 			}
 
-			if (0 == EsStringCompareRaw(g->section, g->sectionBytes, EsLiteral(fontManagement.fallbackName))) {
+			if (0 == EsStringCompareRaw(name, nameBytes, EsLiteral(fontManagement.fallbackName))) {
 				fontManagement.fallback = fontManagement.database.Length();
 			}
 
 			FontDatabaseEntry entry = {};
 
-			entry.nameBytes = MinimumInteger(g->sectionBytes, sizeof(entry.name));
-			EsMemoryCopy(entry.name, g->section, entry.nameBytes);
+			entry.nameBytes = MinimumInteger(nameBytes, sizeof(entry.name));
+			EsMemoryCopy(entry.name, name, entry.nameBytes);
 			entry.id = fontManagement.database.Length();
 
 			for (uintptr_t i = 0; i < g->itemCount; i++) {

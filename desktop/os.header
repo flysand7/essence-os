@@ -1561,8 +1561,8 @@ private struct _EsApplicationStartupInformation {
 };
 
 struct EsINIState {
-	char *buffer, *sectionClass, *section, *key, *value;
-	size_t bytes, sectionClassBytes, sectionBytes, keyBytes, valueBytes;
+	char *buffer, *section, *key, *value;
+	size_t bytes, sectionBytes, keyBytes, valueBytes;
 } @opaque();
 
 struct EsAnalogInput {

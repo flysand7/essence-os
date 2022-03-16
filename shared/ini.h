@@ -14,14 +14,8 @@ bool EsINIParse(EsINIState *s) {
 			s->valueBytes = 0;
 			INI_READ(key, keyBytes, '\n', 0);
 		} else if (c == '[') {
-			s->sectionClassBytes = s->keyBytes = s->valueBytes = 0;
+			s->keyBytes = s->valueBytes = 0;
 			s->buffer++, s->bytes--;
-
-			if (s->bytes && *s->buffer == '@') {
-				s->buffer++, s->bytes--;
-				INI_READ(sectionClass, sectionClassBytes, ' ', ']');
-			}
-
 			INI_READ(section, sectionBytes, ']', 0);
 		} else {
 			INI_READ(key, keyBytes, '=', '\n');
@@ -56,9 +50,6 @@ size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes) {
 		INI_WRITE("\n", 1);
 	} else {
 		INI_WRITE("\n[", 2);
-		if (s->sectionClassBytes) INI_WRITE("@", 1);
-		INI_WRITE(s->sectionClass, s->sectionClassBytes);
-		if (s->sectionClassBytes && s->sectionBytes) INI_WRITE(" ", 1);
 		INI_WRITE(s->section, s->sectionBytes);
 		INI_WRITE("]\n", 2);
 	}
@@ -68,7 +59,6 @@ size_t EsINIFormat(EsINIState *s, char *buffer, size_t bytes) {
 
 void EsINIZeroTerminate(EsINIState *s) {
 	static char emptyString = 0;
-	if (s->sectionClassBytes) s->sectionClass[s->sectionClassBytes] = 0; else s->sectionClass = &emptyString;
 	if (s->sectionBytes) s->section[s->sectionBytes] = 0; else s->section = &emptyString;
 	if (s->keyBytes) s->key[s->keyBytes] = 0; else s->key = &emptyString;
 	if (s->valueBytes) s->value[s->valueBytes] = 0; else s->value = &emptyString;

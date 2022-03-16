@@ -2476,7 +2476,7 @@ void ConfigurationLoadApplications() {
 
 		SystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
 
-		if (0 != EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, EsLiteral("application"))) {
+		if (0 != EsStringCompareRaw(group->section, group->sectionBytes, EsLiteral("application"))) {
 			continue;
 		}
 
@@ -2491,7 +2491,7 @@ void ConfigurationLoadApplications() {
 		application->useSingleProcess = SystemConfigurationGroupReadInteger(group, EsLiteral("use_single_process"), false);
 		application->useSingleInstance = SystemConfigurationGroupReadInteger(group, EsLiteral("use_single_instance"), false);
 		application->hidden = SystemConfigurationGroupReadInteger(group, EsLiteral("hidden"), false);
-		application->id = EsIntegerParse(group->section, group->sectionBytes);
+		application->id = SystemConfigurationGroupReadInteger(group, EsLiteral("id"), false);
 
 #define READ_PERMISSION(x, y) if (SystemConfigurationGroupReadInteger(group, EsLiteral(x), 0)) application->permissions |= y
 		READ_PERMISSION("permission_all_files", APPLICATION_PERMISSION_ALL_FILES);
@@ -2529,20 +2529,22 @@ void ConfigurationLoadApplications() {
 	}, 0);
 }
 
-void ConfigurationWriteSectionsToBuffer(const char *sectionClass, const char *section, bool includeComments, EsBuffer *pipe) {
+void ConfigurationWriteSectionsToBuffer(const char *section, bool includeComments, EsBuffer *pipe) {
 	char buffer[4096];
 	EsMutexAcquire(&api.systemConfigurationMutex);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
 		SystemConfigurationGroup *group = &api.systemConfigurationGroups[i];
 
-		if ((sectionClass && EsStringCompareRaw(group->sectionClass, group->sectionClassBytes, sectionClass, -1))
-				|| (section && EsStringCompareRaw(group->section, group->sectionBytes, section, -1))) {
-			continue;
+		if (section) {
+			if (section[EsCStringLength(section) - 1] == ':') {
+				if (group->sectionBytes <= EsCStringLength(section) || EsMemoryCompare(group->section, section, EsCStringLength(section))) continue;
+			} else {
+				if (EsStringCompareRaw(group->section, group->sectionBytes, section, -1)) continue;
+			}
 		}
 
 		EsINIState s = {};
-		s.sectionClass = group->sectionClass, s.sectionClassBytes = group->sectionClassBytes;
 		s.section = group->section, s.sectionBytes = group->sectionBytes;
 		size_t bytes = EsINIFormat(&s, buffer, sizeof(buffer));
 		EsBufferWrite(pipe, buffer, bytes);
@@ -2570,7 +2572,7 @@ void ConfigurationWriteToFile() {
 	}
 
 	EsBuffer buffer = { .canGrow = true };
-	ConfigurationWriteSectionsToBuffer(nullptr, nullptr, true /* include comments */, &buffer);
+	ConfigurationWriteSectionsToBuffer(nullptr, true /* include comments */, &buffer);
 
 	if (!buffer.error) {
 		if (ES_SUCCESS == EsFileWriteAll(EsLiteral(K_SYSTEM_CONFIGURATION "_"), buffer.out, buffer.position)) {
@@ -2900,18 +2902,18 @@ bool /* returns false on fatal error */ DesktopSyscall(EsObjectID windowID, Appl
 		EsBufferWrite(pipe, &desktop.clipboardInformation, sizeof(desktop.clipboardInformation));
 		EsBufferWrite(pipe, &fileHandle, sizeof(fileHandle));
 	} else if (buffer[0] == DESKTOP_MSG_SYSTEM_CONFIGURATION_GET && pipe) {
-		ConfigurationWriteSectionsToBuffer("font", nullptr, false, pipe);
-		ConfigurationWriteSectionsToBuffer(nullptr, "ui_fonts", false, pipe);
+		ConfigurationWriteSectionsToBuffer("font:", false, pipe);
+		ConfigurationWriteSectionsToBuffer("ui_fonts", false, pipe);
 
 		if (application->permissions & APPLICATION_PERMISSION_ALL_FILES) {
-			ConfigurationWriteSectionsToBuffer(nullptr, "paths", false, pipe);
+			ConfigurationWriteSectionsToBuffer("paths", false, pipe);
 		}
 	} else if (buffer[0] == DESKTOP_MSG_REQUEST_SHUTDOWN) {
 		if (~application->permissions & APPLICATION_PERMISSION_SHUTDOWN) return false;
 		ShutdownModalCreate();
 	} else if (buffer[0] == DESKTOP_MSG_FILE_TYPES_GET && pipe) {
 		if (~application->permissions & APPLICATION_PERMISSION_VIEW_FILE_TYPES) return false;
-		ConfigurationWriteSectionsToBuffer("file_type", nullptr, false, pipe);
+		ConfigurationWriteSectionsToBuffer("file_type", false, pipe);
 	} else if (buffer[0] == DESKTOP_MSG_ANNOUNCE_PATH_MOVED && bytes > 1 + sizeof(uintptr_t) * 2) {
 		if (~application->permissions & APPLICATION_PERMISSION_ALL_FILES) return false;
 

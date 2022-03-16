@@ -3753,6 +3753,25 @@ int WindowMessage(UIElement *element, UIMessage message, int di, void *dp) {
 void DocumentFileMenu(void *) {
 	EsFileMenuCreate(ui.instance, ui.instance->window, ES_MENU_AT_CURSOR);
 }
+
+int _UIInstanceCallback(EsInstance *instance, EsMessage *message) {
+	if (message->type == ES_MSG_INSTANCE_SAVE) {
+		fileStore = message->instanceSave.file;
+		DocumentSave(nullptr);
+		EsInstanceSaveComplete(instance, fileStore, true);
+		fileStore = nullptr;
+	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
+		DocumentFree();
+		fileStore = message->instanceOpen.file;
+		DocumentLoad();
+		EsInstanceOpenComplete(instance, fileStore, true);
+		fileStore = nullptr;
+	} else {
+		return 0;
+	}
+
+	return ES_HANDLED;
+}
 #endif
 
 void DocumentMenu(void *) {
@@ -3781,6 +3800,11 @@ int main(int argc, char **argv) {
 #endif
 
 	UIInitialise();
+
+#ifdef OS_ESSENCE
+	ui.instance->callback = _UIInstanceCallback;
+#endif
+
 	ui.theme = _uiThemeClassic;
 	window = UIWindowCreate(0, UI_ELEMENT_PARENT_PUSH | UI_WINDOW_MAXIMIZE, "Designer", 0, 0);
 	window->e.messageUser = WindowMessage;
@@ -3849,25 +3873,6 @@ int main(int argc, char **argv) {
 
 #ifdef OS_ESSENCE
 void _UIMessageProcess(EsMessage *message) {}
-
-int _UIInstanceCallback(EsInstance *instance, EsMessage *message) {
-	if (message->type == ES_MSG_INSTANCE_SAVE) {
-		fileStore = message->instanceSave.file;
-		DocumentSave(nullptr);
-		EsInstanceSaveComplete(instance, fileStore, true);
-		fileStore = nullptr;
-	} else if (message->type == ES_MSG_INSTANCE_OPEN) {
-		DocumentFree();
-		fileStore = message->instanceOpen.file;
-		DocumentLoad();
-		EsInstanceOpenComplete(instance, fileStore, true);
-		fileStore = nullptr;
-	} else {
-		return 0;
-	}
-
-	return ES_HANDLED;
-}
 
 void _start() {
 	_init();

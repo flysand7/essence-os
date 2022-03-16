@@ -12,8 +12,8 @@
 #include <stdlib.h>
 
 typedef struct EsINIState {
-	char *buffer, *sectionClass, *section, *key, *value;
-	size_t bytes, sectionClassBytes, sectionBytes, keyBytes, valueBytes;
+	char *buffer, *section, *key, *value;
+	size_t bytes, sectionBytes, keyBytes, valueBytes;
 } EsINIState;
 
 #include "../shared/ini.h"

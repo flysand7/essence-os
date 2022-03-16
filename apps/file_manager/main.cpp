@@ -393,7 +393,7 @@ void ConfigurationSave() {
 
 	for (uintptr_t i = 0; i < folderViewSettings.Length(); i++) {
 		FolderViewSettingsEntry *entry = &folderViewSettings[i];
-		EsBufferFormat(&buffer, "\n[@folder]\npath=%z\nsort_column=%d\nview_type=%d\n", 
+		EsBufferFormat(&buffer, "\n[folder]\npath=%z\nsort_column=%d\nview_type=%d\n", 
 				entry->path, entry->settings.sortColumn, entry->settings.viewType);
 	}
 
@@ -490,7 +490,7 @@ void LoadSettings() {
 			String string = {};
 			string.text = state.value, string.bytes = state.valueBytes;
 			BookmarkAdd(string, false);
-		} else if (0 == EsStringCompareRaw(state.sectionClass, state.sectionClassBytes, EsLiteral("folder"))) {
+		} else if (0 == EsStringCompareRaw(state.section, state.sectionBytes, EsLiteral("folder"))) {
 			if (0 == EsStringCompareRaw(state.key, state.keyBytes, EsLiteral("path"))) {
 				if (state.keyBytes < sizeof(folderViewSettings[0].path)) {
 					FolderViewSettingsEntry *entry = folderViewSettings.Add();

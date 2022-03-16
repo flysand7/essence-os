@@ -95,14 +95,14 @@ In the `[general]` section:
 
 In the `[embed]` section there is a list of files that should be embedded into the application bundle. These embedded file can be accessed at runtime using the `EsBundleFind` API. The entries in this section are of the form `<embedded name>=<path>`. Embedded name prefixed with `$` are reserved for definition by the system. The ELF executable files are automatically embedded into the application's bundle, with names of the form `$Executables/<target>`. The application's icon should be embedded as PNG images with names of the form `$Icons/<size>`. You must, as a minimum, provide sizes `16` (16x16 pixels) and `32` (32x32 pixels).
 
-Each `[@file_type]` section provides information about a file type.
+Each `[file_type]` section provides information about a file type.
 
 - `extension` Gives the file name extension for the file type.
 - `name` Gives the readable name of the file type, which will be shown to the user. TODO Translations.
 - `icon` Gives the name of the icon from `desktop/icons.header` to show for files of this type. TODO Bundled icons.
 - `has_thumbnail_generator` Set to 1 if the file type has a thumbnail generator. Only images are supported at the moment. TODO Custom thumbnail generators.
 
-Each `[@handler]` section describes this application's support to manage files of a given file type.
+Each `[handler]` section describes this application's support to manage files of a given file type.
 
 - `extension` The file name extension of the file type.
 - `action` The action that this application support for the file type. Currently only "open" is supported.
@@ -140,15 +140,15 @@ In the `[install]` section:
 
 In the `[options]` section there is a copy of the options in "Configuration options", from `bin/config.ini`. Note that many of these options are not handled by build core, but rather by `util/build.c`. See the "Configuration options" section for more details.
 
-Each `[@application]` section should contain a single key, `manifest`, giving the path to the application configuration options (see the above section).
+Each `[application]` section should contain a single key, `manifest`, giving the path to the application configuration options (see the above section).
 
-Each `[@driver]` section should contain:
+Each `[driver]` section should contain:
 
 - `name` The name of the driver. This must be found in `kernel/config.ini`.
 - `source` The source file of the driver. This must be C/C++.
 - `builtin` Set to 1 if the driver should be linked directly into the kernel. Set to 0 if the driver should be built as a loadable module.
 
-`[@font <name>]` sections specify the fonts that are to be bundled in the desktop executable. Each section should contain:
+`[font:<name>]` sections specify the fonts that are to be bundled in the desktop executable. Each section should contain:
 
 - `category` One of `Sans`, `Serif` or `Mono`. More categories will likely be added in the future.
 - `scripts` The scripts supported by the font. See `hb_script_t` in `bin/harfbuzz/src/hb-common.h` for a list of scripts. Separate each script with a `,`.

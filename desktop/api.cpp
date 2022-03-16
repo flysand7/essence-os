@@ -110,8 +110,8 @@ struct SystemConfigurationItem {
 };
 
 struct SystemConfigurationGroup {
-	char *section, *sectionClass;
-	size_t sectionBytes, sectionClassBytes;
+	char *section;
+	size_t sectionBytes;
 	SystemConfigurationItem *items;
 	size_t itemCount;
 };
@@ -331,8 +331,7 @@ SystemConfigurationGroup *SystemConfigurationGetGroup(const char *section, ptrdi
 	if (sectionBytes == -1) sectionBytes = EsCStringLength(section);
 
 	for (uintptr_t i = 0; i < api.systemConfigurationGroups.Length(); i++) {
-		if (0 == EsStringCompareRaw(section, sectionBytes, api.systemConfigurationGroups[i].section, api.systemConfigurationGroups[i].sectionBytes)
-				&& !api.systemConfigurationGroups[i].sectionClassBytes) {
+		if (0 == EsStringCompareRaw(section, sectionBytes, api.systemConfigurationGroups[i].section, api.systemConfigurationGroups[i].sectionBytes)) {
 			return &api.systemConfigurationGroups[i];
 		}
 	}
@@ -396,7 +395,6 @@ void SystemConfigurationUnload() {
 		}
 
 		EsHeapFree(api.systemConfigurationGroups[i].section);
-		EsHeapFree(api.systemConfigurationGroups[i].sectionClass);
 
 		Array<SystemConfigurationItem> items = { api.systemConfigurationGroups[i].items };
 		items.Free();
@@ -421,8 +419,6 @@ void SystemConfigurationLoad(const char *file, size_t fileBytes) {
 			group = &api.systemConfigurationGroups.Last();
 			group->section = (char *) EsHeapAllocate(s.sectionBytes, false);
 			EsMemoryCopy(group->section, s.section, (group->sectionBytes = s.sectionBytes));
-			group->sectionClass = (char *) EsHeapAllocate(s.sectionClassBytes, false);
-			EsMemoryCopy(group->sectionClass, s.sectionClass, (group->sectionClassBytes = s.sectionClassBytes));
 		} else if (group) {
 			SystemConfigurationItem item = {};
 			item.key = (char *) EsHeapAllocate(s.keyBytes, false);

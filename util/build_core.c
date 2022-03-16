@@ -815,7 +815,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 			else INI_READ_BOOL(disabled, disabled);
 			else INI_READ_BOOL(needs_native_toolchain, needsNativeToolchain);
 			else if (s.keyBytes && s.valueBytes) arrput(application.properties, s);
-		} else if (0 == strcmp(s.sectionClass, "handler")) {
+		} else if (0 == strcmp(s.section, "handler")) {
 			if (!s.keyBytes) {
 				Handler _handler = {};
 				arrput(application.handlers, _handler);
@@ -824,7 +824,7 @@ void ParseApplicationManifest(const char *manifestPath) {
 
 			INI_READ_STRING_PTR(extension, handler->extension);
 			INI_READ_STRING_PTR(action, handler->action);
-		} else if (0 == strcmp(s.sectionClass, "file_type")) {
+		} else if (0 == strcmp(s.section, "file_type")) {
 			if (!s.keyBytes) {
 				FileType _fileType = {};
 				_fileType.id = nextID++;
@@ -921,7 +921,8 @@ void OutputSystemConfiguration() {
 			continue;
 		}
 
-		FilePrintFormat(file, "\n[@application %d]\n", applications[i].id);
+		FilePrintFormat(file, "\n[application]\n");
+		FilePrintFormat(file, "id=%d\n", applications[i].id);
 		FilePrintFormat(file, "name=%s\n", applications[i].name);
 		FilePrintFormat(file, "executable=0:/Applications/%s.esx\n", applications[i].name);
 		FilePrintFormat(file, "settings_path=0:/" SYSTEM_FOLDER_NAME "/Settings/%s\n", applications[i].name);
@@ -931,7 +932,8 @@ void OutputSystemConfiguration() {
 		}
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].fileTypes); j++) {
-			FilePrintFormat(file, "\n[@file_type %d]\n", applications[i].fileTypes[j].id);
+			FilePrintFormat(file, "\n[file_type]\n");
+			FilePrintFormat(file, "id=%d\n", applications[i].fileTypes[j].id);
 			FilePrintFormat(file, "extension=%s\n", applications[i].fileTypes[j].extension);
 			FilePrintFormat(file, "name=%s\n", applications[i].fileTypes[j].name);
 			FilePrintFormat(file, "icon=%s\n", applications[i].fileTypes[j].icon);
@@ -940,7 +942,7 @@ void OutputSystemConfiguration() {
 		}
 
 		for (uintptr_t j = 0; j < arrlenu(applications[i].handlers); j++) {
-			FilePrintFormat(file, "\n[@handler]\n");
+			FilePrintFormat(file, "\n[handler]\n");
 			FilePrintFormat(file, "action=%s\n", applications[i].handlers[j].action);
 			FilePrintFormat(file, "application=%d\n", applications[i].id);
 			FilePrintFormat(file, "file_type=%d\n", applications[i].handlers[j].fileTypeID);
@@ -1008,13 +1010,13 @@ void ParseKernelConfiguration() {
 	EsINIState previous = s;
 
 	while (EsINIParse(&s)) {
-		if (!IsStringEqual(s.sectionClass, s.sectionClassBytes, "driver")
+		if (!(s.sectionBytes > 7 && 0 == memcmp(s.section, "driver:", 7))
 				|| (previous.sectionBytes == s.sectionBytes && 0 == memcmp(previous.section, s.section, s.sectionBytes))
-				|| !IsModuleEnabled(s.section, s.sectionBytes)) {
+				|| !IsModuleEnabled(s.section + 7, s.sectionBytes - 7)) {
 			continue;
 		}
 
-		FilePrintFormat(f, "extern \"C\" KDriver driver%.*s;\n", (int) s.sectionBytes, s.section);
+		FilePrintFormat(f, "extern \"C\" KDriver driver%.*s;\n", (int) s.sectionBytes - 7, s.section + 7);
 		previous = s;
 	}
 
@@ -1030,12 +1032,12 @@ void ParseKernelConfiguration() {
 	bool foundMatchingArchitecture = false, anyArchitecturesListed = false;
 
 	while (EsINIParse(&s)) {
-		if (!IsStringEqual(s.sectionClass, s.sectionClassBytes, "driver")) {
+		if (!(s.sectionBytes > 7 && 0 == memcmp(s.section, "driver:", 7))) {
 			continue;
 		}
 
-		moduleName = s.section;
-		moduleNameBytes = s.sectionBytes;
+		moduleName = s.section + 7;
+		moduleNameBytes = s.sectionBytes - 7;
 
 		if (IsStringEqual(s.key, s.keyBytes, "parent")) {
 			parentName = s.value, parentNameBytes = s.valueBytes;
@@ -1364,7 +1366,7 @@ int main(int argc, char **argv) {
 				} else if (0 == strcmp(s.key, "compiler_objects")) {
 					toolchainCompilerObjects = s.value;
 				}
-			} else if (0 == strcmp(s.sectionClass, "application")) {
+			} else if (0 == strcmp(s.section, "application")) {
 				if (0 == strcmp(s.key, "manifest")) {
 					arrput(applicationManifests, s.value);
 				}
@@ -1467,9 +1469,9 @@ int main(int argc, char **argv) {
 				} else if (0 == strcmp(s.key, "partition_size")) {
 					partitionSize = atoi(s.value) * 1048576UL;
 				}
-			} else if (0 == strcmp(s.sectionClass, "font")) {
+			} else if (0 == memcmp(s.section, "font:", 5)) {
 				arrput(fontLines, s);
-			} else if (0 == strcmp(s.sectionClass, "driver")) {
+			} else if (0 == strcmp(s.section, "driver")) {
 				if (0 == strcmp(s.key, "name")) driverName = s.value;
 				if (0 == strcmp(s.key, "source")) driverSource = s.value;
 				if (0 == strcmp(s.key, "builtin")) driverBuiltin = !!atoi(s.value);
@@ -1505,7 +1507,6 @@ int main(int argc, char **argv) {
 			}
 
 			if (0 != strcmp(s.section, "install")) {
-				configurationHash = CalculateCRC64(s.sectionClass, s.sectionClassBytes, configurationHash);
 				configurationHash = CalculateCRC64(s.section, s.sectionBytes, configurationHash);
 				configurationHash = CalculateCRC64(s.key, s.keyBytes, configurationHash);
 				configurationHash = CalculateCRC64(s.value, s.valueBytes, configurationHash);
@@ -1861,8 +1862,7 @@ void CommandLaunch(EsInstance *instance, EsElement *element, EsCommand *command)
 	size_t executablePathBytes = 0;
 
 	while (EsINIParse(&s)) {
-		if (s.sectionClassBytes == 0 
-				&& 0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general")) 
+		if (0 == EsStringCompareRaw(s.section, s.sectionBytes, EsLiteral("general")) 
 				&& 0 == EsStringCompareRaw(s.key, s.keyBytes, EsLiteral("name"))) {
 			executablePath = EsStringAllocateAndFormat(&executablePathBytes, "%s/bin/%s.esx", workingDirectoryBytes, workingDirectory, s.valueBytes, s.value);
 		}
