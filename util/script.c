@@ -7607,10 +7607,88 @@ CoroutineState *ExternalCoroutineWaitAny(ExecutionContext *context) {
 	return unblocked;
 }
 
+void PrintREPLResult(ExecutionContext *context, Node *type, Value value) {
+	if (type->type == T_INT) {
+		printf("%ld", value.i);
+	} else if (type->type == T_BOOL) {
+		printf("%s", value.i ? "true" : "false");
+	} else if (type->type == T_NULL) {
+		printf("null");
+	} else if (type->type == T_FLOAT) {
+		printf("%f", value.f);
+	} else if (type->type == T_STR) {
+		Assert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		const char *valueText;
+		size_t valueBytes;
+		ScriptHeapEntryToString(context, entry, &valueText, &valueBytes);
+		printf("%.*s", (int) valueBytes, valueText);
+	} else if (type->type == T_ERR) {
+		if (value.i) {
+			Assert(context->heapEntriesAllocated > (uint64_t) value.i);
+			HeapEntry *entry = &context->heap[value.i];
+
+			if (entry->success) {
+				if (type->firstChild->type == T_VOID) {
+					printf("Success.");
+				} else {
+					PrintREPLResult(context, type->firstChild, entry->errorValue);
+				}
+			} else {
+				Assert(context->heapEntriesAllocated > (uint64_t) entry->errorValue.i);
+				const char *valueText;
+				size_t valueBytes;
+				ScriptHeapEntryToString(context, &context->heap[entry->errorValue.i], &valueText, &valueBytes);
+				printf("Error: %.*s.", (int) valueBytes, valueText);
+			}
+		} else {
+			printf("Error: UNKNOWN.");
+		}
+	} else if (type->type == T_LIST) {
+		Assert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		Assert(entry->type == T_LIST);
+
+		if (!entry->length) {
+			printf("Empty list.\n");
+		} else {
+			printf("[ ");
+
+			for (uintptr_t i = 0; i < entry->length; i++) {
+				if (i) printf(", ");
+				PrintREPLResult(context, type->firstChild, entry->list[i]);
+			}
+
+			printf(" ]");
+		}
+	} else if (type->type == T_STRUCT) {
+		Assert(context->heapEntriesAllocated > (uint64_t) value.i);
+		HeapEntry *entry = &context->heap[value.i];
+		Assert(entry->type == T_STRUCT);
+		uintptr_t i = 0;
+		printf("{ ");
+
+		Node *field = type->firstChild;
+
+		while (field) {
+			if (i) printf(", ");
+			Assert(i != entry->fieldCount);
+			PrintREPLResult(context, field->firstChild, entry->fields[i]);
+			field = field->sibling;
+			i++;
+		}
+
+		printf(" }");
+	} else if (type->type == T_FUNCPTR) {
+		printf("Function pointer.");
+	} else {
+		printf("The type of the result was not recognized.");
+	}
+}
+
 void ExternalPassREPLResult(ExecutionContext *context, Value value) {
-	(void) context;
-	(void) value;
-	Assert(false);
+	PrintREPLResult(context, context->functionData->replResultType, value);
+	printf("\n");
 }
 
 void *AllocateFixed(size_t bytes) {
@@ -7784,10 +7862,17 @@ int main(int argc, char **argv) {
 	sem_init(&externalCoroutineSemaphore, 0, 0);
 
 	char *scriptPath = NULL;
+	char *evaluateString = NULL;
+	bool evaluateMode = false;
 
 	for (int i = 1; i < argc; i++) {
 		if (argv[i][0] != '-') {
-			scriptPath = argv[i];
+			if (evaluateMode) {
+				evaluateString = argv[i];
+			} else {
+				scriptPath = argv[i];
+			}
+
 			options = argv + i + 1;
 			optionCount = argc - i - 1;
 			optionsMatched = (bool *) calloc(argc, sizeof(bool));
@@ -7797,27 +7882,42 @@ int main(int argc, char **argv) {
 			startFunctionBytes = strlen(argv[i]) - 8;
 		} else if (0 == memcmp(argv[i], "--debug-bytecode=", 17)) {
 			debugBytecodeLevel = atoi(argv[i] + 17);
+		} else if (0 == strcmp(argv[i], "--evaluate") || 0 == strcmp(argv[i], "-e")) {
+			evaluateMode = true;
 		} else {
 			fprintf(stderr, "Unrecognised engine option: '%s'.\n", argv[i]);
 			return 1;
 		}
 	}
 
-	scriptSourceDirectory = (char *) malloc(strlen(scriptPath) + 2);
-	strcpy(scriptSourceDirectory, scriptPath);
-	char *lastSlash = strrchr(scriptSourceDirectory, '/');
-	if (lastSlash) *lastSlash = 0;
-	else strcpy(scriptSourceDirectory, ".");
+	if (!scriptPath && !evaluateString) {
+		fprintf(stderr, "Error: %s\n", evaluateMode ? "String to evaluate not specified." : "Path to script not specified.");
+		return 1;
+	}
 
-	size_t dataBytes;
-	void *data = FileLoad(scriptPath, &dataBytes);
+	if (scriptPath) {
+		scriptSourceDirectory = (char *) malloc(strlen(scriptPath) + 2);
+		strcpy(scriptSourceDirectory, scriptPath);
+		char *lastSlash = strrchr(scriptSourceDirectory, '/');
+		if (lastSlash) *lastSlash = 0;
+		else strcpy(scriptSourceDirectory, ".");
+	} else {
+		scriptSourceDirectory = (char *) malloc(2);
+		scriptSourceDirectory[0] = '.';
+		scriptSourceDirectory[1] = 0;
+	}
+
+	size_t dataBytes = evaluateMode ? strlen(evaluateString) : 0;
+	void *data = evaluateMode ? malloc(strlen(evaluateString)) : FileLoad(scriptPath, &dataBytes);
+	if (evaluateMode) memcpy(data, evaluateString, dataBytes);
 
 	if (!data) {
 		PrintDebug("Error: Could not load the input file '%s'.\n", scriptPath);
 		return 1;
 	}
 
-	int result = ScriptExecuteFromFile(scriptPath, strlen(scriptPath), data, dataBytes, false);
+	if (evaluateMode) scriptPath = "[input]";
+	int result = ScriptExecuteFromFile(scriptPath, strlen(scriptPath), data, dataBytes, evaluateMode);
 
 	while (fixedAllocationBlocks) {
 		void *block = fixedAllocationBlocks;
