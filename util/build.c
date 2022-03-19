@@ -859,30 +859,6 @@ void FixReplacedFieldName(const char *oldName, const char *newName) {
 	CallSystem("unlink bin/errors.tmp");
 }
 
-void LineCountFile(const char *folder, const char *name) {
-	int lineCountBefore = 0;
-
-	{
-		CallSystem("paste -sd+ bin/count.tmp | bc > bin/count2.tmp");
-		FILE *f = fopen("bin/count2.tmp", "rb");
-		char buffer[16] = {};
-		fread(buffer, 1, sizeof(buffer), f);
-		fclose(f);
-		lineCountBefore = atoi(buffer);
-	}
-
-	CallSystemF("awk 'NF' \"%s%s\" | wc -l >> bin/count.tmp", folder, name);
-
-	{
-		CallSystem("paste -sd+ bin/count.tmp | bc > bin/count2.tmp");
-		FILE *f = fopen("bin/count2.tmp", "rb");
-		char buffer[16] = {};
-		fread(buffer, 1, sizeof(buffer), f);
-		fclose(f);
-		printf("%5d   %s%s\n", atoi(buffer) - lineCountBefore, folder, name);
-	}
-}
-
 void AddressToLine(const char *symbolFile) {
 	char buffer[4096];
 	sprintf(buffer, "echo %s > bin/all_symbol_files.dat", symbolFile);
@@ -1359,44 +1335,6 @@ void DoCommand(const char *l) {
 		}
 
 		printf("Created " ColorHighlight "bin/essence.iso" ColorNormal ".\n");
-	} else if (0 == strcmp(l, "line-count")) {
-		FILE *f = fopen("bin/count.tmp", "wb");
-		fprintf(f, "0");
-		fclose(f);
-
-		LineCountFile("", "start.sh");
-
-		const char *folders[] = {
-			"desktop/", "boot/x86/", "drivers/", "kernel/", 
-			"apps/", "apps/file_manager/", "shared/", "util/",
-			"arch/", "arch/x86_32/", "arch/x86_64/",
-		};
-
-		for (uintptr_t i = 0; i < sizeof(folders) / sizeof(folders[0]); i++) {
-			const char *folder = folders[i];
-			DIR *directory = opendir(folder);
-			struct dirent *entry;
-
-			while ((entry = readdir(directory))) {
-				if (0 == strcmp(entry->d_name, "nanosvg.h")) continue;
-				if (0 == strcmp(entry->d_name, "hsluv.h")) continue;
-				if (0 == strcmp(entry->d_name, "stb_ds.h")) continue;
-				if (0 == strcmp(entry->d_name, "stb_image.h")) continue;
-				if (0 == strcmp(entry->d_name, "stb_sprintf.h")) continue;
-				if (0 == strcmp(entry->d_name, "stb_truetype.h")) continue;
-				if (entry->d_type != DT_REG) continue;
-
-				LineCountFile(folder, entry->d_name);
-			}
-
-			closedir(directory);
-		}
-
-		printf("\nTotal line count:" ColorHighlight "\n");
-		CallSystem("paste -sd+ bin/count.tmp | bc");
-		unlink("bin/count.tmp");
-		unlink("bin/count2.tmp");
-		printf(ColorNormal);
 	} else if (0 == memcmp(l, "a2l ", 4)) {
 		AddressToLine(l + 3);
 	} else if (0 == strcmp(l, "build-port") || 0 == memcmp(l, "build-port ", 11)) {

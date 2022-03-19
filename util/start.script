@@ -108,6 +108,60 @@ void Setup(bool forAutomation) {
 	}
 }
 
+void DoCommand(str command) {
+	if command == "line-count" {
+		int count = 0;
+		int countKernel = 0;
+		int countDesktop = 0;
+		int countApps = 0;
+		int countBoot = 0;
+		int countDrivers = 0;
+		int countHelp = 0;
+		int countShared = 0;
+		int countArch = 0;
+		int countOther = 0;
+
+		str[] files = DirectoryEnumerateRecursively("."):assert();
+
+		for str file in files {
+			bool ignore = file == "tags" || StringStartsWith(file, "bin/") || StringStartsWith(file, "cross/") || StringStartsWith(file, ".") 
+				|| StringStartsWith(file, "old/") || StringStartsWith(file, "root/") || StringStartsWith(file, "ports/")
+				|| file == "util/hsluv.h" || file == "util/luigi.h" || file == "util/stb_ds.h" || file == "util/script.c"
+				|| file == "util/nanosvg.h" || file == "util/stb_truetype.h" || file == "res/Keyboard Layouts/index.ini";
+			bool isSourceFile = StringEndsWith(file, ".c") || StringEndsWith(file, ".cpp") || StringEndsWith(file, ".h")
+				|| StringEndsWith(file, ".header") || StringEndsWith(file, ".ini") || StringEndsWith(file, ".ld")
+				|| StringEndsWith(file, ".md") || StringEndsWith(file, ".s") || StringEndsWith(file, ".script") || StringEndsWith(file, ".sh");
+
+			if !ignore && isSourceFile {
+				int c = StringSplitByCharacter(FileReadAll(file):assert(), "\n", false):len();
+				count += c;
+				if StringStartsWith(file, "kernel/") countKernel += c;
+				else if StringStartsWith(file, "desktop/") countDesktop += c;
+				else if StringStartsWith(file, "apps/") countApps += c;
+				else if StringStartsWith(file, "boot/") countBoot += c;
+				else if StringStartsWith(file, "drivers/") countDrivers += c;
+				else if StringStartsWith(file, "help/") countHelp += c;
+				else if StringStartsWith(file, "shared/") countShared += c;
+				else if StringStartsWith(file, "arch/") countArch += c;
+				else countOther += c;
+			}
+		}
+
+		Log("Total line count: %TextColorHighlight()%%count%");
+		Log("- Kernel:  %TextColorHighlight()%%countKernel%");
+		Log("- Desktop: %TextColorHighlight()%%countDesktop%");
+		Log("- Apps:    %TextColorHighlight()%%countApps%");
+		Log("- Boot:    %TextColorHighlight()%%countBoot%");
+		Log("- Drivers: %TextColorHighlight()%%countDrivers%");
+		Log("- Help:    %TextColorHighlight()%%countHelp%");
+		Log("- Shared:  %TextColorHighlight()%%countShared%");
+		Log("- Arch:    %TextColorHighlight()%%countArch%");
+		Log("- Other:   %TextColorHighlight()%%countOther%");
+	} else {
+		SystemShellExecute("bin/build %command%");
+	}
+}
+
 void Start() {
 	Setup(false);
 	PathDelete("bin/dependencies.ini");
@@ -121,9 +175,9 @@ void Start() {
 		bool running = true;
 
 		while running {
-			ConsoleWriteStdout("\n> %TextColorHighlight()%");
+			ConsoleWriteStderr("\n> %TextColorHighlight()%");
 			str command = StringTrim(ConsoleGetLine());
-			ConsoleWriteStdout(TextPlain());
+			ConsoleWriteStderr(TextPlain());
 
 			if command == "" {
 				command = previousCommand;
@@ -133,12 +187,12 @@ void Start() {
 			if command == "exit" || command == "x" || command == "quit" || command == "q" {
 				running = false;
 			} else {
-				SystemShellExecute("bin/build %command%");
+				DoCommand(command);
 				previousCommand = command;
 			}
 		}
 	} else {
-		SystemShellExecute("bin/build %options%");
+		DoCommand(options);
 	}
 }
 

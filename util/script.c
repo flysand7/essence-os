@@ -771,6 +771,7 @@ char baseModuleSource[] = {
 
 	"str ConsoleGetLine() #extcall;"
 	"void ConsoleWriteStdout(str x) #extcall;"
+	"void ConsoleWriteStderr(str x) #extcall;"
 	"err[str] SystemGetEnvironmentVariable(str name) #extcall;"
 	"err[void] SystemSetEnvironmentVariable(str name, str value) #extcall;"
 	"bool SystemShellExecute(str x) #extcall;" // Returns true on success.
@@ -791,6 +792,7 @@ int ExternalTextMonospaced(ExecutionContext *context, Value *returnValue);
 int ExternalTextPlain(ExecutionContext *context, Value *returnValue);
 int ExternalConsoleGetLine(ExecutionContext *context, Value *returnValue);
 int ExternalConsoleWriteStdout(ExecutionContext *context, Value *returnValue);
+int ExternalConsoleWriteStderr(ExecutionContext *context, Value *returnValue);
 int ExternalStringSlice(ExecutionContext *context, Value *returnValue);
 int ExternalCharacterToByte(ExecutionContext *context, Value *returnValue);
 int ExternalSystemShellExecute(ExecutionContext *context, Value *returnValue);
@@ -836,6 +838,7 @@ ExternalFunction externalFunctions[] = {
 	{ .cName = "TextPlain", .callback = ExternalTextPlain },
 	{ .cName = "ConsoleGetLine", .callback = ExternalConsoleGetLine },
 	{ .cName = "ConsoleWriteStdout", .callback = ExternalConsoleWriteStdout },
+	{ .cName = "ConsoleWriteStderr", .callback = ExternalConsoleWriteStderr },
 	{ .cName = "StringSlice", .callback = ExternalStringSlice },
 	{ .cName = "CharacterToByte", .callback = ExternalCharacterToByte },
 	{ .cName = "SystemShellExecute", .callback = ExternalSystemShellExecute },
@@ -7066,6 +7069,13 @@ int ExternalConsoleWriteStdout(ExecutionContext *context, Value *returnValue) {
 	(void) returnValue;
 	STACK_POP_STRING(entryText, entryBytes);
 	printf("%.*s", (int) entryBytes, (char *) entryText);
+	return EXTCALL_NO_RETURN;
+}
+
+int ExternalConsoleWriteStderr(ExecutionContext *context, Value *returnValue) {
+	(void) returnValue;
+	STACK_POP_STRING(entryText, entryBytes);
+	fprintf(stderr, "%.*s", (int) entryBytes, (char *) entryText);
 	return EXTCALL_NO_RETURN;
 }
 

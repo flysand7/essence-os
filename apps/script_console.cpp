@@ -470,6 +470,7 @@ EXTERNAL_STUB(ExternalPersistWrite);
 // TODO Functions only available in the POSIX subsystem:
 EXTERNAL_STUB(ExternalConsoleGetLine);
 EXTERNAL_STUB(ExternalConsoleWriteStdout);
+EXTERNAL_STUB(ExternalConsoleWriteStderr);
 EXTERNAL_STUB(ExternalSystemShellExecute);
 EXTERNAL_STUB(ExternalSystemShellExecuteWithWorkingDirectory);
 EXTERNAL_STUB(ExternalSystemShellEvaluate);
