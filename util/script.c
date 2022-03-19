@@ -7882,6 +7882,9 @@ void *LibraryGetAddress(void *library, const char *name) {
 void *FileLoad(const char *path, size_t *length) {
 	FILE *file = fopen(path, "rb");
 	if (!file) return NULL;
+	struct stat s;
+	fstat(fileno(file), &s);
+	if (!S_ISREG(s.st_mode)) { fclose(file); errno = EISDIR; return NULL; }
 	fseek(file, 0, SEEK_END);
 	size_t fileSize = ftell(file);
 	fseek(file, 0, SEEK_SET);
