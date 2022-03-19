@@ -373,9 +373,6 @@ void AutomationBuildMinimal() {
 
 void AutomationRunTests() {
 	Setup(true);
-	str[] buildConfig = StringSplitByCharacter(FileReadAll("bin/build_config.ini"):assert(), "\n", true);
-	buildConfig:find_and_delete("automated_build=1");
-	assert FileWriteAll("bin/build_config.ini", StringJoin(buildConfig, "\n", false));
 	assert FileWriteAll("bin/config.ini", "Flag.ENABLE_POSIX_SUBSYSTEM=1\n");
 	assert FileWriteAll("bin/extra_applications.ini", "desktop/api_tests.ini\n");
 	assert SystemShellExecute("bin/build build");
