@@ -20,7 +20,6 @@ str posixRoot;
 
 // GCC port only:
 bool buildCross #option;
-bool runningMakefiles #persist;
 
 // Musl port only:
 bool forceRebuild #option;
@@ -191,9 +190,6 @@ void PortGCC() {
 	str mpfrVersion     = "4.1.0";
 	str mpcVersion      = "1.2.1";
 
-	// Load the persistent variables.
-	assert PersistRead("bin/port.script.persist");
-
 	str destDir = "";
 
 	if buildCross {
@@ -233,11 +229,11 @@ void PortGCC() {
 
 	// Ask the user if they want to resume an incomplete build.
 	bool resumeBuild = false;
-	if runningMakefiles {
+	if PathExists("bin/running_makefiles.txt") {
 		Log("The build system has detected a build was started, but was not completed.");
 		Log("Enter 'yes' to attempt to resume this build.");
 		resumeBuild = ConsoleGetYes();
-		runningMakefiles = false;
+		PathDelete("bin/running_makefiles.txt");
 	}
 
 	if !resumeBuild {
@@ -385,7 +381,7 @@ void PortGCC() {
 	}
 
 	// Run makefiles.
-	runningMakefiles = true;
+	assert FileWriteAll("bin/running_makefiles.txt", "");
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make -j %processorCount%");
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-binutils", "make %destDir% install");
 	assert SystemShellExecuteWithWorkingDirectory("bin/build-gcc", "make all-gcc -j %processorCount%");
@@ -397,9 +393,8 @@ void PortGCC() {
 		// Modify the mm_malloc.h header.
 		assert FileWriteAll("%crossDirectory%/lib/gcc/%toolchainPrefix%/%gccVersion%/include/mm_malloc.h", "/* removed */\n");
 
-		// Update the build configuration and compile the system.
-		FileWriteAll("bin/build_config.ini", "accepted_license=1\ncompiler_path=%compilerPath%\ncross_compiler_index=11\n");
-		SystemShellExecute("./start.sh c");
+		// Compile the system.
+		SystemShellExecute("bin/build c");
 
 		// Build libstdc++.
 		// TODO Waiting on GCC 11.3 to do this for the port. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100017.
@@ -418,7 +413,7 @@ void PortGCC() {
 	assert FileCopy("bin/mpfr-src/COPYING.LESSER", "bin/MPFR License.txt");
 
 	// Cleanup.
-	runningMakefiles = false;
+	PathDelete("bin/running_makefiles.txt");
 	PathDeleteRecursively("bin/build-binutils");
 	PathDeleteRecursively("bin/build-gcc");
 	PathDeleteRecursively("bin/build-mpc");
@@ -642,4 +637,13 @@ void Start() {
 			}
 		}
 	}
+}
+
+void StartWithOptions(str _portName, bool _buildCross, bool _skipYesChecks, str _targetName, str _toolchainPrefix) {
+	portName = _portName;
+	buildCross = _buildCross;
+	skipYesChecks = _skipYesChecks;
+	targetName = _targetName;
+	toolchainPrefix = _toolchainPrefix;
+	Start();
 }

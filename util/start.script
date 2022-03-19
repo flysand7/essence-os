@@ -1,9 +1,31 @@
 // TODO Merge util/build.c into here.
 
+#import "ports/port.script" port;
+
 str options #option;
 str target #option;
 
+str targetName;
+str targetToolchainPrefix;
+
+bool acceptedLicense #persist;
+str compilerPath #persist;
+int compilerIndex #persist;
+bool runningMakefiles #persist;
+
 void Setup(bool forAutomation) {
+	assert PersistRead("bin/start.script.persist");
+
+	if !forAutomation && !acceptedLicense {
+		Log("=== Essence License ===\n");
+		Log(FileReadAll("LICENSE.md"):assert());
+		Log("Type 'yes' to acknowledge you have read the license, or press Ctrl-C to exit.");
+		str input = ConsoleGetLine(); // TODO Use ConsoleGetYes.
+		if input != "yes" && input != "y" { return; }
+		acceptedLicense = true;
+	}
+
+
 	SystemShellEnableLogging(false);
 
 	assert PathCreateLeadingDirectories("bin/dependency_files");
@@ -40,21 +62,84 @@ void Setup(bool forAutomation) {
 		target = "TARGET_X86_64";
 	}
 
+	bool toolchainHasRedZone = false;
+
+	if target == "TARGET_X86_64" {
+		targetToolchainPrefix = "x86_64-essence";
+		targetName = "x86_64";
+		toolchainHasRedZone = true;
+	} else if target == "TARGET_X86_32" {
+		targetToolchainPrefix = "i686-elf";
+		targetName = "x86_32";
+	} else {
+		Log("Unknown target!");
+		assert false;
+	}
+
 	assert SystemShellExecute("gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D%target% "
 			+ "-Wall -Wextra -Wno-missing-field-initializers");
 
 	if forAutomation {
-		assert FileWriteAll("bin/build_config.ini", "accepted_license=1\nautomated_build=1\n");
-		assert SystemShellExecute("bin/build get-toolchain");
-		assert FileAppend("bin/build_config.ini", "\nautomated_build=1\n");
 		assert FileWriteAll("bin/commit.txt", StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15));
+	}
+
+	int currentCompilerIndex = 1;
+
+	if compilerPath == "" {
+		port.StartWithOptions("gcc", true, forAutomation, targetName, targetToolchainPrefix);
+		compilerPath = port.compilerPath;
+		compilerIndex = currentCompilerIndex;
+		assert StringContains(SystemGetEnvironmentVariable("PATH"):assert(), compilerPath);
+		assert SystemShellExecute("bin/build b"); 
+	} else {
+		str oldPath = SystemGetEnvironmentVariable("PATH"):assert();
+		assert !StringContains(oldPath, "::"); // If the PATH variable has a double colon in it, GCC won't build.
+		assert SystemSetEnvironmentVariable("PATH", compilerPath + ":" + oldPath);
+	}
+
+	if compilerIndex != currentCompilerIndex {
+		Log("Warning: Your cross compiler appears to be out of date.");
+		Log("Run %TextColorHighlight()%get-toolchain%TextPlain()% before continuing.");
+		// TODO Implement get-toolchain.
+	}
+
+	if toolchainHasRedZone {
+		assert StringContains(SystemShellEvaluate("%targetToolchainPrefix%-gcc -mno-red-zone -print-libgcc-file-name"), "no-red-zone");
 	}
 }
 
 void Start() {
 	Setup(false);
-	SystemShellExecute("bin/build %options%");
-	Log("");
+	PathDelete("bin/dependencies.ini");
+
+	if (options == "") {
+		Log("%TextColorHighlight()%Essence Build%TextPlain()%\nPress Ctrl-C to exit.");
+		Log("Cross target is %TextColorHighlight()%%targetName%%TextPlain()%.");
+		Log("Enter 'help' to get a list of commands.");
+
+		str previousCommand = "help";
+		bool running = true;
+
+		while running {
+			ConsoleWriteStdout("\n> %TextColorHighlight()%");
+			str command = StringTrim(ConsoleGetLine());
+			ConsoleWriteStdout(TextPlain());
+
+			if command == "" {
+				command = previousCommand;
+				Log("(%command%)");
+			}
+
+			if command == "exit" || command == "x" || command == "quit" || command == "q" {
+				running = false;
+			} else {
+				SystemShellExecute("bin/build %command%");
+				previousCommand = command;
+			}
+		}
+	} else {
+		SystemShellExecute("bin/build %options%");
+	}
 }
 
 void GenerateOVF() {
@@ -139,7 +224,7 @@ void AutomationBuild() {
 
 	// Setup toolchain, build the system and ports.
 	assert SystemShellExecute("bin/build build-optimised");
-	assert SystemShellExecute("bin/build build-optional-ports > /dev/null");
+	port.StartWithOptions("all", false, true, targetName, targetToolchainPrefix);
 
 	// Copy a few sample files.
 	assert PathCopyRecursively("res/Sample Images", "root/Demo Content");
@@ -240,7 +325,7 @@ void AutomationRunTests() {
 	assert FileWriteAll("bin/config.ini", "Flag.ENABLE_POSIX_SUBSYSTEM=1\n");
 	assert FileWriteAll("bin/extra_applications.ini", "desktop/api_tests.ini\n");
 	assert SystemShellExecute("bin/build build");
-	assert SystemShellExecute("bin/build build-port busybox");
+	port.StartWithOptions("busybox", false, true, targetName, targetToolchainPrefix);
 	assert SystemShellExecute("bin/build run-tests");
 	DeleteUnneededDirectoriesForDebugInfo();
 	PathDelete("bin/drive");

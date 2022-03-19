@@ -5,7 +5,6 @@
 #if defined(TARGET_X86_64)
 #define TOOLCHAIN_PREFIX "x86_64-essence"
 #define TARGET_NAME "x86_64"
-#define TOOLCHAIN_HAS_RED_ZONE
 #define TOOLCHAIN_HAS_CSTDLIB
 #define QEMU_EXECUTABLE "qemu-system-x86_64"
 #elif defined(TARGET_X86_32)
@@ -49,12 +48,8 @@
 #define ColorHighlight "\033[0;36m"
 #define ColorNormal "\033[0m"
 
-bool acceptedLicense;
-bool automatedBuild;
-bool foundValidCrossCompiler;
 bool coloredOutput;
 bool encounteredErrors;
-bool interactiveMode;
 volatile int emulatorTimeout;
 volatile bool emulatorDidTimeout;
 #ifdef __linux__
@@ -250,7 +245,6 @@ void OutputStartOfBuildINI(FILE *f, bool forceDebugBuildOff) {
 
 void BuildUtilities();
 void DoCommand(const char *l);
-void SaveConfig();
 
 #define COMPILE_SKIP_COMPILE         (1 << 1)
 #define COMPILE_DO_BUILD             (1 << 2)
@@ -696,15 +690,6 @@ bool AddCompilerToPath() {
 	return true;
 }
 
-void SaveConfig() {
-	FILE *f = fopen("bin/build_config.ini", "wb");
-	fprintf(f, "accepted_license=%d\ncompiler_path=%s\n"
-			"cross_compiler_index=%d\n",
-			acceptedLicense, compilerPath, 
-			foundValidCrossCompiler ? CROSS_COMPILER_INDEX : 0);
-	fclose(f);
-}
-
 const char *folders[] = {
 	"arch",
 	"apps",
@@ -1024,9 +1009,7 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 		Run(emulator, log, debug);
 	}
 
-	if (automatedBuild) {
-		exit(encounteredErrors ? 1 : 0);
-	}
+	exit(encounteredErrors ? 1 : 0);
 }
 
 void RunTests(int singleTest) {
@@ -1078,7 +1061,6 @@ void RunTests(int singleTest) {
 	fprintf(stderr, ColorHighlight "%d/%d tests succeeded." ColorNormal "\n", successCount, successCount + failureCount);
 	fclose(testFailures);
 	unlink("root/Essence/Settings/API Tests/test.dat");
-	if (failureCount && automatedBuild) exit(1);
 }
 
 void DoCommand(const char *l) {
@@ -1133,8 +1115,6 @@ void DoCommand(const char *l) {
 		BuildAndRun(OPTIMISE_FULL, true /* compile */, DEBUG_NONE /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
 	} else if (0 == strcmp(l, "tlv")) {
 		BuildAndRun(OPTIMISE_ON, true /* compile */, DEBUG_LATER /* debug */, EMULATOR_QEMU, LOG_VERBOSE);
-	} else if (0 == strcmp(l, "exit") || 0 == strcmp(l, "x") || 0 == strcmp(l, "quit") || 0 == strcmp(l, "q")) {
-		exit(0);
 	} else if (0 == strcmp(l, "compile") || 0 == strcmp(l, "c")) {
 		LoadOptions();
 		Compile(COMPILE_FOR_EMULATOR, atoi(GetOptionString("Emulator.PrimaryDriveMB")), NULL);
@@ -1316,11 +1296,6 @@ void DoCommand(const char *l) {
 	} else if (0 == memcmp(l, "do ", 3)) {
 		CallSystem(l + 3);
 	} else if (0 == memcmp(l, "live ", 5) || 0 == strcmp(l, "live")) {
-		if (interactiveMode) {
-			fprintf(stderr, "This command cannot be used in interactive mode. Type \"quit\" and then run \"./start.sh live <...>\".\n");
-			return;
-		}
-
 		if (argc < 4) {
 			fprintf(stderr, "Usage: \"./start.sh live <iso/raw> <drive size in MB> [extra options]\".\n");
 			return;
@@ -1447,14 +1422,10 @@ void DoCommand(const char *l) {
 			l2 = (char *) l + 11;
 		}
 
-		int status = CallSystemF("bin/script ports/port.script portName=%s targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
+		CallSystemF("bin/script ports/port.script portName=%s targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
 
 		if (!alreadyNamedPort) {
 			free(l2);
-		}
-
-		if (automatedBuild) {
-			exit(status);
 		}
 	} else if (0 == strcmp(l, "make-crash-report")) {
 		system("rm crash-report.tar.gz");
@@ -1501,26 +1472,8 @@ void DoCommand(const char *l) {
 		MAKE_TOOLCHAIN_WRAPPER("size");
 		MAKE_TOOLCHAIN_WRAPPER("strings");
 		MAKE_TOOLCHAIN_WRAPPER("strip");
-		foundValidCrossCompiler = true;
 		getcwd(compilerPath, sizeof(compilerPath) - 64);
 		strcat(compilerPath, "/cross/bin2");
-		SaveConfig();
-	} else if (0 == strcmp(l, "get-toolchain")) {
-#if defined(__linux__) && defined(__x86_64__)
-		fprintf(stderr, "Downloading the compiler toolchain...\n");
-		CallSystem("bin/script util/get_source.script checksum=700205f81c7a5ca3279ae7b1fdb24e025d33b36a9716b81a71125bf0fec0de50 "
-				"directoryName=prefix url=https://github.com/nakst/build-gcc/releases/download/gcc-11.1.0/gcc-x86_64-essence.tar.xz");
-		DoCommand("setup-pre-built-toolchain");
-		AddCompilerToPath();
-#else
-		if (automatedBuild) {
-			CallSystem("bin/script ports/port.script portName=gcc buildCross=true skipYesChecks=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
-		} else {
-			CallSystem("bin/script ports/port.script portName=gcc buildCross=true targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
-		}
-
-		exit(0);
-#endif
 	} else if (0 == strcmp(l, "help") || 0 == strcmp(l, "h") || 0 == strcmp(l, "?")) {
 		printf(ColorHighlight "\n=== Common Commands ===\n" ColorNormal);
 		printf("build         (b)                 - Build.\n");
@@ -1555,140 +1508,26 @@ int main(int _argc, char **_argv) {
 	argc = _argc;
 	argv = _argv;
 
+	realpath("cross/bin", compilerPath); // TODO Don't hard code this.
 	sh_new_strdup(applicationDependencies);
-	unlink("bin/dependencies.ini");
-
 	coloredOutput = isatty(STDERR_FILENO);
+	systemLog = fopen("bin/Logs/system.log", "a");
+	if (!systemLog) systemLog = fopen("bin/Logs/system.log", "w");
 
-	if (argc == 1) {
-		printf(ColorHighlight "Essence Build" ColorNormal "\nPress Ctrl-C to exit.\nCross target is " ColorHighlight TARGET_NAME ColorNormal ".\n");
+	if (argc < 2) {
+		fprintf(stderr, "Error: No command specified.\n");
+		exit(1);
 	}
 
-	systemLog = fopen("bin/Logs/system.log", "w");
+	char buffer[4096];
+	buffer[0] = 0;
 
-	{
-		EsINIState s = { (char *) LoadFile("bin/build_config.ini", &s.bytes) };
-		char path[32768 + PATH_MAX + 16];
-		path[0] = 0;
-
-		while (EsINIParse(&s)) {
-			if (s.sectionBytes) continue;
-			EsINIZeroTerminate(&s);
-
-			INI_READ_BOOL(accepted_license, acceptedLicense);
-			INI_READ_BOOL(automated_build, automatedBuild);
-			INI_READ_STRING(compiler_path, path);
-
-			if (0 == strcmp("cross_compiler_index", s.key)) {
-				foundValidCrossCompiler = atoi(s.value) == CROSS_COMPILER_INDEX;
-			}
-		}
-
-		if (path[0]) {
-			strcpy(compilerPath, path);
-			strcat(path, ":");
-			char *originalPath = getenv("PATH");
-
-			if (strlen(originalPath) < 32768) {
-				strcat(path, originalPath);
-				setenv("PATH", path, 1);
-			} else {
-				printf("Warning: PATH too long\n");
-			}
-		}
+	for (int i = 1; i < argc; i++) {
+		if (strlen(argv[i]) + 1 > sizeof(buffer) - strlen(buffer)) break;
+		if (i > 1) strcat(buffer, " ");
+		strcat(buffer, argv[i]);
 	}
 
-	if (!acceptedLicense) {
-		printf("\n=== Essence License ===\n\n");
-		CallSystem("cat LICENSE.md");
-		printf("\nType 'yes' to acknowledge you have read the license, or press Ctrl-C to exit.\n");
-		if (!GetYes()) exit(0);
-		acceptedLicense = true;
-	}
-
-	SaveConfig();
-
-	const char *runFirstCommand = NULL;
-
-	if (argc >= 2) {
-		char buffer[4096];
-		buffer[0] = 0;
-
-		for (int i = 1; i < argc; i++) {
-			if (strlen(argv[i]) + 1 > sizeof(buffer) - strlen(buffer)) break;
-			if (i > 1) strcat(buffer, " ");
-			strcat(buffer, argv[i]);
-		}
-
-		DoCommand(buffer);
-		return 0;
-	} else {
-		interactiveMode = true;
-	}
-
-	if (CallSystem("" TOOLCHAIN_PREFIX "-gcc --version > /dev/null 2>&1 ")) {
-		DoCommand("get-toolchain");
-		runFirstCommand = "b";
-		foundValidCrossCompiler = true;
-	}
-
-	SaveConfig();
-
-	if (runFirstCommand) {
-		DoCommand(runFirstCommand);
-	}
-
-	if (!foundValidCrossCompiler) {
-		printf("Warning: Your cross compiler appears to be out of date.\n");
-		printf("Please rebuild the compiler using the command " ColorHighlight "build-cross" ColorNormal " before attempting to build the OS.\n");
-	}
-
-#ifdef TOOLCHAIN_HAS_RED_ZONE
-	{
-		CallSystem("" TOOLCHAIN_PREFIX "-gcc -mno-red-zone -print-libgcc-file-name > bin/valid_compiler.txt");
-		FILE *f = fopen("bin/valid_compiler.txt", "r");
-		char buffer[256];
-		buffer[fread(buffer, 1, 256, f)] = 0;
-		fclose(f);
-
-		if (!strstr(buffer, "no-red-zone")) {
-			printf("Error: Compiler built without no-red-zone support.\n");
-			exit(1);
-		}
-
-		unlink("bin/valid_compiler.txt");
-	}
-#endif
-
-	printf("Enter 'help' to get a list of commands.\n");
-	char *prev = NULL;
-
-	while (true) {
-		char *l = NULL;
-		size_t pos = 0;
-		printf("\n> ");
-		printf(ColorHighlight);
-		getline(&l, &pos, stdin);
-		printf(ColorNormal);
-
-		if (strlen(l) == 1) {
-			l = prev;
-			if (!l) {
-				l = (char *) malloc(5);
-				strcpy(l, "help");
-			}
-			printf("(%s)\n", l);
-		} else {
-			l[strlen(l) - 1] = 0;
-		}
-
-		printf(ColorNormal);
-		fflush(stdout);
-		DoCommand(l);
-
-		if (prev != l) free(prev);
-		prev = l;
-	}
-
+	DoCommand(buffer);
 	return 0;
 }
