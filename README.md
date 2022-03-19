@@ -28,7 +28,7 @@ These builds are configured to run on emulators only, to make testing easier. Bu
 
 See `help/Building.md` for a description of how to build and test the system from source.
 
-For an overview of the files in the source tree, see help/Source Map.md.
+For an overview of the files in the source tree, see `help/Source Map.md`.
 
 ## Features
 
