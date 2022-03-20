@@ -8,6 +8,8 @@ str target #option;
 str targetName;
 str targetToolchainPrefix;
 
+int currentCompilerIndex;
+
 bool acceptedLicense #persist;
 str compilerPath #persist;
 int compilerIndex #persist;
@@ -83,7 +85,7 @@ void Setup(bool forAutomation) {
 		assert FileWriteAll("bin/commit.txt", StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15));
 	}
 
-	int currentCompilerIndex = 1;
+	currentCompilerIndex = 1;
 
 	if compilerPath == "" {
 		port.StartWithOptions("gcc", true, forAutomation, targetName, targetToolchainPrefix);
@@ -100,7 +102,6 @@ void Setup(bool forAutomation) {
 	if compilerIndex != currentCompilerIndex {
 		Log("Warning: Your cross compiler appears to be out of date.");
 		Log("Run %TextColorHighlight()%get-toolchain%TextPlain()% before continuing.");
-		// TODO Implement get-toolchain.
 	}
 
 	if toolchainHasRedZone {
@@ -157,6 +158,24 @@ void DoCommand(str command) {
 		Log("- Shared:  %TextColorHighlight()%%countShared%");
 		Log("- Arch:    %TextColorHighlight()%%countArch%");
 		Log("- Other:   %TextColorHighlight()%%countOther%");
+	} else if StringStartsWith(command, "do ") {
+		SystemShellExecute(StringSlice(command, 3, command:len()));
+	} else if command == "build-optional-ports" {
+		port.StartWithOptions("all", false, true, targetName, targetToolchainPrefix);
+	} else if StringStartsWith(command, "build-port ") {
+		port.StartWithOptions(StringSlice(command, 11, command:len()), false, false, targetName, targetToolchainPrefix);
+	} else if command == "build-port" {
+		Log("");
+		port.StartWithOptions("", false, false, targetName, targetToolchainPrefix);
+		Log("\nMost ports require the POSIX subsystem to be enabled.\n"
+				+ "If you haven't enabled it, run %TextColorHighlight()%config%TextPlain()% and "
+				+ "select %TextColorHighlight()%Flag.ENABLE_POSIX_SUBSYSTEM%TextPlain()%.\n"
+				+ "\nEnter the port to be built: ");
+		port.StartWithOptions(StringTrim(ConsoleGetLine()), false, false, targetName, targetToolchainPrefix);
+	} else if command == "get-toolchain" {
+		port.StartWithOptions("gcc", true, false, targetName, targetToolchainPrefix);
+		compilerPath = port.compilerPath;
+		compilerIndex = currentCompilerIndex;
 	} else {
 		SystemShellExecute("bin/build %command%");
 	}
@@ -312,7 +331,7 @@ void AutomationBuild() {
 	assert FileCopy("util/hsluv.h", "Essence/Licenses/hsluv.h");
 	assert FileCopy("util/stb_ds.h", "Essence/Licenses/stb_ds.h");
 	assert FileCopy("util/stb_truetype.h", "Essence/Licenses/stb_truetype.h");
-	assert FileCopy("res/Fonts/Hack License.md", "Essence/Licenses/Hack License.md");
+	assert FileCopy("res/Fonts/Hack License.txt", "Essence/Licenses/Hack License.txt");
 	assert FileCopy("res/Fonts/Inter License.txt", "Essence/Licenses/Inter License.txt");
 	assert FileCopy("res/Fonts/Atkinson Hyperlegible License.txt", "Essence/Licenses/Atkinson Hyperlegible License.txt");
 	assert FileCopy("res/Fonts/OpenDyslexic License.txt", "Essence/Licenses/OpenDyslexic License.txt");

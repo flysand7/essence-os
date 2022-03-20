@@ -89,7 +89,7 @@ BuildFont fonts[] = {
 		{},
 	} },
 
-	{ "Hack", "Hack License.md", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
+	{ "Hack", "Hack License.txt", "Mono", "Latn,Grek,Cyrl", (FontFile []) {
 		{ "4", "Hack Regular.ttf" },
 		{ "4i", "Hack Regular Italic.ttf" },
 		{ "7", "Hack Bold.ttf" },
@@ -1267,10 +1267,6 @@ void DoCommand(const char *l) {
 		}
 
 		printf("\n");
-	} else if (0 == strcmp(l, "build-optional-ports")) {
-		CallSystemF("bin/script ports/port.script portName=all targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX);
-	} else if (0 == memcmp(l, "do ", 3)) {
-		CallSystem(l + 3);
 	} else if (0 == memcmp(l, "live ", 5) || 0 == strcmp(l, "live")) {
 		if (argc < 4) {
 			fprintf(stderr, "Usage: \"./start.sh live <iso/raw> <drive size in MB> [extra options]\".\n");
@@ -1337,34 +1333,6 @@ void DoCommand(const char *l) {
 		printf("Created " ColorHighlight "bin/essence.iso" ColorNormal ".\n");
 	} else if (0 == memcmp(l, "a2l ", 4)) {
 		AddressToLine(l + 3);
-	} else if (0 == strcmp(l, "build-port") || 0 == memcmp(l, "build-port ", 11)) {
-		bool alreadyNamedPort = l[10] == ' ';
-		char *l2 = NULL;
-
-		if (!alreadyNamedPort) {
-			printf("\n");
-			CallSystem("bin/script ports/port.script");
-
-			LoadOptions();
-
-			if (!IsOptionEnabled("Flag.ENABLE_POSIX_SUBSYSTEM")) {
-				printf("\nMost ports require the POSIX subsystem to be enabled.\n");
-				printf("Run " ColorHighlight "config" ColorNormal " and select " ColorHighlight "Flag.ENABLE_POSIX_SUBSYSTEM" ColorNormal " to enable it.\n");
-			}
-
-			printf("\nEnter the port to be built: ");
-			size_t pos;
-			getline(&l2, &pos, stdin);
-			l2[strlen(l2) - 1] = 0;
-		} else {
-			l2 = (char *) l + 11;
-		}
-
-		CallSystemF("bin/script ports/port.script portName=%s targetName=" TARGET_NAME " toolchainPrefix=" TOOLCHAIN_PREFIX, l2);
-
-		if (!alreadyNamedPort) {
-			free(l2);
-		}
 	} else if (0 == strcmp(l, "make-crash-report")) {
 		system("rm crash-report.tar.gz");
 		system("mkdir crash-report");
