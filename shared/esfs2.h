@@ -1139,7 +1139,8 @@ bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 
 		uint64_t blockGDT = ESFS_BOOT_SUPER_BLOCK_SIZE * 2 / superblock.blockSize + 1;
 		uint64_t blockGroup0Bitmap = blockGDT + (superblock.groupCount * sizeof(GroupDescriptor) + superblock.blockSize - 1) / superblock.blockSize;
-		uint64_t blockCoreNodes = blockGroup0Bitmap + superblock.blocksPerGroupBlockBitmap;
+		uint64_t blockGroupLastBitmap = blockGroup0Bitmap + (superblock.groupCount * sizeof(GroupDescriptor) + superblock.blockSize - 1) / superblock.blockSize;
+		uint64_t blockCoreNodes = blockGroupLastBitmap + superblock.blocksPerGroupBlockBitmap;
 		uint64_t end = blockCoreNodes + ((ESFS_CORE_NODE_COUNT + superblock.directoryEntriesPerBlock - 1) / superblock.directoryEntriesPerBlock);
 
 		superblock.blocksUsed = end;
@@ -1191,17 +1192,33 @@ bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 			for (uintptr_t i = 0; i < superblock.groupCount; i++) {
 				memcpy(buffer[i].signature, ESFS_GROUP_DESCRIPTOR_SIGNATURE, 4);
 				buffer[i].largestExtent = superblock.blocksPerGroup - superblock.blocksPerGroupBlockBitmap;
+				uint8_t bitmap[superblock.blocksPerGroupBlockBitmap * superblock.blockSize];
 
 				if (i == 0) {
-					uint8_t firstGroupBitmap[superblock.blocksPerGroupBlockBitmap * superblock.blockSize];
-					memset(firstGroupBitmap, 0, superblock.blocksPerGroupBlockBitmap * superblock.blockSize);
-					for (uint64_t i = 0; i < superblock.blocksUsed; i++) firstGroupBitmap[i / 8] |= 1 << (i % 8);
+					memset(bitmap, 0, superblock.blocksPerGroupBlockBitmap * superblock.blockSize);
+					for (uint64_t i = 0; i < superblock.blocksUsed; i++) bitmap[i / 8] |= 1 << (i % 8);
 					buffer[i].blocksUsed = superblock.blocksUsed;
 					buffer[i].blockBitmap = blockGroup0Bitmap;
-					buffer[i].bitmapChecksum = CalculateCRC32(firstGroupBitmap, sizeof(firstGroupBitmap), 0);
+					buffer[i].bitmapChecksum = CalculateCRC32(bitmap, sizeof(bitmap), 0);
 					buffer[i].largestExtent = superblock.blocksPerGroup - superblock.blocksUsed;
 
-					if (!WriteBytes(blockGroup0Bitmap * superblock.blockSize, sizeof(firstGroupBitmap), &firstGroupBitmap)) {
+					if (!WriteBytes(blockGroup0Bitmap * superblock.blockSize, sizeof(bitmap), &bitmap)) {
+						return false;
+					}
+				} else if (i == superblock.groupCount - 1) {
+					// Mark the blocks that go past the end of the file system in the last block group as allocated.
+					// TODO Make sure these blocks aren't deallocated by any future file system checker tools!
+					uint64_t overflow = superblock.blocksPerGroup * superblock.groupCount - superblock.blockCount;
+					assert(overflow < superblock.blocksPerGroup);
+
+					memset(bitmap, 0, superblock.blocksPerGroupBlockBitmap * superblock.blockSize);
+					for (uint64_t i = superblock.blocksPerGroup - overflow; i < superblock.blocksPerGroup; i++) bitmap[i / 8] |= 1 << (i % 8);
+					buffer[i].blocksUsed = overflow;
+					buffer[i].blockBitmap = blockGroupLastBitmap;
+					buffer[i].bitmapChecksum = CalculateCRC32(bitmap, sizeof(bitmap), 0);
+					buffer[i].largestExtent = superblock.blocksPerGroup - overflow;
+
+					if (!WriteBytes(blockGroupLastBitmap * superblock.blockSize, sizeof(bitmap), &bitmap)) {
 						return false;
 					}
 				}

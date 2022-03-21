@@ -42,6 +42,8 @@ struct FSNode {
 static bool AccessBlock(Volume *volume, uint64_t index, uint64_t count, void *buffer, uint64_t flags, int driveAccess) {
 	// TODO Return EsError.
 	Superblock *superblock = &volume->superblock;
+	if (!count) return true;
+	ESFS_CHECK(index < superblock->blockCount && count <= superblock->blockCount - index, "AccessBlock - Access past the end of the file system.");
 	EsError error = volume->Access(index * superblock->blockSize, count * superblock->blockSize, driveAccess, buffer, flags, nullptr);
 	ESFS_CHECK_ERROR(error, "AccessBlock - Could not access blocks.");
 	return error == ES_SUCCESS;
