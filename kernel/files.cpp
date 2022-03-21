@@ -67,7 +67,8 @@ EsError FSNodeDelete(KNode *node);
 EsError FSNodeMove(KNode *node, KNode *destination, const char *newName, size_t nameNameBytes);
 EsError FSFileResize(KNode *node, EsFileOffset newSizeBytes);
 ptrdiff_t FSDirectoryEnumerate(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize);
-EsError FSFileControl(KNode *node, uint32_t flags);
+EsError FSFileControlFlush(KNode *node);
+EsError FSFileControlSetContentType(KNode *node, EsUniqueIdentifier identifier);
 bool FSTrimCachedNode(MMObjectCache *);
 bool FSTrimCachedDirectoryEntry(MMObjectCache *);
 EsError FSBlockDeviceAccess(KBlockDeviceAccessRequest request);
@@ -94,6 +95,10 @@ struct {
 
 EsFileOffset FSNodeGetTotalSize(KNode *node) {
 	return node->directoryEntry->totalSize;
+}
+
+EsUniqueIdentifier FSNodeGetContentType(KNode *node) {
+	return node->directoryEntry->contentType;
 }
 
 char *FSNodeGetName(KNode *node, size_t *bytes) {
@@ -381,40 +386,50 @@ ptrdiff_t FSFileWriteSync(KNode *node, K_USER_BUFFER const void *buffer, EsFileO
 	return error == ES_SUCCESS ? bytes : error;
 }
 
-EsError FSFileControl(KNode *node, uint32_t flags) {
+EsError FSFileControlFlush(KNode *node) {
 	FSFile *file = (FSFile *) node;
 
-	if (flags & ES_FILE_CONTROL_FLUSH) {
-		KWriterLockTake(&file->resizeLock, K_LOCK_EXCLUSIVE);
-		EsDefer(KWriterLockReturn(&file->resizeLock, K_LOCK_EXCLUSIVE));
+	KWriterLockTake(&file->resizeLock, K_LOCK_EXCLUSIVE);
+	EsDefer(KWriterLockReturn(&file->resizeLock, K_LOCK_EXCLUSIVE));
 
-		CCSpaceFlush(&file->cache);
+	CCSpaceFlush(&file->cache);
 
-		KWriterLockTake(&file->writerLock, K_LOCK_EXCLUSIVE);
-		EsDefer(KWriterLockReturn(&file->writerLock, K_LOCK_EXCLUSIVE));
+	KWriterLockTake(&file->writerLock, K_LOCK_EXCLUSIVE);
+	EsDefer(KWriterLockReturn(&file->writerLock, K_LOCK_EXCLUSIVE));
 
-		__sync_fetch_and_and(&file->flags, ~NODE_MODIFIED);
+	__sync_fetch_and_and(&file->flags, ~NODE_MODIFIED);
 
-		EsError error = FSFileCreateAndResizeOnFileSystem(file, file->directoryEntry->totalSize);
-		if (error != ES_SUCCESS) return error;
+	EsError error = FSFileCreateAndResizeOnFileSystem(file, file->directoryEntry->totalSize);
+	if (error != ES_SUCCESS) return error;
 
-		if (file->fileSystem->sync) {
-			// TODO Should we also sync the parent?
-			FSDirectory *parent = file->directoryEntry->parent;
+	if (file->fileSystem->sync) {
+		// TODO Should we also sync the parent?
+		FSDirectory *parent = file->directoryEntry->parent;
 
-			if (parent) KWriterLockTake(&parent->writerLock, K_LOCK_EXCLUSIVE);
-			file->fileSystem->sync(parent, file);
-			if (parent) KWriterLockReturn(&parent->writerLock, K_LOCK_EXCLUSIVE);
-		}
+		if (parent) KWriterLockTake(&parent->writerLock, K_LOCK_EXCLUSIVE);
+		file->fileSystem->sync(parent, file);
+		if (parent) KWriterLockReturn(&parent->writerLock, K_LOCK_EXCLUSIVE);
+	}
 
-		if (file->error != ES_SUCCESS) {
-			EsError error = file->error;
-			file->error = ES_SUCCESS;
-			return error;
-		}
+	if (file->error != ES_SUCCESS) {
+		EsError error = file->error;
+		file->error = ES_SUCCESS;
+		return error;
 	}
 
 	return ES_SUCCESS;
+}
+
+EsError FSFileControlSetContentType(KNode *node, EsUniqueIdentifier identifier) {
+	if (node->fileSystem->flags & ES_VOLUME_READ_ONLY) {
+		return ES_ERROR_FILE_ON_READ_ONLY_VOLUME;
+	} else if (~node->fileSystem->flags & ES_VOLUME_STORES_CONTENT_TYPE) {
+		return ES_ERROR_UNSUPPORTED;
+	} else {
+		node->directoryEntry->contentType = identifier;
+		__sync_fetch_and_or(&node->flags, NODE_MODIFIED); // Set the modified flag *after* making the modification.
+		return ES_SUCCESS;
+	}
 }
 
 //////////////////////////////////////////
@@ -669,6 +684,7 @@ void _FSDirectoryEnumerateVisit(AVLItem<FSDirectoryEntry> *item, K_USER_BUFFER E
 	output->fileSize = entry->totalSize;
 	output->directoryChildren = entry->directoryChildren;
 	output->nameBytes = nameBytes;
+	output->contentType = entry->contentType;
 
 	_FSDirectoryEnumerateVisit(item->children[0], buffer, bufferSize, position);
 	_FSDirectoryEnumerateVisit(item->children[1], buffer, bufferSize, position);
@@ -808,9 +824,6 @@ EsError FSNodeCreate(FSDirectory *parent, const char *name, size_t nameBytes, Es
 		parent->directoryEntry->directoryChildren++;
 	}
 
-	__sync_fetch_and_or(&parent->flags, NODE_MODIFIED);
-	__sync_fetch_and_or(&node->flags, NODE_MODIFIED);
-	
 	// Only create directories immediately; files are created in FSWriteFromCache.
 
 	if (type != ES_NODE_FILE) {
@@ -823,6 +836,10 @@ EsError FSNodeCreate(FSDirectory *parent, const char *name, size_t nameBytes, Es
 		}
 	}
 
+	// Set the modified flag *after* making the modification.
+	__sync_fetch_and_or(&parent->flags, NODE_MODIFIED);
+	__sync_fetch_and_or(&node->flags, NODE_MODIFIED);
+	
 	// Put the node onto the object cache list.
 	// Since the parent directory is locked, it should stay around for long enough to be immediately found FSNodeTraverseLayer.
 	if (node->flags & NODE_IN_CACHE_LIST) KernelPanic("FSNodeCreate - Node %x is already in the cache list.\n", node);
@@ -1888,6 +1905,7 @@ void FSTrackUserFileSystemHandle(KDevice *device, bool opened) {
 }
 
 void FSRegisterFileSystem(KFileSystem *fileSystem) {
+	if (!fileSystem->write) fileSystem->volumeFlags |= ES_VOLUME_READ_ONLY;
 	fileSystem->trackHandle = FSTrackUserFileSystemHandle;
 	MMObjectCacheRegister(&fileSystem->cachedDirectoryEntries, FSTrimCachedDirectoryEntry, 
 			sizeof(FSDirectoryEntry) + 16 /* approximate average name bytes */ + fileSystem->directoryEntryDataBytes);

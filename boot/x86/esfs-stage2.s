@@ -132,7 +132,7 @@ LoadEachExtent:
 %endmacro
 
 %macro FilesystemSpecificCode 0
-KernelDataStreamPosition: dw 0x850
+KernelDataStreamPosition: dw 0x860
 ErrorBadFilesystem: db "Invalid boot EsFS volume.",0
 ErrorUnexpectedFileProblem: db "The kernel file could not be loaded.",0
 %endmacro

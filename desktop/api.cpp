@@ -1227,7 +1227,7 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 	}
 
 	if (success) {
-		file->error = EsFileControl(file->handle, ES_FILE_CONTROL_FLUSH);
+		file->error = EsFileControl(file->handle, ES_FILE_CONTROL_FLUSH, nullptr, 0);
 
 		if (file->error != ES_SUCCESS) {
 			success = false;

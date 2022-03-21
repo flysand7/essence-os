@@ -378,8 +378,8 @@ int ExternalFileAppend(ExecutionContext *context, Value *returnValue) {
 int ExternalFileGetSize(ExecutionContext *context, Value *returnValue) {
 	STACK_POP_STRING(entryText, entryBytes);
 	EsDirectoryChild information;
-	bool exists = EsPathQueryInformation(entryText, entryBytes, &information);
-	if (!exists) RETURN_ERROR(ES_ERROR_FILE_DOES_NOT_EXIST);
+	EsError error = EsPathQueryInformation(entryText, entryBytes, &information);
+	if (error != ES_SUCCESS) RETURN_ERROR(ES_ERROR_FILE_DOES_NOT_EXIST);
 	if (information.type != ES_NODE_FILE) RETURN_ERROR(ES_ERROR_INCORRECT_NODE_TYPE);
 	returnValue->i = information.fileSize;
 	return EXTCALL_RETURN_ERR_UNMANAGED;
@@ -1011,7 +1011,7 @@ void EnterCommand(Instance *instance) {
 	uint8_t newline = '\n';
 	EsFileWriteSync(globalCommandHistoryFile.handle, EsFileGetSize(globalCommandHistoryFile.handle), dataBytes, data);
 	EsFileWriteSync(globalCommandHistoryFile.handle, EsFileGetSize(globalCommandHistoryFile.handle), 1, &newline);
-	EsFileControl(globalCommandHistoryFile.handle, ES_FILE_CONTROL_FLUSH); 
+	EsFileControl(globalCommandHistoryFile.handle, ES_FILE_CONTROL_FLUSH, nullptr, 0); 
 
 	EsPanel *commandLogRow = EsPanelCreate(instance->root, ES_CELL_H_FILL | ES_PANEL_STACK | ES_PANEL_HORIZONTAL, EsStyleIntern(&styleInputRow));
 	EsTextDisplayCreate(commandLogRow, ES_FLAGS_DEFAULT, EsStyleIntern(&stylePromptText), "\u2661");

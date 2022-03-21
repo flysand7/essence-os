@@ -17,7 +17,7 @@ Array<Folder *> foldersWithNoAttachedInstances;
 bool FSDirHandlesPath(String path) {
 	EsDirectoryChild information;
 
-	if (EsPathQueryInformation(STRING(path), &information)) {
+	if (ES_SUCCESS == EsPathQueryInformation(STRING(path), &information)) {
 		return information.type == ES_NODE_DIRECTORY;
 	} else {
 		return false;
@@ -91,7 +91,7 @@ EsError FSDirEnumerate(Folder *folder) {
 void FSDirGetTotalSize(Folder *folder) {
 	EsDirectoryChild information;
 
-	if (EsPathQueryInformation(STRING(folder->path), &information)) {
+	if (ES_SUCCESS == EsPathQueryInformation(STRING(folder->path), &information)) {
 		folder->spaceUsed = information.fileSize;
 		folder->spaceTotal = 0;
 	}
@@ -464,7 +464,7 @@ void FolderFileUpdatedAtPath(String path, Instance *instance) {
 	String file = PathGetName(path);
 	String folder = PathGetParent(path);
 	EsDirectoryChild information = {};
-	bool add = EsPathQueryInformation(STRING(path), &information);
+	bool add = ES_SUCCESS == EsPathQueryInformation(STRING(path), &information);
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 		if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;

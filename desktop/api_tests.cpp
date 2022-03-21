@@ -1305,6 +1305,44 @@ bool ResizeFileTest() {
 
 //////////////////////////////////////////////////////////////
 
+bool FileContentTypeTest() {
+	int checkIndex = 0;
+	
+	EsUniqueIdentifier identifier1, identifier2;
+	for (uintptr_t i = 0; i < 16; i++) identifier1.d[i] = i;
+	for (uintptr_t i = 0; i < 16; i++) identifier2.d[i] = 0;
+
+	size_t fileSize;
+	uint32_t *fileData = (uint32_t *) EsFileReadAll(EsLiteral("|Settings:/continue.txt"), &fileSize);
+
+	if (fileData) {
+		size_t count;
+		EsError error;
+		EsDirectoryChild *array = EsDirectoryEnumerate(EsLiteral("|Settings:/test"), &count, &error);
+		CHECK(error == ES_SUCCESS);
+		CHECK(count == 1);
+		CHECK(0 == EsMemoryCompare(&identifier1, &array[0].contentType, sizeof(EsUniqueIdentifier)));
+		EsFileInformation information = EsFileOpen(EsLiteral("|Settings:/test/a"), ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+		CHECK(information.error == ES_SUCCESS);
+		CHECK(0 == EsMemoryCompare(&identifier1, &information.contentType, sizeof(EsUniqueIdentifier)));
+	} else {
+		uint32_t c = 1;
+		CHECK(ES_SUCCESS == EsFileWriteAll(EsLiteral("|Settings:/continue.txt"), &c, sizeof(uint32_t)));
+
+		EsFileInformation information = EsFileOpen(EsLiteral("|Settings:/test/a"), ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+		CHECK(information.error == ES_SUCCESS);
+		CHECK(0 == EsMemoryCompare(&identifier2, &information.contentType, sizeof(EsUniqueIdentifier)));
+		CHECK(ES_SUCCESS == EsFileControl(information.handle, ES_FILE_CONTROL_SET_CONTENT_TYPE, &identifier1, sizeof(identifier1)));
+
+		EsSyscall(ES_SYSCALL_SHUTDOWN, ES_SHUTDOWN_ACTION_RESTART, 0, 0, 0);
+		while (EsMessageReceive());
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////
+
 #endif
 
 const Test tests[] = {
@@ -1323,6 +1361,7 @@ const Test tests[] = {
 	TEST(POSIXSubsystemTest, 120),
 	TEST(RestartTest, 1200),
 	TEST(ResizeFileTest, 600),
+	TEST(FileContentTypeTest, 60),
 };
 
 #ifndef API_TESTS_FOR_RUNNER

@@ -760,8 +760,9 @@ inttype EsConnectionOpenFlags uint32_t none {
 	ES_CONNECTION_OPEN_WAIT = bit 0
 };
 
-inttype EsFileControlFlags uint32_t none {
-	ES_FILE_CONTROL_FLUSH = bit 0
+inttype EsFileControlOperation uint32_t none {
+	ES_FILE_CONTROL_FLUSH = 0 // data/dataBytes ignored
+	ES_FILE_CONTROL_SET_CONTENT_TYPE = 1 // data EsUniqueIdentifier; dataBytes ignored
 };
 
 inttype EsElementUpdateContentFlags uint32_t none {
@@ -838,6 +839,7 @@ inttype EsProcessCreationFlags uint32_t none {
 
 inttype EsVolumeFlags uint32_t none {
 	ES_VOLUME_READ_ONLY = bit 0
+	ES_VOLUME_STORES_CONTENT_TYPE = bit 1
 };
 
 inttype EsPathMoveFlags uint32_t none {
@@ -1340,6 +1342,7 @@ struct EsFileInformation {
 	EsHandle handle; 
 	EsFileOffset size;
 	EsError error;
+	EsUniqueIdentifier contentType; // Zeroed if unsupported, or not initialised.
 };
 
 struct EsDirectoryChild {
@@ -1348,6 +1351,7 @@ struct EsDirectoryChild {
 	EsNodeType type;
 	EsFileOffsetDifference fileSize; // -1 if unsupported.
 	EsFileOffsetDifference directoryChildren; // ES_DIRECTORY_CHILDREN_UNKNOWN if unsupported.
+	EsUniqueIdentifier contentType; // Zeroed if unsupported, or not initialised.
 };
 
 struct EsPoint {
@@ -1635,6 +1639,7 @@ private struct _EsNodeInformation {
 	EsFileOffset fileSize;
 	EsFileOffsetDifference directoryChildren; 
 	EsNodeType type;
+	EsUniqueIdentifier contentType;
 };
 
 struct EsVolumeInformation {
@@ -2137,7 +2142,7 @@ function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **da
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags) @native();
 function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL) @todo(); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
-function EsError EsFileControl(EsHandle file, EsFileControlFlags flags); 
+function EsError EsFileControl(EsHandle file, EsFileControlOperation operation, const void *data, size_t dataBytes) @buffer_in(data, dataBytes); 
 function EsFileInformation EsFileOpen(STRING path, EsFileOpenFlags flags);
 function EsFileOffset EsFileGetSize(EsHandle handle);
 function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer) @buffer_out(buffer, size);
@@ -2150,7 +2155,7 @@ function size_t EsPathFindUniqueName(char *buffer, size_t originalBytes, size_t 
 function EsError EsPathMove(STRING oldPath, STRING newPath, EsPathMoveFlags flags = ES_FLAGS_DEFAULT);
 function bool EsPathExists(STRING filePath, EsNodeType *type = ES_NULL) @out(type); // Returns true if the file/directory exists.
 function EsError EsPathCreate(STRING filePath, EsNodeType type, bool createLeadingDirectories);
-function bool EsPathQueryInformation(STRING filePath, EsDirectoryChild *information) @out(information);
+function EsError EsPathQueryInformation(STRING filePath, EsDirectoryChild *information) @out(information);
 
 function void *EsFileStoreReadAll(EsFileStore *file, size_t *fileSize) @heap_buffer_out(return, fileSize*) @out(fileSize); // Free with EsHeapFree.
 function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);

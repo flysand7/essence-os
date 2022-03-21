@@ -805,6 +805,7 @@ struct KNodeMetadata {
 	bool removingNodeFromCache, removingThisFromCache;
 	EsFileOffset totalSize;
 	EsFileOffsetDifference directoryChildren; // ES_DIRECTORY_CHILDREN_UNKNOWN if not supported by the file system.
+	EsUniqueIdentifier contentType;
 };
 
 struct KNode {
@@ -839,6 +840,8 @@ struct KFileSystem : KDevice {
 
 	char name[64];
 	size_t nameBytes;
+
+	EsVolumeFlags volumeFlags; // Note: ES_VOLUME_READ_ONLY will be automatically set if you don't set the write() callback pointer.
 
 	size_t directoryEntryDataBytes; // The size of the driverData passed to FSDirectoryEntryFound and received in the load callback.
 	size_t nodeDataBytes; // The average bytes allocated by the driver per node (used for managing cache sizes).
@@ -906,6 +909,7 @@ struct KNodeInformation {
 KNodeInformation FSNodeOpen(const char *path, size_t pathBytes, uint32_t flags, KNode *baseDirectory = nullptr);
 
 EsFileOffset FSNodeGetTotalSize(KNode *node);
+EsUniqueIdentifier FSNodeGetContentType(KNode *node);
 
 char *FSNodeGetName(KNode *node, size_t *bytes); // For debugging use only.
 

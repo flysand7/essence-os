@@ -111,9 +111,10 @@ typedef struct DirectoryEntry {
 	/* 32 */ uint64_t creationTime, accessTime, modificationTime;	// Timekeeping. In microseconds since 1st January 1970.
 	/* 56 */ uint64_t fileSize;					// The amount of data referenced by the data attribute in bytes.
 	/* 64 */ EsUniqueIdentifier parent;				// Identifier of the parent directory.
+	/* 80 */ EsUniqueIdentifier contentType;                        // Identifier of the file content type.
 
-#define ESFS_ATTRIBUTE_OFFSET (80)
-	/* 80 */ uint8_t attributes[1024 - ESFS_ATTRIBUTE_OFFSET];	// Attribute list.
+#define ESFS_ATTRIBUTE_OFFSET (96)
+	/* 96 */ uint8_t attributes[1024 - ESFS_ATTRIBUTE_OFFSET];	// Attribute list.
 } DirectoryEntry;
 
 typedef struct GroupDescriptor {

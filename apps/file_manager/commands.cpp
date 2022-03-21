@@ -337,7 +337,7 @@ void CommandPasteTask(EsUserTask *userTask, EsGeneric _task) {
 
 		EsDirectoryChild information;
 
-		if (EsPathQueryInformation(STRING(source), &information)) {
+		if (ES_SUCCESS == EsPathQueryInformation(STRING(source), &information)) {
 			if (information.fileSize == -1) {
 				// TODO Support progress on volumes that don't report total directory sizes.
 			} else {

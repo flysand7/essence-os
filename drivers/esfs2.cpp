@@ -9,7 +9,6 @@
 
 // TODO Calling FSDirectoryEntryFound on all directory entries seen during scanning, even if they're not the target.
 // TODO Informing the block cache when a directory is truncated and its extents are freed.
-// TODO Renaming directories does not work?
 // TODO ESFS_CHECK_XXX are used to report out of memory errors, which shouldn't report KERNEL_PROBLEM_DAMAGED_FILESYSTEM.
 
 #define ESFS_CHECK(x, y)                 if (!(x)) { KernelLog(LOG_ERROR, "EsFS", "damaged file system", y "\n"); return false; }
@@ -342,6 +341,9 @@ static void Sync(KNode *_directory, KNode *node) {
 		// Get the most recent totalSize for the directory.
 		AttributeDirectory *directoryAttribute = (AttributeDirectory *) FindAttribute(&file->entry, ESFS_ATTRIBUTE_DIRECTORY);
 		directoryAttribute->totalSize = FSNodeGetTotalSize(node);
+	} else if (file->type == ES_NODE_FILE) {
+		// Get the most recent contentType for the file.
+		file->entry.contentType = FSNodeGetContentType(node);
 	}
 
 	{
@@ -422,6 +424,7 @@ static EsError Enumerate(KNode *node) {
 				}
 			} else if (metadata.type == ES_NODE_FILE) {
 				metadata.totalSize = entry->fileSize;
+				metadata.contentType = entry->contentType;
 			}
 
 			EsError error = FSDirectoryEntryFound(node, &metadata, &reference, 
@@ -1819,6 +1822,7 @@ static EsError Scan(const char *name, size_t nameLength, KNode *_directory) {
 		}
 	} else {
 		metadata.totalSize = entry->fileSize;
+		metadata.contentType = entry->contentType;
 	}
 
 	metadata.type = entry->nodeType == ESFS_NODE_TYPE_DIRECTORY ? ES_NODE_DIRECTORY : ES_NODE_FILE;
@@ -2009,6 +2013,7 @@ static void Register(KDevice *_parent) {
 	volume->rootDirectoryInitialChildren = rootDirectoryChildren;
 	volume->directoryEntryDataBytes = sizeof(DirectoryEntryReference);
 	volume->nodeDataBytes = sizeof(FSNode);
+	volume->volumeFlags |= ES_VOLUME_STORES_CONTENT_TYPE;
 
 	FSRegisterBootFileSystem(volume, volume->superblock.osInstallation);
 }

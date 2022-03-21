@@ -628,7 +628,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_VOLUME_GET_INFORMATION) {
 	information.spaceUsed = fileSystem->spaceUsed;
 	information.spaceTotal = fileSystem->spaceTotal;
 	information.id = fileSystem->objectID;
-	information.flags = fileSystem->write ? ES_FLAGS_DEFAULT : ES_VOLUME_READ_ONLY;
+	information.flags = fileSystem->volumeFlags;
 	information.installationIdentifier = fileSystem->installationIdentifier;
 	information.identifier = fileSystem->identifier;
 
@@ -702,6 +702,7 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_NODE_OPEN) {
 	information.type = _information.node->directoryEntry->type;
 	information.fileSize = _information.node->directoryEntry->totalSize;
 	information.directoryChildren = _information.node->directoryEntry->directoryChildren;
+	information.contentType = _information.node->directoryEntry->contentType;
 	information.handle = currentProcess->handleTable.OpenHandle(_information.node, flags, KERNEL_OBJECT_NODE);
 	SYSCALL_WRITE(argument3, &information, sizeof(_EsNodeInformation));
 
@@ -1187,13 +1188,26 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_DIRECTORY_ENUMERATE) {
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_CONTROL) {
-	SYSCALL_HANDLE(argument0, KERNEL_OBJECT_NODE, file, KNode);
+	SYSCALL_HANDLE_2(argument0, KERNEL_OBJECT_NODE, handle);
+	KNode *file = (KNode *) handle.object; 
 
 	if (file->directoryEntry->type != ES_NODE_FILE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
+	} else if ((handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) == 0) {
+		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	}
 
-	SYSCALL_RETURN(FSFileControl(file, argument1), false);
+	EsError error = ES_ERROR_UNSUPPORTED;
+
+	if (argument1 == ES_FILE_CONTROL_FLUSH) {
+		error = FSFileControlFlush(file);
+	} else if (argument1 == ES_FILE_CONTROL_SET_CONTENT_TYPE) {
+		EsUniqueIdentifier identifier;
+		SYSCALL_READ(&identifier, argument2, sizeof(identifier));
+		error = FSFileControlSetContentType(file, identifier);
+	}
+
+	SYSCALL_RETURN(error, false);
 }
 
 SYSCALL_IMPLEMENT(ES_SYSCALL_BATCH) {

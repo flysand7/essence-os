@@ -71,16 +71,17 @@ bool EsPathExists(const char *path, ptrdiff_t pathBytes, EsNodeType *type) {
 	return true;
 }
 
-bool EsPathQueryInformation(const char *path, ptrdiff_t pathBytes, EsDirectoryChild *information) {
+EsError EsPathQueryInformation(const char *path, ptrdiff_t pathBytes, EsDirectoryChild *information) {
 	if (pathBytes == -1) pathBytes = EsCStringLength(path);
 	_EsNodeInformation node = {};
 	EsError error = NodeOpen(path, pathBytes, ES_NODE_FAIL_IF_NOT_FOUND, &node);
-	if (error != ES_SUCCESS) return false;
+	if (error != ES_SUCCESS) return error;
 	EsHandleClose(node.handle);
 	information->type = node.type;
 	information->fileSize = node.fileSize;
 	information->directoryChildren = node.directoryChildren;
-	return true;
+	information->contentType = node.contentType;
+	return ES_SUCCESS;
 }
 
 EsError EsPathCreate(const char *path, ptrdiff_t pathBytes, EsNodeType type, bool createLeadingDirectories) {
@@ -94,8 +95,8 @@ EsError EsPathCreate(const char *path, ptrdiff_t pathBytes, EsNodeType type, boo
 	return ES_SUCCESS;
 }
 
-EsError EsFileControl(EsHandle file, uint32_t flags) {
-	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, flags, 0, 0);
+EsError EsFileControl(EsHandle file, EsFileControlOperation operation, const void *data, size_t dataBytes) {
+	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, operation, (uintptr_t) data, dataBytes);
 }
 
 ptrdiff_t DirectoryEnumerateFromHandle(EsHandle directory, EsDirectoryChild *buffer, size_t size) {
@@ -167,6 +168,7 @@ EsFileInformation EsFileOpen(const char *path, ptrdiff_t pathLength, uint32_t fl
 	if (result == ES_SUCCESS) {
 		information.handle = node.handle;
 		information.size = node.fileSize;
+		information.contentType = node.contentType;
 	}
 
 	information.error = result;
@@ -245,7 +247,7 @@ EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file) {
 	} else if (file->type == FILE_STORE_PATH) {
 		EsDirectoryChild information;
 
-		if (EsPathQueryInformation(file->path, file->pathBytes, &information)) {
+		if (ES_SUCCESS == EsPathQueryInformation(file->path, file->pathBytes, &information)) {
 			return file->pathBytes;
 		} else {
 			return -1;
@@ -576,7 +578,7 @@ EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **data, const
 		offset += sizes[i];
 	}
 
-	error = EsFileControl(handle, ES_FILE_CONTROL_FLUSH);
+	error = EsFileControl(handle, ES_FILE_CONTROL_FLUSH, nullptr, 0);
 	return error;
 }
 

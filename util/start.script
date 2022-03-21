@@ -15,6 +15,10 @@ str compilerPath #persist;
 int compilerIndex #persist;
 bool runningMakefiles #persist;
 
+/////////////////////////////////////////////////////////////
+// Environment setup
+/////////////////////////////////////////////////////////////
+
 void Setup(bool forAutomation) {
 	assert PersistRead("bin/start.script.persist");
 
@@ -108,6 +112,10 @@ void Setup(bool forAutomation) {
 		assert StringContains(SystemShellEvaluate("%targetToolchainPrefix%-gcc -mno-red-zone -print-libgcc-file-name"), "no-red-zone");
 	}
 }
+
+/////////////////////////////////////////////////////////////
+// Command interface
+/////////////////////////////////////////////////////////////
 
 void DoCommand(str command) {
 	if command == "line-count" {
@@ -214,6 +222,10 @@ void Start() {
 		DoCommand(options);
 	}
 }
+
+/////////////////////////////////////////////////////////////
+// Automation scripts
+/////////////////////////////////////////////////////////////
 
 void GenerateOVF() {
 	str[] template = StringSplitByCharacter(FileReadAll("util/template.ovf"):assert(), "$", true);

@@ -59,6 +59,7 @@ FILE *systemLog;
 char compilerPath[4096];
 int argc;
 char **argv;
+bool runningTests;
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024
@@ -985,12 +986,16 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 		Run(emulator, log, debug);
 	}
 
-	exit(encounteredErrors ? 1 : 0);
+	if (!runningTests) {
+		exit(encounteredErrors ? 1 : 0);
+	}
 }
 
 void RunTests(int singleTest) {
 	// TODO Capture emulator memory dump if a test causes a EsPanic.
 	// TODO Using SMP/KVM if available in the optimised test runs.
+
+	runningTests = true;
 
 	int successCount = 0, failureCount = 0;
 	CallSystem("mkdir -p root/Essence/Settings/API\\ Tests");
