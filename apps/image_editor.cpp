@@ -736,14 +736,27 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 		EsBuffer buffer = { .out = _buffer, .bytes = _bufferBytes };
 		buffer.fileStore = message->instanceSave.file;
 
+		EsUniqueIdentifier typeJPG = (EsUniqueIdentifier) 
+			{{ 0xD8, 0xC2, 0x13, 0xB0, 0x53, 0x64, 0x82, 0x11, 0x48, 0x7B, 0x5B, 0x64, 0x0F, 0x92, 0xB9, 0x38 }};
+		EsUniqueIdentifier typeBMP = (EsUniqueIdentifier) 
+			{{ 0x40, 0x15, 0xB7, 0x82, 0x99, 0x6D, 0xD5, 0x41, 0x96, 0xD5, 0x3B, 0x6D, 0xA6, 0x5F, 0x07, 0x34 }};
+		EsUniqueIdentifier typeTGA = (EsUniqueIdentifier) 
+			{{ 0x69, 0x62, 0x4E, 0x28, 0xA1, 0xE1, 0x7B, 0x35, 0x64, 0x2E, 0x36, 0x01, 0x65, 0x91, 0xBE, 0xA1 }};
+		EsUniqueIdentifier typePNG = (EsUniqueIdentifier) 
+			{{ 0x59, 0x21, 0x05, 0x4D, 0x34, 0x40, 0xAB, 0x61, 0xEC, 0xF9, 0x7D, 0x5C, 0x6E, 0x04, 0x96, 0xAE }};
+
 		if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpg"))
 				|| 0 == EsStringCompare(extension, extensionBytes, EsLiteral("jpeg"))) {
+			EsFileStoreSetContentType(message->instanceSave.file, typeJPG);
 			stbi_write_jpg_to_func(WriteCallback, &buffer, width, height, 4, bits, 90);
 		} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("bmp"))) {
+			EsFileStoreSetContentType(message->instanceSave.file, typeBMP);
 			stbi_write_bmp_to_func(WriteCallback, &buffer, width, height, 4, bits);
 		} else if (0 == EsStringCompare(extension, extensionBytes, EsLiteral("tga"))) {
+			EsFileStoreSetContentType(message->instanceSave.file, typeTGA);
 			stbi_write_tga_to_func(WriteCallback, &buffer, width, height, 4, bits);
 		} else {
+			EsFileStoreSetContentType(message->instanceSave.file, typePNG);
 			stbi_write_png_to_func(WriteCallback, &buffer, width, height, 4, bits, stride);
 		}
 

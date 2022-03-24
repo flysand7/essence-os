@@ -22,10 +22,11 @@ void CommandRename(Instance *instance, EsElement *, EsCommand *) {
 	instance->rename.index = index;
 
 	FolderEntry *entry = instance->listContents[index].entry;
+	ptrdiff_t extensionOffset = PathGetExtension(entry->GetName()).text - entry->name;
 
-	if (entry->extensionOffset != entry->nameBytes) {
+	if (extensionOffset != entry->nameBytes) {
 		// Don't include the file extension in the initial selection.
-		EsTextboxSetSelection(instance->rename.textbox, 0, 0, 0, entry->extensionOffset - 1);
+		EsTextboxSetSelection(instance->rename.textbox, 0, 0, 0, extensionOffset - 1);
 	}
 
 	instance->rename.textbox->messageUser = [] (EsElement *element, EsMessage *message) {
@@ -499,23 +500,32 @@ void InstanceRegisterCommands(Instance *instance) {
 	EsCommandRegister(&instance->commandRename, instance, INTERFACE_STRING(FileManagerRenameAction), CommandRename, stableCommandID++, "F2");
 
 	EsCommandRegister(&instance->commandViewDetails, instance, INTERFACE_STRING(CommonListViewTypeDetails), [] (Instance *instance, EsElement *, EsCommand *) {
-		uint8_t old = instance->viewSettings.viewType;
+		if (instance->viewSettings.viewType != VIEW_DETAILS) {
+			EsElementStartTransition(instance->list, ES_TRANSITION_FADE, ES_ELEMENT_TRANSITION_CONTENT_ONLY, 1.0f);
+		}
+
 		instance->viewSettings.viewType = VIEW_DETAILS;
-		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
+		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
 	EsCommandRegister(&instance->commandViewTiles, instance, INTERFACE_STRING(CommonListViewTypeTiles), [] (Instance *instance, EsElement *, EsCommand *) {
-		uint8_t old = instance->viewSettings.viewType;
+		if (instance->viewSettings.viewType != VIEW_TILES) {
+			EsElementStartTransition(instance->list, ES_TRANSITION_FADE, ES_ELEMENT_TRANSITION_CONTENT_ONLY, 1.0f);
+		}
+
 		instance->viewSettings.viewType = VIEW_TILES;
-		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
+		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 
 	EsCommandRegister(&instance->commandViewThumbnails, instance, INTERFACE_STRING(CommonListViewTypeThumbnails), [] (Instance *instance, EsElement *, EsCommand *) {
-		uint8_t old = instance->viewSettings.viewType;
+		if (instance->viewSettings.viewType != VIEW_THUMBNAILS) {
+			EsElementStartTransition(instance->list, ES_TRANSITION_FADE, ES_ELEMENT_TRANSITION_CONTENT_ONLY, 1.0f);
+		}
+
 		instance->viewSettings.viewType = VIEW_THUMBNAILS;
-		InstanceRefreshViewType(instance, old != instance->viewSettings.viewType);
+		InstanceRefreshViewType(instance);
 		InstanceViewSettingsUpdated(instance);
 	}, stableCommandID++);
 

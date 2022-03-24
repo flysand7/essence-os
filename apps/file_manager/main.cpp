@@ -53,12 +53,14 @@ const char *errorTypeStrings[] = {
 #define LOAD_FOLDER_NO_FOCUS (1 << 8)
 
 struct FolderEntry {
+	// TODO Can this structure be made smaller?
 	uint16_t handles;
-	bool isFolder, sizeUnknown;
-	uint8_t nameBytes, extensionOffset, internalNameBytes; // 0 -> 256.
+	bool isFolder, sizeUnknown, guessedContentType;
+	uint8_t nameBytes, internalNameBytes; // 0 -> 256.
 	char *name, *internalName;
 	EsFileOffset size, previousSize;
 	uint64_t id;
+	EsUniqueIdentifier contentType;
 
 	inline String GetName() { 
 		return { .text = name, .bytes = nameBytes ?: 256u, .allocated = nameBytes ?: 256u }; 
@@ -66,11 +68,6 @@ struct FolderEntry {
 
 	inline String GetInternalName() { 
 		return { .text = internalName, .bytes = internalNameBytes ?: 256u, .allocated = internalNameBytes ?: 256u }; 
-	}
-
-	inline String GetExtension() { 
-		uintptr_t offset = extensionOffset ?: 256u;
-		return { .text = name + offset, .bytes = (nameBytes ?: 256u) - offset }; 
 	}
 };
 
@@ -227,7 +224,7 @@ void InstanceReportError(struct Instance *instance, int error, EsError code);
 bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, int historyMode = 0);
 void InstanceUpdateStatusString(Instance *instance);
 void InstanceViewSettingsUpdated(Instance *instance);
-void InstanceRefreshViewType(Instance *instance, bool startTransition);
+void InstanceRefreshViewType(Instance *instance);
 void InstanceFolderPathChanged(Instance *instance, bool fromLoadFolder);
 void InstanceAddContents(struct Instance *instance, HashTable *newEntries);
 void InstanceAddSingle(struct Instance *instance, ListEntry newEntry);
@@ -583,6 +580,10 @@ void _start() {
 				StringDestroy(&openDocuments[i]);
 			}
 
+			for (uintptr_t i = 0; i < knownFileTypes.Length(); i++) {
+				knownFileTypes[i].applicationEntries.Free();
+			}
+
 			EsAssert(!instances.Length());
 			EsHeapFree(fileTypesBuffer.out);
 
@@ -608,7 +609,7 @@ void _start() {
 			size_t pathSectionCount = PathCountSections(fullPath);
 
 			for (uintptr_t i = 0; i < pathSectionCount; i++) {
-				FolderFileUpdatedAtPath(PathGetParent(fullPath, i + 1), nullptr);
+				FolderFileUpdatedAtPath(PathGetParent(fullPath, i + 1), nullptr, true);
 			}
 
 			EsHandleClose(message->user.context1.u);

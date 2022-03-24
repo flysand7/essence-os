@@ -153,7 +153,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 			}
 		}
 
-		InstanceRefreshViewType(instance, false);
+		InstanceRefreshViewType(instance);
 
 		// Update the user interface.
 
@@ -168,11 +168,7 @@ bool InstanceLoadFolder(Instance *instance, String path /* takes ownership */, i
 	return true;
 }
 
-void InstanceRefreshViewType(Instance *instance, bool startTransition) {
-	if (startTransition) {
-		EsElementStartTransition(instance->list, ES_TRANSITION_FADE, ES_ELEMENT_TRANSITION_CONTENT_ONLY, 1.0f);
-	}
-
+void InstanceRefreshViewType(Instance *instance) {
 	EsCommandSetCheck(&instance->commandViewDetails,    instance->viewSettings.viewType == VIEW_DETAILS    ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 	EsCommandSetCheck(&instance->commandViewTiles,      instance->viewSettings.viewType == VIEW_TILES      ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
 	EsCommandSetCheck(&instance->commandViewThumbnails, instance->viewSettings.viewType == VIEW_THUMBNAILS ? ES_CHECK_CHECKED : ES_CHECK_UNCHECKED, false);
@@ -222,7 +218,11 @@ int InstanceCompareFolderEntries(FolderEntry *left, FolderEntry *right, uint16_t
 		if (sortColumn == COLUMN_NAME) {
 			result = EsStringCompare(STRING(left->GetName()), STRING(right->GetName()));
 		} else if (sortColumn == COLUMN_TYPE) {
-			result = EsStringCompare(STRING(left->GetExtension()), STRING(right->GetExtension()));
+			if (!left->isFolder) {
+				FileType *leftType = FolderEntryGetType(nullptr, left);
+				FileType *rightType = FolderEntryGetType(nullptr, right);
+				result = EsStringCompare(leftType->name, leftType->nameBytes, rightType->name, rightType->nameBytes);
+			}
 		} else if (sortColumn == COLUMN_SIZE) {
 			if (right->size < left->size) result = 1;
 			else if (right->size > left->size) result = -1;
@@ -385,6 +385,8 @@ void InstanceAddContents(Instance *instance, HashTable *newEntries) {
 		EsListViewRemove(instance->list, 0, 0, oldListEntryCount);
 	}
 
+	// TODO Optimize for each sorting mode.
+	// 	For example, sorting by type is pretty bad because it has to lookup file entry types to do each comparison.
 	InstanceSortListContents(instance->listContents.array, instance->listContents.Length(), instance->viewSettings.sortColumn);
 
 	if (instance->listContents.Length()) {
@@ -835,6 +837,8 @@ int ListCallback(EsElement *element, EsMessage *message) {
 
 		if (listEntry) {
 			FolderEntry *entry = listEntry->entry;
+			EsUniqueIdentifier applicationContentType = (EsUniqueIdentifier) {{ 0xBF, 0x88, 0xE4, 0xDD, 0x71, 0xE8, 0x5F, 0xDE, 
+				0x16, 0xC5, 0xAF, 0x33, 0x41, 0xC7, 0xA2, 0x96 }};
 
 			if (entry->isFolder) {
 				String path = instance->folder->itemHandler->getPathForChild(instance->folder, entry);
@@ -850,7 +854,7 @@ int ListCallback(EsElement *element, EsMessage *message) {
 				} else {
 					InstanceLoadFolder(instance, path);
 				}
-			} else if (StringEquals(entry->GetExtension(), StringFromLiteral("esx"))) {
+			} else if (0 == EsMemoryCompare(&entry->contentType, &applicationContentType, sizeof(EsUniqueIdentifier))) {
 				// TODO Temporary.
 				String path = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(entry->GetInternalName()));
 
@@ -866,11 +870,18 @@ int ListCallback(EsElement *element, EsMessage *message) {
 				StringDestroy(&path);
 			} else {
 				FileType *fileType = FolderEntryGetType(instance->folder, entry);
+				FileTypeApplicationEntry *typeEntry = nullptr;
 
-				if (fileType->openHandler) {
+				for (uintptr_t i = 0; i < fileType->applicationEntries.Length(); i++) {
+					if (fileType->applicationEntries[i].open) {
+						typeEntry = &fileType->applicationEntries[i];
+					}
+				}
+
+				if (typeEntry) {
 					String path = StringAllocateAndFormat("%s%s", STRFMT(instance->folder->path), STRFMT(entry->GetInternalName()));
 					EsApplicationStartupRequest request = {};
-					request.id = fileType->openHandler;
+					request.id = typeEntry->application;
 					request.filePath = path.text;
 					request.filePathBytes = path.bytes;
 					request.flags = EsKeyboardIsCtrlHeld() || message->chooseItem.source == ES_LIST_VIEW_CHOOSE_ITEM_MIDDLE_CLICK 

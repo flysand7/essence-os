@@ -269,6 +269,23 @@ int InstanceCallback(Instance *instance, EsMessage *message) {
 		size_t byteCount;
 		char *contents = EsTextboxGetContents(instance->textboxDocument, &byteCount);
 		EsFileStoreWriteAll(message->instanceSave.file, contents, byteCount);
+
+		bool fileNameContainsExtension = false;
+
+		for (uintptr_t i = 0; i < (uintptr_t) message->instanceSave.nameOrPathBytes && i < 5; i++) {
+			if (message->instanceSave.nameOrPath[message->instanceSave.nameOrPathBytes - i - 1] == '.') {
+				fileNameContainsExtension = true;
+			}
+		}
+
+		if (fileNameContainsExtension) {
+			// Don't set a content type, it should be matched from the file extension.
+		} else {
+			EsUniqueIdentifier plainText = (EsUniqueIdentifier) 
+				{{ 0x25, 0x65, 0x4C, 0x89, 0xE7, 0x29, 0xEA, 0x9E, 0xB5, 0xBE, 0xB5, 0xCA, 0xA7, 0x60, 0xBD, 0x3D }};
+			EsFileStoreSetContentType(message->instanceSave.file, plainText);
+		}
+
 		EsHeapFree(contents);
 		EsInstanceSaveComplete(instance, message->instanceSave.file, true);
 	} else if (message->type == ES_MSG_INSTANCE_OPEN) {

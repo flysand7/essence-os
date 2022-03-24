@@ -589,6 +589,16 @@ void _StringFormat(FormatCallback callback, void *callbackData, const char *form
 					callback('}', callbackData);
 				} break;
 
+				case 'I': {
+					EsUniqueIdentifier value = va_arg(arguments, EsUniqueIdentifier);
+
+					for (uintptr_t i = 0; i < 16; i++) {
+						if (i) callback('-', callbackData);
+						callback(hexChars[(value.d[i] & 0xF0) >> 4], callbackData);
+						callback(hexChars[(value.d[i] & 0xF)], callbackData);
+					}
+				} break;
+
 				case 'X': {
 					uintptr_t value = va_arg(arguments, uintptr_t);
 					callback(hexChars[(value & 0xF0) >> 4], callbackData);
@@ -920,6 +930,7 @@ int64_t EsStringParseInteger(const char **string, size_t *length, int base) {
 int EsStringCompareRaw(const char *s1, ptrdiff_t length1, const char *s2, ptrdiff_t length2) {
 	if (length1 == -1) length1 = EsCStringLength(s1);
 	if (length2 == -1) length2 = EsCStringLength(s2);
+	if (s1 == s2 && length1 == length2) return 0;
 
 	while (length1 || length2) {
 		if (!length1) return -1;
@@ -945,6 +956,7 @@ int EsStringCompare(const char *s1, ptrdiff_t _length1, const char *s2, ptrdiff_
 	if (_length1 == -1) _length1 = EsCStringLength(s1);
 	if (_length2 == -1) _length2 = EsCStringLength(s2);
 	size_t length1 = _length1, length2 = _length2;
+	if (s1 == s2 && length1 == length2) return 0;
 
 	while (length1 || length2) {
 		if (!length1) return -1;
@@ -1070,6 +1082,28 @@ static int64_t ConvertCharacterToDigit(int character, int base) {
 	}
 
 	return result;
+}
+
+EsUniqueIdentifier EsUniqueIdentifierParse(const char *text, ptrdiff_t bytes) {
+	if (bytes == -1) bytes = EsCStringLength(text);
+	if (bytes != 3 * 16 - 1) return {};
+
+	for (uintptr_t i = 0; i < 15; i++) {
+		if (text[i * 3 + 2] != '-') {
+			return {};
+		}
+	}
+
+	EsUniqueIdentifier identifier;
+
+	for (uintptr_t i = 0; i < 16; i++) {
+		int64_t a = ConvertCharacterToDigit(text[i * 3 + 0], 16);
+		int64_t b = ConvertCharacterToDigit(text[i * 3 + 1], 16);
+		if (a == -1 || b == -1) return {};
+		identifier.d[i] = a * 16 + b;
+	}
+
+	return identifier;
 }
 
 int64_t EsIntegerParse(const char *text, ptrdiff_t bytes) {

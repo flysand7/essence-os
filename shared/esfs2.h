@@ -694,12 +694,13 @@ void PrintTree(uint64_t block, int indent = 2, uint64_t lowerThan = -1) {
 }
 #endif
 
-void NewDirectoryEntry(DirectoryEntry *entry, uint8_t nodeType, EsUniqueIdentifier parentUID, const char *name) {
+void NewDirectoryEntry(DirectoryEntry *entry, uint8_t nodeType, EsUniqueIdentifier parentUID, const char *name, EsUniqueIdentifier contentType) {
 	memcpy(entry->signature, ESFS_DIRECTORY_ENTRY_SIGNATURE, 8);
 	GenerateUniqueIdentifier(&entry->identifier, false);
 	entry->attributeOffset = ESFS_ATTRIBUTE_OFFSET;
 	entry->nodeType = nodeType; 
 	entry->parent = parentUID;
+	entry->contentType = contentType;
 
 	uint8_t *position = (uint8_t *) entry + entry->attributeOffset;
 	size_t newFilenameSize = ((strlen(name) + ESFS_FILENAME_HEADER_SIZE - 1) & ~7) + 8; // Size of name + size of header, rounded up to the nearest 8 bytes.
@@ -736,7 +737,7 @@ void NewDirectoryEntry(DirectoryEntry *entry, uint8_t nodeType, EsUniqueIdentifi
 }
 
 bool AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, DirectoryEntryReference *outputReference, 
-		DirectoryEntryReference directoryReference) {
+		DirectoryEntryReference directoryReference, EsUniqueIdentifier contentType) {
 	// Log("add %s to %s\n", name, path);
 
 	// Step 1: Resize the directory so that it can fit another directory entry.
@@ -770,7 +771,7 @@ bool AddNode(const char *name, uint8_t nodeType, DirectoryEntry *outputEntry, Di
 	DirectoryEntry entry = {};
 
 	{
-		NewDirectoryEntry(&entry, nodeType, directory.identifier, name);
+		NewDirectoryEntry(&entry, nodeType, directory.identifier, name, contentType);
 		// Log("\tchild nodes: %ld\n", directoryAttribute->childNodes);
 
 		if (!AccessNode(&directory, &entry, (directoryAttribute->childNodes - 1) * sizeof(DirectoryEntry), sizeof(DirectoryEntry), &reference, false)) {
@@ -1041,6 +1042,7 @@ typedef struct ImportNode {
 	const char *name, *path;
 	struct ImportNode *children;
 	bool isFile;
+	EsUniqueIdentifier contentType;
 } ImportNode;
 
 int64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
@@ -1059,7 +1061,7 @@ int64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 				DirectoryEntryReference reference;
 				DirectoryEntry entry;
 
-				if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_FILE, &entry, &reference, parentDirectory)) {
+				if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_FILE, &entry, &reference, parentDirectory, node.children[i].contentType)) {
 					return -1;
 				}
 
@@ -1081,7 +1083,7 @@ int64_t Import(ImportNode node, DirectoryEntryReference parentDirectory) {
 			}
 		} else {
 			DirectoryEntryReference reference;
-			if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_DIRECTORY, NULL, &reference, parentDirectory)) return -1;
+			if (!AddNode(node.children[i].name, ESFS_NODE_TYPE_DIRECTORY, NULL, &reference, parentDirectory, node.children[i].contentType)) return -1;
 			int64_t size = Import(node.children[i], reference);
 			if (size == -1) return -1;
 			DirectoryEntry directory; 
@@ -1241,7 +1243,8 @@ bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 		DirectoryEntry entry;
 		EsUniqueIdentifier unused = {};
 
-		NewDirectoryEntry(&entry, ESFS_NODE_TYPE_FILE, unused, "Kernel");
+		EsUniqueIdentifier elf = (EsUniqueIdentifier) {{ 0xAB, 0xDE, 0x98, 0xB5, 0x56, 0x2C, 0x04, 0xDF, 0x1E, 0x43, 0xC8, 0x10, 0x24, 0x63, 0xDB, 0xB8 }};
+		NewDirectoryEntry(&entry, ESFS_NODE_TYPE_FILE, unused, "Kernel", elf);
 
 		if (WriteDirectoryEntryReference(reference, &entry)) {
 			if (ResizeNode(&entry, kernelBytes)) {

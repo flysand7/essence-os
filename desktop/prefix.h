@@ -425,6 +425,7 @@ extern "C" void *EsBufferWrite(EsBuffer *buffer, const void *source, size_t writ
 #define ES_MSG_PING				((EsMessageType) (ES_MSG_SYSTEM_START + 0x203)) /* Sent by Desktop to check processes are processing messages. */
 #define ES_MSG_WAKEUP				((EsMessageType) (ES_MSG_SYSTEM_START + 0x204)) /* Sent to wakeup the message thread, so that it can process locally posted messages. */
 #define ES_MSG_INSTANCE_OPEN_DELAYED		((EsMessageType) (ES_MSG_SYSTEM_START + 0x205))
+#define ES_MSG_INSTANCE_SAVE_COMPLETE_DELAYED   ((EsMessageType) (ES_MSG_SYSTEM_START + 0x206))
 
 #endif
 

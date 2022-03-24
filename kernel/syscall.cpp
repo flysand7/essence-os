@@ -1193,18 +1193,38 @@ SYSCALL_IMPLEMENT(ES_SYSCALL_FILE_CONTROL) {
 
 	if (file->directoryEntry->type != ES_NODE_FILE) {
 		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_NODE_TYPE, true);
-	} else if ((handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) == 0) {
-		SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
 	}
 
 	EsError error = ES_ERROR_UNSUPPORTED;
 
 	if (argument1 == ES_FILE_CONTROL_FLUSH) {
+		if ((handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) == 0) {
+			SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+		}
+
 		error = FSFileControlFlush(file);
 	} else if (argument1 == ES_FILE_CONTROL_SET_CONTENT_TYPE) {
+		if ((handle.flags & (ES_FILE_WRITE_SHARED | ES_FILE_WRITE)) == 0) {
+			SYSCALL_RETURN(ES_FATAL_ERROR_INCORRECT_FILE_ACCESS, true);
+		}
+
 		EsUniqueIdentifier identifier;
 		SYSCALL_READ(&identifier, argument2, sizeof(identifier));
 		error = FSFileControlSetContentType(file, identifier);
+	} else if (argument1 == ES_FILE_CONTROL_GET_CONTENT_TYPE) {
+		EsUniqueIdentifier identifier;
+		KWriterLockTake(&file->writerLock, K_LOCK_SHARED);
+
+		if (file->fileSystem->flags & ES_VOLUME_STORES_CONTENT_TYPE) {
+			identifier = file->directoryEntry->contentType;
+			error = ES_SUCCESS;
+		}
+
+		KWriterLockReturn(&file->writerLock, K_LOCK_SHARED);
+
+		if (error == ES_SUCCESS) {
+			SYSCALL_WRITE(argument2, &identifier, sizeof(EsUniqueIdentifier));
+		}
 	}
 
 	SYSCALL_RETURN(error, false);

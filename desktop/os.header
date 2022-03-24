@@ -763,6 +763,7 @@ inttype EsConnectionOpenFlags uint32_t none {
 inttype EsFileControlOperation uint32_t none {
 	ES_FILE_CONTROL_FLUSH = 0 // data/dataBytes ignored
 	ES_FILE_CONTROL_SET_CONTENT_TYPE = 1 // data EsUniqueIdentifier; dataBytes ignored
+	ES_FILE_CONTROL_GET_CONTENT_TYPE = 2 // data EsUniqueIdentifier; dataBytes ignored
 };
 
 inttype EsElementUpdateContentFlags uint32_t none {
@@ -2142,7 +2143,7 @@ function EsError EsFileWriteAllGatherFromHandle(EsHandle handle, const void **da
 function void *EsFileMap(STRING filePath, size_t *fileSize, uint32_t flags) @native();
 function EsError EsFileCopy(STRING source, STRING destination, void **copyBuffer = ES_NULL, EsFileCopyCallback callback = ES_NULL, EsGeneric data = ES_NULL) @todo(); // If you are copying lots of files, you can reuse the temporary copy buffer by storing the output copyBuffer; call EsHeapFree on it after the last copy.
 
-function EsError EsFileControl(EsHandle file, EsFileControlOperation operation, const void *data, size_t dataBytes) @buffer_in(data, dataBytes); 
+function EsError EsFileControl(EsHandle file, EsFileControlOperation operation, void *data, size_t dataBytes) @buffer_out(data, dataBytes); // TODO This annotation is incorrect, it might be in or out depending on the operation.
 function EsFileInformation EsFileOpen(STRING path, EsFileOpenFlags flags);
 function EsFileOffset EsFileGetSize(EsHandle handle);
 function size_t EsFileReadSync(EsHandle file, EsFileOffset offset, size_t size, void *buffer) @buffer_out(buffer, size);
@@ -2162,6 +2163,7 @@ function bool EsFileStoreWriteAll(EsFileStore *file, const void *data, size_t da
 function bool EsFileStoreAppend(EsFileStore *file, const void *data, size_t dataBytes) @buffer_in(data, dataBytes);
 function EsFileOffsetDifference EsFileStoreGetSize(EsFileStore *file); // Returns -1 on error.
 function void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) @native();
+function void EsFileStoreSetContentType(EsFileStore *file, EsUniqueIdentifier identifier);
 
 // These calls require permission_all_files.
 function bool EsMountPointGetVolumeInformation(STRING prefix, EsVolumeInformation *information) @out(information); // Returns false if the mount point does not exist.
@@ -2394,6 +2396,7 @@ function bool EsUTF8IsValid(STRING input); // Does not check for surrogate chara
 
 function double EsDoubleParse(STRING string, char **endptr) @native(); 
 function int64_t EsIntegerParse(STRING text); // Parses in hexadecimal if the first two characters are '0x'.
+function EsUniqueIdentifier EsUniqueIdentifierParse(STRING text);
 
 // CRT functions.
 

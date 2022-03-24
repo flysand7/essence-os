@@ -697,9 +697,14 @@ bool MMHandlePageFault(MMSpace *space, uintptr_t address, unsigned faultFlags) {
 			pagesToRead = region->pageCount - (offsetIntoRegion + region->data.file.zeroedBytes) / K_PAGE_SIZE;
 		}
 
+		// This shouldn't block, because mapped files cannot be resized.
+		KWriterLockTake(&region->data.file.node->resizeLock, K_LOCK_SHARED);
+
 		EsError error = CCSpaceAccess(&region->data.file.node->cache, (void *) address, 
 				offsetIntoRegion + region->data.file.offset, pagesToRead * K_PAGE_SIZE, 
 				CC_ACCESS_MAP, space, flags);
+
+		KWriterLockReturn(&region->data.file.node->resizeLock, K_LOCK_SHARED);
 
 		KMutexAcquire(&region->data.mapMutex);
 

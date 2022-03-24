@@ -95,7 +95,7 @@ EsError EsPathCreate(const char *path, ptrdiff_t pathBytes, EsNodeType type, boo
 	return ES_SUCCESS;
 }
 
-EsError EsFileControl(EsHandle file, EsFileControlOperation operation, const void *data, size_t dataBytes) {
+EsError EsFileControl(EsHandle file, EsFileControlOperation operation, void *data, size_t dataBytes) {
 	return EsSyscall(ES_SYSCALL_FILE_CONTROL, file, operation, (uintptr_t) data, dataBytes);
 }
 
@@ -275,6 +275,21 @@ void *EsFileStoreMap(EsFileStore *file, size_t *fileSize, uint32_t flags) {
 	} else {
 		EsAssert(false);
 		return nullptr;
+	}
+}
+
+void EsFileStoreSetContentType(EsFileStore *file, EsUniqueIdentifier identifier) {
+	if (file->type == FILE_STORE_HANDLE) {
+		EsFileControl(file->handle, ES_FILE_CONTROL_SET_CONTENT_TYPE, &identifier, sizeof(identifier));
+	} else if (file->type == FILE_STORE_PATH) {
+		EsFileInformation information = EsFileOpen(file->path, file->pathBytes, ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+
+		if (information.error == ES_SUCCESS) {
+			EsFileControl(file->handle, ES_FILE_CONTROL_SET_CONTENT_TYPE, &identifier, sizeof(identifier));
+			EsHandleClose(information.handle);
+		}
+	} else {
+		// The file store backend doesn't support this operation.
 	}
 }
 
@@ -545,7 +560,7 @@ EsError EsFileWriteAllGather(const char *filePath, ptrdiff_t filePathLength, con
 		filePathLength = EsCStringLength(filePath);
 	}
 
-	EsFileInformation information = EsFileOpen((char *) filePath, filePathLength, ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
+	EsFileInformation information = EsFileOpen(filePath, filePathLength, ES_FILE_WRITE | ES_NODE_CREATE_DIRECTORIES);
 
 	if (ES_SUCCESS != information.error) {
 		return information.error;

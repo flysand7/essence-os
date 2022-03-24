@@ -98,6 +98,7 @@ struct OpenDocument {
 	size_t pathBytes;
 	char *temporarySavePath;
 	size_t temporarySavePathBytes;
+	EsUniqueIdentifier temporarySavePreviousContentType; // The previous content type. Used as the default if the save operation does not set a new content type. This is useful for text/hex editors, where there is no intrinsic content type.
 	EsHandle readHandle;
 	EsObjectID id;
 	EsObjectID currentWriter;
@@ -2312,6 +2313,11 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 		EsHeapFree(document->temporarySavePath);
 		document->temporarySavePath = nullptr;
 
+		if (ES_SUCCESS != EsFileControl(document->readHandle, ES_FILE_CONTROL_GET_CONTENT_TYPE, 
+					&document->temporarySavePreviousContentType, sizeof(EsUniqueIdentifier))) {
+			document->temporarySavePreviousContentType = {};
+		}
+
 		EsHandle fileHandle;
 		m.tabOperation.error = TemporaryFileCreate(&fileHandle, &document->temporarySavePath, &document->temporarySavePathBytes, ES_FILE_WRITE);
 
@@ -2408,6 +2414,22 @@ void ApplicationInstanceCompleteSave(ApplicationInstance *fromInstance) {
 	} else {
 		EsHandleClose(document->readHandle);
 		document->readHandle = file.handle;
+	}
+
+	EsUniqueIdentifier newContentType = {}, zeroContentType = {};
+
+	if (ES_SUCCESS == EsFileControl(document->readHandle, ES_FILE_CONTROL_GET_CONTENT_TYPE, &newContentType, sizeof(EsUniqueIdentifier))) {
+		if (0 == EsMemoryCompare(&newContentType, &zeroContentType, sizeof(EsUniqueIdentifier))
+				&& EsMemoryCompare(&document->temporarySavePreviousContentType, &zeroContentType, sizeof(EsUniqueIdentifier))) {
+			// The application did not set a content type, so use the previous content type of the file.
+			EsFileInformation write = EsFileOpen(document->path, document->pathBytes, ES_FILE_WRITE_SHARED | ES_NODE_FAIL_IF_NOT_FOUND);
+
+			if (write.error == ES_SUCCESS) {
+				EsFileControl(write.handle, ES_FILE_CONTROL_SET_CONTENT_TYPE, 
+						&document->temporarySavePreviousContentType, sizeof(EsUniqueIdentifier));
+				EsHandleClose(write.handle);
+			}
+		}
 	}
 
 	document->currentWriter = 0;

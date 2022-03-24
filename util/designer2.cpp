@@ -3758,6 +3758,9 @@ int _UIInstanceCallback(EsInstance *instance, EsMessage *message) {
 	if (message->type == ES_MSG_INSTANCE_SAVE) {
 		fileStore = message->instanceSave.file;
 		DocumentSave(nullptr);
+		EsUniqueIdentifier type = (EsUniqueIdentifier) 
+			{{ 0x26, 0x4A, 0xE0, 0x6C, 0x0F, 0xE8, 0x2C, 0xE7, 0xF4, 0x6E, 0x4E, 0x76, 0x5B, 0x4A, 0xCF, 0x4F }};
+		EsFileStoreSetContentType(fileStore, type);
 		EsInstanceSaveComplete(instance, fileStore, true);
 		fileStore = nullptr;
 	} else if (message->type == ES_MSG_INSTANCE_OPEN) {

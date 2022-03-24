@@ -87,7 +87,7 @@ struct TextPiece {
 	uintptr_t glyphOffset;
 	size_t glyphCount;
 	uintptr_t start, end;
-	bool isTabPiece;
+	bool isTabPiece, isEllipsisPiece;
 };
 
 struct TextLine {
@@ -1829,6 +1829,7 @@ void TextAddEllipsis(EsTextPlan *plan, int32_t maximumLineWidth, bool needFinalE
 		piece.glyphOffset = plan->glyphInfos.Length();
 		piece.ascent  =  FontGetAscent (&plan->font) + plan->currentTextStyle->baselineOffset, 
 		piece.descent = -FontGetDescent(&plan->font) - plan->currentTextStyle->baselineOffset;
+		piece.isEllipsisPiece = true;
 
 		for (uintptr_t i = 0; i < glyphCount; i++) {
 			if (!plan->glyphInfos.Add(glyphInfos[i])) break;
@@ -2295,7 +2296,7 @@ void DrawTextPiece(EsPainter *painter, EsTextPlan *plan, TextPiece *piece, TextL
 
 	// Draw the selection background.
 
-	if (selection->caret0 != selection->caret1 && !selection->hideCaret) {
+	if (selection->caret0 != selection->caret1 && !selection->hideCaret && !piece->isEllipsisPiece) {
 		int sCursorX = cursorX, selectionStartX = -1, selectionEndX = -1;
 
 		for (uintptr_t i = 0; i < piece->glyphCount; i++) {

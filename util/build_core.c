@@ -406,6 +406,91 @@ bool FileExists(const char *path) {
 #endif
 }
 
+#ifndef OS_ESSENCE
+EsUniqueIdentifier MatchFileContentType(const char *pathBuffer) {
+	FILE *f = fopen(pathBuffer, "rb");
+	assert(f);
+	uint32_t elfSignature;
+	fread(&elfSignature, 1, sizeof(elfSignature), f);
+	bool isELFExecutable = elfSignature == 0x464C457F;
+	fclose(f);
+
+	EsUniqueIdentifier t = { 0 };
+
+#define ENDS_WITH(s) (strlen(pathBuffer) >= strlen(s) && 0 == strcmp(pathBuffer + strlen(pathBuffer) - strlen(s), s))
+#define STARTS_WITH(s) (strlen(pathBuffer) >= strlen(s) && 0 == memcmp(pathBuffer, s, strlen(s)))
+	if (ENDS_WITH(".bochsrc"))
+		t = (EsUniqueIdentifier) {{ 0xFF, 0x92, 0xF0, 0x53, 0x28, 0x83, 0xDC, 0xF1, 0xBA, 0xDD, 0xDE, 0x79, 0x92, 0x33, 0x3F, 0x73 }};
+	else if (ENDS_WITH(".build_core"))
+		t = (EsUniqueIdentifier) {{ 0x6F, 0x2A, 0x23, 0x16, 0xAF, 0xA3, 0xD0, 0xFB, 0x95, 0x06, 0x52, 0xB3, 0x67, 0xFB, 0x37, 0xFA }};
+	else if (ENDS_WITH(".designer"))
+		t = (EsUniqueIdentifier) {{ 0x26, 0x4A, 0xE0, 0x6C, 0x0F, 0xE8, 0x2C, 0xE7, 0xF4, 0x6E, 0x4E, 0x76, 0x5B, 0x4A, 0xCF, 0x4F }};
+	else if (ENDS_WITH(".uxn"))
+		t = (EsUniqueIdentifier) {{ 0x76, 0xC2, 0xC1, 0x73, 0xB1, 0x20, 0x3D, 0x42, 0x70, 0xFD, 0xD4, 0xBD, 0x66, 0xE9, 0x2A, 0x39 }};
+	else if (ENDS_WITH(".a"))
+		t = (EsUniqueIdentifier) {{ 0x7D, 0x39, 0xBF, 0x18, 0x9E, 0x07, 0xBC, 0xD3, 0x4F, 0x9F, 0x87, 0xEC, 0x6F, 0x70, 0x65, 0x5D }};
+	else if (ENDS_WITH(".la"))
+		t = (EsUniqueIdentifier) {{ 0x8F, 0x10, 0x4F, 0x33, 0x4A, 0xE5, 0x2D, 0xA7, 0x2A, 0x80, 0x2C, 0x4F, 0xEA, 0xE4, 0x99, 0xB1 }};
+	else if (ENDS_WITH(".esx"))
+		t = (EsUniqueIdentifier) {{ 0xBF, 0x88, 0xE4, 0xDD, 0x71, 0xE8, 0x5F, 0xDE, 0x16, 0xC5, 0xAF, 0x33, 0x41, 0xC7, 0xA2, 0x96 }};
+	else if (ENDS_WITH(".o"))
+		t = (EsUniqueIdentifier) {{ 0xB5, 0x19, 0xF2, 0x0D, 0xAD, 0x4F, 0xD4, 0xC9, 0xA4, 0xBF, 0x97, 0xE4, 0x5E, 0x4C, 0x55, 0x00 }};
+	else if (ENDS_WITH(".c"))
+		t = (EsUniqueIdentifier) {{ 0x36, 0x02, 0xD3, 0xAC, 0x6C, 0xDE, 0x8D, 0x31, 0xFA, 0x70, 0xB2, 0xDA, 0xFA, 0x81, 0x53, 0x69 }};
+	else if (ENDS_WITH(".cpp"))
+		t = (EsUniqueIdentifier) {{ 0x35, 0x84, 0xA6, 0x0E, 0x52, 0x28, 0xBA, 0xAB, 0xCA, 0x74, 0x14, 0xF4, 0xE1, 0x15, 0xCA, 0x5F }};
+	else if (ENDS_WITH(".h"))
+		t = (EsUniqueIdentifier) {{ 0xD1, 0x16, 0xC4, 0xC1, 0x7B, 0xC0, 0xED, 0x4F, 0xCA, 0xAC, 0x18, 0x05, 0x32, 0x1D, 0x56, 0x32 }};
+	else if (ENDS_WITH(".html"))
+		t = (EsUniqueIdentifier) {{ 0x4A, 0x5A, 0x1C, 0xE5, 0xEE, 0x08, 0x6E, 0x04, 0x13, 0x9C, 0x6D, 0x05, 0x48, 0x5C, 0xE5, 0xD2 }};
+	else if (ENDS_WITH(".in"))
+		t = (EsUniqueIdentifier) {{ 0x76, 0x35, 0xF3, 0xF5, 0xC2, 0x69, 0x8A, 0xA4, 0xE4, 0x68, 0x5F, 0xE5, 0x2C, 0x73, 0x10, 0xF9 }};
+	else if (ENDS_WITH("/Makefile"))
+		t = (EsUniqueIdentifier) {{ 0x3A, 0x58, 0x08, 0x24, 0x00, 0x75, 0xB5, 0x8B, 0xA8, 0x39, 0xD8, 0x37, 0x03, 0x6B, 0x20, 0x85 }};
+	else if (ENDS_WITH(".ld") || STARTS_WITH("root/Applications/POSIX/x86_64-essence/lib/ldscripts/"))
+		t = (EsUniqueIdentifier) {{ 0x23, 0x56, 0xBC, 0xD4, 0x5A, 0xD6, 0x56, 0x08, 0x06, 0x61, 0x7C, 0x33, 0x38, 0x66, 0xD5, 0x1F }};
+	else if (ENDS_WITH(".md"))
+		t = (EsUniqueIdentifier) {{ 0xB1, 0xC3, 0x9E, 0x56, 0xC9, 0xB0, 0x85, 0xD6, 0xAF, 0x98, 0x12, 0x1C, 0x2E, 0x29, 0x8D, 0x24 }};
+	else if (ENDS_WITH(".pc"))
+		t = (EsUniqueIdentifier) {{ 0x74, 0x72, 0x01, 0x17, 0x97, 0x4B, 0x6B, 0x4B, 0x74, 0xCD, 0x18, 0x7C, 0x8F, 0x3C, 0x58, 0xBC }};
+	else if (ENDS_WITH(".py"))
+		t = (EsUniqueIdentifier) {{ 0x77, 0x19, 0xBA, 0x87, 0x2E, 0xDB, 0x51, 0xA4, 0x71, 0x5D, 0xFF, 0x8D, 0x39, 0x86, 0x96, 0xF0 }};
+	else if (ENDS_WITH(".sh"))
+		t = (EsUniqueIdentifier) {{ 0x66, 0x42, 0x88, 0xF9, 0xD1, 0x68, 0x47, 0xBF, 0x7F, 0x48, 0x82, 0x77, 0x2B, 0xE3, 0x39, 0xBA }};
+	else if (ENDS_WITH(".txt") || ENDS_WITH("/README") || ENDS_WITH("/LICENSE") || ENDS_WITH("/COPYING") || ENDS_WITH("/AUTHORS") || ENDS_WITH("/TODO")
+		|| ENDS_WITH("/BUGS") || ENDS_WITH("/NEWS") || ENDS_WITH("/CHANGES") || ENDS_WITH("/ReadMe") || ENDS_WITH(".LESSER"))
+			t = (EsUniqueIdentifier) {{ 0x25, 0x65, 0x4C, 0x89, 0xE7, 0x29, 0xEA, 0x9E, 0xB5, 0xBE, 0xB5, 0xCA, 0xA7, 0x60, 0xBD, 0x3D }};
+	else if (ENDS_WITH(".1") || ENDS_WITH(".7") || ENDS_WITH(".info") || ENDS_WITH(".info-1") || ENDS_WITH(".info-2"))
+		t = (EsUniqueIdentifier) {{ 0xDB, 0x72, 0xDD, 0x5D, 0x92, 0x54, 0x09, 0x1A, 0xC4, 0x16, 0xDD, 0x89, 0x0B, 0x13, 0x12, 0x1F }};
+	else if (ENDS_WITH(".conf") || ENDS_WITH(".bfd"))
+		t = (EsUniqueIdentifier) {{ 0x18, 0x8D, 0xD3, 0xAC, 0x35, 0xF5, 0xD3, 0x01, 0x8C, 0x66, 0xFD, 0x12, 0xE1, 0xED, 0xE2, 0x6F }};
+	else if (ENDS_WITH(".ini"))
+		t = (EsUniqueIdentifier) {{ 0x81, 0x72, 0x43, 0x29, 0xE5, 0x37, 0x89, 0x51, 0x8E, 0x22, 0xA0, 0x67, 0xA5, 0xB9, 0x42, 0x2C }};
+	else if (ENDS_WITH(".gz"))
+		t = (EsUniqueIdentifier) {{ 0x7D, 0x93, 0x66, 0x74, 0x80, 0x0B, 0x64, 0x9F, 0x16, 0x5D, 0x44, 0xA5, 0x45, 0xFF, 0x80, 0xBF }};
+	else if (ENDS_WITH(".img"))
+		t = (EsUniqueIdentifier) {{ 0xE1, 0x61, 0x4D, 0x0D, 0x32, 0xEC, 0xE0, 0x0F, 0x36, 0x7F, 0xE9, 0x7B, 0x3F, 0x16, 0x43, 0x02 }};
+	else if (ENDS_WITH(".jpg"))
+		t = (EsUniqueIdentifier) {{ 0xD8, 0xC2, 0x13, 0xB0, 0x53, 0x64, 0x82, 0x11, 0x48, 0x7B, 0x5B, 0x64, 0x0F, 0x92, 0xB9, 0x38 }};
+	else if (ENDS_WITH(".mkv"))
+		t = (EsUniqueIdentifier) {{ 0x0D, 0xCA, 0x26, 0x92, 0x22, 0x44, 0xEB, 0x6B, 0xC6, 0xE9, 0x6C, 0x8E, 0xFC, 0x28, 0xD2, 0x8E }};
+	else if (ENDS_WITH(".obj"))
+		t = (EsUniqueIdentifier) {{ 0xF7, 0x81, 0xE9, 0x21, 0xDF, 0x89, 0x77, 0xD0, 0xC6, 0x97, 0xA8, 0x63, 0xF1, 0xF3, 0x4F, 0x63 }};
+	else if (ENDS_WITH(".png"))
+		t = (EsUniqueIdentifier) {{ 0x59, 0x21, 0x05, 0x4D, 0x34, 0x40, 0xAB, 0x61, 0xEC, 0xF9, 0x7D, 0x5C, 0x6E, 0x04, 0x96, 0xAE }};
+	else if (ENDS_WITH(".ttf"))
+		t = (EsUniqueIdentifier) {{ 0xDA, 0xBF, 0xEC, 0x06, 0x31, 0x8A, 0x67, 0xB6, 0xE3, 0x95, 0xBC, 0xD1, 0x92, 0xD2, 0x9A, 0x56 }};
+	else if (STARTS_WITH("root/Applications/POSIX/share/bochs/"))
+		t = (EsUniqueIdentifier) {{ 0xB5, 0x32, 0x22, 0x14, 0x01, 0xCB, 0xD0, 0x1D, 0xA2, 0x55, 0x08, 0xC7, 0x0D, 0x46, 0x86, 0x53 }};
+	else if (isELFExecutable)
+		t = (EsUniqueIdentifier) {{ 0xAB, 0xDE, 0x98, 0xB5, 0x56, 0x2C, 0x04, 0xDF, 0x1E, 0x43, 0xC8, 0x10, 0x24, 0x63, 0xDB, 0xB8 }};
+#undef ENDS_WITH
+#undef STARTS_WITH
+
+	return t;
+}
+#endif
+
 void CreateImportNode(const char *path, ImportNode *node) {
 	char pathBuffer[256];
 
@@ -429,6 +514,7 @@ void CreateImportNode(const char *path, ImportNode *node) {
 			CreateImportNode(pathBuffer, &child);
 		} else {
 			child.isFile = true;
+			child.contentType = children[i].contentType;
 		}
 
 		child.name = EsStringAllocateAndFormat(NULL, "%s", children[i].nameBytes, children[i].name);
@@ -464,6 +550,7 @@ void CreateImportNode(const char *path, ImportNode *node) {
 			continue;
 		} else {
 			child.isFile = true;
+			child.contentType = MatchFileContentType(pathBuffer);
 		}
 
 		child.name = strdup(dir->d_name);
@@ -549,20 +636,6 @@ bool MakeBundle(const char *outputFile, BundleInput *inputFiles, size_t inputFil
 
 //////////////////////////////////
 
-typedef struct FileType {
-	const char *extension;
-	const char *name;
-	const char *icon;
-	int id, openID;
-	bool hasThumbnailGenerator;
-} FileType;
-
-typedef struct Handler {
-	const char *extension;
-	const char *action;
-	int fileTypeID;
-} Handler;
-
 typedef struct DependencyFile {
 	char path[256];
 	const char *name;
@@ -573,10 +646,8 @@ typedef struct Application {
 
 	const char *name; 
 	EsINIState *properties;
+	EsINIState *fileTypeLines;
 	int id;
-
-	FileType *fileTypes;
-	Handler *handlers;
 
 	bool install, builtin, withCStdLib;
 
@@ -794,8 +865,6 @@ void ParseApplicationManifest(const char *manifestPath) {
 	application.manifestPath = manifestPath;
 	application.compileFlags = "";
 	application.linkFlags = "";
-	Handler *handler = NULL;
-	FileType *fileType = NULL;
 
 	while (EsINIParse(&s)) {
 		EsINIZeroTerminate(&s);
@@ -815,27 +884,8 @@ void ParseApplicationManifest(const char *manifestPath) {
 			else INI_READ_BOOL(disabled, disabled);
 			else INI_READ_BOOL(needs_native_toolchain, needsNativeToolchain);
 			else if (s.keyBytes && s.valueBytes) arrput(application.properties, s);
-		} else if (0 == strcmp(s.section, "handler")) {
-			if (!s.keyBytes) {
-				Handler _handler = {};
-				arrput(application.handlers, _handler);
-				handler = &arrlast(application.handlers);
-			}
-
-			INI_READ_STRING_PTR(extension, handler->extension);
-			INI_READ_STRING_PTR(action, handler->action);
 		} else if (0 == strcmp(s.section, "file_type")) {
-			if (!s.keyBytes) {
-				FileType _fileType = {};
-				_fileType.id = nextID++;
-				arrput(application.fileTypes, _fileType);
-				fileType = &arrlast(application.fileTypes);
-			}
-
-			INI_READ_STRING_PTR(extension, fileType->extension);
-			INI_READ_STRING_PTR(name, fileType->name);
-			INI_READ_STRING_PTR(icon, fileType->icon);
-			INI_READ_BOOL(has_thumbnail_generator, fileType->hasThumbnailGenerator);
+			arrput(application.fileTypeLines, s);
 		} else if (0 == strcmp(s.section, "embed") && s.key[0] != ';' && s.value[0]) {
 			BundleInput input = { 0 };
 			input.path = s.value;
@@ -889,38 +939,6 @@ void OutputSystemConfiguration() {
 			continue;
 		}
 
-		for (uintptr_t j = 0; j < arrlenu(applications[i].handlers); j++) {
-			Handler *handler = applications[i].handlers + j;
-			int handlerID = applications[i].id;
-
-			for (uintptr_t i = 0; i < arrlenu(applications); i++) {
-				for (uintptr_t j = 0; j < arrlenu(applications[i].fileTypes); j++) {
-					FileType *fileType = applications[i].fileTypes + j;
-
-					if (0 == strcmp(handler->extension, fileType->extension)) {
-						handler->fileTypeID = fileType->id;
-
-						if (0 == strcmp(handler->action, "open")) {
-							fileType->openID = handlerID;
-						} else {
-							Log("Warning: unrecognised handler action '%s'.\n", handler->action);
-						}
-					}
-				}
-			}
-
-			if (!handler->fileTypeID) {
-				Log("Warning: could not find a file_type entry for handler with extension '%s' in application '%s'.\n",
-						handler->extension, applications[i].name);
-			}
-		}
-	}
-
-	for (uintptr_t i = 0; i < arrlenu(applications); i++) {
-		if (!applications[i].install) {
-			continue;
-		}
-
 		FilePrintFormat(file, "\n[application]\n");
 		FilePrintFormat(file, "id=%d\n", applications[i].id);
 		FilePrintFormat(file, "name=%s\n", applications[i].name);
@@ -931,21 +949,13 @@ void OutputSystemConfiguration() {
 			FilePrintFormat(file, "%s=%s\n", applications[i].properties[j].key, applications[i].properties[j].value);
 		}
 
-		for (uintptr_t j = 0; j < arrlenu(applications[i].fileTypes); j++) {
-			FilePrintFormat(file, "\n[file_type]\n");
-			FilePrintFormat(file, "id=%d\n", applications[i].fileTypes[j].id);
-			FilePrintFormat(file, "extension=%s\n", applications[i].fileTypes[j].extension);
-			FilePrintFormat(file, "name=%s\n", applications[i].fileTypes[j].name);
-			FilePrintFormat(file, "icon=%s\n", applications[i].fileTypes[j].icon);
-			FilePrintFormat(file, "open=%d\n", applications[i].fileTypes[j].openID);
-			FilePrintFormat(file, "has_thumbnail_generator=%d\n", applications[i].fileTypes[j].hasThumbnailGenerator);
-		}
+		for (uintptr_t j = 0; j < arrlenu(applications[i].fileTypeLines); j++) {
+			char buffer[4096];
+			FileWrite(file, EsINIFormat(applications[i].fileTypeLines + j, buffer, sizeof(buffer)), buffer);
 
-		for (uintptr_t j = 0; j < arrlenu(applications[i].handlers); j++) {
-			FilePrintFormat(file, "\n[handler]\n");
-			FilePrintFormat(file, "action=%s\n", applications[i].handlers[j].action);
-			FilePrintFormat(file, "application=%d\n", applications[i].id);
-			FilePrintFormat(file, "file_type=%d\n", applications[i].handlers[j].fileTypeID);
+			if (!applications[i].fileTypeLines[j].keyBytes) {
+				FilePrintFormat(file, "application=%d\n", applications[i].id);
+			}
 		}
 	}
 
@@ -1752,8 +1762,7 @@ int main(int argc, char **argv) {
 		arrfree(applications[i].sources);
 		arrfree(applications[i].dependencyFiles);
 		arrfree(applications[i].bundleInputFiles);
-		arrfree(applications[i].fileTypes);
-		arrfree(applications[i].handlers);
+		arrfree(applications[i].fileTypeLines);
 	}
 
 	arrfree(applicationManifests);

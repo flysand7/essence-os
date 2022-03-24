@@ -1132,6 +1132,10 @@ EsMessage *EsMessageReceive() {
 			}
 		} else if (type == ES_MSG_INSTANCE_OPEN_DELAYED) {
 			InstanceSendOpenMessage((EsInstance *) message.message._argument, false);
+		} else if (type == ES_MSG_INSTANCE_SAVE_COMPLETE_DELAYED) {
+			char buffer[1];
+			buffer[0] = DESKTOP_MSG_COMPLETE_SAVE;
+			MessageDesktop(buffer, 1, ((EsInstance *) message.message._argument)->window->handle);
 		} else if (type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 			if (instance) UIRefreshPrimaryClipboard(instance->window);
@@ -1237,9 +1241,9 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 	APIInstance *apiInstance = (APIInstance *) instance->_private;
 
 	if (instance) {
-		char buffer[1];
-		buffer[0] = DESKTOP_MSG_COMPLETE_SAVE;
-		MessageDesktop(buffer, 1, instance->window->handle);
+		// HACK Post this message so that our handle to the file is (hopefully) closed first.
+		EsMessage m = { .type = ES_MSG_INSTANCE_SAVE_COMPLETE_DELAYED, ._argument = instance };
+		EsMessagePost(nullptr, &m); 
 
 		if (success) {
 			const char *name;

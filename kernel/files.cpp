@@ -65,7 +65,7 @@ EsError FSNodeOpenHandle(KNode *node, uint32_t flags, uint8_t mode);
 void FSNodeCloseHandle(KNode *node, uint32_t flags);
 EsError FSNodeDelete(KNode *node);
 EsError FSNodeMove(KNode *node, KNode *destination, const char *newName, size_t nameNameBytes);
-EsError FSFileResize(KNode *node, EsFileOffset newSizeBytes);
+EsError FSFileResize(KNode *node, EsFileOffset newSizeBytes, bool growOnly = false);
 ptrdiff_t FSDirectoryEnumerate(KNode *node, K_USER_BUFFER EsDirectoryChild *buffer, size_t bufferSize);
 EsError FSFileControlFlush(KNode *node);
 EsError FSFileControlSetContentType(KNode *node, EsUniqueIdentifier identifier);
@@ -136,6 +136,7 @@ bool FSCheckPathForIllegalCharacters(const char *path, size_t pathBytes) {
 EsError FSReadIntoCache(CCSpace *fileCache, void *buffer, EsFileOffset offset, EsFileOffset count) {
 	FSFile *node = EsContainerOf(FSFile, cache, fileCache);
 
+	// KWriterLockAssertLocked(&node->resizeLock);
 	KWriterLockTake(&node->writerLock, K_LOCK_SHARED);
 	EsDefer(KWriterLockReturn(&node->writerLock, K_LOCK_SHARED));
 
@@ -238,6 +239,7 @@ EsError FSFileCreateAndResizeOnFileSystem(FSFile *node, EsFileOffset fileSize) {
 EsError FSWriteFromCache(CCSpace *fileCache, const void *buffer, EsFileOffset offset, EsFileOffset count) {
 	FSFile *node = EsContainerOf(FSFile, cache, fileCache);
 
+	// KWriterLockAssertLocked(&node->resizeLock);
 	KWriterLockTake(&node->writerLock, K_LOCK_EXCLUSIVE);
 	EsDefer(KWriterLockReturn(&node->writerLock, K_LOCK_EXCLUSIVE));
 
@@ -335,7 +337,7 @@ void _FSFileResize(FSFile *file, EsFileOffset newSize) {
 	KMutexRelease(&file->fileSystem->moveMutex);
 }
 
-EsError FSFileResize(KNode *node, EsFileOffset newSize) {
+EsError FSFileResize(KNode *node, EsFileOffset newSize, bool growOnly) {
 	if (fs.shutdown) KernelPanic("FSFileResize - Attempting to resize a file after FSShutdown called.\n");
 
 	if (newSize > (EsFileOffset) 1 << 60) {
@@ -350,7 +352,9 @@ EsError FSFileResize(KNode *node, EsFileOffset newSize) {
 	EsError error = ES_SUCCESS;
 	KWriterLockTake(&file->resizeLock, K_LOCK_EXCLUSIVE);
 
-	if (file->blockResize) {
+	if (growOnly && newSize <= file->directoryEntry->totalSize) {
+		// Nothing to do.
+	} else if (file->blockResize) {
 		error = ES_ERROR_OPERATION_BLOCKED;
 	} else if (!file->fileSystem->resize) {
 		error = ES_ERROR_FILE_ON_READ_ONLY_VOLUME;
@@ -365,10 +369,8 @@ EsError FSFileResize(KNode *node, EsFileOffset newSize) {
 ptrdiff_t FSFileWriteSync(KNode *node, K_USER_BUFFER const void *buffer, EsFileOffset offset, EsFileOffset bytes, uint32_t flags) {
 	if (fs.shutdown) KernelPanic("FSFileWriteSync - Attempting to write to a file after FSShutdown called.\n");
 
-	if (offset + bytes > node->directoryEntry->totalSize) {
-		if (ES_SUCCESS != FSFileResize(node, offset + bytes)) {
-			return ES_ERROR_COULD_NOT_RESIZE_FILE;
-		}
+	if (ES_SUCCESS != FSFileResize(node, offset + bytes, true /* growOnly */)) {
+		return ES_ERROR_COULD_NOT_RESIZE_FILE;
 	}
 
 	FSFile *file = (FSFile *) node;
@@ -426,8 +428,10 @@ EsError FSFileControlSetContentType(KNode *node, EsUniqueIdentifier identifier) 
 	} else if (~node->fileSystem->flags & ES_VOLUME_STORES_CONTENT_TYPE) {
 		return ES_ERROR_UNSUPPORTED;
 	} else {
+		KWriterLockTake(&node->writerLock, K_LOCK_EXCLUSIVE);
 		node->directoryEntry->contentType = identifier;
 		__sync_fetch_and_or(&node->flags, NODE_MODIFIED); // Set the modified flag *after* making the modification.
+		KWriterLockReturn(&node->writerLock, K_LOCK_EXCLUSIVE);
 		return ES_SUCCESS;
 	}
 }
@@ -1015,9 +1019,11 @@ void FSNodeSynchronize(KNode *node) {
 	if (node->directoryEntry->type == ES_NODE_FILE) {
 		FSFile *file = (FSFile *) node;
 		CCSpaceFlush(&file->cache);
-		KWriterLockTake(&node->writerLock, K_LOCK_EXCLUSIVE);
+		KWriterLockTake(&file->resizeLock, K_LOCK_EXCLUSIVE);
+		KWriterLockTake(&file->writerLock, K_LOCK_EXCLUSIVE);
 		FSFileCreateAndResizeOnFileSystem(file, file->directoryEntry->totalSize);
-		KWriterLockReturn(&node->writerLock, K_LOCK_EXCLUSIVE);
+		KWriterLockReturn(&file->writerLock, K_LOCK_EXCLUSIVE);
+		KWriterLockReturn(&file->resizeLock, K_LOCK_EXCLUSIVE);
 	}
 
 	if (node->flags & NODE_MODIFIED) {

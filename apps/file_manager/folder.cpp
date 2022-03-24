@@ -394,7 +394,6 @@ FolderEntry *FolderAddEntry(Folder *folder, const char *_name, size_t nameBytes,
 		entry->handles = 1; 
 		entry->name = name;
 		entry->nameBytes = nameBytes;
-		entry->extensionOffset = PathGetExtension(entry->GetName()).text - name;
 		entry->internalName = name;
 		entry->internalNameBytes = nameBytes;
 
@@ -417,6 +416,7 @@ FolderEntry *FolderAddEntry(Folder *folder, const char *_name, size_t nameBytes,
 	entry->size = information->fileSize;
 	entry->isFolder = information->type == ES_NODE_DIRECTORY;
 	entry->sizeUnknown = entry->isFolder && information->directoryChildren == ES_DIRECTORY_CHILDREN_UNKNOWN;
+	entry->contentType = information->contentType;
 
 	return entry;
 }
@@ -459,12 +459,26 @@ uint64_t FolderRemoveEntryAndUpdateInstances(Folder *folder, const char *name, s
 	return id;
 }
 
-void FolderFileUpdatedAtPath(String path, Instance *instance) {
+void FolderFileUpdatedAtPath(String path, Instance *instance, bool setGuessedContentType = false) {
 	path = PathRemoveTrailingSlash(path);
 	String file = PathGetName(path);
 	String folder = PathGetParent(path);
 	EsDirectoryChild information = {};
 	bool add = ES_SUCCESS == EsPathQueryInformation(STRING(path), &information);
+	EsUniqueIdentifier zeroIdentifier = {};
+
+	if (setGuessedContentType && 0 == EsMemoryCompare(&information.contentType, &zeroIdentifier, sizeof(EsUniqueIdentifier))) {
+		EsUniqueIdentifier identifier = FileTypeMatchByExtension(path);
+
+		if (EsMemoryCompare(&identifier, &zeroIdentifier, sizeof(EsUniqueIdentifier))) {
+			EsFileInformation information = EsFileOpen(STRING(path), ES_FILE_WRITE_SHARED | ES_NODE_FAIL_IF_NOT_FOUND);
+
+			if (information.error == ES_SUCCESS) {
+				EsFileControl(information.handle, ES_FILE_CONTROL_SET_CONTENT_TYPE, &identifier, sizeof(identifier));
+				EsHandleClose(information.handle);
+			}
+		}
+	}
 
 	for (uintptr_t i = 0; i < loadedFolders.Length(); i++) {
 		if (loadedFolders[i]->itemHandler->type != NAMESPACE_HANDLER_FILE_SYSTEM) continue;

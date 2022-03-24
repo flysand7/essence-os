@@ -97,15 +97,13 @@ In the `[embed]` section there is a list of files that should be embedded into t
 
 Each `[file_type]` section provides information about a file type.
 
-- `extension` Gives the file name extension for the file type.
+- `match` Gives the file name extensions to match for the file type.
 - `name` Gives the readable name of the file type, which will be shown to the user. TODO Translations.
 - `icon` Gives the name of the icon from `desktop/icons.header` to show for files of this type. TODO Bundled icons.
 - `has_thumbnail_generator` Set to 1 if the file type has a thumbnail generator. Only images are supported at the moment. TODO Custom thumbnail generators.
-
-Each `[handler]` section describes this application's support to manage files of a given file type.
-
-- `extension` The file name extension of the file type.
-- `action` The action that this application support for the file type. Currently only "open" is supported.
+- `uuid` The EsUniqueIdentifier of the file type.
+- `textual` Set to 1 if the file type can be read by plain text editors.
+- `actions` The actions the application supports with this file type, e.g. `open`.
 
 ### Standard build configuration options
 
