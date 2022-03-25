@@ -65,6 +65,7 @@ bool runningTests;
 #define PATH_MAX 1024
 #endif
 
+#define DEPENDENCIES_FILE "bin/dependency_files/dependencies_utils.ini"
 #include "build_common.h"
 
 BuildFont fonts[] = {
@@ -255,7 +256,6 @@ void DoCommand(const char *l);
 #define OPTIMISE_FULL                (1 << 6)
 
 void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
-	buildStartTimeStamp = time(NULL);
 	BuildUtilities();
 
 	if (!BuildAPIDependencies()) {
@@ -383,8 +383,6 @@ void Compile(uint32_t flags, int partitionSize, const char *volumeLabel) {
 
 void BuildUtilities() {
 #define WARNING_FLAGS " -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -Wno-format-truncation -Wno-unused-parameter "
-
-	buildStartTimeStamp = time(NULL);
 
 #define BUILD_UTILITY(x, y, z) \
 	if (CheckDependencies("Utilities." x)) { \
@@ -987,6 +985,7 @@ void BuildAndRun(int optimise, bool compile, int debug, int emulator, int log) {
 	}
 
 	if (!runningTests) {
+		DependenciesListWrite();
 		exit(encounteredErrors ? 1 : 0);
 	}
 }
@@ -1424,6 +1423,7 @@ int main(int _argc, char **_argv) {
 	coloredOutput = isatty(STDERR_FILENO);
 	systemLog = fopen("bin/Logs/system.log", "a");
 	if (!systemLog) systemLog = fopen("bin/Logs/system.log", "w");
+	buildStartTimeStamp = time(NULL);
 
 	if (argc < 2) {
 		fprintf(stderr, "Error: No command specified.\n");
@@ -1439,6 +1439,8 @@ int main(int _argc, char **_argv) {
 		strcat(buffer, argv[i]);
 	}
 
+	DependenciesListRead();
 	DoCommand(buffer);
+	DependenciesListWrite();
 	return 0;
 }

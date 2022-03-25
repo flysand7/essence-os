@@ -2,6 +2,9 @@
 // It is released under the terms of the MIT license -- see LICENSE.md.
 // Written by: nakst.
 
+// TODO Terminating the child process on exit.
+// TODO Handle ES_MSG_INSTANCE_CLOSE, and ignore following MSG_RECEIVED_OUTPUTs.
+
 #include <essence.h>
 #include <shared/strings.cpp>
 

@@ -787,9 +787,12 @@ int ProcessWindowBorderMessage(EsWindow *window, EsMessage *message, EsRectangle
 // --------------------------------- Windows.
 
 void UIWindowNeedsUpdate(EsWindow *window) {
-	if (!window->willUpdate) {
+	if (!window->willUpdate && window->handle /* cleared in UIWindowDestroy, during InternalDestroy */) {
 		EsMessage m = { ES_MSG_UPDATE_WINDOW };
 		// Don't use the userland posted message queue, since we don't want this to block WM messages.
+		// This message will be received within the window's lifetime, 
+		// because the window cannot be deallocated until ES_MSG_WINDOW_DESTROYED is received, 
+		// and this message will always be received first.
 		EsSyscall(ES_SYSCALL_MESSAGE_POST, (uintptr_t) &m, (uintptr_t) window, ES_CURRENT_PROCESS, 0);
 		window->willUpdate = true;
 	}

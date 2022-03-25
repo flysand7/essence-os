@@ -107,7 +107,6 @@ bool CheckDependencies(const char *applicationName) {
 		struct stat s = { 0 };
 
 		if (stat(dependencies.files[i], &s) || s.st_mtime > dependencies.timeStamp) {
-			// printf("%s, %s, %ld, %ld\n", applicationName, dependencies.files[i], s.st_mtime, dependencies.timeStamp);
 			needsRebuild = true;
 			break;
 		}
@@ -182,7 +181,7 @@ void ParseDependencies(const char *dependencyFile, const char *applicationName, 
 }
 
 void DependenciesListRead() {
-	EsINIState s = { .buffer = (char *) LoadFile("bin/dependencies.ini", &s.bytes) };
+	EsINIState s = { .buffer = (char *) LoadFile(DEPENDENCIES_FILE, &s.bytes) };
 	char *start = s.buffer;
 	if (!start) return;
 
@@ -229,7 +228,7 @@ void DependenciesListWrite() {
 #ifdef OS_ESSENCE
 	// TODO.
 #else
-	FILE *f = fopen("bin/dependencies.ini", "wb");
+	FILE *f = fopen(DEPENDENCIES_FILE, "wb");
 
 	fprintf(f, "[general]\nconfiguration_hash=%lu\n", configurationHash);
 

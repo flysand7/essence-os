@@ -157,6 +157,7 @@ File FileOpen(const char *path, char mode) {
 
 #include "../shared/crc.h"
 #include "../shared/partitions.cpp"
+#define DEPENDENCIES_FILE "bin/dependency_files/dependencies.ini"
 #include "build_common.h"
 #include "../shared/esfs2.h"
 #include "header_generator.c"

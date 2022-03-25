@@ -753,6 +753,7 @@ EsInstance *_EsInstanceCreate(size_t bytes, EsMessage *message, const char *appl
 			// TODO Can the posted message be raced by a ES_MSG_INSTANCE_DOCUMENT_UPDATED?
 			EsMessage m = { ES_MSG_INSTANCE_OPEN_DELAYED };
 			m._argument = instance;
+			EsInstanceOpenReference(instance);
 			EsMessagePost(nullptr, &m);
 		}
 	}
@@ -1131,11 +1132,15 @@ EsMessage *EsMessageReceive() {
 				EsHandleClose(message.message.tabOperation.handle);
 			}
 		} else if (type == ES_MSG_INSTANCE_OPEN_DELAYED) {
-			InstanceSendOpenMessage((EsInstance *) message.message._argument, false);
+			EsInstance *instance = (EsInstance *) message.message._argument;
+			InstanceSendOpenMessage(instance, false);
+			EsInstanceCloseReference(instance);
 		} else if (type == ES_MSG_INSTANCE_SAVE_COMPLETE_DELAYED) {
 			char buffer[1];
 			buffer[0] = DESKTOP_MSG_COMPLETE_SAVE;
-			MessageDesktop(buffer, 1, ((EsInstance *) message.message._argument)->window->handle);
+			EsInstance *instance = (EsInstance *) message.message._argument;
+			MessageDesktop(buffer, 1, instance->window->handle);
+			EsInstanceCloseReference(instance);
 		} else if (type == ES_MSG_PRIMARY_CLIPBOARD_UPDATED) {
 			EsInstance *instance = InstanceFromWindowID(message.message.tabOperation.id);
 			if (instance) UIRefreshPrimaryClipboard(instance->window);
@@ -1243,6 +1248,7 @@ void EsInstanceSaveComplete(EsInstance *instance, EsFileStore *file, bool succes
 	if (instance) {
 		// HACK Post this message so that our handle to the file is (hopefully) closed first.
 		EsMessage m = { .type = ES_MSG_INSTANCE_SAVE_COMPLETE_DELAYED, ._argument = instance };
+		EsInstanceOpenReference(instance);
 		EsMessagePost(nullptr, &m); 
 
 		if (success) {
