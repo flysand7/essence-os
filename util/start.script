@@ -191,7 +191,7 @@ void DoCommand(str command) {
 
 void Start() {
 	Setup(false);
-	PathDelete("bin/dependencies.ini");
+	PathDelete("bin/dependency_files/dependencies.ini");
 
 	if (options == "") {
 		Log("%TextColorHighlight()%Essence Build%TextPlain()%\nPress Ctrl-C to exit.");

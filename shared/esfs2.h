@@ -1240,7 +1240,7 @@ bool Format(uint64_t driveSize, const char *volumeName, EsUniqueIdentifier osIns
 
 	if (MountVolume()) {
 		DirectoryEntryReference reference = superblock.kernel;
-		DirectoryEntry entry;
+		DirectoryEntry entry = {};
 		EsUniqueIdentifier unused = {};
 
 		EsUniqueIdentifier elf = (EsUniqueIdentifier) {{ 0xAB, 0xDE, 0x98, 0xB5, 0x56, 0x2C, 0x04, 0xDF, 0x1E, 0x43, 0xC8, 0x10, 0x24, 0x63, 0xDB, 0xB8 }};
