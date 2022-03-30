@@ -2253,6 +2253,16 @@ void ApplicationInstanceRequestSave(ApplicationInstance *instance, const char *n
 	m.tabOperation.id = instance->embeddedWindowID;
 
 	if (!instance->documentID) {
+		if (!EsSystemConfigurationReadInteger(EsLiteral("general"), EsLiteral("save_with_file_extensions"))) {
+			for (intptr_t i = newNameBytes - 1; i >= 0; i--) {
+				if (newName[i] == '.') {
+					// Remove the file extension from the default new file name.
+					newNameBytes = i;
+					break;
+				}
+			}
+		}
+
 		size_t folderBytes;
 		char *folder = EsSystemConfigurationReadString(EsLiteral("paths"), EsLiteral("default_user_documents"), &folderBytes);
 		char *name = (char *) EsHeapAllocate(folderBytes + newNameBytes + 32, false);

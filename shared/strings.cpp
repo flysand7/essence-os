@@ -146,6 +146,7 @@ DEFINE_INTERFACE_STRING(DesktopSettingsApplications, "Applications");
 DEFINE_INTERFACE_STRING(DesktopSettingsDateAndTime, "Date and time");
 DEFINE_INTERFACE_STRING(DesktopSettingsDevices, "Devices");
 DEFINE_INTERFACE_STRING(DesktopSettingsDisplay, "Display");
+DEFINE_INTERFACE_STRING(DesktopSettingsFiles, "Files");
 DEFINE_INTERFACE_STRING(DesktopSettingsKeyboard, "Keyboard");
 DEFINE_INTERFACE_STRING(DesktopSettingsLocalisation, "Localisation");
 DEFINE_INTERFACE_STRING(DesktopSettingsMouse, "Mouse");
@@ -182,6 +183,8 @@ DEFINE_INTERFACE_STRING(DesktopSettingsThemeWindowColor, "Window color:");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeEnableHoverState, "Highlight the item the cursor is over");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeEnableAnimations, "Animate the user interface");
 DEFINE_INTERFACE_STRING(DesktopSettingsThemeWallpaper, "Wallpaper:");
+
+DEFINE_INTERFACE_STRING(DesktopSettingsFilesSaveWithFileExtension, "Automatically add a file extension when creating files");
 
 // File operations.
 

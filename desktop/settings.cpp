@@ -171,6 +171,7 @@ void SettingsLoadDefaults() {
 	SettingsPutValue("general", "enable_hover_state", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "enable_animations", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("general", "keyboard_layout", EsLiteral("us"), nullptr, nullptr, true, false);
+	SettingsPutValue("general", "save_with_file_extensions", EsLiteral("1"), nullptr, nullptr, true, false);
 	SettingsPutValue("paths", "default_user_documents", EsLiteral("0:/"), nullptr, nullptr, true, false);
 }
 
@@ -683,6 +684,17 @@ void SettingsPageDisplay(EsElement *element, SettingsPage *page) {
 			100, 400, INTERFACE_STRING(CommonUnitPercent), 0.05, 5);
 }
 
+void SettingsPageFiles(EsElement *element, SettingsPage *page) {
+	// TODO.
+
+	EsPanel *content = EsPanelCreate(element, ES_CELL_FILL | ES_PANEL_V_SCROLL_AUTO | ES_PANEL_H_SCROLL_AUTO, EsStyleIntern(&styleSettingsGroupContainer));
+	EsPanel *container = EsPanelCreate(content, ES_PANEL_VERTICAL, EsStyleIntern(&styleSettingsGroupContainer2));
+	SettingsAddTitle(container, page);
+
+	EsPanel *table = EsPanelCreate(container, ES_CELL_H_FILL, EsStyleIntern(&styleSettingsCheckboxGroup));
+	SettingsAddCheckbox(table, INTERFACE_STRING(DesktopSettingsFilesSaveWithFileExtension), 'X', "general", "save_with_file_extensions");
+}
+
 int SettingsColorButtonMessage(EsElement *element, EsMessage *message) {
 	if (message->type == ES_MSG_PAINT_BACKGROUND) {
 		// HACK This assumes a lot about the workings of the radiobox style...
@@ -868,6 +880,7 @@ SettingsPage settingsPages[] = {
 	// { INTERFACE_STRING(DesktopSettingsAccessibility), ES_ICON_PREFERENCES_DESKTOP_ACCESSIBILITY, SettingsPageUnimplemented, 'A' }, // TODO.
 	// { INTERFACE_STRING(DesktopSettingsDateAndTime), ES_ICON_PREFERENCES_SYSTEM_TIME, SettingsPageUnimplemented, 'C' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsDisplay), ES_ICON_PREFERENCES_DESKTOP_DISPLAY, SettingsPageDisplay, 'D' },
+	{ INTERFACE_STRING(DesktopSettingsFiles), ES_ICON_USER_HOME_OPEN, SettingsPageFiles, 'S' },
 	{ INTERFACE_STRING(DesktopSettingsKeyboard), ES_ICON_INPUT_KEYBOARD, SettingsPageKeyboard, 'E' },
 	// { INTERFACE_STRING(DesktopSettingsLocalisation), ES_ICON_PREFERENCES_DESKTOP_LOCALE, SettingsPageUnimplemented, 'F' }, // TODO.
 	{ INTERFACE_STRING(DesktopSettingsMouse), ES_ICON_INPUT_MOUSE, SettingsPageMouse, 'G' },
