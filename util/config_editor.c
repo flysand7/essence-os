@@ -11,6 +11,7 @@
 #define UI_IMPLEMENTATION
 #include "luigi.h"
 
+#define DEPENDENCIES_FILE ""
 #include "build_common.h"
 
 UIWindow *window;
