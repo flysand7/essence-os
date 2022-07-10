@@ -201,24 +201,86 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 	uint32_t width = SwapBigEndian32(imageHeader.width);
 	uint32_t height = SwapBigEndian32(imageHeader.height);
 	uint8_t bytesPerPixel = 0;
+	uint32_t bytesPerScanline;
+	bool usesPalette = false;
+	uint32_t palette[256];
 
 	// Check the image is supported.
 
-	if (width > 16383 || height > 16383
-			|| imageHeader.bitDepth != 8
-			|| imageHeader.compressionMethod || imageHeader.filterMethod || imageHeader.interlaceMethod) {
+	if (width > 16383 || height > 16383 || imageHeader.compressionMethod || imageHeader.filterMethod || imageHeader.interlaceMethod) {
+		return false;
+	}
+			
+	if (imageHeader.colorType == 0 && imageHeader.bitDepth == 8) {
+		bytesPerPixel = 1;
+		bytesPerScanline = 1 * width;
+	} else if (imageHeader.colorType == 2 && imageHeader.bitDepth == 8) {
+		bytesPerPixel = 3;
+		bytesPerScanline = 3 * width;
+	} else if (imageHeader.colorType == 6 && imageHeader.bitDepth == 8) {
+		bytesPerPixel = 4;
+		bytesPerScanline = 4 * width;
+	} else if (imageHeader.colorType == 3 && (imageHeader.bitDepth == 1 || imageHeader.bitDepth == 2 
+				|| imageHeader.bitDepth == 4 || imageHeader.bitDepth == 8)) {
+		bytesPerPixel = 1;
+		usesPalette = true;
+		bytesPerScanline = (imageHeader.bitDepth * width + 7) >> 3;
+	} else {
 		return false;
 	}
 
-	if (imageHeader.colorType == 0) {
-		bytesPerPixel = 1;
-	} else if (imageHeader.colorType == 2) {
-		bytesPerPixel = 3;
-	} else if (imageHeader.colorType == 6) {
-		bytesPerPixel = 4;
-	} else {
-		// TODO Support palettes.
-		return false;
+	// Read the PLTE and tRNS chunk for paletted images.
+
+	if (usesPalette) {
+		uintptr_t position = reader->position;
+		bool foundPalette = false;
+
+		for (uint32_t i = 0; i < 256; i++) {
+			palette[i] = 0xFF000000;
+		}
+
+		while (true) {
+			const uint32_t *chunkSize = (const uint32_t *) PNGRead(reader, sizeof(uint32_t));
+			const uint32_t *chunkType = (const uint32_t *) PNGRead(reader, sizeof(uint32_t));
+
+			if (!chunkSize || !chunkType) {
+				return false;
+			}
+
+			uint32_t chunkSize0 = SwapBigEndian32(*chunkSize);
+			const uint8_t *chunkData = (uint8_t *) PNGRead(reader, chunkSize0);
+			const uint32_t *chunkChecksum = (const uint32_t *) PNGRead(reader, sizeof(uint32_t));
+
+			if (!chunkData || !chunkChecksum) {
+				return false;
+			}
+
+			if (SwapBigEndian32(*chunkType) == 0x49454E44) {
+				break;
+			} else if (SwapBigEndian32(*chunkType) == 0x504C5445) {
+				if ((chunkSize0 % 3) || chunkSize0 > 256 * 3) {
+					return false;
+				}
+
+				for (uint32_t i = 0; i < 256 && i * 3 < chunkSize0; i++) {
+					palette[i] = (palette[i] & 0xFF000000) | (chunkData[i * 3 + 0] << 0) 
+						| (chunkData[i * 3 + 1] << 8) | (chunkData[i * 3 + 2] << 16);
+				}
+
+				foundPalette = true;
+			} else if (SwapBigEndian32(*chunkType) == 0x74524E53) {
+				if (chunkSize0 > 256) {
+					return false;
+				}
+
+				for (uint32_t i = 0; i < chunkSize0; i++) {
+					palette[i] = (palette[i] & 0x00FFFFFF) | ((uint32_t) chunkData[i] << 24);
+				}
+			}
+		}
+
+		reader->position = position;
+		if (!foundPalette) return false;
 	}
 
 	// Check the ZLIB header.
@@ -235,7 +297,7 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 
 	// Decode the ZLIB blocks.
 
-	size_t bufferSize = (width + 1) * height * bytesPerPixel;
+	size_t bufferSize = (bytesPerScanline + 1) * height;
 	uint8_t *buffer = (uint8_t *) alloc(bufferSize + 262144);
 
 	if (!buffer) {
@@ -359,9 +421,14 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 				}
 			}
 		} else {
-			// TODO Fixed Huffman code.
-			reader->error = true;
-			break;
+			uint8_t lengths[288] = {};
+			for (int i =   0; i <= 143; i++) lengths[i] = 8;
+			for (int i = 144; i <= 255; i++) lengths[i] = 9;
+			for (int i = 256; i <= 279; i++) lengths[i] = 7;
+			for (int i = 280; i <= 287; i++) lengths[i] = 8;
+			if (!PNGBuildHuffmanTree(288, lengths, litTree, 32768)) reader->error = true;
+			for (int i = 0; i <= 31; i++) lengths[i] = 5;
+			if (!PNGBuildHuffmanTree(32, lengths, distTree, 32768)) reader->error = true;
 		}
 
 		// Decode the data.
@@ -401,7 +468,7 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 		}
 	}
 
-	if (reader->error) {
+	if (reader->error || bufferPosition != bufferSize) {
 		dealloc(buffer);
 		return false;
 	}
@@ -409,15 +476,15 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 	// Defilter the image.
 
 	for (uintptr_t i = 0; i < height; i++) {
-		uint8_t type = buffer[i * (width * bytesPerPixel + 1)];
+		uint8_t type = buffer[i * (bytesPerScanline + 1)];
 		if (!type) continue;
 
-		for (uintptr_t j = 0; j < width * bytesPerPixel; j++) {
-			uintptr_t k = i * (width * bytesPerPixel + 1) + j + 1;
+		for (uintptr_t j = 0; j < bytesPerScanline; j++) {
+			uintptr_t k = i * (bytesPerScanline + 1) + j + 1;
 			uint32_t x = buffer[k];
 			uint32_t a = j >= bytesPerPixel ? buffer[k - bytesPerPixel] : 0;
-			uint32_t b = i ? buffer[k - (width * bytesPerPixel + 1)] : 0;
-			uint32_t c = i && j >= bytesPerPixel ? buffer[k - ((width + 1) * bytesPerPixel + 1)] : 0;
+			uint32_t b = i ? buffer[k - (bytesPerScanline + 1)] : 0;
+			uint32_t c = i && j >= bytesPerPixel ? buffer[k - (bytesPerScanline + bytesPerPixel + 1)] : 0;
 
 			if (type == 1) {
 				buffer[k] = x + a;
@@ -462,7 +529,7 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 				uint8_t r = buffer[i * (width * 3 + 1) + j * 3 + 1];
 				uint8_t g = buffer[i * (width * 3 + 1) + j * 3 + 2];
 				uint8_t b = buffer[i * (width * 3 + 1) + j * 3 + 3];
-				bits[i * width + j] = 0xFF000000 | (r << 16) | (g << 8) | b;
+				bits[i * width + j] = 0xFF000000 | (b << 16) | (g << 8) | r;
 			}
 		}
 	} else if (imageHeader.colorType == 6) {
@@ -472,12 +539,38 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 				uint8_t g = buffer[i * (width * 4 + 1) + j * 4 + 2];
 				uint8_t b = buffer[i * (width * 4 + 1) + j * 4 + 3];
 				uint8_t a = buffer[i * (width * 4 + 1) + j * 4 + 4];
-				bits[i * width + j] = (a << 24) | (r << 16) | (g << 8) | b;
+				bits[i * width + j] = (a << 24) | (b << 16) | (g << 8) | r;
+			}
+		}
+	} else if (usesPalette && imageHeader.bitDepth == 8) {
+		for (uintptr_t i = 0; i < height; i++) {
+			for (uintptr_t j = 0; j < width; j++) {
+				uint8_t x = buffer[i * (bytesPerScanline + 1) + j + 1];
+				bits[i * width + j] = palette[x];
+			}
+		}
+	} else if (usesPalette && imageHeader.bitDepth == 4) {
+		for (uintptr_t i = 0; i < height; i++) {
+			for (uintptr_t j = 0; j < width; j++) {
+				uint8_t x = buffer[i * (bytesPerScanline + 1) + (j >> 1) + 1];
+				bits[i * width + j] = palette[(x >> ((1 - (j & 1)) << 2)) & 15];
+			}
+		}
+	} else if (usesPalette && imageHeader.bitDepth == 2) {
+		for (uintptr_t i = 0; i < height; i++) {
+			for (uintptr_t j = 0; j < width; j++) {
+				uint8_t x = buffer[i * (bytesPerScanline + 1) + (j >> 2) + 1];
+				bits[i * width + j] = palette[(x >> ((3 - (j & 3)) << 1)) & 3];
+			}
+		}
+	} else if (usesPalette && imageHeader.bitDepth == 1) {
+		for (uintptr_t i = 0; i < height; i++) {
+			for (uintptr_t j = 0; j < width; j++) {
+				uint8_t x = buffer[i * (bytesPerScanline + 1) + (j >> 3) + 1];
+				bits[i * width + j] = palette[(x >> ((7 - (j & 7)) << 0)) & 1];
 			}
 		}
 	}
-
-	dealloc(buffer);
 
 	// Return the loaded data.
 
@@ -485,5 +578,6 @@ bool PNGParse(PNGReader *reader, uint32_t **outBits, uint32_t *outWidth, uint32_
 	*outWidth = width;
 	*outHeight = height;
 
+	dealloc(buffer);
 	return true;
 }

@@ -83,7 +83,7 @@ void Setup(bool forAutomation) {
 	}
 
 	assert SystemShellExecute("gcc -o bin/build -g util/build.c -pthread -DPARALLEL_BUILD -D%target% "
-			+ "-Wall -Wextra -Wno-missing-field-initializers");
+			+ "-Wall -Wextra -Wno-missing-field-initializers -Wno-format-truncation");
 
 	if forAutomation {
 		assert FileWriteAll("bin/commit.txt", StringSlice(StringSplitByCharacter(SystemShellEvaluate("git log"), "\n", true)[0], 8, 15));

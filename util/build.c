@@ -894,7 +894,7 @@ void AddressToLine(const char *symbolFile) {
 				char *file = symbolFiles;
 
 				while (*file) {
-					sprintf(buffer, "addr2line --exe=\"%s\" 0x%lx | grep -v ? >> bin/result.tmp", file, address);
+					snprintf(buffer, sizeof(buffer), "addr2line --exe=\"%s\" 0x%lx | grep -v ? >> bin/result.tmp", file, address);
 					system(buffer);
 					file += strlen(file) + 1;
 				}
