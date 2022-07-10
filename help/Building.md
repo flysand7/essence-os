@@ -33,7 +33,7 @@ You can install all the needed dependencies with `dnf install nasm gmp gmp-devel
 
 ### Ubuntu
 
-Essence is built using GitHub Actions using their Ubuntu virtual machines. [This file contains a list of additional dependencies that need to be installed](https://github.com/nakst/build-essence/blob/main/.github/workflows/build-essence.yml), and [this is the build script that actually performs the build](https://github.com/nakst/build-essence/blob/main/build.sh).
+Essence is built using GitHub Actions using their Ubuntu virtual machines. [This file contains a list of additional dependencies that need to be installed](https://github.com/nakst/build-essence/blob/main/.github/workflows/nightly.yml#L75), and [this is the build script that actually performs the build](https://gitlab.com/nakst/essence/-/blob/master/util/start.script#L291).
 
 ## macOS
 
