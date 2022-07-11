@@ -14,7 +14,11 @@ For discussion, join our Discord server: https://discord.gg/skeP9ZGDK8.
 
 Alternatively, visit the forums (not very active): https://essence.handmade.network/forums.
 
+## Supporters
+
 To support development, you can donate to my Patreon: https://www.patreon.com/nakst.
+
+Essence was a recipient of the prestigious 2021 Icculus Microgrant. You can view more details here: https://icculus.org/microgrant/.
 
 ## Testing
 

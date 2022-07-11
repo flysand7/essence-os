@@ -4,6 +4,10 @@
 
 See `help/Source Map.md` for a description of the project structure and what each source file is for.
 
+## Submitting patches
+
+Please send a merge request on Gitlab here: https://gitlab.com/nakst/essence/-/merge_requests.
+
 ## Code Style
 
 Functions and structures names use `PascalCase`.
