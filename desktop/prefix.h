@@ -129,7 +129,7 @@ ES_EXTERN_C __attribute__((noreturn)) void _EsCRTlongjmp(EsCRTjmp_buf *env, int 
 #define ES_RECT_BOTTOM_LEFT(_r) (_r).l, (_r).b
 #define ES_RECT_BOTTOM_RIGHT(_r) (_r).r, (_r).b
 #define ES_RECT_ALL(_r) (_r).l, (_r).r, (_r).t, (_r).b
-#define ES_RECT_VALID(_r) (ES_RECT_WIDTH(_r) > 0 && ES_RECT_HEIGHT(_r) > 0)
+#define ES_RECT_VALID(_r) ((_r).l < (_r).r && (_r).t < (_r).b) // This handles extreme values correctly!
 
 #define ES_POINT(x, y) ((EsPoint) { (int32_t) (x), (int32_t) (y) })
 

@@ -516,17 +516,21 @@ void _RastJoinMeter(RAST_ARRAY(RastVertex) *output, RastVertex *from1, RastVerte
 	// TODO For internal contours, this can generate vertices forming anticlockwise regions if the contour width is large enough.
 	//	(You can't see it though because we use a non-zero fill rule.)
 	
-	float a = to1->x - from1->x, b = from2->x - to2->x, e = from2->x - from1->x;
-	float c = to1->y - from1->y, d = from2->y - to2->y, f = from2->y - from1->y;
-	float j = (d * e - b * f) / (d * a - b * c);
-	RastVertex v = { from1->x + j * (to1->x - from1->x), from1->y + j * (to1->y - from1->y) };
-	
-	if ((v.x - point->x) * (v.x - point->x) + (v.y - point->y) * (v.y - point->y) <= miterLimit * miterLimit) {
-		RAST_ARRAY_ADD(*output, v);
-	} else {
-		// TODO Move bevel to miter limit.
-		RAST_ARRAY_ADD(*output, *to1);
+	if ((to1->x - from2->x) * (to1->x - from2->x) + (to1->y - from2->y) * (to1->y - from2->y) < RAST_ADD_VERTEX_MINIMUM_DISTANCE_SQUARED) {
 		RAST_ARRAY_ADD(*output, *from2);
+	} else {
+		float a = to1->x - from1->x, b = from2->x - to2->x, e = from2->x - from1->x;
+		float c = to1->y - from1->y, d = from2->y - to2->y, f = from2->y - from1->y;
+		float j = (d * e - b * f) / (d * a - b * c);
+		RastVertex v = { from1->x + j * (to1->x - from1->x), from1->y + j * (to1->y - from1->y) };
+
+		if ((v.x - point->x) * (v.x - point->x) + (v.y - point->y) * (v.y - point->y) <= miterLimit * miterLimit) {
+			RAST_ARRAY_ADD(*output, v);
+		} else {
+			// TODO Move bevel to miter limit.
+			RAST_ARRAY_ADD(*output, *to1);
+			RAST_ARRAY_ADD(*output, *from2);
+		}
 	}
 }
 

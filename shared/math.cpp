@@ -847,7 +847,7 @@ float EsCRTlog2f(float x) {
 	c.i = (c.i & ~(0xFF << 23)) + (0x7F << 23);
 	x = c.f;
 
-	double y = F(0xC05B5154) + x * (F(0x410297C6) + x * (F(0xC1205CEB) 
+	float y = F(0xC05B5154) + x * (F(0x410297C6) + x * (F(0xC1205CEB) 
 			+ x * (F(0x4114DF63) + x * (F(0xC0C0DBBB) + x * (F(0x402942C6) 
 			+ x * (F(0xBF3FF98A) + x * (F(0x3DFE1050) + x * F(0xBC151480))))))));
 
