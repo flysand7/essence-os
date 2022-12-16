@@ -574,16 +574,13 @@ void _RastJoinRound(RAST_ARRAY(RastVertex) *output, RastVertex *from1, RastVerte
 	_RastJoinArc(output, fromAngle, toAngle, divisions, point, width);
 }
 
-void _RastShapeCreateContour(RastShape *shape, RastPath *path, RastContourStyle style, bool open) {
-	RAST_ARRAY(RastVertex) vertices = path->vertices;
-	size_t vertexCount = RAST_ARRAY_LENGTH(vertices);
-
+void _RastShapeCreateContour(RastShape *shape, RastVertex *vertices, size_t vertexCount, RastContourStyle style, bool open) {
 	if (vertexCount < 2) {
 		return;
 	}
 
 	if (!open) {
-		RastVertex first = vertices[0], last = RAST_ARRAY_LAST(vertices);
+		RastVertex first = vertices[0], last = vertices[vertexCount - 1];
 		float dx = first.x - last.x, dy = first.y - last.y;
 
 		if (dx * dx + dy * dy < RAST_ADD_VERTEX_MINIMUM_DISTANCE_SQUARED) {
@@ -628,6 +625,7 @@ void _RastShapeCreateContour(RastShape *shape, RastPath *path, RastContourStyle 
 					*p3 = &vertices[(i / 2 + 2) % vertexCount];
 				float cross = (p2->x - p1->x) * (p3->y - p2->y) - (p2->y - p1->y) * (p3->x - p2->x);
 				
+				// TODO Use style.miterLimit + width?
 				_RastJoinMeter(&path2, &path1[i], &path1[i + 1], &path1[(i + 2) % RAST_ARRAY_LENGTH(path1)], 
 					&path1[(i + 3) % RAST_ARRAY_LENGTH(path1)], &vertices[(i / 2 + 1) % vertexCount], 
 					(internal ? (cross > 0) : (cross < 0)) ? style.miterLimit : ES_INFINITY);
@@ -683,8 +681,16 @@ void _RastShapeCreateContour(RastShape *shape, RastPath *path, RastContourStyle 
 }
 
 RastShape RastShapeCreateContour(RastPath *path, RastContourStyle style, bool open) {
+	if (RAST_ARRAY_LENGTH(path->vertices) < 2) return (RastShape) { 0 };
+
 	RastShape shape = { .left = INT_MAX, .top = INT_MAX };
-	_RastShapeCreateContour(&shape, path, style, open);
+	RastPathCloseSegment(path);
+
+	for (uintptr_t i = 0; i < RAST_ARRAY_LENGTH(path->segments); i++) {
+		uintptr_t first = i ? path->segments[i - 1].uptoVertex : 0;
+		_RastShapeCreateContour(&shape, &path->vertices[first], path->segments[i].uptoVertex - first, style, open);
+	}
+
 	if (RAST_ARRAY_LENGTH(shape.edges) == 0) return (RastShape) { 0 };
 	return shape;
 }
@@ -744,7 +750,7 @@ RastShape RastShapeCreateDashed(RastPath *path, RastDash *dashStyles, size_t das
 			to++;
 		}
 
-		_RastShapeCreateContour(&shape, &dash, *style->style, true);
+		_RastShapeCreateContour(&shape, &dash.vertices[0], RAST_ARRAY_LENGTH(dash.vertices), *style->style, true);
 
 		accumulatedLength = 0;
 

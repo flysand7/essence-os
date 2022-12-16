@@ -25,7 +25,7 @@ struct Pipe {
 #define PIPE_BUFFER_SIZE (256)
 #define PIPE_CLOSED (0)
 
-	volatile char buffer[PIPE_BUFFER_SIZE];
+	volatile char buffer[PIPE_BUFFER_SIZE]; // TODO Make this 4KB?
 	volatile size_t writers, readers;
 	volatile uintptr_t writePosition, readPosition, unreadData;
 	KEvent canWrite, canRead;

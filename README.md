@@ -1,6 +1,6 @@
 # **Essence** — An Operating System
 
-![Discord](https://img.shields.io/discord/703653809943085186?color=blue) ![Automated build status](https://img.shields.io/github/workflow/status/nakst/build-essence/nightly)
+![Discord](https://img.shields.io/discord/703653809943085186?color=blue) ![Automated build status](https://img.shields.io/github/actions/workflow/status/nakst/build-essence/nightly.yml?branch=main)
 
 ![Screenshot showing the file manager, text editor, and bitmap image editor.](https://nakst.gitlab.io/essence.jpg)
 

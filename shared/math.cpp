@@ -841,6 +841,8 @@ double EsCRTlog2(double x) {
 }
 
 float EsCRTlog2f(float x) {
+	// TODO EsCRTlog2f(0.9999971379999999f) gives 0.00000143051147460938 (should be negative!!).
+
 	ConvertFloatInteger c;
 	c.f = x;
 	int32_t e = ((c.i >> 23) & 255) - 0x7F;
